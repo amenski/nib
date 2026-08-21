@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { createAISDKProvider } from "./aisdk.js";
+import { createAISDKProvider, mapMessages } from "./aisdk.js";
 import type { ProviderPreset } from "./presets.js";
 
 function preset(baseUrl: string): ProviderPreset {
@@ -133,5 +133,76 @@ describe("Provider.getBalance (openai-compatible adapter)", () => {
 
     const provider = createAISDKProvider(preset("https://api.deepseek.com"), "m", "sk-test");
     await expect(provider.getBalance!()).resolves.toBeNull();
+  });
+});
+
+describe("OpenRouter request mapping", () => {
+  it("uses the tool name carried by a new result", () => {
+    const mapped = mapMessages([
+      { role: "assistant", content: null, toolCalls: [{ id: "call_1", name: "search", arguments: {} }] },
+      { role: "tool", toolCallId: "call_1", toolName: "search", content: "result" },
+    ]);
+
+    expect(mapped).toEqual([
+      { role: "assistant", content: [{ type: "tool-call", toolCallId: "call_1", toolName: "search", input: {} }] },
+      { role: "tool", content: [{ type: "tool-result", toolCallId: "call_1", toolName: "search", output: { type: "text", value: "result" } }] },
+    ]);
+  });
+
+  it("infers the tool name for legacy results without toolName", () => {
+    const mapped = mapMessages([
+      { role: "assistant", content: null, toolCalls: [{ id: "call_1", name: "search", arguments: {} }] },
+      { role: "tool", toolCallId: "call_1", content: "result" },
+    ]);
+
+    expect(mapped[1]).toMatchObject({
+      role: "tool",
+      content: [{ type: "tool-result", toolCallId: "call_1", toolName: "search" }],
+    });
+  });
+
+  it("uses a clear fallback only for an unresolvable legacy result", () => {
+    const mapped = mapMessages([{ role: "tool", toolCallId: "missing", content: "result" }]);
+    expect(mapped[0]).toMatchObject({
+      role: "tool",
+      content: [{ type: "tool-result", toolCallId: "missing", toolName: "legacy_unknown_tool" }],
+    });
+  });
+
+  it("adds GitHub attribution only to OpenRouter requests", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        [
+          'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":null}]}',
+          "data: [DONE]",
+          "",
+        ].join("\n\n"),
+        { status: 200, headers: { "Content-Type": "text/event-stream" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const provider = createAISDKProvider(preset("https://openrouter.ai/api/v1"), "qwen/qwen3.7-flash", "sk-or");
+    for await (const _event of provider.streamChat([{ role: "user", content: "hello" }], [])) {
+      // consume the stream so the SDK performs the request
+    }
+
+    const requestInit = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(new Headers(requestInit.headers).get("HTTP-Referer")).toBe("https://github.com/amenski/heirloom-agent");
+    expect(new Headers(requestInit.headers).get("X-OpenRouter-Title")).toBe("Heirloom");
+
+    vi.unstubAllGlobals();
+    const otherFetch = vi.fn().mockResolvedValue(
+      new Response("data: [DONE]\n\n", { status: 200, headers: { "Content-Type": "text/event-stream" } }),
+    );
+    vi.stubGlobal("fetch", otherFetch);
+    const other = createAISDKProvider(preset("https://api.example.test/v1"), "m", "sk");
+    for await (const _event of other.streamChat([{ role: "user", content: "hello" }], [])) {
+      // consume the stream
+    }
+    const otherRequestInit = otherFetch.mock.calls[0][1] as RequestInit;
+    expect(new Headers(otherRequestInit.headers).get("HTTP-Referer")).toBeNull();
+    expect(new Headers(otherRequestInit.headers).get("X-OpenRouter-Title")).toBeNull();
+    vi.unstubAllGlobals();
   });
 });

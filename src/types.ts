@@ -24,6 +24,8 @@ export interface ToolResultMessage {
   role: "tool";
   toolCallId: string;
   content: string;
+  /** The tool name is carried on new results; absent only in old persisted sessions. */
+  toolName?: string;
 }
 
 export type Message = SystemMessage | UserMessage | AssistantMessage | ToolResultMessage;

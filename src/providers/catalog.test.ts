@@ -26,6 +26,12 @@ describe("loadModelCatalog", () => {
       supportsTools: true,
       contextWindow: 1000000,
     });
+    expect(catalog.providers.openrouter.models["qwen/qwen3.7-flash"]).toMatchObject({
+      displayName: "Qwen3.7 Flash",
+      contextWindow: 1000000,
+      pricing: { inputPerM: 0.03, outputPerM: 0.13 },
+    });
+    expect(catalog.providers.openrouter.baseUrl).toBe("https://openrouter.ai/api/v1");
   });
 
   it("is fine when the user file is simply missing", () => {

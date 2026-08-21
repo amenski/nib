@@ -1,6 +1,6 @@
 # Provider Specification
 
-**Status:** current · verified 2026-08-13 · covers `src/providers/{types,presets,aisdk,catalog,registry}.ts`, `src/providers/models.json`, `src/config/credentials.ts`
+**Status:** current · verified 2026-08-21 · covers `src/providers/{types,presets,aisdk,catalog,registry}.ts`, `src/providers/{models,provider-presets}.json`, `src/config/credentials.ts`
 
 ## 1. Overview
 
@@ -11,9 +11,11 @@ model catalog, and key resolution on top.
 
 - **Provider** — a named config entry: an API (`openai-compatible` or
   `anthropic`), a base URL, a key environment variable, and a model list.
-- **Catalog** — `src/providers/models.json` ships bundled presets
-  (deepseek, openai, openrouter, groq, ollama). A user file
-  `~/.heirloom/models.json` deep-merges over the bundled catalog
+- **Catalog** — `src/providers/provider-presets.json` ships provider
+  connection settings, while `src/providers/models.json` is a generated,
+  Models.dev-shaped metadata snapshot for the supported providers (deepseek,
+  openai, openrouter, groq, ollama). A user file
+  `~/.heirloom/models.json` deep-merges last over the combined catalog
   (`src/providers/catalog.ts`) — add or override providers/models without
   touching code.
 - **AI SDK** — `src/providers/aisdk.ts` maps `streamText` events to the
@@ -97,6 +99,20 @@ error, an unconstructible URL, or an unsupported host all resolve to `null`,
 which the CLI renders as "not supported for \<provider\>". Providers without
 an implementation omit the method entirely (`provider.getBalance?.()`).
 
+### 2.2 OpenRouter attribution
+
+Requests whose configured base URL has the exact hostname `openrouter.ai` carry
+the following AI SDK client headers:
+
+```text
+HTTP-Referer: https://github.com/amenski/heirloom-agent
+X-OpenRouter-Title: Heirloom
+```
+
+This identifies Heirloom in OpenRouter's activity and rankings surfaces. The
+headers are not sent to other OpenAI-compatible providers, even when they use
+the same adapter.
+
 ## 3. Key resolution
 
 `createProvider(name, options)` (`src/providers/presets.ts:103`) resolves in
@@ -113,7 +129,8 @@ local) need none.
 
 ## 4. Bundled catalog
 
-`src/providers/models.json` (5 providers):
+`src/providers/provider-presets.json` + generated `src/providers/models.json`
+(5 providers):
 
 | Provider | API | Key env | Default model |
 |----------|-----|---------|---------------|
@@ -161,14 +178,30 @@ active model is resolved **per turn, not per session**:
 To apply a model change immediately, interrupt the current turn (Esc) and
 re-prompt.
 
+### 4.2 Catalog generation
+
+`npm run models:generate` deterministically regenerates the checked-in
+snapshot from `scripts/fixtures/models.dev.json`. To generate from a fresh
+Models.dev feed, pass its URL explicitly:
+
+```bash
+npm run models:generate -- https://models.dev/api.json
+```
+
+This is a maintainer action only. Heirloom never fetches model data while
+starting, building, testing, or selecting a model. The snapshot remains the
+runtime fallback; an inspectable user-facing update command is planned in
+`model-catalog-plan.md` slice C.
+
 ## 5. Adding a provider
 
 **OpenAI-compatible service** (zero code):
 1. Add a preset entry to `~/.heirloom/models.json` (or the bundled catalog).
 
 **A provider the catalog can't express** (code change):
-1. Add the preset to `src/providers/models.json` (+ `presets.ts` entry if the
-   name needs registration) and a test in `presets.test.ts`.
+1. Add the connection preset to `src/providers/provider-presets.json`, the
+   provider's metadata to the generator input, and a test in
+   `presets.test.ts`.
 2. If the wire format is new, extend `src/providers/aisdk.ts` — the AI SDK
    already covers OpenAI-compatible and Anthropic shapes.
 

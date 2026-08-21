@@ -1,0 +1,9 @@
+{
+  "providers": {
+    "deepseek": { "label": "DeepSeek", "api": "openai-compatible", "baseUrl": "https://api.deepseek.com", "keyEnv": "DEEPSEEK_API_KEY", "defaultModel": "deepseek-v4-pro" },
+    "openai": { "label": "OpenAI", "api": "openai-compatible", "baseUrl": "https://api.openai.com/v1", "keyEnv": "OPENAI_API_KEY", "defaultModel": "gpt-5.6-sol" },
+    "openrouter": { "label": "OpenRouter", "api": "openai-compatible", "baseUrl": "https://openrouter.ai/api/v1", "keyEnv": "OPENROUTER_API_KEY", "defaultModel": "anthropic/claude-sonnet-4.6" },
+    "groq": { "label": "Groq", "api": "openai-compatible", "baseUrl": "https://api.groq.com/openai/v1", "keyEnv": "GROQ_API_KEY", "defaultModel": "llama-3.3-70b-versatile" },
+    "ollama": { "label": "Ollama", "api": "openai-compatible", "baseUrl": "http://localhost:11434/v1", "keyEnv": "", "defaultModel": "llama3.2" }
+  }
+}

@@ -99,6 +99,7 @@ then follow the reading paths below.
 | [async-subagents.md](./async-subagents.md) | Async sub-agent execution design: spawn-return-immediately, auto-wake, cap 3, /tasks |
 | [unified-write-boundary.md](./unified-write-boundary.md) | Unified write boundary design: one shared write-set across Seatbelt + file tools; global-only `sandbox.writeRoots` (approved 2026-08-17, not yet built) |
 | [feature-plans.md](./feature-plans.md) | Per-feature plans for the remaining roadmap: SOTA research, current state, design, decisions |
+| [model-catalog-plan.md](./model-catalog-plan.md) | Models.dev-backed catalog: snapshot, overrides, update contract, and delivery slices |
 | [improvement-roadmap.md](./improvement-roadmap.md) | Roadmap with shipped/unshipped waves |
 | [agent-memory-that-evolves.md](./agent-memory-that-evolves.md) | Memory-design research essay (context only) |
 

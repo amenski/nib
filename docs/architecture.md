@@ -228,7 +228,8 @@ src/
 │   ├── aisdk.ts                # AI SDK v7 streamText → StreamEvent mapping
 │   ├── catalog.ts              # ~/.heirloom/models.json merge
 │   ├── registry.ts             # capability lookup
-│   └── models.json             # bundled provider/model catalog
+│   ├── provider-presets.json   # bundled provider connection settings
+│   └── models.json             # generated bundled model metadata snapshot
 │
 ├── tools/
 │   ├── types.ts                # ToolContext, ToolHandler, ToolGroup

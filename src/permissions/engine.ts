@@ -385,6 +385,19 @@ export class PermissionEngine {
     if (denyMatches.length > 0) {
       return this.resolveTier(denyMatches, allowMatches, "deny");
     }
+    // A session approval for web_search is an explicit, in-memory user
+    // decision that broadens across query text. It must be checked before the
+    // static guarded any-rule's kill switch, while still letting an explicit
+    // deny win above. No config/always rule enters this escape hatch.
+    if (
+      toolName === "web_search" &&
+      this.sessionRules.some((r) => r.tool === "web_search" && r.kind === "any" && r.action === "allow")
+    ) {
+      const sessionRule = this.sessionRules.find(
+        (r) => r.tool === "web_search" && r.kind === "any" && r.action === "allow",
+      );
+      return { action: "allow", winningRule: sessionRule, wasUnresolved: false };
+    }
     if (askMatches.length > 0) {
       // The write boundary and the out-of-workspace search/glob guard are
       // both dynamic guards: they must prompt initially, but a path-scoped
@@ -608,6 +621,14 @@ export class PermissionEngine {
    * or all secret-adjacent paths of that shape).
    */
   approveForSession(rule: PermissionRule, matchedBuiltin?: PermissionRule): void {
+    // web_search is guarded so every new query gets an explicit first-use
+    // prompt, but a user's explicit session approval should not be narrowed
+    // back to that one query. Keep this broadening in memory only: the
+    // persistent/always path below retains the guarded narrowing behavior.
+    if (rule.tool === "web_search") {
+      this.sessionRules.push({ tool: "web_search", kind: "any", pattern: "", action: "allow", origin: "session" });
+      return;
+    }
     const narrowed = matchedBuiltin ? this.narrowToExact(rule, matchedBuiltin) : rule;
     this.sessionRules.push({ ...narrowed, origin: "session" });
   }

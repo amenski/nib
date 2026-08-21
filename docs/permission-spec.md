@@ -64,6 +64,12 @@ relativize step, which would otherwise mangle a hostname into a
 path-relative string. `buildDefaultRule` builds the "allow for
 session/always" rule on the hostname for the same reason.
 
+`web_search` is a guarded network tool and prompts on its first query. Choosing
+"Yes, for this session" grants an in-memory allow for all subsequent
+`web_search` queries in the current process. This exception is deliberately
+session-only: choosing "always allow" stores the approved query narrowly and
+does not disable the guarded first-use prompt for other queries.
+
 ## 5. `run_bash` command normalization
 
 Raw `command` text is never compared directly:

@@ -14,6 +14,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "eval": "tsx scripts/eval.ts",
+    "models:generate": "tsx scripts/generate-models.ts",
     "prepare": "npm run build"
   },
   "dependencies": {

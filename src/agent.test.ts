@@ -96,7 +96,7 @@ describe("runAgent", () => {
         content: null,
         toolCalls: [{ id: "call_1", name: "read", arguments: { path: "a.txt" } }],
       },
-      { role: "tool", toolCallId: "call_1", content: "file contents" },
+      { role: "tool", toolCallId: "call_1", toolName: "read", content: "file contents" },
       { role: "assistant", content: "done reading" },
     ]);
   });

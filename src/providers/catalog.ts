@@ -4,8 +4,8 @@ import type { ModelCapabilities } from "./types.js";
 import { resolveDeepcodeHome } from "../ui/components/ThemeDropdown/index.js";
 
 /**
- * The on-disk shape of models.json (bundled and user override). Mirrors
- * ProviderPreset/ModelCapabilities but with JSON-friendly optional fields.
+ * The on-disk shape of models.json (generated bundle and user override).
+ * Provider integration settings are kept separately in provider-presets.json.
  */
 export interface CatalogModel extends ModelCapabilities {
   free?: boolean;
@@ -25,6 +25,7 @@ export interface ModelCatalog {
 }
 
 const BUNDLED_PATH = new URL("./models.json", import.meta.url);
+const PRESETS_PATH = new URL("./provider-presets.json", import.meta.url);
 
 function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -76,11 +77,16 @@ function mergeProvider(
  */
 export function loadModelCatalog(homeDir?: string): ModelCatalog {
   const bundledRaw = loadJsonFile(BUNDLED_PATH);
+  const presetsRaw = loadJsonFile(PRESETS_PATH);
   const bundledProviders = isObject(bundledRaw?.providers) ? (bundledRaw!.providers as Record<string, unknown>) : {};
+  const presetProviders = isObject(presetsRaw?.providers) ? (presetsRaw!.providers as Record<string, unknown>) : {};
 
   const providers: Record<string, CatalogProvider> = {};
-  for (const [name, entry] of Object.entries(bundledProviders)) {
-    if (isObject(entry)) providers[name] = mergeProvider(undefined, entry as Partial<CatalogProvider>);
+  const providerNames = new Set([...Object.keys(presetProviders), ...Object.keys(bundledProviders)]);
+  for (const name of providerNames) {
+    const preset = isObject(presetProviders[name]) ? presetProviders[name] : {};
+    const models = isObject(bundledProviders[name]) ? bundledProviders[name] : {};
+    providers[name] = mergeProvider(undefined, { ...(preset as Partial<CatalogProvider>), ...(models as Partial<CatalogProvider>) });
   }
 
   const userPath = join(homeDir ?? resolveDeepcodeHome(), "models.json");

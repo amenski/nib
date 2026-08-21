@@ -57,7 +57,7 @@ function repairOrphanedToolCalls(messages: Message[]): number {
     messages.splice(
       at,
       0,
-      ...missing.map((tc) => ({ role: "tool" as const, toolCallId: tc.id, content: UNANSWERED_TOOL_RESULT })),
+      ...missing.map((tc) => ({ role: "tool" as const, toolCallId: tc.id, toolName: tc.name, content: UNANSWERED_TOOL_RESULT })),
     );
     repaired += missing.length;
   }
@@ -553,7 +553,7 @@ export async function runAgent(
     const hookDenied = (tc: ToolCall, event: "PreToolUse" | "PermissionRequest"): void => {
       const msg = `PERMISSION_DENIED: denied by ${event} hook`;
       options.onDiagnostic?.("denied");
-      messages.push({ role: "tool", toolCallId: tc.id, content: msg });
+      messages.push({ role: "tool", toolCallId: tc.id, toolName: tc.name, content: msg });
     };
 
     /**
@@ -599,7 +599,7 @@ export async function runAgent(
           } else {
             await audit("deny-by-rule", `deny rule matched (${winningRule?.origin ?? "rule"})`);
           }
-          messages.push({ role: "tool", toolCallId: tc.id, content: msg });
+          messages.push({ role: "tool", toolCallId: tc.id, toolName: tc.name, content: msg });
           return true;
         }
         if (action === "ask") {
@@ -621,7 +621,7 @@ export async function runAgent(
               const msg = "PERMISSION_DENIED: denied by user";
               options.onDiagnostic?.("denied");
               await audit("ask-denied", "denied by user at prompt");
-              messages.push({ role: "tool", toolCallId: tc.id, content: msg });
+              messages.push({ role: "tool", toolCallId: tc.id, toolName: tc.name, content: msg });
               return true;
             } else {
               // Approved via askUser. The TUI (App.tsx) writes a finer-grained
@@ -650,7 +650,7 @@ export async function runAgent(
             const msg = "PERMISSION_DENIED: headless — rule resolved to ask";
             options.onDiagnostic?.("denied");
             await audit("headless-deny", "resolved to ask with no interactive prompter (headless)");
-            messages.push({ role: "tool", toolCallId: tc.id, content: msg });
+            messages.push({ role: "tool", toolCallId: tc.id, toolName: tc.name, content: msg });
             return true;
           }
         } else if (action === "allow") {
@@ -728,7 +728,7 @@ export async function runAgent(
       }
 
       if (result.error && errorReflector?.canRetry(tc.name, result.error)) {
-        messages.push({ role: "tool", toolCallId: tc.id, content: `Error: ${result.error}` });
+        messages.push({ role: "tool", toolCallId: tc.id, toolName: tc.name, content: `Error: ${result.error}` });
         messages.push({ role: "user", content: errorReflector.formatError(tc.name, result.error, result.content) });
         options.onRetry?.("retrying");
         errorReflector.resetTurn();
@@ -742,6 +742,7 @@ export async function runAgent(
         messages.push({
           role: "tool",
           toolCallId: tc.id,
+          toolName: tc.name,
           content: result.error ? `Error: ${result.error}` : result.content,
         });
       }

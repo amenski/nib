@@ -7,7 +7,7 @@ import type { Provider, ProviderBalance, StreamEvent } from "./types.js";
 import type { ProviderPreset } from "./presets.js";
 import { logRequest, logResponse, logTiming } from "../debug/logger.js";
 
-function mapMessages(messages: Message[]): ModelMessage[] {
+export function mapMessages(messages: Message[]): ModelMessage[] {
   const toolNameByCallId = new Map<string, string>();
   for (const m of messages) {
     if (m.role === "assistant" && m.toolCalls) {
@@ -67,7 +67,10 @@ function mapMessages(messages: Message[]): ModelMessage[] {
             {
               type: "tool-result",
               toolCallId: m.toolCallId,
-              toolName: toolNameByCallId.get(m.toolCallId) ?? "unknown",
+              // New results carry their name directly. The lookup preserves
+              // compatibility with old persisted sessions; only a corrupt
+              // legacy record can reach this valid-but-obvious fallback.
+              toolName: m.toolName ?? toolNameByCallId.get(m.toolCallId) ?? "legacy_unknown_tool",
               output: { type: "text" as const, value: m.content },
             },
           ],
@@ -91,7 +94,19 @@ function createAIInstance(apiType: string, baseUrl: string, apiKey: string, mode
   if (apiType === "anthropic") {
     return createAnthropic({ apiKey })(model);
   }
-  return createOpenAI({ baseURL: baseUrl, apiKey }).chat(model);
+  let hostname: string | undefined;
+  try {
+    hostname = new URL(baseUrl).hostname;
+  } catch {
+    // The SDK will report the malformed URL when the request is attempted.
+  }
+  const headers = hostname === "openrouter.ai"
+    ? {
+        "HTTP-Referer": "https://github.com/amenski/heirloom-agent",
+        "X-OpenRouter-Title": "Heirloom",
+      }
+    : undefined;
+  return createOpenAI({ baseURL: baseUrl, apiKey, ...(headers ? { headers } : {}) }).chat(model);
 }
 
 /**

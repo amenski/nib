@@ -643,6 +643,29 @@ describe("PermissionEngine.resolve", () => {
     });
   });
 
+  describe("web_search session approval", () => {
+    it("allows subsequent queries after an explicit session approval", () => {
+      const searchEngine = new PermissionEngine(undefined, "/tmp");
+      const guarded = searchEngine.resolve("web_search", { query: "first query" }).winningRule!;
+      const rule = searchEngine.buildDefaultRule("web_search", { query: "first query" });
+
+      searchEngine.approveForSession(rule, guarded);
+
+      expect(searchEngine.resolve("web_search", { query: "first query" }).action).toBe("allow");
+      expect(searchEngine.resolve("web_search", { query: "a completely different query" }).action).toBe("allow");
+    });
+
+    it("does not create a session-wide exception for an always approval", () => {
+      const searchEngine = new PermissionEngine(undefined, "/tmp");
+      const guarded = searchEngine.resolve("web_search", { query: "first query" }).winningRule!;
+      const rule = searchEngine.buildDefaultRule("web_search", { query: "first query" });
+
+      searchEngine.approveAlways(rule, guarded);
+
+      expect(searchEngine.resolve("web_search", { query: "a completely different query" }).action).toBe("ask");
+    });
+  });
+
   describe("glob rules against absolute paths (relativize-to-workingDir)", () => {
     it("a './**' glob rule matches a real absolute in-cwd path (this is what migrateLegacyPermissions emits for read-in-cwd)", () => {
       engine = new PermissionEngine(

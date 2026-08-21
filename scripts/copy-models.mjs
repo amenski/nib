@@ -1,4 +1,4 @@
-// Copies the bundled model catalog into the dist bundle so the packaged
+// Copies the bundled model catalog and provider presets into the dist bundle so the packaged
 // binary can load it. tsup bundles JS/TS only; models.json is an asset the
 // catalog loader resolves relative to its module URL (./models.json). In dev
 // that URL is src/providers/catalog.ts, so it finds src/providers/models.json;
@@ -11,5 +11,8 @@ import { dirname, join } from "node:path";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const src = join(root, "src", "providers", "models.json");
 const dest = join(root, "dist", "models.json");
+const presetsSrc = join(root, "src", "providers", "provider-presets.json");
+const presetsDest = join(root, "dist", "provider-presets.json");
 
 await cp(src, dest);
+await cp(presetsSrc, presetsDest);

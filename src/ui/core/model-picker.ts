@@ -9,9 +9,10 @@ import { fuzzyScore } from "./fuzzy.js";
  * testable without rendering Ink (the view itself only maps rows to <Text>).
  */
 
-/** A rendered row: either a group heading or a selectable model. */
+/** A rendered row: a group heading, a non-selectable hint, or a selectable model. */
 export type PickerRow =
   | { kind: "header"; provider: string; label: string }
+  | { kind: "hint"; provider: string; label: string }
   | {
       kind: "model";
       /** Which group this row renders in: a real provider name, or "favorites"/"recent". */
@@ -43,6 +44,15 @@ export interface RecentModel {
 
 /** Number of Recent entries kept in settings and shown in the picker. */
 export const MAX_RECENT_MODELS = 5;
+
+/**
+ * Cap on models shown per provider group in the no-query default view.
+ * A catalog update can take a provider from a handful of models to hundreds
+ * (e.g. OpenRouter after `heirloom models update`); with no query to filter
+ * by, the unqueried view must stay a browsable list rather than dumping the
+ * whole provider. Typing any query lifts the cap entirely — see buildRows.
+ */
+export const NO_QUERY_PROVIDER_CAP = 8;
 
 /**
  * Fold a successful model switch into the recent list: move-or-insert `id` at
@@ -207,8 +217,17 @@ export function buildRows({
       provider,
       label: labels?.[provider] ?? provider,
     });
-    for (const { entry } of items) {
+    // Cap only applies to the unqueried view — a query is already the filter,
+    // and truncating filtered results would hide the very thing being
+    // searched for.
+    const capped = !query && items.length > NO_QUERY_PROVIDER_CAP;
+    const visibleItems = capped ? items.slice(0, NO_QUERY_PROVIDER_CAP) : items;
+    for (const { entry } of visibleItems) {
       rows.push(toRow(entry, provider, currentProvider, currentModel, configured, favoriteIds));
+    }
+    if (capped) {
+      const remaining = items.length - NO_QUERY_PROVIDER_CAP;
+      rows.push({ kind: "hint", provider, label: `… ${remaining} more — type to filter` });
     }
   }
   return rows;

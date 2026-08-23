@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { generateCatalog } from "./catalog-generator.js";
+import { generateCatalog, generateCatalogReport } from "./catalog-generator.js";
 
 const model = (extra: Record<string, unknown> = {}) => ({
   name: "Example",
@@ -66,5 +66,82 @@ describe("generateCatalog", () => {
 
   it("rejects a preset default that is absent from the generated provider", () => {
     expect(() => generateCatalog(input(), { sourceRevision: "x", generatedAt: "y", defaultModels: { openrouter: "missing" } })).toThrow(/default model is missing/);
+  });
+});
+
+// `lenient: true` is what `heirloom models update` sets against the live
+// Models.dev feed (unlike `npm run models:generate`, which keeps strict
+// throwing against the checked-in fixture — see GeneratorOptions.lenient).
+describe("generateCatalog / generateCatalogReport — lenient mode", () => {
+  it("skips a bad model and keeps its siblings", () => {
+    const result = generateCatalog(input({
+      openai: { models: {
+        "good-model": model({ name: "Good" }),
+        "bad-model": model({ name: "Bad", limit: { context: 0 } }),
+      } },
+    }), { sourceRevision: "x", generatedAt: "y", lenient: true });
+    const models = (result.providers as any).openai.models;
+    expect(models["good-model"]).toBeDefined();
+    expect(models["bad-model"]).toBeUndefined();
+  });
+
+  it("skips a SUPPORTED_PROVIDERS entry absent from the feed instead of throwing", () => {
+    const { ollama, ...rest } = input().providers as Record<string, unknown>;
+    const result = generateCatalog({ providers: rest }, { sourceRevision: "x", generatedAt: "y", lenient: true });
+    expect((result.providers as any).ollama).toBeUndefined();
+    expect((result.providers as any).deepseek).toBeDefined();
+  });
+
+  it("skips a provider present in the feed but with an empty models object instead of throwing", () => {
+    const result = generateCatalog(input({ ollama: { models: {} } }), { sourceRevision: "x", generatedAt: "y", lenient: true });
+    expect((result.providers as any).ollama).toBeUndefined();
+    expect((result.providers as any).deepseek).toBeDefined();
+  });
+
+  it("non-lenient (default) still throws when a provider present in the feed has an empty models object", () => {
+    expect(() => generateCatalog(input({ ollama: { models: {} } }), { sourceRevision: "x", generatedAt: "y" })).toThrow(/ollama must contain models/);
+  });
+
+  it("still throws when a provider present in the feed is missing its configured default", () => {
+    expect(() => generateCatalog(input(), {
+      sourceRevision: "x", generatedAt: "y", lenient: true, defaultModels: { openrouter: "missing" },
+    })).toThrow(/default model is missing/);
+  });
+
+  it("non-lenient (default) behavior is unchanged: still throws on a missing provider and a bad model", () => {
+    expect(() => generateCatalog({ providers: {} }, { sourceRevision: "x", generatedAt: "y" })).toThrow(/missing supported provider/);
+    expect(() => generateCatalog(input({ openai: { models: { bad: model({ limit: { context: 0 } }) } } }), { sourceRevision: "x", generatedAt: "y" })).toThrow(/positive number/);
+  });
+
+  it("generateCatalogReport reports skipped models and skipped providers", () => {
+    const { ollama, ...rest } = input({
+      openai: { models: {
+        "good-model": model({ name: "Good" }),
+        "bad-model": model({ name: "Bad", limit: { context: 0 } }),
+      } },
+    }).providers as Record<string, unknown>;
+    const report = generateCatalogReport({ providers: rest }, { sourceRevision: "x", generatedAt: "y", lenient: true });
+    expect(report.skippedModels).toEqual(["openai/bad-model"]);
+    expect(report.skippedProviders).toEqual([{ provider: "ollama", reason: "absent" }]);
+    expect((report.catalog.providers as any).openai.models["good-model"]).toBeDefined();
+  });
+
+  it("generateCatalogReport tags a present-but-empty provider with reason: empty, distinct from an absent one", () => {
+    const { groq, ...rest } = input({ ollama: { models: {} } }).providers as Record<string, unknown>;
+    const report = generateCatalogReport({ providers: rest }, { sourceRevision: "x", generatedAt: "y", lenient: true });
+    expect(report.skippedProviders).toEqual(expect.arrayContaining([
+      { provider: "ollama", reason: "empty" },
+      { provider: "groq", reason: "absent" },
+    ]));
+  });
+
+  it("generateCatalogReport reports no skips for well-formed input", () => {
+    const report = generateCatalogReport(input(), { sourceRevision: "x", generatedAt: "y", lenient: true });
+    expect(report.skippedModels).toEqual([]);
+    expect(report.skippedProviders).toEqual([]);
+  });
+
+  it("generateCatalogReport in non-lenient mode (default) throws exactly like generateCatalog", () => {
+    expect(() => generateCatalogReport({ providers: {} }, { sourceRevision: "x", generatedAt: "y" })).toThrow(/missing supported provider/);
   });
 });

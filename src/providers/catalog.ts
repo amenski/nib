@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ModelCapabilities } from "./types.js";
 import { resolveDeepcodeHome } from "../ui/components/ThemeDropdown/index.js";
+import { CATALOG_CACHE_FILENAME } from "./catalog-update.js";
 
 /**
  * The on-disk shape of models.json (generated bundle and user override).
@@ -89,7 +90,23 @@ export function loadModelCatalog(homeDir?: string): ModelCatalog {
     providers[name] = mergeProvider(undefined, { ...(preset as Partial<CatalogProvider>), ...(models as Partial<CatalogProvider>) });
   }
 
-  const userPath = join(homeDir ?? resolveDeepcodeHome(), "models.json");
+  const home = homeDir ?? resolveDeepcodeHome();
+
+  // `heirloom models update` writes a refreshed snapshot here (distinct from
+  // the bundled models.json above, which never changes). It sits between the
+  // bundled catalog and the user override so a hand-edited
+  // ~/.heirloom/models.json still wins over an updated snapshot (plan §2
+  // decision 5). A missing or unreadable cache file is normal (no update has
+  // run yet, or `models update` was never confirmed) and silently falls back
+  // to the bundled catalog, same as a missing user override.
+  const cachedRaw = loadJsonFile(join(home, CATALOG_CACHE_FILENAME));
+  const cachedProviders = isObject(cachedRaw?.providers) ? (cachedRaw!.providers as Record<string, unknown>) : {};
+  for (const [name, entry] of Object.entries(cachedProviders)) {
+    if (!isObject(entry)) continue;
+    providers[name] = mergeProvider(providers[name], entry as Partial<CatalogProvider>);
+  }
+
+  const userPath = join(home, "models.json");
   const userRaw = readUserCatalog(userPath);
   if (userRaw) {
     const userProviders = isObject(userRaw.providers) ? (userRaw.providers as Record<string, unknown>) : {};
@@ -100,6 +117,18 @@ export function loadModelCatalog(homeDir?: string): ModelCatalog {
   }
 
   return { providers };
+}
+
+/**
+ * Read provider-presets.json directly (integration facts: base URL, API
+ * shape, key env var, default model — plan §2 decision 4). Exported so
+ * `models update` can build its `defaultModels` generator input from the
+ * exact same file scripts/generate-models.ts uses, without reimplementing
+ * PRESETS_PATH's import.meta.url resolution (the reason this works both from
+ * src/ and from a built dist/).
+ */
+export function loadProviderPresets(): Record<string, unknown> {
+  return loadJsonFile(PRESETS_PATH) ?? { providers: {} };
 }
 
 /**

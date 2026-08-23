@@ -1,8 +1,8 @@
 # Models.dev Catalog Plan
 
-**Status:** partially implemented · verified 2026-08-21 · slices A/B shipped;
-slice C remains. Covers the provider model catalog, capability lookup, model
-picker, compaction limits, and cost estimate.
+**Status:** implemented · verified 2026-08-23 · slices A/B/C shipped. Covers
+the provider model catalog, capability lookup, model picker, compaction
+limits, and cost estimate.
 
 ## 1. Goal
 
@@ -94,16 +94,47 @@ Qwen3.7 Flash is included as an OpenRouter model.
 
 ### C. Explicit update command
 
-**Pending.**
+**✅ Shipped 2026-08-23.** `heirloom models update` downloads the Models.dev
+feed (10 s timeout, injectable fetch for tests), validates it by running it
+through `generateCatalogReport` (the same normalization `generateCatalog`
+uses, wrapping the shared core), diffs it against the active snapshot, and
+only writes `HEIRLOOM_HOME/models-catalog.json` (atomically, via
+temp-file-then-rename) after confirmation. `heirloom models status` reports
+whether the active snapshot is bundled or an updated cache, its source
+revision/date, and provider/model counts.
 
-- Add `heirloom models update` only after A and B ship.
-- Download the official Models.dev feed with a timeout and schema validation;
-  regenerate to a temporary file; show added, removed, and changed models and
-  prices; require confirmation before replacing the local cached snapshot.
-- Preserve the bundled snapshot as fallback. A failed download, invalid feed,
-  or declined diff leaves the active catalog untouched.
-- Add `heirloom models status` to show source revision/date and whether a
-  local updated snapshot is active.
+- `heirloom models update` downloads the official Models.dev feed with a
+  timeout and schema validation; regenerates in memory; shows added, removed,
+  and changed models and prices; requires confirmation before replacing the
+  local cached snapshot (`--yes` skips the prompt; a non-TTY without `--yes`
+  refuses outright rather than writing unprompted).
+- The bundled snapshot is preserved as fallback and never overwritten. A
+  failed download, a non-object/malformed feed, or a declined diff leaves the
+  active catalog untouched.
+- `heirloom models status` shows source revision/date and whether a local
+  updated snapshot is active.
+- **Lenient validation against the live feed (added 2026-08-23).** The real
+  Models.dev feed (measured: 193 providers) is not the curated fixture
+  `npm run models:generate` runs against — strict validation against it fails
+  100% of the time. `generateCatalog`/`generateCatalogFile` (used by
+  `models:generate`) keep throwing on any malformed entry or missing
+  SUPPORTED_PROVIDERS provider, unchanged. `models update` alone opts into
+  `GeneratorOptions.lenient`, which: (1) skips an individual model that fails
+  normalization instead of aborting the whole catalog — the live feed
+  legitimately carries models with no context limit (image/audio, e.g. Groq
+  Whisper, OpenAI's `gpt-image-*`), which Heirloom can't use anyway; (2) skips
+  a SUPPORTED_PROVIDERS entry rather than treating it as fatal whether the
+  feed doesn't list it at all (`ollama` — local inference, never a Models.dev
+  provider) or lists it with an empty models object (an upstream glitch or a
+  provider mid-deprecation), since one bad provider must not block every
+  other provider's real corrections. A provider actually present in the feed
+  but missing its configured default model stays fatal in both modes.
+  `models update` carries each skipped provider forward from the active
+  snapshot before diffing/writing, so it keeps its bundled entry instead of
+  showing up as a spurious removal on every update, and reports it in the
+  pre-confirmation output distinguishing "absent from the feed" from
+  "feed listed no models," alongside a skipped-model count ("skipped 7 models
+  with no usable context limit (image/audio)").
 
 ## 5. Explicit non-goals
 

@@ -364,6 +364,16 @@ const ModelsDropdown: React.FC<Props> = ({
                 </Box>
               );
             }
+            if (row.kind === "hint") {
+              // Non-selectable, same as a header — selectableIndices/moveSelection
+              // already only ever land on "model" rows, so this is skipped by
+              // navigation for free.
+              return (
+                <Box key={`hint:${row.provider}`}>
+                  <Text dimColor>{"  " + row.label}</Text>
+                </Box>
+              );
+            }
             const isSelected = idx === effectiveCursor;
             const ctx = formatContext(row.contextWindow) ?? "";
             // A row whose provider has no key is unusable, so the whole row

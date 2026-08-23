@@ -9,6 +9,7 @@ import {
   addRecentModel,
   toggleFavoriteModel,
   MAX_RECENT_MODELS,
+  NO_QUERY_PROVIDER_CAP,
   type RecentModel,
 } from "./model-picker.js";
 import type { ModelEntry } from "../types.js";
@@ -337,5 +338,60 @@ describe("buildRows — Favorites and Recent groups", () => {
     // The recent entry matches, so Recent survives with just that one row.
     expect(rows.find((r) => r.kind === "header" && r.label === "Recent")).toBeDefined();
     expect(rows.filter((r) => r.kind === "model" && r.group === "recent")).toHaveLength(1);
+  });
+});
+
+// A catalog update can take one provider from a handful of models to
+// hundreds (e.g. OpenRouter). The no-query default view must stay a
+// browsable list, not dump the whole provider — see NO_QUERY_PROVIDER_CAP.
+describe("buildRows — no-query provider cap", () => {
+  const manyEntries: ModelEntry[] = Array.from({ length: 20 }, (_, i) => ({
+    provider: "openrouter",
+    model: `model-${String(i).padStart(2, "0")}`,
+    contextWindow: 100000,
+  }));
+
+  it("caps a large provider group to NO_QUERY_PROVIDER_CAP models and appends a hint row", () => {
+    const rows = buildRows({ entries: manyEntries, query: "", currentProvider: "openrouter" });
+    expect(rows.filter((r) => r.kind === "model")).toHaveLength(NO_QUERY_PROVIDER_CAP);
+    const hint = rows.find((r) => r.kind === "hint");
+    expect(hint).toBeDefined();
+    expect((hint as { label: string }).label).toContain("12 more");
+    expect((hint as { label: string }).label).toContain("type to filter");
+  });
+
+  it("lifts the cap entirely once there is a query, even for a large provider group", () => {
+    const rows = buildRows({ entries: manyEntries, query: "model", currentProvider: "openrouter" });
+    expect(rows.filter((r) => r.kind === "model")).toHaveLength(20);
+    expect(rows.find((r) => r.kind === "hint")).toBeUndefined();
+  });
+
+  it("does not add a hint row for a provider group at or under the cap", () => {
+    const rows = buildRows({ entries, query: "", currentProvider: "deepseek" }); // 4 total entries, well under the cap
+    expect(rows.find((r) => r.kind === "hint")).toBeUndefined();
+  });
+
+  it("the hint row is not selectable — navigation steps over it like a header", () => {
+    const rows = buildRows({ entries: manyEntries, query: "", currentProvider: "openrouter" });
+    const idx = selectableIndices(rows);
+    expect(idx).toHaveLength(NO_QUERY_PROVIDER_CAP);
+    for (const i of idx) expect(rows[i].kind).toBe("model");
+    let cur = idx[0];
+    for (let n = 0; n < idx.length + 2; n++) {
+      cur = moveSelection(rows, cur, 1);
+      expect(rows[cur].kind).toBe("model");
+    }
+  });
+
+  it("never caps the pinned Favorites group", () => {
+    const manyFavorites = manyEntries.map((e) => toModelId(e.provider, e.model));
+    const rows = buildRows({ entries: manyEntries, query: "", currentProvider: "openrouter", favoriteModels: manyFavorites });
+    expect(rows.filter((r) => r.kind === "model" && r.group === "favorites")).toHaveLength(20);
+  });
+
+  it("never caps the pinned Recent group", () => {
+    const manyRecents = manyEntries.map((e, i) => ({ id: toModelId(e.provider, e.model), at: i }));
+    const rows = buildRows({ entries: manyEntries, query: "", currentProvider: "openrouter", recentModels: manyRecents });
+    expect(rows.filter((r) => r.kind === "model" && r.group === "recent")).toHaveLength(20);
   });
 });

@@ -28,6 +28,7 @@ import { ErrorReflector } from "./selfreflection/index.js";
 import { ErrorRecovery } from "./errorrecovery/index.js";
 import { Orchestrator, type SubagentProgress } from "./orchestrator/index.js";
 import { authWizard, authList, authLogout, authSaveKey } from "./auth/wizard.js";
+import { runModels } from "./providers/models-command.js";
 import { readHiddenLine } from "./auth/hidden-input.js";
 import { SessionStore, type CompactionSummary } from "./sessions/store.js";
 import { MemoryStore } from "./memory/store.js";
@@ -184,6 +185,10 @@ async function main() {
 
   if (process.argv[2] === "auth") {
     process.exit(await runAuth(process.argv.slice(3)));
+  }
+
+  if (process.argv[2] === "models") {
+    process.exit(await runModels(process.argv.slice(3)));
   }
 
   const parsed = await parseArguments();

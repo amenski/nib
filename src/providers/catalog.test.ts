@@ -3,6 +3,7 @@ import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadModelCatalog } from "./catalog.js";
+import { CATALOG_CACHE_FILENAME } from "./catalog-update.js";
 
 describe("loadModelCatalog", () => {
   let dir: string;
@@ -150,5 +151,45 @@ describe("loadModelCatalog", () => {
     const catalog = loadModelCatalog(dir);
     expect(catalog.providers.deepseek.models["deepseek-v4-flash"].free).toBe(true);
     expect(catalog.providers.deepseek.models["deepseek-v4-pro"].free).toBeUndefined();
+  });
+
+  it("layers a cached updated snapshot (models-catalog.json) over the bundled catalog", () => {
+    writeFileSync(
+      join(dir, CATALOG_CACHE_FILENAME),
+      JSON.stringify({
+        providers: {
+          deepseek: {
+            models: {
+              "deepseek-v4-pro": { contextWindow: 2000000 },
+              "deepseek-v5-new": { displayName: "DeepSeek V5 New", supportsTools: true, contextWindow: 500000 },
+            },
+          },
+        },
+      }),
+    );
+    const catalog = loadModelCatalog(dir);
+    expect(catalog.providers.deepseek.models["deepseek-v4-pro"].contextWindow).toBe(2000000);
+    expect(catalog.providers.deepseek.models["deepseek-v5-new"]).toMatchObject({ displayName: "DeepSeek V5 New" });
+    // Untouched sibling still present.
+    expect(catalog.providers.deepseek.models["deepseek-v4-flash"]).toBeDefined();
+  });
+
+  it("lets the user override win over a cached updated snapshot", () => {
+    writeFileSync(
+      join(dir, CATALOG_CACHE_FILENAME),
+      JSON.stringify({ providers: { deepseek: { models: { "deepseek-v4-pro": { contextWindow: 2000000 } } } } }),
+    );
+    writeFileSync(
+      join(dir, "models.json"),
+      JSON.stringify({ providers: { deepseek: { models: { "deepseek-v4-pro": { contextWindow: 3000000 } } } } }),
+    );
+    const catalog = loadModelCatalog(dir);
+    expect(catalog.providers.deepseek.models["deepseek-v4-pro"].contextWindow).toBe(3000000);
+  });
+
+  it("is fine when there is no cached snapshot file (falls back to the bundled catalog)", () => {
+    expect(() => loadModelCatalog(dir)).not.toThrow();
+    const catalog = loadModelCatalog(dir);
+    expect(catalog.providers.deepseek.models["deepseek-v4-pro"].contextWindow).toBe(1000000);
   });
 });

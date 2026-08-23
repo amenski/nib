@@ -169,15 +169,21 @@ describe("search (grep tool)", () => {
   // denied path, so the real cause (the directory was too big to finish) was
   // invisible.
   it("names the timeout as the cause when the search is killed", async () => {
-    // A FIFO blocks grep forever on read, so the timeout is the only way out —
-    // the same kill path a too-large directory takes, without a 30s test.
+    // Opening a FIFO for reading blocks until a writer appears, and nothing
+    // ever writes to this one — so grep hangs and the timeout is the only way
+    // out, the same kill path a too-large directory takes, without a 30s test.
+    //
+    // The FIFO is named directly rather than reached by recursion: GNU grep
+    // skips devices and FIFOs it *finds* while walking (BSD grep reads them),
+    // so the recursive form hangs on macOS and returns instantly on Linux.
+    // Named on the command line, both implementations read it and block.
     const fifo = join(TEST_DIR, "blocker.fifo");
     execFileSync("mkfifo", [fifo]);
 
-    const result = await runSearchTimed("anything", TEST_DIR, 300);
+    const result = await runSearchTimed("anything", fifo, 300);
 
     expect(result.error).toContain("timed out after 0.3s");
-    expect(result.error).toContain(TEST_DIR);
+    expect(result.error).toContain(fifo);
     expect(result.error).not.toContain("Command failed");
     expect(result.content).toContain("timed out");
   });

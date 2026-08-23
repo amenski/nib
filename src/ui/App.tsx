@@ -116,6 +116,42 @@ function formatQueueTime(at: number): string {
   return `[${hh}:${mm}]`;
 }
 
+// Session tally of finished background jobs, folded into ONE status segment.
+// Per-job detail (id, exit code, per-job line count) already streams into the
+// transcript as `[job e63e]` rows and check_job results, so the status bar
+// only carries the aggregate — one segment regardless of how many jobs ran.
+interface JobSummary {
+  total: number;
+  done: number;
+  failed: number;
+  killed: number;
+  lines: number;
+}
+
+// Collapse a JobSummary into its status segment. All-clean reads as a plain
+// count (`● 5 jobs done · 247 lines`); any failed/killed job switches the
+// segment to red and spells out the outcomes (`● 4 done · 1 killed · 247
+// lines`) so the failure is scannable without reading the transcript.
+function jobSummaryToSegment(s: JobSummary): StatusSegment {
+  const bad = s.failed + s.killed;
+  let countText: string;
+  if (bad === 0) {
+    countText = s.total === 1 ? "1 job done" : `${s.total} jobs done`;
+  } else {
+    const parts: string[] = [];
+    if (s.done > 0) parts.push(`${s.done} done`);
+    if (s.failed > 0) parts.push(`${s.failed} failed`);
+    if (s.killed > 0) parts.push(`${s.killed} killed`);
+    countText = parts.join(" · ");
+  }
+  const lineText = s.lines === 1 ? "1 line" : `${s.lines} lines`;
+  return {
+    text: `● ${countText} · ${lineText}`,
+    dimColor: bad === 0,
+    color: bad > 0 ? "red" : undefined,
+  };
+}
+
 function InnerApp({ ctx }: { ctx: AppContext }) {
   const { exit, waitUntilRenderFlush } = useApp();
   const theme = useTheme();
@@ -194,12 +230,17 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
   const [statusLineProviderSegments, setStatusLineProviderSegments] = useState<
     StatusSegment[]
   >(() => ctx.statusLineManager?.segments ?? []);
-  // Status segments for finished background jobs (`● job 3a2f done (exit 0) ·
-  // 12 lines`), pushed in from JobManager completion events. Separate state
+  // Aggregate tally of finished background jobs (plan §3). Separate state
   // because buildStatusBar rewrites statusLine wholesale; combined at render
-  // like the provider segments. Capped so a long session with many jobs
-  // cannot grow the row without bound.
-  const [jobDoneSegments, setJobDoneSegments] = useState<StatusSegment[]>([]);
+  // like the provider segments. The tally never grows the row — it collapses
+  // to one segment however many jobs completed (see jobSummaryToSegment).
+  const [jobSummary, setJobSummary] = useState<JobSummary>({
+    total: 0,
+    done: 0,
+    failed: 0,
+    killed: 0,
+    lines: 0,
+  });
   // Todo checklist state, mirrored from the shared store so the panel
   // re-renders on every update_todo_list call. Initialized from the store
   // (empty at mount).
@@ -432,23 +473,22 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
     return () => mgr.stop();
   }, []);
 
-  // Background-job completion (plan §3): a finished job surfaces a status
-  // segment — `● job 3a2f done (exit 0) · 12 lines` — newest first, capped.
+  // Background-job completion (plan §3): a finished job folds into the
+  // aggregate jobSummary — one status segment no matter how many jobs ran.
   // Subscribed once at mount; cleanup unsubscribes.
   useEffect(() => {
     const offCompleted = jobManager.onCompleted((report) => {
-      setJobDoneSegments((prev) => {
-        const shortId = report.id.slice(0, 4);
-        const exit = report.exitCode !== null ? ` (exit ${report.exitCode})` : "";
+      setJobSummary((prev) => {
         const lineCount = (report.stdout + report.stderr)
           .split("\n")
           .filter((l) => l.trim() !== "").length;
-        const segment: StatusSegment = {
-          id: `job-${report.id}`,
-          text: `● job ${shortId} ${report.status}${exit} · ${lineCount} lines`,
-          dimColor: true,
+        return {
+          total: prev.total + 1,
+          done: prev.done + (report.status === "done" ? 1 : 0),
+          failed: prev.failed + (report.status === "failed" ? 1 : 0),
+          killed: prev.killed + (report.status === "killed" ? 1 : 0),
+          lines: prev.lines + lineCount,
         };
-        return [segment, ...prev].slice(0, 5);
       });
     });
     return offCompleted;
@@ -2298,8 +2338,14 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           statusLine={
             <StatusBar
               segments={
-                statusLineProviderSegments.length > 0 || jobDoneSegments.length > 0
-                  ? [...statusLine, ...jobDoneSegments, ...statusLineProviderSegments]
+                statusLineProviderSegments.length > 0 || jobSummary.total > 0
+                  ? [
+                      ...statusLine,
+                      ...(jobSummary.total > 0
+                        ? [jobSummaryToSegment(jobSummary)]
+                        : []),
+                      ...statusLineProviderSegments,
+                    ]
                   : statusLine
               }
               gitStatus={gitStatus}

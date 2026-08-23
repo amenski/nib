@@ -578,7 +578,9 @@ describe("background jobs (plan §3)", () => {
       frame = stripAnsi(inst.lastFrame() ?? "");
     }
     expect(frame).toContain(`[job ${shortId}] job-stream-row`);
-    expect(frame).toContain(`job ${shortId} done (exit 0)`);
+    // Per-job ids stay out of the bar; a single completed job collapses to
+    // the aggregate summary segment.
+    expect(frame).toContain("● 1 job done · 1 line");
   });
 
   it("stays silent in the transcript for a non-streamable (timeout-migrated) job", async () => {
@@ -589,15 +591,14 @@ describe("background jobs (plan §3)", () => {
 
     const result = jobManager.start("echo not-streamed-row", process.cwd(), 5000);
     expect(result.ok).toBe(true);
-    const jobId = result.ok ? result.id : "";
     const deadline = Date.now() + 5000;
     let frame = stripAnsi(inst.lastFrame() ?? "");
-    while (!frame.includes(`job ${jobId.slice(0, 4)} done (exit 0)`) && Date.now() < deadline) {
+    while (!frame.includes("● 1 job done · 1 line") && Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 50));
       frame = stripAnsi(inst.lastFrame() ?? "");
     }
     // The completion segment appeared, but no live output rows (decision E).
-    expect(frame).toContain(`job ${jobId.slice(0, 4)} done (exit 0)`);
+    expect(frame).toContain("● 1 job done · 1 line");
     expect(frame).not.toContain("[not-streamed-row]");
     expect(frame).not.toContain("not-streamed-row");
   });

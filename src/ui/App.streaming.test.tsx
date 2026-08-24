@@ -339,6 +339,24 @@ describe("App streaming markdown", () => {
     expect(frame).not.toContain("> line");
   });
 
+  it("does not bullet the blank line that ends a paragraph", async () => {
+    // One chunk commits both the paragraph and the blank line after it. Only
+    // the paragraph may carry the answer bullet — a bulleted "" renders as a
+    // bare "●" row above the next tool call.
+    const { lastFrame } = await runTurn("hi", ["all done.\n\n"]);
+    const frame = stripAnsi(lastFrame() ?? "");
+    expect(frame).toContain("all done.");
+    expect(frame.split("\n").filter((l) => l.trim() === "●")).toHaveLength(0);
+  });
+
+  it("bullets the first real line when the block opens with a blank", async () => {
+    const { lastFrame } = await runTurn("hi", ["\nall done.\n"]);
+    const frame = stripAnsi(lastFrame() ?? "");
+    const answer = frame.split("\n").find((l) => l.includes("all done."));
+    expect(answer).toContain("●");
+    expect(frame.split("\n").filter((l) => l.trim() === "●")).toHaveLength(0);
+  });
+
   it("commits an unclosed fence as a code block at turn end", async () => {
     const { lastFrame } = await runTurn("hi", ["```ts\n", "const x = 1;\n", "```\n"]);
     const frame = stripAnsi(lastFrame() ?? "");

@@ -950,7 +950,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
       // separate element beside <MarkdownText>.
       let atBlockStart = true;
       const withBullet = (line: string): string =>
-        atBlockStart ? BULLET_TAG + line : line;
+        atBlockStart && line !== "" ? BULLET_TAG + line : line;
 
       // Feed for the streaming state machine (core/stream-blocks.ts): the
       // chunk stream is buffered into complete lines, held while a span or
@@ -968,8 +968,14 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
         // silently dropped — the closing marker or continuation never joins
         // the line it belongs to.
         streamStateRef.current = next;
-        for (const l of emitted) scheduleOutput(withBullet(l));
-        if (emitted.length > 0) atBlockStart = false;
+        for (const l of emitted) {
+          scheduleOutput(withBullet(l));
+          // Per line, not per batch. One chunk often commits a paragraph AND
+          // the blank line that ends it (stream-blocks passes the blank
+          // through for spacing); flipping only after the loop bulleted every
+          // entry in the batch, and a bulleted "" renders as a bare "●" row.
+          if (l !== "") atBlockStart = false;
+        }
         return activeLine;
       };
       const flushStream = () => {
@@ -983,8 +989,10 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           const { lines: emitted, state: next } = streamTextChunk(s, "\n");
           streamStateRef.current = next;
           if (emitted.length > 0) {
-            for (const l of emitted) scheduleOutput(withBullet(l));
-            atBlockStart = false;
+            for (const l of emitted) {
+              scheduleOutput(withBullet(l));
+              if (l !== "") atBlockStart = false;
+            }
             // The committed lines are exactly what the active-line preview was
             // showing (held paragraph + partial tail), so the preview is now in
             // the transcript. Clear it — otherwise the flush site's own

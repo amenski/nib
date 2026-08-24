@@ -229,16 +229,6 @@ async function main() {
     process.exit(1);
   }
 
-  // The AI SDK's streamText installs a default onError that does
-  // console.error(error), dumping the entire error object (stack, request
-  // body, headers) — see exec-runner.ts's same fix for the headless path.
-  // In the Ink TUI that raw dump also corrupts the rendered screen, so it's
-  // suppressed here too; our own error surfaces already reduce to a single
-  // concise line (e.g. cli.tsx's runAgentTurnBridge catch).
-  if (!parsed.debug) {
-    console.error = () => {};
-  }
-
   // Folder-level "fast path" trust (config/folder-trust.ts): runs BEFORE the
   // three per-artifact gates below. A "yes" bulk-applies to the skill/
   // settings/hooks trust stores for exactly what's present right now, so none

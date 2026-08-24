@@ -249,6 +249,11 @@ export function createAISDKProvider(preset: ProviderPreset, model: string, apiKe
         ...(reasoning ? { reasoning } : {}),
         stopWhen: stepCountIs(1),
         allowSystemInMessages: true,
+        // Default onError does console.error(error), dumping the full error
+        // object (stack, request body, headers) to stderr. Swallow that here —
+        // the error still reaches callers via the `case "error"` arm of the
+        // fullStream loop below, which throws event.error.
+        onError: () => {},
       });
 
       const toolCallAccum = new Map<string, { id: string; name: string; args: string }>();

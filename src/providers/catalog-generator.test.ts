@@ -21,7 +21,15 @@ describe("generateCatalog", () => {
   it("matches the checked-in snapshot for the fixture", () => {
     const fixture = JSON.parse(readFileSync(resolve("scripts/fixtures/models.dev.json"), "utf8"));
     const snapshot = JSON.parse(readFileSync(resolve("src/providers/models.json"), "utf8"));
-    const generated = generateCatalog(fixture, { sourceRevision: "fixture-2026-08-21", generatedAt: "2026-08-21" });
+    // Mirrors scripts/generate-models.ts's provenance derivation: the fixture
+    // carries its own capture.source/capturedAt (stamped by
+    // capture-models-fixture.ts), so the expected sourceRevision/generatedAt
+    // here must be read from it too, not hardcoded — a hardcoded value here
+    // would just reintroduce the same lying-provenance bug in a test.
+    const generated = generateCatalog(fixture, {
+      sourceRevision: `models.dev:${fixture.capture.source}`,
+      generatedAt: fixture.capture.capturedAt,
+    });
     expect(generated).toEqual(snapshot);
   });
 

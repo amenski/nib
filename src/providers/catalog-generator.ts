@@ -1,5 +1,3 @@
-import { readFileSync, writeFileSync } from "node:fs";
-
 export const SUPPORTED_PROVIDERS = ["deepseek", "openai", "openrouter", "groq", "ollama"] as const;
 export type SupportedProvider = (typeof SUPPORTED_PROVIDERS)[number];
 
@@ -165,9 +163,4 @@ export function generateCatalog(input: unknown, options: GeneratorOptions): Reco
  */
 export function generateCatalogReport(input: unknown, options: GeneratorOptions): GenerateCatalogReport {
   return generateCatalogCore(input, options);
-}
-
-export function generateCatalogFile(inputPath: string, outputPath: string, options: GeneratorOptions): void {
-  const input = JSON.parse(readFileSync(inputPath, "utf8"));
-  writeFileSync(outputPath, `${JSON.stringify(generateCatalog(input, options), null, 2)}\n`);
 }

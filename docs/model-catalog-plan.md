@@ -1,6 +1,6 @@
 # Models.dev Catalog Plan
 
-**Status:** implemented · verified 2026-08-23 · slices A/B/C shipped. Covers
+**Status:** implemented · verified 2026-08-23 · slices A/B/C/D shipped. Covers
 the provider model catalog, capability lookup, model picker, compaction
 limits, and cost estimate.
 
@@ -18,9 +18,15 @@ changes model routing, credential resolution, permissions, or billing.
 
 1. **Models.dev is the upstream metadata source.** Its provider-model entries
    supply display name, context/output limits, tool and reasoning capability,
-   modalities, and USD-per-million-token costs. The initial checked-in
-   snapshot is generated from a Models.dev-shaped fixture; a maintainer can
-   explicitly regenerate it from the official API.
+   modalities, and USD-per-million-token costs. The checked-in snapshot is
+   generated from a Models.dev-shaped fixture; a maintainer can explicitly
+   refresh that fixture from the official API (`npm run models:capture`, tier
+   1) and then regenerate the snapshot from it (`npm run models:generate`,
+   tier 2) — see §4.D. The three tiers (capture / generate / update) each
+   carry the strictness their audience needs: capture is the only one that
+   touches the network and is maintainer-only; generate is offline and strict
+   against the curated fixture; `heirloom models update` (§4.C) is online and
+   lenient against the live feed.
 2. **The shipped snapshot is authoritative at runtime.** Heirloom must never
    contact Models.dev at startup or while selecting a model. A network outage
    or catalog change cannot make a previously working installation unusable.
@@ -116,8 +122,8 @@ revision/date, and provider/model counts.
 - **Lenient validation against the live feed (added 2026-08-23).** The real
   Models.dev feed (measured: 193 providers) is not the curated fixture
   `npm run models:generate` runs against — strict validation against it fails
-  100% of the time. `generateCatalog`/`generateCatalogFile` (used by
-  `models:generate`) keep throwing on any malformed entry or missing
+  100% of the time. `generateCatalog` (used by `models:generate`) keeps
+  throwing on any malformed entry or missing
   SUPPORTED_PROVIDERS provider, unchanged. `models update` alone opts into
   `GeneratorOptions.lenient`, which: (1) skips an individual model that fails
   normalization instead of aborting the whole catalog — the live feed
@@ -135,6 +141,58 @@ revision/date, and provider/model counts.
   pre-confirmation output distinguishing "absent from the feed" from
   "feed listed no models," alongside a skipped-model count ("skipped 7 models
   with no usable context limit (image/audio)").
+
+### D. Maintainer capture step
+
+**✅ Shipped 2026-08-23.** `npm run models:capture` (`scripts/capture-models-fixture.ts`)
+is tier 1 of the three-tier shape: it is the only step that touches the
+network, is never run by a test, and its whole job is to keep the checked-in
+fixture holding real upstream data while `npm run models:generate` (tier 2)
+stays offline, strict, and deterministic against that fixture — the earlier
+hand-authored fixture matched Models.dev's *schema* but not its *data*; a
+live-feed comparison found 8 of the 12 bundled models measurably wrong
+(understated context windows, an OpenAI output price off by 3×).
+
+- Fetches `https://models.dev/api.json` by default; an argv override accepts
+  either an alternate URL or a local file path, so a capture is testable and
+  re-runnable fully offline against a saved copy of the feed.
+- Keeps only `SUPPORTED_PROVIDERS`, dropping the other ~189 providers the live
+  feed carries — the four hosted providers are ~270 KB of the 4.2 MB feed,
+  which is the honest cost of a deterministic checked-in fixture.
+- Drops any individual model the strict generator could not normalize (no
+  positive `limit.context`, or a half-specified cost pair) by running the
+  feed through `generateCatalogReport(..., { lenient: true })` and excluding
+  whatever it reports as skipped — capture time is what keeps
+  `models:generate` strict: the fixture is clean by construction, so
+  `models:generate` never has to reject anything from it. On the feed
+  captured 2026-08-23 this drops 5 OpenAI image models and 2 Groq Whisper
+  models.
+- **`ollama` is deliberately hand-maintained, not captured.** Models.dev
+  catalogs hosted APIs; Ollama is local inference, so it has no `ollama`
+  provider and never will. Capture reads today's hand-authored `ollama` block
+  out of the fixture it is about to overwrite and carries it forward verbatim
+  rather than retyping it, so the entry survives every future capture without
+  manual upkeep.
+- Sorts object keys recursively (array order is left alone — order is
+  meaningful there, e.g. `reasoning_options` values) so re-running capture
+  against unchanged upstream data produces a byte-identical fixture; a capture
+  step that reshuffled keys on every run would make future diffs unreadable.
+- Prints a per-provider summary (models kept, models dropped and why).
+- **The fixture carries its own provenance.** Capture stamps a `capture: {
+  source, capturedAt }` block at the fixture's top level, alongside
+  `providers` (a sibling key `generateCatalog` never reads — it only ever
+  looks at `root.providers`, so this is inert to normalization). `source` is
+  the upstream URL, or `local:<path>` when capture was pointed at a local
+  file. `scripts/generate-models.ts` reads this block back and uses it
+  verbatim for the generated snapshot's `source.revision`/`source.generatedAt`
+  instead of hardcoding a placeholder — the earlier hardcoded
+  `fixture-2026-08-21`/`2026-08-21` was accurate only while the fixture was a
+  static hand-authored file; once it became a dated upstream capture, that
+  hardcoding made `heirloom models status` actively lie about how fresh the
+  bundled catalog was. A fixture with no `capture` block (a legacy fixture
+  predating this, or an arbitrary URL/file passed directly to
+  `models:generate`) falls back to that same placeholder/wall-clock behavior
+  unchanged, so neither script gains a new required input.
 
 ## 5. Explicit non-goals
 

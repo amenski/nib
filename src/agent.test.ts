@@ -1788,3 +1788,55 @@ describe("unanswered tool calls", () => {
     expect(result.newMessages).toEqual([{ role: "assistant", content: "ok" }]);
   });
 });
+
+describe("unfinished-intent nudge", () => {
+  it("nudges once when a turn ends on an announced-but-unperformed action, then finishes normally", async () => {
+    const { provider, receivedMessages } = makeProvider([
+      textTurn("Let me read all current state carefully before making changes:"),
+      textTurn("Done — here's the summary."),
+    ]);
+
+    const result = await runAgent("do the thing", {
+      provider,
+      tools: [],
+      executeTool: async () => ({ content: "" }),
+    });
+
+    expect(receivedMessages).toHaveLength(2);
+    expect(result.messages).toContainEqual({
+      role: "system",
+      content: "You ended your turn without calling a tool, right after announcing an action. Either make the tool call you just described, or give a complete final answer.",
+    });
+    expect(result.stopReason).toBe("done");
+  });
+
+  it("only fires once — a second colon-terminated text-only reply ends the turn instead of looping again", async () => {
+    const { provider, receivedMessages } = makeProvider([
+      textTurn("Let me check the config:"),
+      textTurn("Let me check it again:"),
+    ]);
+
+    const result = await runAgent("do the thing", {
+      provider,
+      tools: [],
+      executeTool: async () => ({ content: "" }),
+    });
+
+    expect(receivedMessages).toHaveLength(2);
+    expect(result.stopReason).toBe("done");
+    expect(result.messages.at(-1)).toEqual({ role: "assistant", content: "Let me check it again:" });
+  });
+
+  it("ends the turn after a single call for a normal final answer with no trailing colon", async () => {
+    const { provider, receivedMessages } = makeProvider([textTurn("All done, no further action needed.")]);
+
+    const result = await runAgent("do the thing", {
+      provider,
+      tools: [],
+      executeTool: async () => ({ content: "" }),
+    });
+
+    expect(receivedMessages).toHaveLength(1);
+    expect(result.stopReason).toBe("done");
+  });
+});

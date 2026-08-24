@@ -345,6 +345,11 @@ export async function runAgent(
   // no text, no reasoning, and no tool calls is a transient provider hiccup,
   // not a finished turn — retry once before giving up.
   let emptyResponseRetried = false;
+  // One-shot guard for the announced-but-unperformed-action nudge below: a
+  // model that ends a turn on a colon (e.g. "Let me check the file:") has
+  // signaled a tool call it never made — nudge it back once rather than
+  // silently treating the preamble as a finished answer.
+  let unfinishedIntentNudged = false;
   // Cross-turn dedup for ask_user_question: the model sometimes repeats the
   // same question in a later turn. Track the exact question+options key and
   // inject a system note if it's asked again — the note tells the model it
@@ -463,6 +468,20 @@ export async function runAgent(
     };
 
     if (pendingCalls.size === 0) {
+      // A trailing colon on the final line is the signature of an announced
+      // action ("Let me read the file:") that never actually happened — the
+      // model stopped instead of following through with the tool call.
+      if (content && /:\s*$/.test(content.trim()) && !unfinishedIntentNudged) {
+        unfinishedIntentNudged = true;
+        messages.push({ role: "assistant", content });
+        messages.push({
+          role: "system",
+          content: "You ended your turn without calling a tool, right after announcing an action. Either make the tool call you just described, or give a complete final answer.",
+        });
+        options.onDiagnostic?.("turn ended on an announced-but-unperformed action — nudging once");
+        await recordTokens();
+        continue;
+      }
       if (!content && !reasoning) {
         if (!emptyResponseRetried) {
           emptyResponseRetried = true;

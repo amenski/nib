@@ -1539,13 +1539,10 @@ export async function handleSlashCore(
       const skill = skills.find((s: SkillDef) => s.name === name);
       if (!skill) { console.log(`Unknown skill: ${name}`); return; }
       if (isSkillAlreadyLoaded(shared.conversationHistory, name)) {
-        console.log(`Skill "${name}" is already loaded in this conversation.`);
         return;
       }
       const msg = buildSkillLoadMessage(name, skill.content);
       shared.conversationHistory.push(msg);
-      const kb = (skill.content.length / 1024).toFixed(1);
-      console.log(`Skill "${name}" loaded into conversation (${kb} KB).`);
       await sessionStore.appendMessage(sessionId, msg);
       return;
     }

@@ -85,7 +85,7 @@ function makeHarness(skillNames: string[]): Harness {
       const skill = skillNames.includes(name);
       if (!skill) return [`Unknown skill: ${name}`];
       ctx.mutable.conversationHistory.push(buildSkillLoadMessage(name, `${name} BODY`));
-      return [`Skill "${name}" loaded into conversation (1.0 KB).`];
+      return [];
     },
     getModelEntries: () => [],
     runAgentTurnCore,
@@ -143,8 +143,9 @@ describe("/skill force-load starts a turn", () => {
     await typeCommand(inst, "/skill update-docs");
 
     const frame = stripAnsi(inst.lastFrame() ?? "");
-    expect(frame).toContain('Skill "update-docs" loaded into conversation');
-    // Suppressed: the user never typed the apply prompt.
+    // The command echo is the visible record of what was typed...
+    expect(frame).toContain("/skill update-docs");
+    // ...but the synthetic apply prompt is suppressed: the user never typed it.
     expect(frame).not.toContain(SKILL_APPLY_PROMPT);
   });
 

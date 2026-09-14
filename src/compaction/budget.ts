@@ -31,18 +31,47 @@ export function messageRawChars(m: Message): number {
 }
 
 export function estimateTokens(messages: Message[]): number {
-  let total = 0;
+  let chars = 0;
+  let imageTotal = 0;
   for (const m of messages) {
-    total += messageRawChars(m);
+    chars += messageRawChars(m);
+    imageTotal += imageTokens(m);
   }
-  return Math.ceil(total / 4);
+  return Math.ceil(chars / 4) + imageTotal;
 }
 
 export function estimateTokensDetailed(messages: Message[]): TokenBreakdown[] {
   return messages.map((m) => {
     const chars = messageRawChars(m);
-    return { role: m.role, tokens: Math.ceil(chars / 4), chars };
+    // Images ride on the row as tokens, not chars — there are no base64
+    // characters in `chars`, so this keeps the per-role sums in /context equal
+    // to what estimateTokens reports for the same set.
+    return { role: m.role, tokens: Math.ceil(chars / 4) + imageTokens(m), chars };
   });
+}
+
+/**
+ * Nominal token cost of one attached image.
+ *
+ * Real vision cost depends on the provider, the model, and the image's PIXEL
+ * dimensions — none of which this synchronous estimator can see (decoding an
+ * image just to size it would stall the turn). Counting the literal base64
+ * payload is not the answer either: a 154 KB JPEG is ~205k characters of data
+ * URL, which under the chars/4 convention reads as ~51k tokens against a real
+ * cost nearer 1–2k — a 20–40x over-report that would trip compaction on a
+ * single screenshot.
+ *
+ * So this is a deliberate flat stand-in, in the same spirit as the catalog's
+ * approximate pricing. Its purpose is narrow: make an attached image VISIBLE
+ * to the context meter and the compaction trigger instead of counting as zero.
+ * It is an approximation, not a measurement.
+ */
+export const IMAGE_TOKEN_ESTIMATE = 1_100;
+
+function imageTokens(m: Message): number {
+  return m.role === "user" && m.imageUrls?.length
+    ? m.imageUrls.length * IMAGE_TOKEN_ESTIMATE
+    : 0;
 }
 
 /**

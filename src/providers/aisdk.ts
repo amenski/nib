@@ -236,7 +236,16 @@ export function createAISDKProvider(preset: ProviderPreset, model: string, apiKe
       const requestStart = Date.now();
       let firstEventAt: number | undefined;
       let firstTextAt: number | undefined;
-      const promptBytes = messages.reduce((n, m) => n + (m.content?.length ?? 0), 0);
+      const promptBytes = messages.reduce(
+        (n, m) =>
+          n +
+          (m.content?.length ?? 0) +
+          // Attached images are literal payload on the wire, so — unlike
+          // token estimation, which uses a nominal per-image figure — the
+          // base64 length belongs here: this field measures bytes sent.
+          (m.role === "user" ? (m.imageUrls?.reduce((s, u) => s + u.length, 0) ?? 0) : 0),
+        0,
+      );
 
       const result = streamText({
         model: modelInstance,

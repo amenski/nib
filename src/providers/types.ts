@@ -16,6 +16,21 @@ export interface ModelCapabilities {
    * which is separate and does drive compaction.)
    */
   pricing?: { inputPerM: number; outputPerM: number };
+  /**
+   * Whether the model accepts image input. `true` = declared capable,
+   * `false` = declared text-only, absent = unknown.
+   *
+   * The bundled catalog derives this from Models.dev's `modalities.input`
+   * array (`true` = includes "image", `false` = declared without it). Absent is
+   * still a real case: the hand-maintained `ollama` block and user overrides
+   * that omit it carry no modality data, and guessing from a model's name
+   * would be inventing a fact. Consumers therefore treat "not declared
+   * capable" as the case worth mentioning (see imageSupportWarning) rather than
+   * assuming either way. Declare it per model in provider-presets.json (or a
+   * user catalog override) to record the truth for models the feed doesn't
+   * describe.
+   */
+  vision?: boolean;
 }
 
 export type StreamEvent =

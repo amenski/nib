@@ -3,7 +3,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { StreamEvent } from "./providers/types.js";
-import type { ToolCall, ToolOutput } from "./types.js";
+import type { ToolCall, ToolOutput, Message } from "./types.js";
 import type { ExecInputStream } from "./exec-input.js";
 
 // Verifies that headless exec mode (`-x`) runs WITH the permission engine and
@@ -22,6 +22,8 @@ const PROJECT_DIR = join(TEST_DIR, "project");
 
 let scriptedCall: { name: string; args: Record<string, unknown> } | null = null;
 let lastStreamOptions: Record<string, unknown> | undefined;
+/** The message array the provider last received — how mention expansion is observed. */
+let lastMessages: Message[] | undefined;
 const executeToolSpy = vi.fn(async (_call: ToolCall): Promise<ToolOutput> => ({ content: "ok" }));
 
 // The scripted "happy path" provider used by the permission tests: one tool call
@@ -30,8 +32,9 @@ const executeToolSpy = vi.fn(async (_call: ToolCall): Promise<ToolOutput> => ({ 
 function scriptedProvider() {
   return {
     name: "fake",
-    async *streamChat(_messages?: unknown, _tools?: unknown, options?: Record<string, unknown>): AsyncGenerator<StreamEvent> {
+    async *streamChat(messages?: unknown, _tools?: unknown, options?: Record<string, unknown>): AsyncGenerator<StreamEvent> {
       lastStreamOptions = options;
+      lastMessages = messages as Message[];
       if (scriptedCall) {
         const call = scriptedCall;
         scriptedCall = null;
@@ -100,7 +103,7 @@ function writeSettings(settings: Record<string, unknown>): void {
   writeFileSync(join(PROJECT_DIR, ".heirloom", "settings.json"), JSON.stringify(settings), "utf-8");
 }
 
-async function run(opts?: { mode?: string; model?: string; debug?: boolean }): Promise<{ code: number; stderr: string }> {
+async function run(opts?: { mode?: string; model?: string; debug?: boolean; prompt?: string }): Promise<{ code: number; stderr: string }> {
   const { runExecMode } = await import("./exec-runner.js");
   const chunks: string[] = [];
   // console.error routes through process.stderr.write, so spying on write
@@ -112,7 +115,7 @@ async function run(opts?: { mode?: string; model?: string; debug?: boolean }): P
   const outSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
   try {
     const code = await runExecMode({
-      prompt: "go",
+      prompt: opts?.prompt ?? "go",
       projectRoot: PROJECT_DIR,
       input: nonTtyInput(),
       mode: opts?.mode,
@@ -137,6 +140,7 @@ describe("runExecMode headless permission enforcement (T11)", () => {
     providerFactory = () => scriptedProvider();
     scriptedCall = null;
     lastStreamOptions = undefined;
+    lastMessages = undefined;
   });
 
   afterEach(() => {
@@ -775,5 +779,57 @@ describe("runExecMode lifecycle hooks (headless)", () => {
     expect(code).toBe(0);
     const lastUser = [...seenMessages[0]].reverse().find((m) => m.role === "user");
     expect(String(lastUser?.content ?? "")).toContain("HOOK-CONTEXT");
+  });
+});
+
+describe("runExecMode @mention parity with the TUI", () => {
+  beforeEach(() => {
+    mkdirSync(PROJECT_DIR, { recursive: true });
+    mkdirSync(HOME_DIR, { recursive: true });
+    process.env.HEIRLOOM_HOME = HOME_DIR;
+    providerFactory = () => scriptedProvider();
+    scriptedCall = null;
+    lastMessages = undefined;
+  });
+
+  afterEach(() => {
+    delete process.env.HEIRLOOM_HOME;
+    rmSync(TEST_DIR, { recursive: true, force: true });
+  });
+
+  it("expands a text mention into a <file> block, as the TUI does", async () => {
+    writeFileSync(join(PROJECT_DIR, "notes.md"), "# NOTES BODY", "utf-8");
+
+    const { code } = await run({ prompt: "summarize @notes.md" });
+
+    expect(code).toBe(0);
+    const firstUser = lastMessages!.find((m) => m.role === "user");
+    expect(String(firstUser?.content ?? "")).toContain('<file path="notes.md">');
+    expect(String(firstUser?.content ?? "")).toContain("# NOTES BODY");
+  });
+
+  it("attaches an image mention via imageUrls instead of dropping it as binary", async () => {
+    // NUL bytes: the shape the old binary guard silently discarded.
+    writeFileSync(join(PROJECT_DIR, "shot.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x01]));
+
+    const { code } = await run({ prompt: "what is in @shot.png?" });
+
+    expect(code).toBe(0);
+    const attached = lastMessages!.find(
+      (m): m is Extract<Message, { role: "user" }> => m.role === "user" && (m.imageUrls?.length ?? 0) > 0,
+    );
+    expect(attached?.imageUrls?.[0]).toMatch(/^data:image\/png;base64,/);
+  });
+
+  it("does nothing when the prompt has no mention", async () => {
+    const { code } = await run({ prompt: "plain prompt" });
+
+    expect(code).toBe(0);
+    const firstUser = lastMessages!.find((m) => m.role === "user");
+    // The volatile env/cwd context is prefixed to the user turn, so assert the
+    // prompt survived and no mention was expanded.
+    expect(String(firstUser?.content ?? "")).toContain("plain prompt");
+    expect(String(firstUser?.content ?? "")).not.toContain("<file path=");
+    expect(lastMessages!.some((m) => m.role === "user" && (m.imageUrls?.length ?? 0) > 0)).toBe(false);
   });
 });

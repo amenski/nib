@@ -8,13 +8,14 @@ import { checkForNpmUpdate, promptForPendingUpdate } from "./common/update-check
 import { parseArguments, resolveAdditionalDirs } from "./cli-args.js";
 import { runExecMode } from "./exec-runner.js";
 import { initPresets, createProvider, getPreset, getKnownProviderNames, getProviderModels, getConfiguredProviders, type ProviderOptions } from "./providers/presets.js";
-import { getProviderCapabilities } from "./providers/registry.js";
+import { getProviderCapabilities, imageSupportWarning } from "./providers/registry.js";
 import { runAgent } from "./agent.js";
 import { buildRepoMap, captureGitStatus, loadProjectResearch } from "./prompt.js";
 import { estimateTokens, estimateTokensDetailed, estimateOverheadTokens } from "./compaction/budget.js";
 import { fireNotify } from "./notify.js";
 import { HookRunner, fireNotificationHooks } from "./hooks/index.js";
 import { executeTool, TOOL_DEFS, registry, setSessionId, setCheckpointManager, setSignal, setSessionStore, setSetMode, setTimeoutToBackground, setSandboxLevel, setWriteRoots, setWebSearchConfig } from "./tools/index.js";
+import { filterToolDefs } from "./tools/filter.js";
 import { jobManager } from "./tools/jobs.js";
 import { todoStore } from "./tools/todo.js";
 import { PermissionEngine, ProfileEvaluator, authorize } from "./permissions/index.js";
@@ -34,6 +35,7 @@ import { SessionStore, type CompactionSummary } from "./sessions/store.js";
 import { MemoryStore } from "./memory/store.js";
 import { SkillLoader, createLoadSkillTool, type SkillDef } from "./skills/index.js";
 import { AgentLoader, type AgentDef } from "./agents/index.js";
+import { CommandLoader, type CommandDef } from "./commands/index.js";
 import { loadConfig } from "./config/loader.js";
 import { checkSettingsTrust, trustSettings, stripExecutionKeys } from "./config/settings-trust.js";
 import { checkFolderTrust, trustFolder, buildFolderContentSummary, hasGatedContent } from "./config/folder-trust.js";
@@ -220,6 +222,9 @@ async function main() {
       model: parsed.model,
       debug: parsed.debug,
       additionalWriteRoots,
+      maxTurns: parsed.maxTurns,
+      allowedTools: parsed.allowedTools,
+      disallowedTools: parsed.disallowedTools,
     });
     return;
   }
@@ -405,6 +410,13 @@ async function main() {
   const agentLoader = new AgentLoader();
   const agents = await agentLoader.load(process.cwd());
 
+  // Custom slash commands (`.heirloom/commands/*.md`): loaded once at startup,
+  // project > global like agents/modes, and threaded to App for routing + Tab
+  // completion. They are pure prompt templates — no execution side effects — so
+  // they need no TOFU trust gate (the prompt they inject is the user's own file).
+  const commandLoader = new CommandLoader();
+  const commands: CommandDef[] = await commandLoader.load(process.cwd());
+
   const orchestrator = new Orchestrator({
     provider: getProvider,
     registry,
@@ -512,6 +524,13 @@ async function main() {
     }
   } else {
     sessionId = await sessionStore.create(sessionCreateBase);
+  }
+
+  // --name names a freshly-created session; a resume/continue keeps the session's
+  // own (possibly renamed) title untouched. The index title survives the first
+  // message's derived-title update (sessions/store.ts updateIndexEntry).
+  if (parsed.name && !sessionLoaded) {
+    await sessionStore.renameSession(sessionId, parsed.name);
   }
 
   const resumedModelSelection = resolveRestoredSelection(resumedModel, resumedModelExplicit);
@@ -636,6 +655,12 @@ async function main() {
     // no longer fall through to registry.getAllDefs() (every tool, ungated).
     activeMode: undefined as ModeConfig | undefined,
     debug: parsed.debug as boolean | undefined,
+    // CLI tool-set + turn caps (flag parity): read by runAgentTurnBridge so a
+    // launched session honours them without threading new params through the
+    // App bridge.
+    maxTurns: parsed.maxTurns as number | undefined,
+    allowedTools: parsed.allowedTools as string[],
+    disallowedTools: parsed.disallowedTools as string[],
   };
   shared.activeEffort = shared.effortExplicit
     ? (reasoningEffort ?? resumedEffortSelection.value)
@@ -910,6 +935,7 @@ async function main() {
       compactor: getCompactor(),
       diagnostics,
       skills,
+      commands,
       memoryInjection: memoryInjection ?? undefined,
       memoryStore,
       sessionStore,
@@ -923,7 +949,7 @@ async function main() {
       effortValues: () => getActiveModelCaps()?.effort?.values ?? [],
       provideAbortController: () => shared.abort,
       renewAbortController: () => { shared.abort = new AbortController(); },
-      completer: (line: string) => completer(line, knownModeSlugs),
+      completer: (line: string) => completer(line, knownModeSlugs, commands.map((c) => c.name)),
       buildStatusBar,
       buildModelPill,
       modelDisplayName,
@@ -1197,7 +1223,7 @@ function listKnownModels(): ModelEntry[] {
 /** Slash commands offered by Tab completion: the autocomplete menu's set plus the headless-routed extras (cli-spec.md §5). */
 const SLASH_COMMANDS = [
   ...BUILTIN_SLASH_COMMANDS.map(c => c.label),
-  "/cost", "/context", "/modes", "/skill", "/sessions",
+  "/cost", "/context", "/modes", "/skill", "/sessions", "/rename",
 ];
 
 /**
@@ -1205,11 +1231,17 @@ const SLASH_COMMANDS = [
  * `[hits, base]` where `base` is the typed stem — a suffix of `line` — and
  * applying a completion replaces that stem with a hit.
  */
-export function completer(line: string, knownModeSlugs: string[]): [string[], string] {
+export function completer(line: string, knownModeSlugs: string[], extraSlashCommands: string[] = []): [string[], string] {
+  // Custom slash commands join the builtin set; a custom name that collides
+  // with a builtin is shadowed by it (builtins are inserted first, dedupe wins).
+  const allSlashCommands = [...new Set([
+    ...SLASH_COMMANDS,
+    ...extraSlashCommands.map((c) => (c.startsWith("/") ? c : `/${c}`)),
+  ])];
   // Empty/whitespace-only line (bare Tab at the prompt start): complete slash
   // commands; the whole line is the stem.
   if (line.trim() === "") {
-    return [SLASH_COMMANDS.slice(), line];
+    return [allSlashCommands.slice(), line];
   }
   const modelArgMatch = line.match(/^\/model\s+(\S*)$/);
   if (modelArgMatch) {
@@ -1225,7 +1257,7 @@ export function completer(line: string, knownModeSlugs: string[]): [string[], st
     return [hits, partial];
   }
   if (line.startsWith("/")) {
-    const hits = SLASH_COMMANDS.filter(c => c.startsWith(line));
+    const hits = allSlashCommands.filter(c => c.startsWith(line));
     if (hits.length === 1) return [hits.map(h => h + " "), line];
     return [hits, line];
   }
@@ -1394,7 +1426,7 @@ export async function handleSlashCore(
   const cmd = input.trim().split(/\s+/)[0];
   switch (cmd) {
     case "/help": {
-      console.log("Commands: /exit, /help, /mode <name>, /clear, /modes, /sessions, /new, /skills, /skill <name>, /model <p/m>, /cost, /context, /usage, /effort\nUse `heirloom auth` to configure a provider.");
+      console.log("Commands: /exit, /help, /mode <name>, /clear, /modes, /sessions, /new, /skills, /skill <name>, /model <p/m>, /cost, /context, /usage, /effort, /rename <title>\nUse `heirloom auth` to configure a provider.");
       return;
     }
     case "/cost": {
@@ -1546,6 +1578,16 @@ export async function handleSlashCore(
       }
       return;
     }
+    case "/rename": {
+      // Display name for the current session, shown in /sessions and /resume
+      // (flag parity --name). Stored in the index (not the meta record), so it
+      // survives the derived-title update from the first message.
+      const title = input.slice(7).trim();
+      if (!title) { console.log("Usage: /rename <title>"); return; }
+      const ok = await sessionStore.renameSession(sessionId, title);
+      console.log(ok ? `Renamed session to "${title}".` : `Could not rename session ${sessionId}.`);
+      return;
+    }
     case "/modes": for (const m of await modeLoader.listAll()) console.log(`  ${m.slug} — ${m.description || m.roleDefinition.slice(0, 60)}`); return;
     case "/sessions": {
       // Headless session list for the cwd, matching the TUI picker's row
@@ -1656,11 +1698,21 @@ async function runAgentTurnBridge(input: string, cb: any, shared: any, permissio
   // carries image bytes to the provider (see mapMessages). Both sources feed
   // the same array, so `@shot.png` and a Ctrl+V paste behave identically.
   const attachedImages = [...(imageUrls ?? []), ...mentionImageUrls];
+
+  // Surface the vision caveat at the moment it matters — an image is being sent
+  // and the model is not declared as accepting one. Before this, the failure was
+  // silent: the provider ignored the image or rejected the request and nothing on
+  // our side said why (the README left it to the user to know).
+  const visionWarning = imageSupportWarning(shared.providerName, shared.activeModel, attachedImages.length);
+  if (visionWarning) cb.onDiagnostic?.(visionWarning);
   // Plan mode is read-only: offer only read-group tools so the model cannot
   // call an edit/command tool the plan-mode instruction forbids.
-  const tools = planMode
+  const modeTools = planMode
     ? registry.getByMode(["read"])
     : shared.activeMode?.groups ? registry.getByMode(shared.activeMode.groups) : registry.getAllDefs();
+  // CLI --allowed-tools / --disallowed-tools (flag parity) narrow the offered
+  // set; empty lists pass everything through.
+  const tools = filterToolDefs(modeTools, shared.allowedTools, shared.disallowedTools);
 
   // Research notes are plan-mode-only context: load them lazily when in plan
   // mode so the per-turn file walk costs nothing in normal conversation.
@@ -1688,6 +1740,7 @@ async function runAgentTurnBridge(input: string, cb: any, shared: any, permissio
     imageUrls: attachedImages.length > 0 ? attachedImages : undefined,
     planMode,
     contextWindow,
+    maxTurns: shared.maxTurns,
     getTodos: () => todoStore.getTodos(),
     onText: cb.onText, onReasoning: cb.onReasoning, onToolStart: (name, args) => { shared.toolUsage[name] = (shared.toolUsage[name] || 0) + 1; cb.onToolStart(name, args); }, onToolResult: cb.onToolResult,
     onDiagnostic: cb.onDiagnostic, onRetry: cb.onRetry, onCompacted: cb.onCompacted,

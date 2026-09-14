@@ -69,6 +69,7 @@ import ResumeChooser from "./views/ResumeChooser.js";
 import { buildReplayLines } from "./core/replay.js";
 import { opensModal } from "./core/modal-commands.js";
 import { parseSkillLoadCommand, SKILL_APPLY_PROMPT } from "./core/skill-load.js";
+import { findCommand, expandCommand } from "../commands/index.js";
 import type { Message } from "../types.js";
 import type { AskQuestionItem } from "../tools/types.js";
 import { setAskQuestion } from "../tools/index.js";
@@ -1537,6 +1538,17 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
         pushOutput(`Display mode: ${next}`);
       }
       setStatusLine(ctx.buildStatusBar());
+      return;
+    }
+    // Custom slash command (`.heirloom/commands/*.md`): run the file body as a
+    // user prompt, with `$ARGUMENTS` replaced by the trailing args. Builtins
+    // win name collisions (this branch sits after every builtin above). The
+    // command line is already echoed above, so the turn suppresses its own echo
+    // — the expansion can be large and is not what the user typed.
+    const customMatch = /^\/(\S+)(?:\s+([\s\S]*))?$/.exec(trimmed);
+    const customCommand = customMatch ? findCommand(ctx.commands ?? [], customMatch[1]) : undefined;
+    if (customCommand) {
+      void runAgentTurn(expandCommand(customCommand, customMatch?.[2] ?? ""), undefined, { echo: false });
       return;
     }
     const skillName = parseSkillLoadCommand(trimmed);

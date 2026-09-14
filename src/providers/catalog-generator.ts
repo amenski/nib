@@ -40,6 +40,22 @@ function nonNegative(value: unknown, label: string): number {
   return value;
 }
 
+/**
+ * Derive the `vision` capability flag from Models.dev's `modalities.input`
+ * array. `true` when the source declares image input, `false` when it declares
+ * a non-image input set (text-only, or audio/pdf-only — still not "sees
+ * images"), and `undefined` when the source carries no modality data (the
+ * hand-maintained `ollama` block, or a user override that omitted it). Absent
+ * is deliberately distinct from false: it means "unknown, don't warn either
+ * way", while false is an explicit text-only declaration.
+ */
+function visionFromModalities(raw: unknown): boolean | undefined {
+  const modalities = object(raw);
+  const input = modalities?.input;
+  if (!Array.isArray(input)) return undefined;
+  return input.includes("image");
+}
+
 function effortValues(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];
   const values: string[] = [];
@@ -66,6 +82,8 @@ function normalizeModel(provider: string, id: string, raw: unknown): Record<stri
     supportsTools: model.tool_call === true,
     contextWindow,
   };
+  const vision = visionFromModalities(model.modalities);
+  if (vision !== undefined) result.vision = vision;
   const cost = object(model.cost);
   if (cost) {
     const input = cost.input === undefined ? undefined : nonNegative(cost.input, `${provider}/${id}.cost.input`);

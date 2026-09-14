@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { estimateTokens, shouldCompact, estimateOverheadTokens } from "./budget.js";
+import { estimateTokens, estimateTokensDetailed, shouldCompact, estimateOverheadTokens, IMAGE_TOKEN_ESTIMATE } from "./budget.js";
 import type { Message } from "../types.js";
 
 describe("estimateTokens", () => {
@@ -47,6 +47,40 @@ describe("estimateTokens", () => {
       { role: "assistant", content: null },
     ];
     expect(estimateTokens(messages)).toBe(0);
+  });
+
+  it("counts each attached image at the nominal per-image cost", () => {
+    const messages: Message[] = [
+      { role: "user", content: "what is this?", imageUrls: ["data:image/png;base64,AAAB"] },
+    ];
+    // 15 chars / 4 = 4, plus one image.
+    expect(estimateTokens(messages)).toBe(4 + IMAGE_TOKEN_ESTIMATE);
+  });
+
+  it("does not size an image from its base64 payload", () => {
+    // The literal data URL is ~205k chars for a real screenshot, which at
+    // chars/4 would read as ~51k tokens — a 20-40x over-report. The estimate
+    // must not move with payload size.
+    const small: Message[] = [{ role: "user", content: "x", imageUrls: ["data:image/png;base64,AA"] }];
+    const huge: Message[] = [{ role: "user", content: "x", imageUrls: [`data:image/png;base64,${"A".repeat(200_000)}`] }];
+    expect(estimateTokens(huge)).toBe(estimateTokens(small));
+  });
+
+  it("counts multiple images on one message", () => {
+    const messages: Message[] = [
+      { role: "user", content: "x", imageUrls: ["data:image/png;base64,AA", "data:image/png;base64,BB"] },
+    ];
+    expect(estimateTokens(messages)).toBe(1 + 2 * IMAGE_TOKEN_ESTIMATE);
+  });
+
+  it("keeps /context's per-role rows consistent with estimateTokens", () => {
+    const messages: Message[] = [
+      { role: "user", content: "a", imageUrls: ["data:image/png;base64,AA"] },
+      { role: "assistant", content: "b" },
+    ];
+    const detailed = estimateTokensDetailed(messages);
+    const userRow = detailed.find((r) => r.role === "user")!;
+    expect(userRow.tokens).toBe(1 + IMAGE_TOKEN_ESTIMATE);
   });
 });
 

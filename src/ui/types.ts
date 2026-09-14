@@ -1,5 +1,6 @@
 import type { Provider } from "../providers/types.js";
 import type { Message } from "../types.js";
+import type { CommandDef } from "../commands/index.js";
 import type { ThemeContextValue, ThemeDefinition } from "./theme.js";
 import type { KeybindingMap, KeybindingConfig, KeybindingAction } from "./keybindings.js";
 import type { StatusLineManager } from "./statusline/index.js";
@@ -126,6 +127,8 @@ export interface AppContext {
   compactor: any;
   diagnostics: any;
   skills: any[];
+  /** Custom slash commands from `.heirloom/commands/*.md` (project > global). */
+  commands: CommandDef[];
   memoryInjection: string | undefined;
   memoryStore: any;
   sessionStore: any;

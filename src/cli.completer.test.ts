@@ -64,6 +64,19 @@ describe("completer (prompt Tab completion)", () => {
     expect(hits.every((h) => !h.startsWith("@"))).toBe(true);
   });
 
+  it("offers custom slash commands alongside the builtin set", () => {
+    const [hits] = completer("", ["code"], ["review", "deploy"]);
+    expect(hits).toContain("/review");
+    expect(hits).toContain("/deploy");
+    // Custom names that collide with builtins are shadowed, not duplicated.
+    expect(hits.filter((h) => h === "/skills")).toHaveLength(1);
+  });
+
+  it("completes a partial custom slash command", () => {
+    const [one] = completer("/rev", ["code"], ["review"]);
+    expect(one).toEqual(["/review "]);
+  });
+
   it("offers nothing for tokens without a slash or slash-command shapes", () => {
     expect(completer("check readme", ["code"])).toEqual([[], "check readme"]);
     // An email trailing the line matches the @-branch but no repo file starts

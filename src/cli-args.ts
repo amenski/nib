@@ -25,6 +25,14 @@ export interface ParsedCliArgs {
   mode: string | undefined;
   debug: boolean;
   addDirs: string[];
+  /** Cap the number of agentic turns; reaching it exits non-zero in print mode. */
+  maxTurns: number | undefined;
+  /** Restrict the offered tool set to exactly these names (allowlist). */
+  allowedTools: string[];
+  /** Remove these tool names from the offered set (denylist). */
+  disallowedTools: string[];
+  /** Custom display name for a freshly-created session. */
+  name: string | undefined;
 }
 
 /** Resolve explicit additional trusted directories relative to the startup cwd. */
@@ -61,11 +69,16 @@ async function configureYargs(argv?: string[]) {
         .option("mode", { type: "string", describe: "Start in the given persona mode" })
         .option("debug", { alias: "d", type: "boolean", default: false, describe: "Enable debug mode" })
         .option("add-dir", { type: "string", array: true, default: [], describe: "Add a trusted writable directory (repeatable)" })
+        .option("max-turns", { type: "number", describe: "Cap the number of agentic turns (print mode exits non-zero at the limit)" })
+        .option("allowed-tools", { alias: "allowedTools", type: "string", array: true, default: [], describe: "Restrict tools to this comma-separated allowlist (repeatable)" })
+        .option("disallowed-tools", { alias: "disallowedTools", type: "string", array: true, default: [], describe: "Remove tools from the offered set (comma-separated, repeatable)" })
+        .option("name", { alias: "n", type: "string", describe: "Display name for a new session" })
         .check((argv: Record<string, unknown>) => {
           const positionalPrompt = argv["prompt"] as string | undefined;
           const resume = argv["resume"] as string | undefined;
           const hasContinue = argv["continue"] === true;
           const print = argv["print"] === true;
+          const maxTurns = argv["max-turns"] as number | undefined;
 
           if (resume !== undefined && hasContinue)
             return "Cannot use --continue together with --resume.";
@@ -73,6 +86,8 @@ async function configureYargs(argv?: string[]) {
             return `Invalid session ID: "${resume}". Expected the form <timestamp>-<hex>, e.g. 2026-07-30T2358-15a3.`;
           if (print && !positionalPrompt)
             return "--print / -p requires a non-empty prompt.";
+          if (maxTurns !== undefined && (!Number.isInteger(maxTurns) || maxTurns < 1))
+            return "--max-turns must be a positive integer.";
           return true;
         })
     )
@@ -124,6 +139,11 @@ export async function parseArguments(argv?: string[]): Promise<ParsedCliArgs> {
   else if (resumeRaw === "") resume = true;
   else resume = resumeRaw;
 
+  const splitList = (value: unknown): string[] =>
+    Array.isArray(value)
+      ? value.flatMap((v) => String(v).split(",")).map((s) => s.trim()).filter(Boolean)
+      : [];
+
   return {
     prompt: parsed.prompt as string | undefined,
     print: parsed.print === true,
@@ -135,5 +155,9 @@ export async function parseArguments(argv?: string[]): Promise<ParsedCliArgs> {
     mode: parsed.mode as string | undefined,
     debug: parsed.debug === true,
     addDirs: Array.isArray(parsed["add-dir"]) ? parsed["add-dir"].map(String) : [],
+    maxTurns: typeof parsed["max-turns"] === "number" ? parsed["max-turns"] : undefined,
+    allowedTools: splitList(parsed["allowed-tools"]),
+    disallowedTools: splitList(parsed["disallowed-tools"]),
+    name: typeof parsed.name === "string" && parsed.name.trim() ? parsed.name.trim() : undefined,
   };
 }

@@ -184,3 +184,33 @@ describe("getProviderCapabilities per model", () => {
     expect(def.pricing).toBeDefined();
   });
 });
+
+describe("imageSupportWarning", () => {
+  it("is silent when the model is declared vision-capable", async () => {
+    const { imageSupportWarning } = await import("./registry.js");
+    expect(imageSupportWarning("deepseek", "deepseek-v4-flash-vision-exp", 1)).toBeUndefined();
+  });
+
+  it("is silent when no images are being sent", async () => {
+    const { imageSupportWarning } = await import("./registry.js");
+    expect(imageSupportWarning("deepseek", "deepseek-chat", 0)).toBeUndefined();
+  });
+
+  it("warns when the model is declared text-only", async () => {
+    const { imageSupportWarning } = await import("./registry.js");
+    const warning = imageSupportWarning("deepseek", "deepseek-chat", 1);
+    expect(warning).toMatch(/does not accept image input/);
+  });
+
+  it("warns (differently) when the model's vision capability is undeclared", async () => {
+    const { imageSupportWarning } = await import("./registry.js");
+    const warning = imageSupportWarning("ollama", "llama3.2", 2);
+    expect(warning).toMatch(/not declared as accepting image input/);
+    expect(warning).toContain("images");
+  });
+
+  it("warns for an unknown provider rather than assuming capability", async () => {
+    const { imageSupportWarning } = await import("./registry.js");
+    expect(imageSupportWarning("nonexistent", "whatever", 1)).toMatch(/not declared as accepting image input/);
+  });
+});

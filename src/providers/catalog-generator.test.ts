@@ -57,6 +57,20 @@ describe("generateCatalog", () => {
     expect((result.providers as any).openrouter.models["qwen/qwen3.7-flash"]).toMatchObject({ contextWindow: 1000000, pricing: { inputPerM: 0.03, outputPerM: 0.13 } });
   });
 
+  it("derives vision from models.dev modalities.input", () => {
+    const result = generateCatalog(input({
+      deepseek: { models: {
+        "sees-images": model({ modalities: { input: ["text", "image"] } }),
+        "text-only": model({ modalities: { input: ["text"] } }),
+        "no-modality": model(),
+      } },
+    }), { sourceRevision: "abc", generatedAt: "today" });
+    const models = (result.providers as any).deepseek.models;
+    expect(models["sees-images"].vision).toBe(true);
+    expect(models["text-only"].vision).toBe(false);
+    expect(models["no-modality"].vision).toBeUndefined();
+  });
+
   it("preserves provider effort defaults when normalizing options", () => {
     const generated = generateCatalog(input({
       deepseek: { models: { deep: model({ reasoning_options: ["low", "high"] }) } },

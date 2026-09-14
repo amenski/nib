@@ -3,9 +3,12 @@ import { buildExecPrompt, type ExecInputStream } from "./exec-input.js";
 import { runAgent } from "./agent.js";
 import { buildRepoMap } from "./prompt.js";
 import { executeTool, registry, setSessionId, setSignal, setTimeoutToBackground, setSandboxLevel, setWriteRoots, setWebSearchConfig } from "./tools/index.js";
+import { filterToolDefs } from "./tools/filter.js";
 import { todoStore } from "./tools/todo.js";
 import { initPresets, createProvider, getPreset } from "./providers/presets.js";
-import { PermissionEngine, ProfileEvaluator } from "./permissions/index.js";
+import { imageSupportWarning } from "./providers/registry.js";
+import { PermissionEngine, ProfileEvaluator, authorize } from "./permissions/index.js";
+import { expandFileMentions } from "./ui/core/file-mentions.js";
 import { ErrorRecovery } from "./errorrecovery/index.js";
 import { ErrorReflector } from "./selfreflection/index.js";
 import { fireNotify } from "./notify.js";
@@ -26,6 +29,12 @@ export interface ExecRunnerOptions {
   debug?: boolean;
   /** Startup-resolved directories explicitly trusted via --add-dir. */
   additionalWriteRoots?: string[];
+  /** Cap agentic turns; reaching it exits non-zero (flag parity --max-turns). */
+  maxTurns?: number;
+  /** Restrict the offered tool set to exactly these names (--allowed-tools). */
+  allowedTools?: string[];
+  /** Remove these tool names from the offered set (--disallowed-tools). */
+  disallowedTools?: string[];
   input?: ExecInputStream;
 }
 
@@ -330,6 +339,26 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
     }
     const finalPrompt = ups.stdout.trim() !== "" ? `${prompt}\n\n${ups.stdout.trimEnd()}` : prompt;
 
+    // `@file` / `@image.png` mentions: the same expansion the TUI does
+    // (cli.tsx), so headless is not a second-class path where a mention
+    // silently does nothing. Gated identically — a path the profile or a read
+    // rule denies is noted in place of its contents, never injected. Images
+    // ride `imageUrls`, the only channel that delivers image bytes to the
+    // provider; a text `<file>` block would hand the model base64 garbage.
+    const { blocks: mentionBlocks, imageUrls: mentionImageUrls } = await expandFileMentions(
+      finalPrompt,
+      options.projectRoot,
+      (raw) => (authorize({ tool: "read_file", arguments: { path: raw } }, permissions, permissionProfile).action === "deny" ? "deny" : "allow"),
+    );
+    const expandedPrompt = mentionBlocks.length > 0
+      ? `${mentionBlocks.join("\n\n")}\n\n${finalPrompt}`
+      : finalPrompt;
+
+    // Same vision caveat the TUI surfaces: headless has no one to notice a
+    // silently-ignored image, so it says so on stderr.
+    const visionWarning = imageSupportWarning(providerName, activeModel, mentionImageUrls.length);
+    if (visionWarning) writeErr(`[warn] ${visionWarning}`);
+
     try {
       // Layered failure handling (self-reflection + error recovery). Both
       // engage only on error paths inside runAgent — a failed tool result
@@ -337,9 +366,15 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
       // turn exception triggers recovery — so the happy path is unaffected.
       // Constructed once per headless run so the reflector's total-retry
       // budget spans the whole session.
+      // CLI --allowed-tools / --disallowed-tools (flag parity): narrow the
+      // offered tool set before passing it to runAgent; empty lists pass
+      // everything through. maxTurns from CLI caps agentic turns.
+      const modeTools = activeMode.groups ? registry.getByMode(activeMode.groups) : registry.getAllDefs();
+      const filteredTools = filterToolDefs(modeTools, options.allowedTools, options.disallowedTools);
+
       const agentOptions = {
         provider,
-        tools: activeMode.groups ? registry.getByMode(activeMode.groups) : registry.getAllDefs(),
+        tools: filteredTools,
         effort: activeEffort,
         executeTool,
         permissions,
@@ -348,12 +383,17 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
         agents,
         repomap: repomapInjection,
         signal: abortController.signal,
+        maxTurns: options.maxTurns ?? 100,
+        // Images referenced by `@path` in the prompt (see expandFileMentions);
+        // absent for the wake-loop turns, which carry sub-agent results, not
+        // user input.
+        imageUrls: mentionImageUrls.length > 0 ? mentionImageUrls : undefined,
         errorReflector: new ErrorReflector(),
         errorRecovery: new ErrorRecovery(),
         getTodos: () => todoStore.getTodos(),
         hooks,
       };
-      let result = await runAgent(finalPrompt, agentOptions);
+      let result = await runAgent(expandedPrompt, agentOptions);
 
       // Async wake loop (async-subagents.md §2): a parent that ended its turn
       // after spawning keeps going until every sub-run has completed and every

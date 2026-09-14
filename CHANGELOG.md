@@ -7,6 +7,50 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.2] — 2026-09-14
+
+A wave of parity features: headless `@file`/`@image` mentions now run through
+the same expansion logic as the TUI, vision-capable models get a warning when
+an image is sent to one that can't see it, custom slash commands from file
+definitions (`.heirloom/commands/*.md`) appear alongside builtins in Tab
+completion and `/help`, and three CLI flags close Claude Code gaps (`--max-
+turns`, `--allowed-tools`/`--disallowed-tools`, `--name`). The bundled model
+catalog now derives each model's vision capability from Models.dev's modality
+data, and the token budget accounts for both per-image estimates and raw image
+payload bytes.
+
+### Added
+
+- **Custom slash commands** from `.heirloom/commands/<name>.md` (project > global). Frontmatter fields: `description`, `argument-hint`. Body text serves as the user prompt; `$ARGUMENTS` is replaced with trailing args. Custom names surface in Tab completion alongside builtins. ([src/commands/index.ts](src/commands/index.ts))
+- **`/rename <title>` slash command** — sets a custom display name for the current session (stored in the index, survives derived-title updates). Shown in `/sessions` and `/resume`. ([src/cli.tsx:1588])
+- **`--max-turns <n>`** CLI flag — caps agentic turns in print mode. Reaching the limit exits non-zero (`stopReason === "max_turns"`), mirroring agent.ts's existing cap but now reachable from the CLI. ([src/cli-args.ts](src/cli-args.ts))
+- **`--allowed-tools` / `--disallowedTools`** CLI flags — restrict or remove tools from the offered set. These are availability filters (a disallowed tool can never be called) strictly stronger than permission denials which still surface a `PERMISSION_DENIED` result. Applied at turn start via `[tool-name].filter`. ([src/tools/filter.ts](src/tools/filter.ts))
+- **`--name <title>`** CLI flag — sets a custom display name for a freshly-created session. Ignored for resumed sessions. Stored in the index so it survives the first-message's derived-title update. ([src/cli.tsx:657])
+- **Vision capability in the bundled catalog.** Each model's `vision` field is derived from Models.dev's `modalities.input` array (`true` = includes "image", `false` = declared without it). The catalog generator (`catalog-generator.ts`) reads modality data that was previously unhandled. ([src/providers/catalog-generator.ts](src/providers/catalog-generator.ts))
+- **Vision warning.** `imageSupportWarning()` surfaces a diagnostic/warning when images are being sent to a model not declared as vision-capable. Reads `caps.vision` from the provider's capabilities; warns differently for `vision: false` (text-only declared) vs absent (unknown). Fires in both the TUI bridge (`runAgentTurnBridge`) and headless exec-runner. ([src/providers/registry.ts](src/providers/registry.ts))
+- **Image byte accounting in token budget.** `estimateTokens()` adds a flat `IMAGE_TOKEN_ESTIMATE` (1,100 tokens) per image instead of counting base64 payload chars (which would read as ~50k tokens per screenshot). `promptBytes` in `aisdk.ts` counts the actual base64 length since that measures wire bytes. ([src/compaction/budget.ts](src/compaction/budget.ts))
+
+### Changed
+
+- **Headless `@mention` parity.** `expandFileMentions` runs before the first call in `exec-runner.ts` too — `@notes.md` expands to a `<file>` block; `@shot.png` attaches a base64 data URL on `imageUrls`. Both paths use the same permission-gated authorize check. Previously headless silently ignored all mentions. ([src/exec-runner.ts](src/exec-runner.ts))
+- **Completer accepts custom command names.** The tab-completion engine now takes an optional third argument listing extra slash command names (from the commands loader) and merges them into the completion set. Custom commands shadow builtins by name. ([src/cli.tsx:1224])
+
+### Fixed
+
+- **Compaction overcount on image-heavy sessions.** Before, every attached image counted as zero in `estimateTokens` (no image path existed), then its full base64 string inflated `promptBytes` for status purposes — two different metrics, one broken. Now both measure consistently: token estimate uses a flat 1,100-per-image nominal cost; `promptBytes` counts actual payload bytes. ([src/compaction/budget.ts](src/compaction/budget.ts))
+
+### Docs
+
+- **CLAUDÉ-CODE-PARITY updated** — items #3 (custom slash commands) and #4 (flag parity batch — max-turns, allowed/disallowed tools, --name) marked as shipped. Remaining gap items documented where they land. ([docs/claude-code-parity.md](docs/claude-code-parity.md))
+
+### Tests
+
+- **[catalog-generator.test.ts]** Vision derivation tests (true/false/absent across modalities variants). ([src/providers/catalog-generator.test.ts](src/providers/catalog-generator.test.ts))
+- **[presets.test.ts]** `imageSupportWarning` unit tests: silent on vision:true, silent on no images, warning on vision:false, warning on unknown provider, multi-image pluralization. ([src/providers/presets.test.ts](src/providers/presets.test.ts))
+- **[commands/index.test.ts]** Loader loading/shadowing/frontmatter/validation + expandCommand/substitution/findCommand edge cases. ([src/commands/index.test.ts](src/commands/index.test.ts))
+- **[tools/filter.test.ts]** Allowlist-only, denylist-only, combined allow+deny passes. ([src/tools/filter.test.ts](src/tools/filter.test.ts))
+- **[cli.completer.test.ts]** Extra slash commands in completion set, partial match, builtin collision shadowing. ([src/cli.completer.test.ts](src/cli.completer.test.ts))
+
 ## [0.4.1] — 2026-08-20
 
 The release that stops a bad search from taking the session with it. A tool

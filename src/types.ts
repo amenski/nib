@@ -51,4 +51,12 @@ export interface ToolOutput {
   error?: string;
   /** True ends the agent's turn after this tool result (attempt_completion). */
   stop?: boolean;
+  /**
+   * Data URLs (e.g. "data:image/png;base64,…") the model should see as images.
+   * Tool results are text-only on the wire, so the agent loop re-emits these as
+   * a synthetic user message carrying `imageUrls` — the only message role that
+   * delivers image bytes (see providers/aisdk.ts mapMessages). Set by tools
+   * like view_image; ignored when `error` is set.
+   */
+  attachments?: string[];
 }

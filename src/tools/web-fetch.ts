@@ -44,7 +44,7 @@ function setCached(url: string, text: string): void {
   cache.set(url, { text, expiresAt: Date.now() + CACHE_TTL_MS });
 }
 
-class SsrfError extends Error {}
+export class SsrfError extends Error {}
 class HttpStatusError extends Error {
   constructor(public status: number, public statusText: string, public url: string) {
     super(`HTTP ${status} ${statusText} for ${url}`);
@@ -56,8 +56,8 @@ class UnsupportedContentTypeError extends Error {
   }
 }
 
-/** Resolves `hostname` and throws SsrfError if any resolved address (or the literal hostname) is blocked. Must be called before every request, including each redirect hop. */
-async function assertHostnameAllowed(hostname: string): Promise<void> {
+/** Resolves `hostname` and throws SsrfError if any resolved address (or the literal hostname) is blocked. Must be called before every request, including each redirect hop. Exported so view_image reuses this guard rather than reimplementing it. */
+export async function assertHostnameAllowed(hostname: string): Promise<void> {
   if (isBlockedHostnameLiteral(hostname)) {
     throw new SsrfError(`refusing to fetch blocked host "${hostname}"`);
   }

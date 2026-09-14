@@ -257,7 +257,17 @@ See [`docs/notify-spec.md`](./docs/notify-spec.md).
 
 ### Does it support images?
 
-Yes — paste an image with `Ctrl+V`. The model must support multimodal input.
+Yes — three routes:
+
+- **Paste** — `Ctrl+V` attaches an image from the clipboard.
+- **Mention** — `@path/to/shot.png` in the prompt attaches that file
+  (permission-gated like `read_file`).
+- **Tool** — the model calls `view_image` for an https image URL or a local
+  file path.
+
+Images must be PNG, JPEG, GIF, or WebP and at most 5 MB. The active model
+must accept image input. `read_file` refuses binary files rather than
+returning garbled text.
 
 ### Does it support Thinking mode?
 

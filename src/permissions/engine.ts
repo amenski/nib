@@ -8,6 +8,7 @@ import { BUILTIN_DESTRUCTIVE_RULES } from "./destructive.js";
 import { BUILTIN_GUARDED_RULES } from "./guarded.js";
 import { BUILTIN_ALLOW_RULES } from "./builtin-allow.js";
 import { isPathWithinWriteRoots, resolveWriteRoots } from "../sandbox/write-roots.js";
+import { classifyImageSource } from "../image-source.js";
 
 export type { PermissionAction, PermissionRule, PatternKind, RuleOrigin } from "./rules.js";
 
@@ -153,9 +154,16 @@ export class PermissionEngine {
   resolve(toolName: string, args?: Record<string, unknown>): ResolveResult {
     const a = args ?? {};
 
+    // A view_image call is hostname-scoped only when its target is remote; a
+    // local file path must go through relativizeSubject like any other path
+    // tool, or an in-workspace read would never match a "./**" rule.
+    const usesDomainSubject =
+      toolName === "web_fetch" ||
+      (toolName === "view_image" && classifyImageSource(String(a.url ?? "")).kind === "remote");
+
     const internal = toolName === "run_bash"
       ? this.resolveBash(String(a.command ?? ""))
-      : toolName === "web_fetch"
+      : usesDomainSubject
         ? this.resolveSubject(toolName, buildSubject(toolName, a))
         : this.resolveSubject(toolName, this.relativizeSubject(buildSubject(toolName, a)));
 
@@ -463,12 +471,29 @@ export class PermissionEngine {
     if (toolName === "run_bash") {
       return { tool: "run_bash", kind: "exact", pattern: String(a.command ?? ""), action: "allow", origin: "config" };
     }
-    if (toolName === "web_fetch") {
-      // Domain-scoped: approving one URL approves the whole hostname, so
-      // "allow for session/always" covers future fetches to the same site
-      // rather than re-prompting per exact URL.
-      const hostname = extractHostname(String(a.url ?? ""));
-      return { tool: "web_fetch", kind: "exact", pattern: hostname ?? "", action: "allow", origin: "config" };
+    if (toolName === "web_fetch" || toolName === "view_image") {
+      const raw = String(a.url ?? "");
+      const source = classifyImageSource(raw);
+      // view_image also takes a local file path in `url`. Only the remote form
+      // is domain-scoped; the local form is scoped to the path itself, exactly
+      // like any other path-taking tool. Falling through to the generic path
+      // branch below would read `a.path` (absent here) and store a "" pattern
+      // — an allow-everything rule.
+      if (toolName === "web_fetch" || source.kind === "remote") {
+        // Domain-scoped: approving one URL approves the whole hostname, so
+        // "allow for session/always" covers future fetches to the same site
+        // rather than re-prompting per exact URL.
+        const hostname = extractHostname(raw);
+        return { tool: toolName, kind: "exact", pattern: hostname ?? "", action: "allow", origin: "config" };
+      }
+      const asPath = source.kind === "local" ? source.path : raw;
+      return {
+        tool: toolName,
+        kind: "exact",
+        pattern: asPath ? this.normalizePath(asPath) : "",
+        action: "allow",
+        origin: "config",
+      };
     }
     // search/glob don't take path/filePath — their subject is the directory
     // they operate on (search: `dir`, glob: `cwd`), same extraction

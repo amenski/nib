@@ -643,6 +643,49 @@ describe("PermissionEngine.resolve", () => {
     });
   });
 
+  describe("view_image domain scoping", () => {
+    it("asks for view_image by default with no config", () => {
+      expect(engine.resolve("view_image", { url: "https://example.com/cat.png" }).action).toBe("ask");
+    });
+
+    it("buildDefaultRule scopes to the hostname, not the full URL", () => {
+      const built = engine.buildDefaultRule("view_image", { url: "https://example.com/a/b/cat.png?w=100" });
+      expect(built).toEqual({ tool: "view_image", kind: "exact", pattern: "example.com", action: "allow", origin: "config" });
+    });
+
+    it("approving the built default rule for session allows other paths on the same domain", () => {
+      const built = engine.buildDefaultRule("view_image", { url: "https://example.com/a.png" });
+      engine.approveForSession(built);
+      expect(engine.resolve("view_image", { url: "https://example.com/b.png" }).action).toBe("allow");
+      expect(engine.resolve("view_image", { url: "https://other.com/b.png" }).action).toBe("ask");
+    });
+
+    it("keeps a view_image approval from leaking to web_fetch", () => {
+      const built = engine.buildDefaultRule("view_image", { url: "https://example.com/a.png" });
+      engine.approveForSession(built);
+      expect(engine.resolve("web_fetch", { url: "https://example.com/page" }).action).toBe("ask");
+    });
+
+    it("scopes a local-path approval to the file path, not the hostname", () => {
+      const built = engine.buildDefaultRule("view_image", { url: "/tmp/shots/a.png" });
+      expect(built.pattern).toBe("/tmp/shots/a.png");
+
+      engine.approveForSession(built);
+      expect(engine.resolve("view_image", { url: "/tmp/shots/a.png" }).action).toBe("allow");
+      expect(engine.resolve("view_image", { url: "/tmp/shots/b.png" }).action).toBe("ask");
+    });
+
+    it("asks by default for a local path with no config", () => {
+      expect(engine.resolve("view_image", { url: "/tmp/shots/a.png" }).action).toBe("ask");
+    });
+
+    it("a local-path approval does not also allow a remote URL", () => {
+      const built = engine.buildDefaultRule("view_image", { url: "/tmp/shots/a.png" });
+      engine.approveForSession(built);
+      expect(engine.resolve("view_image", { url: "https://example.com/a.png" }).action).toBe("ask");
+    });
+  });
+
   describe("web_search session approval", () => {
     it("allows subsequent queries after an explicit session approval", () => {
       const searchEngine = new PermissionEngine(undefined, "/tmp");

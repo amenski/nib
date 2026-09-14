@@ -143,7 +143,9 @@ From `src/ui/test-helpers.ts` (UI tests):
   (max 10 jobs, default 5-min timeout — tool-spec.md §5).
 - **Undo?** Shadow-Git checkpoints: `/undo`, saved at each turn start,
   restore rewinds files and conversation (session-spec.md §8).
-- **Images?** Paste into the prompt; a multimodal model receives them.
+- **Images?** `Ctrl+V` to paste one, or `@path/shot.png` to attach a file.
+  The model can also call `view_image` with an https URL or a local path.
+  Needs a model that accepts images (PNG/JPEG/GIF/WebP, ≤5 MB).
 - **Skills not showing?** Check `enabledSkills` in settings, search paths
   (skill-spec.md §2), and trust status — untrusted skills are skipped in
   headless runs.

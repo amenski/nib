@@ -766,6 +766,19 @@ export async function runAgent(
         });
       }
 
+      // A tool cannot return an image (ToolOutput is text-only on the wire), so
+      // a tool that produces one hands it back via `attachments` and the loop
+      // re-emits them here as a synthetic user message — the only message role
+      // that carries image bytes (see providers/aisdk.ts mapMessages). Emitted
+      // after the tool result so the image follows the call that produced it.
+      if (!result.error && result.attachments?.length) {
+        messages.push({
+          role: "user",
+          content: `Image attached by ${tc.name}.`,
+          imageUrls: result.attachments,
+        });
+      }
+
       if (result.stop) {
         // attempt_completion: the tool signaled the task is done — end the
         // turn cleanly. stopReason stays "done" (it completed, not aborted).

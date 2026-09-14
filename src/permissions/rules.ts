@@ -1,3 +1,5 @@
+import { classifyImageSource } from "../image-source.js";
+
 export type PermissionAction = "allow" | "ask" | "deny";
 export type PatternKind = "exact" | "prefix" | "glob" | "any";
 /**
@@ -236,7 +238,7 @@ export function extractToolSubject(toolName: string, args: Record<string, unknow
     const q = args?.query;
     return typeof q === "string" ? q : "";
   }
-  if (toolName === "web_fetch") {
+  if (toolName === "web_fetch" || toolName === "view_image") {
     const u = args?.url;
     return typeof u === "string" ? u : "";
   }
@@ -274,6 +276,16 @@ export function buildSubject(tool: string, args: Record<string, unknown>): Permi
   if (tool === "web_fetch") {
     const text = extractToolSubject(tool, args);
     return { tool, text, resolvedPath: extractHostname(text) };
+  }
+  if (tool === "view_image") {
+    // A remote target is scoped by hostname, a local one by path — see
+    // classifyImageSource. Shaping a path as a hostname (or the reverse) would
+    // apply rules that can never match the actual target, silently falling
+    // through to a broader decision than the user approved.
+    const text = extractToolSubject(tool, args);
+    return classifyImageSource(text).kind === "remote"
+      ? { tool, text, resolvedPath: extractHostname(text) }
+      : { tool, text, resolvedPath: text || undefined };
   }
   const text = extractToolSubject(tool, args);
   return { tool, text, resolvedPath: text || undefined };

@@ -101,6 +101,51 @@ describe("runAgent", () => {
     ]);
   });
 
+  it("re-emits a tool's image attachments as a user message carrying imageUrls", async () => {
+    const dataUrl = "data:image/png;base64,AAAB";
+    const { provider, receivedMessages } = makeProvider([
+      [
+        { type: "tool_call_start", id: "call_1", name: "view_image" },
+        { type: "tool_call_delta", id: "call_1", arguments: '{"url":"https://example.com/cat.png"}' },
+        { type: "done", finishReason: "tool_calls" },
+      ],
+      textTurn("I can see a small image."),
+    ]);
+
+    const result = await runAgent("look at this", {
+      provider,
+      tools: [],
+      executeTool: async () => ({ content: "Attached image (image/png, 1 KB).", attachments: [dataUrl] }),
+    });
+
+    // The image rides a user message — a tool result is text-only on the wire.
+    const attached = result.newMessages.find((m) => m.role === "user");
+    expect(attached).toEqual({ role: "user", content: "Image attached by view_image.", imageUrls: [dataUrl] });
+
+    // And it is present in the request for the following turn.
+    const secondRequest = receivedMessages[1];
+    expect(secondRequest.some((m) => m.role === "user" && m.imageUrls?.[0] === dataUrl)).toBe(true);
+  });
+
+  it("does not attach anything when the tool result is an error", async () => {
+    const { provider } = makeProvider([
+      [
+        { type: "tool_call_start", id: "call_1", name: "view_image" },
+        { type: "tool_call_delta", id: "call_1", arguments: '{"url":"https://example.com/cat.png"}' },
+        { type: "done", finishReason: "tool_calls" },
+      ],
+      textTurn("could not load it"),
+    ]);
+
+    const result = await runAgent("look at this", {
+      provider,
+      tools: [],
+      executeTool: async () => ({ content: "", error: "not a recognized image", attachments: ["data:image/png;base64,AAAB"] }),
+    });
+
+    expect(result.newMessages.some((m) => m.role === "user")).toBe(false);
+  });
+
   describe("permissions.resolve integration", () => {
     const toolCallTurn = (): TurnScript => [
       { type: "tool_call_start", id: "call_1", name: "run_bash" },

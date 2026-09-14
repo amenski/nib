@@ -3,14 +3,29 @@ import { resolve, relative, join } from "node:path";
 import type { ToolOutput, ToolDef } from "../types.js";
 import type { ToolHandler, ToolContext } from "./types.js";
 import { ToolRegistry } from "./registry.js";
+import { sniffImageMime } from "./image-format.js";
 import { wrapUntrusted, sanitizeControlChars } from "./untrusted-content.js";
 
 const readFileHandler: ToolHandler = async (args, ctx) => {
   const path = args.path as string;
   try {
-    const content = await readFile(path, "utf-8");
+    const buffer = await readFile(path);
     const s = await stat(path);
     if (ctx.fileMtimes) ctx.fileMtimes.set(path, s.mtimeMs);
+    // Binary guard: a NUL byte means this is not UTF-8 text. Without it,
+    // decoding a PNG produced ~44k replacement characters and hundreds of
+    // numbered garbage rows in the model's context, and the model reported it
+    // could not parse the file. Name the format when we recognize it so the
+    // model has a real next step instead of a dead end.
+    if (buffer.includes(0)) {
+      const imageMime = sniffImageMime(buffer);
+      const kind = imageMime ? `${imageMime} image` : "binary";
+      const hint = imageMime
+        ? " Use view_image with its URL for a remote image; for a local one, ask the user to reference it with @path."
+        : "";
+      return { content: `Error reading file: ${path} is a ${kind} file, not text.${hint}` };
+    }
+    const content = buffer.toString("utf8");
     const lines = sanitizeControlChars(content).split("\n").slice(0, 2000);
     let result = lines.map((l, i) => `${i + 1}: ${l}`).join("\n");
     if (lines.length >= 2000) result += "\n(file truncated at 2000 lines)";

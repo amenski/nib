@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { ToolRegistry } from "./registry.js";
@@ -168,22 +167,36 @@ describe("search (grep tool)", () => {
   // <dir>" — no exit code, no stderr. That reads like a malformed command or a
   // denied path, so the real cause (the directory was too big to finish) was
   // invisible.
+  //
+  // Instead of spawning a subprocess (FIFO/mkfifo which flakes on macOS due to
+  // kill EPERM leaking through vitest's fork pool), we directly invoke
+  // runSearchTimed with a mocked execFileFn that emits a timeout-shaped error
+  // instantly. Same code path, zero subprocess lifecycle dependency.
   it("names the timeout as the cause when the search is killed", async () => {
-    // Opening a FIFO for reading blocks until a writer appears, and nothing
-    // ever writes to this one — so grep hangs and the timeout is the only way
-    // out, the same kill path a too-large directory takes, without a 30s test.
-    //
-    // The FIFO is named directly rather than reached by recursion: GNU grep
-    // skips devices and FIFOs it *finds* while walking (BSD grep reads them),
-    // so the recursive form hangs on macOS and returns instantly on Linux.
-    // Named on the command line, both implementations read it and block.
-    const fifo = join(TEST_DIR, "blocker.fifo");
-    execFileSync("mkfifo", [fifo]);
+    // Monotonic counter: first call → 0 (the "started" timestamp), every
+    // subsequent call → 500 (well past the 300ms timeout cap).  This makes
+    // the timed-out branch (`nowFn() - started >= timeoutMs`) deterministically
+    // true, without any subprocess/lifecycle dependency whatsoever.
+    let callCount = 0;
+    const fakeNowFn = (): number => ++callCount <= 1 ? 0 : 500;
 
-    const result = await runSearchTimed("anything", fifo, 300);
+    const fakeExecFile = (_cmd: string, _args: readonly string[], _opts: unknown, cb: (...args: unknown[]) => void) => {
+      // Simulate Node's timeout error shape: killed=true, no exit code, no stderr.
+      cb(Object.assign(new Error("Command failed: grep -rn anything /fake/dir"), {
+        killed: true,
+        code: null,
+        signal: "SIGTERM",
+      }) as Error & { killed?: boolean; code: number | null }, "");
+    };
+
+    const result = await runSearchTimed(
+      "anything", "/fake/dir", 300,
+      fakeExecFile as typeof import("node:child_process").execFile,
+      fakeNowFn,
+    );
 
     expect(result.error).toContain("timed out after 0.3s");
-    expect(result.error).toContain(fifo);
+    expect(result.error).toContain("/fake/dir");
     expect(result.error).not.toContain("Command failed");
     expect(result.content).toContain("timed out");
   });

@@ -36,11 +36,24 @@ const SKIP_DIR_NAMES = [
 ];
 const SKIP_DIRS = SKIP_DIR_NAMES.map((d) => `--exclude-dir=${d}`);
 
+/** Injectable for tests — default is node's execFile. */
+type ExecFileFn = typeof execFile;
+type NowFn = () => number;
+
 /**
- * The search body with an injectable timeout — same split as runBashTimed, so
- * the kill paths (timeout, output cap) are testable without a 30s test.
+ * The search body with injectable dependencies — same split as runBashTimed,
+ * so the kill paths (timeout, output cap) are testable without a 30s test.
+ * `execFileFn` replaces subprocess execution; `nowFn` replaces `Date.now()`
+ * so the timeout-math (`Date.now() - started >= timeoutMs`) can be driven to
+ * true instantly in tests.
  */
-export function runSearchTimed(pattern: string, dir: string, timeoutMs: number): Promise<ToolOutput> {
+export function runSearchTimed(
+  pattern: string,
+  dir: string,
+  timeoutMs: number,
+  execFileFn: ExecFileFn = execFile,
+  nowFn: NowFn = Date.now.bind(Date),
+): Promise<ToolOutput> {
   return new Promise<ToolOutput>((resolve) => {
     // execFile with shell:false (the default) passes pattern/dir as argv
     // entries — no shell parses them, so shell metacharacters in either
@@ -48,8 +61,8 @@ export function runSearchTimed(pattern: string, dir: string, timeoutMs: number):
     // command syntax. This replaces the old `exec` shell-string pipeline
     // (grep ... 2>/dev/null | head -50), so stderr suppression and the
     // 50-line cap are reproduced in JS below instead of by the shell.
-    const started = Date.now();
-    execFile(
+    const started = nowFn();
+    execFileFn(
       "grep",
       ["-rn", "-I", ...SKIP_DIRS, pattern, dir],
       { maxBuffer: 512 * 1024, timeout: timeoutMs },
@@ -68,7 +81,7 @@ export function runSearchTimed(pattern: string, dir: string, timeoutMs: number):
           // grep managed to print before it was killed rather than dropping
           // matches the user already paid for.
           const killed = (err as Error & { killed?: boolean }).killed === true;
-          const timedOut = killed && Date.now() - started >= timeoutMs;
+          const timedOut = killed && nowFn() - started >= timeoutMs;
           const message = timedOut
             ? `search timed out after ${timeoutMs / 1000}s in ${dir} — narrow the directory or the pattern`
             : killed

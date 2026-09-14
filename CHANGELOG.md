@@ -7,7 +7,7 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [0.4.2] — 2026-09-14
+## [0.4.2] — 2026-09-15
 
 A wave of parity features: headless `@file`/`@image` mentions now run through
 the same expansion logic as the TUI, vision-capable models get a warning when
@@ -29,15 +29,18 @@ payload bytes.
 - **Vision capability in the bundled catalog.** Each model's `vision` field is derived from Models.dev's `modalities.input` array (`true` = includes "image", `false` = declared without it). The catalog generator (`catalog-generator.ts`) reads modality data that was previously unhandled. ([src/providers/catalog-generator.ts](src/providers/catalog-generator.ts))
 - **Vision warning.** `imageSupportWarning()` surfaces a diagnostic/warning when images are being sent to a model not declared as vision-capable. Reads `caps.vision` from the provider's capabilities; warns differently for `vision: false` (text-only declared) vs absent (unknown). Fires in both the TUI bridge (`runAgentTurnBridge`) and headless exec-runner. ([src/providers/registry.ts](src/providers/registry.ts))
 - **Image byte accounting in token budget.** `estimateTokens()` adds a flat `IMAGE_TOKEN_ESTIMATE` (1,100 tokens) per image instead of counting base64 payload chars (which would read as ~50k tokens per screenshot). `promptBytes` in `aisdk.ts` counts the actual base64 length since that measures wire bytes. ([src/compaction/budget.ts](src/compaction/budget.ts))
+- **Request-time context editing.** Once an assembled provider request reaches 100,000 estimated input tokens, the copy sent to the provider has the contents of older tool results replaced with an explicit cleared placeholder. The three newest consumed results stay complete, and every result from the immediately preceding tool batch does too — so a tool result is always whole on the first request that sees it, however long it is. The local transcript, `newMessages`, the UI output and the persisted session are never edited, so your session file keeps everything, and tool-call/result pairing and message order are untouched. This is what keeps long tool-heavy sessions from resending hundreds of thousands of tokens per call without ever truncating a result the model has not yet read. ([src/compaction/context-editing.ts](src/compaction/context-editing.ts))
 
 ### Changed
 
 - **Headless `@mention` parity.** `expandFileMentions` runs before the first call in `exec-runner.ts` too — `@notes.md` expands to a `<file>` block; `@shot.png` attaches a base64 data URL on `imageUrls`. Both paths use the same permission-gated authorize check. Previously headless silently ignored all mentions. ([src/exec-runner.ts](src/exec-runner.ts))
 - **Completer accepts custom command names.** The tab-completion engine now takes an optional third argument listing extra slash command names (from the commands loader) and merges them into the completion set. Custom commands shadow builtins by name. ([src/cli.tsx:1224])
+- **`/context` reports both thresholds.** It now shows the 100,000-token context-editing trigger alongside the model-relative compaction threshold, instead of collapsing them into one number. ([src/cli.tsx:1503])
 
 ### Fixed
 
 - **Compaction overcount on image-heavy sessions.** Before, every attached image counted as zero in `estimateTokens` (no image path existed), then its full base64 string inflated `promptBytes` for status purposes — two different metrics, one broken. Now both measure consistently: token estimate uses a flat 1,100-per-image nominal cost; `promptBytes` counts actual payload bytes. ([src/compaction/budget.ts](src/compaction/budget.ts))
+- **`search` timeout test failed on CI.** The test opened a FIFO so grep would block and be killed, then asserted the error names the timeout. On Ubuntu with Node 20+ the search returned no error at all, so the assertion read `undefined` and the Build leg went red on `v0.4.1`. It now drives the timeout branch through an injected fake `execFile` and clock, exercising the same production path with no subprocess. ([src/tools/search.test.ts](src/tools/search.test.ts))
 
 ### Docs
 
@@ -50,6 +53,9 @@ payload bytes.
 - **[commands/index.test.ts]** Loader loading/shadowing/frontmatter/validation + expandCommand/substitution/findCommand edge cases. ([src/commands/index.test.ts](src/commands/index.test.ts))
 - **[tools/filter.test.ts]** Allowlist-only, denylist-only, combined allow+deny passes. ([src/tools/filter.test.ts](src/tools/filter.test.ts))
 - **[cli.completer.test.ts]** Extra slash commands in completion set, partial match, builtin collision shadowing. ([src/cli.completer.test.ts](src/cli.completer.test.ts))
+- **[context-editing.test.ts]** Threshold behavior, the retained-three and fresh-batch windows, `messages` non-mutation, and preserved tool-call pairing/order. ([src/compaction/context-editing.test.ts](src/compaction/context-editing.test.ts))
+- **[hooks/runner.test.ts]** The process-group `SIGKILL` on hook timeout is now asserted through an injected `killFn`, rather than by observing a backgrounded subshell's side effect — the previous form depended on real signal delivery and flaked under vitest's fork pool on macOS. ([src/hooks/runner.test.ts](src/hooks/runner.test.ts))
+- **[tools/jobs.test.ts]** A killed job's exit code accepts both `null` (signal termination) and `-1` (the child `error` handler, which also fires when a kill itself fails). ([src/tools/jobs.test.ts](src/tools/jobs.test.ts))
 
 ## [0.4.1] — 2026-08-20
 

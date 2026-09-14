@@ -14,6 +14,7 @@ import type { HookRunner } from "./hooks/index.js";
 import type { SessionStore, CompactionSummary, PermissionDecision } from "./sessions/store.js";
 import { buildStablePreamble, buildVolatileContext, type PromptContext } from "./prompt.js";
 import { estimateTokens, estimateOverheadTokens } from "./compaction/budget.js";
+import { editToolResultsForRequest } from "./compaction/context-editing.js";
 import { formatTodoBlock } from "./tools/todo.js";
 import type { TodoItem } from "./tools/todo.js";
 import { logTiming } from "./debug/logger.js";
@@ -268,6 +269,27 @@ export async function runAgent(
   messages.unshift({ role: "system", content: stablePreamble });
   messages.push({ role: "user", content: userMessage, ...(options.imageUrls?.length ? { imageUrls: options.imageUrls } : {}) });
   const newStart = messages.length;
+  const newMessages: Message[] = [];
+  let newCursor = newStart;
+  // Tool results are fresh until a provider request has successfully consumed
+  // them. A single assistant response may create a batch larger than the
+  // normal retained-three window, so freshness cannot be inferred by position.
+  const freshToolResults = new Set<Message>();
+
+  function appendFreshToolResult(toolCallId: string, toolName: string, content: string): void {
+    const message: Message = { role: "tool", toolCallId, toolName, content };
+    messages.push(message);
+    freshToolResults.add(message);
+  }
+
+  // Compaction replaces `messages` with a shorter array, so a single numeric
+  // slice boundary cannot track current-turn records across it. Capture the
+  // append-only session delta before replacement, then restart the cursor on
+  // the compacted live context.
+  function captureNewMessages(): void {
+    newMessages.push(...messages.slice(newCursor));
+    newCursor = messages.length;
+  }
 
   // Volatile context is injected only into the request sent to the provider,
   // never into the stored `messages` array — otherwise it would accumulate in
@@ -304,7 +326,12 @@ export async function runAgent(
     // PreCompact hooks run immediately before the compactor; their stdout is
     // appended to the compaction prompt (hooks-spec.md §2).
     const preCompact = options.hooks ? await options.hooks.dispatch("PreCompact", {}) : undefined;
-    messages = await compactor.compact(messages, preCompact?.stdout ?? undefined);
+    captureNewMessages();
+    messages = await compactor.compact(
+      messages,
+      preCompact?.stdout ?? undefined,
+      overheadTokens,
+    );
     if (messages[0]?.role !== "system") {
       // Reinsert the stable preamble only — no volatile RepoMap/env here,
       // consistent with the per-turn path above (the next user turn will
@@ -320,6 +347,7 @@ export async function runAgent(
       });
       messages.unshift({ role: "system", content: rebuiltPrompt });
     }
+    newCursor = messages.length;
     if (options.sessionStore && options.sessionId && persistedCount > 0) {
       const { summary, files } = compactor.getLastCompaction();
       const compactionSummary: CompactionSummary = {
@@ -399,7 +427,15 @@ export async function runAgent(
     if (orphaned > 0) {
       options.onDiagnostic?.(`backfilled ${orphaned} unanswered tool result${orphaned === 1 ? "" : "s"}`);
     }
-    const requestMessages = prefix ? withVolatilePrefix(messages, prefix) : messages;
+    const assembledMessages = prefix ? withVolatilePrefix(messages, prefix) : messages;
+    // The volatile prefix is already present in assembledMessages, so only
+    // tool-schema overhead is added here. This request-only copy deliberately
+    // leaves messages/newMessages/session history complete and unedited.
+    const requestMessages = editToolResultsForRequest(
+      assembledMessages,
+      estimateOverheadTokens(tools),
+      freshToolResults,
+    );
     for await (const event of provider.streamChat(requestMessages, tools, { signal: options.signal, effort, thinkingEnabled })) {
       switch (event.type) {
         case "text_delta":
@@ -426,6 +462,9 @@ export async function runAgent(
           break;
       }
     }
+    // The provider has received the full fresh batch. Keep later request
+    // copies bounded by treating these results as consumed from now on.
+    freshToolResults.clear();
     } catch (err) {
       if (err instanceof Error && (err.name === "AbortError" || (err as any).name === "AbortError")) {
         options.onDiagnostic?.("aborted by user");
@@ -572,7 +611,7 @@ export async function runAgent(
     const hookDenied = (tc: ToolCall, event: "PreToolUse" | "PermissionRequest"): void => {
       const msg = `PERMISSION_DENIED: denied by ${event} hook`;
       options.onDiagnostic?.("denied");
-      messages.push({ role: "tool", toolCallId: tc.id, toolName: tc.name, content: msg });
+      appendFreshToolResult(tc.id, tc.name, msg);
     };
 
     /**
@@ -618,7 +657,7 @@ export async function runAgent(
           } else {
             await audit("deny-by-rule", `deny rule matched (${winningRule?.origin ?? "rule"})`);
           }
-          messages.push({ role: "tool", toolCallId: tc.id, toolName: tc.name, content: msg });
+          appendFreshToolResult(tc.id, tc.name, msg);
           return true;
         }
         if (action === "ask") {
@@ -640,7 +679,7 @@ export async function runAgent(
               const msg = "PERMISSION_DENIED: denied by user";
               options.onDiagnostic?.("denied");
               await audit("ask-denied", "denied by user at prompt");
-              messages.push({ role: "tool", toolCallId: tc.id, toolName: tc.name, content: msg });
+              appendFreshToolResult(tc.id, tc.name, msg);
               return true;
             } else {
               // Approved via askUser. The TUI (App.tsx) writes a finer-grained
@@ -669,7 +708,7 @@ export async function runAgent(
             const msg = "PERMISSION_DENIED: headless — rule resolved to ask";
             options.onDiagnostic?.("denied");
             await audit("headless-deny", "resolved to ask with no interactive prompter (headless)");
-            messages.push({ role: "tool", toolCallId: tc.id, toolName: tc.name, content: msg });
+            appendFreshToolResult(tc.id, tc.name, msg);
             return true;
           }
         } else if (action === "allow") {
@@ -722,6 +761,7 @@ export async function runAgent(
         }
       }
       options.onToolResult?.(tc.name, result);
+      const historyContent = result.error ? `Error: ${result.error}` : result.content;
 
       const callKey = `${tc.name}:${JSON.stringify(tc.arguments)}`;
       const callCount = (seenCalls.get(callKey) || 0) + 1;
@@ -747,8 +787,11 @@ export async function runAgent(
       }
 
       if (result.error && errorReflector?.canRetry(tc.name, result.error)) {
-        messages.push({ role: "tool", toolCallId: tc.id, toolName: tc.name, content: `Error: ${result.error}` });
-        messages.push({ role: "user", content: errorReflector.formatError(tc.name, result.error, result.content) });
+        appendFreshToolResult(tc.id, tc.name, historyContent);
+        messages.push({
+          role: "user",
+          content: errorReflector.formatError(tc.name, result.error, result.content),
+        });
         options.onRetry?.("retrying");
         errorReflector.resetTurn();
       } else {
@@ -758,12 +801,7 @@ export async function runAgent(
         if (result.error && errorReflector && !result.error.includes("Permission denied")) {
           options.onDiagnostic?.("retry cap exhausted — escalating");
         }
-        messages.push({
-          role: "tool",
-          toolCallId: tc.id,
-          toolName: tc.name,
-          content: result.error ? `Error: ${result.error}` : result.content,
-        });
+        appendFreshToolResult(tc.id, tc.name, historyContent);
       }
 
       // A tool cannot return an image (ToolOutput is text-only on the wire), so
@@ -908,9 +946,10 @@ export async function runAgent(
     options.onMaxTurns?.(messages);
   }
 
+  captureNewMessages();
   return {
     messages,
-    newMessages: messages.slice(newStart),
+    newMessages,
     stopReason,
   };
 }

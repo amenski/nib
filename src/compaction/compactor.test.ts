@@ -44,6 +44,20 @@ describe("Compactor auto gate (compaction.auto)", () => {
     expect(out).toBe(msgs);
   });
 
+  it("compact() forwards request overhead through its internal gate", async () => {
+    const c = new Compactor(stubProvider, 100, 0.7);
+    const msgs: Message[] = Array.from({ length: 6 }, () => ({
+      role: "user" as const,
+      content: "x".repeat(10),
+    }));
+
+    expect(c.needsCompaction(msgs)).toBe(false);
+    expect(c.needsCompaction(msgs, 55)).toBe(true);
+    const out = await c.compact(msgs, undefined, 55);
+    expect(out).not.toBe(msgs);
+    expect(out[0].content).toContain("[Previous conversation summary]");
+  });
+
   it("summarizeForResume bypasses the auto gate", async () => {
     const c = new Compactor(stubProvider, 100, 0.7, false);
     const summary = await c.summarizeForResume(bigMessages());

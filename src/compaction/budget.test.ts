@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { estimateTokens, estimateTokensDetailed, shouldCompact, estimateOverheadTokens, IMAGE_TOKEN_ESTIMATE } from "./budget.js";
+import { compactionCutoffTokens, estimateTokens, estimateTokensDetailed, shouldCompact, estimateOverheadTokens, IMAGE_TOKEN_ESTIMATE } from "./budget.js";
 import type { Message } from "../types.js";
 
 describe("estimateTokens", () => {
@@ -127,6 +127,16 @@ describe("shouldCompact", () => {
     const contextWindow = 100;
     expect(shouldCompact(messages, contextWindow)).toBe(false);
     expect(shouldCompact(messages, contextWindow, undefined, 5)).toBe(true);
+  });
+
+  it("uses the configured fraction of the full model context window", () => {
+    const below = [{ role: "user" as const, content: "x".repeat(2_799_996) }];
+    const atThreshold = [{ role: "user" as const, content: "x".repeat(2_800_000) }];
+
+    expect(compactionCutoffTokens(1_000_000)).toBe(700_000);
+    expect(shouldCompact(below, 1_000_000)).toBe(false);
+    expect(shouldCompact(atThreshold, 1_000_000)).toBe(true);
+    expect(compactionCutoffTokens(1_000_000, 0.1)).toBe(100_000);
   });
 });
 

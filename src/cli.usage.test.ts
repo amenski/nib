@@ -29,7 +29,7 @@ describe("/usage headless (handleSlashCore)", () => {
   function call(input: string, getProvider: () => any, shared: Record<string, unknown> = makeShared()) {
     return handleSlashCore(
       input, getProvider,
-      {}, {} as any, {} as any, {} as any,
+      { config: {} }, {} as any, {} as any, {} as any,
       "sess-1", {} as any, {} as any, undefined,
       () => ({}) as any, {} as any, [], {} as any,
       shared, () => undefined,
@@ -75,5 +75,29 @@ describe("/usage headless (handleSlashCore)", () => {
     const shared = makeShared({ modelUsage: {} });
     await call("/usage", vi.fn(() => ({})), shared);
     expect(logs[2]).toBe("Tokens by model: none recorded yet this session");
+  });
+});
+
+describe("/context headless (handleSlashCore)", () => {
+  let logs: string[];
+  let logSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    logs = [];
+    logSpy = vi.spyOn(console, "log").mockImplementation((...args) => logs.push(args.map(String).join(" ")));
+  });
+  afterEach(() => logSpy.mockRestore());
+
+  it("distinguishes request-time context editing from model-relative compaction", async () => {
+    const shared = makeShared({ conversationHistory: [] });
+    await handleSlashCore(
+      "/context", vi.fn(), { config: {} }, {} as any, {} as any, {} as any,
+      "sess-1", {} as any, {} as any, undefined, () => ({}) as any, {} as any,
+      [], {} as any, shared, () => undefined, () => null, false, undefined,
+      vi.fn(), () => 0,
+    );
+
+    expect(logs).toContain("Context editing @ 100000  (clears old consumed results; keeps 3 + fresh batch)");
+    expect(logs.some((line) => line.startsWith("Compaction @"))).toBe(true);
   });
 });

@@ -92,14 +92,20 @@ export function estimateOverheadTokens(
   return Math.ceil((toolChars + (volatileContext?.length ?? 0)) / 4);
 }
 
+export function compactionCutoffTokens(
+  contextWindow: number,
+  threshold?: number,
+): number {
+  return contextWindow * (threshold ?? 0.7);
+}
+
 export function shouldCompact(
   messages: Message[],
   contextWindow: number,
   threshold?: number,
   overheadTokens = 0,
 ): boolean {
-  const ratio = threshold ?? 0.7;
-  const cutoff = contextWindow * ratio;
+  const cutoff = compactionCutoffTokens(contextWindow, threshold);
   const used = estimateTokens(messages) + overheadTokens;
   return used >= cutoff;
 }

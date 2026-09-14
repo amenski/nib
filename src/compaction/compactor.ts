@@ -71,8 +71,12 @@ export class Compactor {
     }
   }
 
-  async compact(messages: Message[], extraPrompt?: string): Promise<Message[]> {
-    if (!this.needsCompaction(messages)) return messages;
+  async compact(
+    messages: Message[],
+    extraPrompt?: string,
+    overheadTokens = 0,
+  ): Promise<Message[]> {
+    if (!this.needsCompaction(messages, overheadTokens)) return messages;
 
     const keepCount = keepBoundary(messages);
     const recent = messages.slice(-keepCount);

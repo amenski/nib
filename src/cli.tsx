@@ -11,7 +11,8 @@ import { initPresets, createProvider, getPreset, getKnownProviderNames, getProvi
 import { getProviderCapabilities, imageSupportWarning } from "./providers/registry.js";
 import { runAgent } from "./agent.js";
 import { buildRepoMap, captureGitStatus, loadProjectResearch } from "./prompt.js";
-import { estimateTokens, estimateTokensDetailed, estimateOverheadTokens } from "./compaction/budget.js";
+import { compactionCutoffTokens, estimateTokens, estimateTokensDetailed, estimateOverheadTokens } from "./compaction/budget.js";
+import { CONTEXT_EDITING_TRIGGER_TOKENS, RECENT_TOOL_RESULTS_TO_KEEP } from "./compaction/context-editing.js";
 import { fireNotify } from "./notify.js";
 import { HookRunner, fireNotificationHooks } from "./hooks/index.js";
 import { executeTool, TOOL_DEFS, registry, setSessionId, setCheckpointManager, setSignal, setSessionStore, setSetMode, setTimeoutToBackground, setSandboxLevel, setWriteRoots, setWebSearchConfig } from "./tools/index.js";
@@ -1473,6 +1474,7 @@ export async function handleSlashCore(
       const caps = preset?.models[shared.activeModel ?? preset.defaultModel];
       const cw = caps?.contextWindow ?? 128000;
       const threshold = configResult.config.compaction?.threshold ?? 0.7;
+      const compactionCutoff = compactionCutoffTokens(cw, threshold);
 
       const breakdown = estimateTokensDetailed(shared.conversationHistory);
       const sysTokens = breakdown.filter(b => b.role === "system").reduce((s, b) => s + b.tokens, 0);
@@ -1498,7 +1500,8 @@ export async function handleSlashCore(
       console.log(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`);
       console.log(`Total Used        ${String(totalUsed).padStart(6)}  (${pct(totalUsed).padStart(5)}%)`);
       console.log(`Remaining         ${String(remaining).padStart(6)}  (${pct(remaining).padStart(5)}%)`);
-      console.log(`Compaction @      ${String(Math.round(cw * threshold)).padStart(6)}  (${String(Math.round(threshold * 100)).padStart(3)}%)`);
+      console.log(`Context editing @ ${String(CONTEXT_EDITING_TRIGGER_TOKENS).padStart(6)}  (clears old consumed results; keeps ${RECENT_TOOL_RESULTS_TO_KEEP} + fresh batch)`);
+      console.log(`Compaction @      ${String(Math.round(compactionCutoff)).padStart(6)}  (${String(Math.round((compactionCutoff / cw) * 100)).padStart(3)}%)`);
       return;
     }
     case "/doctor": {

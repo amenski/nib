@@ -54,7 +54,7 @@ then follow the reading paths below.
 |-----|--------|
 | [subsystems.md](./subsystems.md) | Index of the six subsystems deep dives (§-stable) |
 | [subsystems/memory-architecture.md](./subsystems/memory-architecture.md) | §1 Markdown memory store, injection cap |
-| [subsystems/context-management.md](./subsystems/context-management.md) | §2 Token budget, compaction, `keepBoundary` invariant |
+| [subsystems/context-management.md](./subsystems/context-management.md) | §2 Token budget, compaction, request-time tool-result editing, `keepBoundary` invariant |
 | [subsystems/react-loop.md](./subsystems/react-loop.md) | §3 ReAct + Plan + Reflect, todo mechanics |
 | [subsystems/token-optimization.md](./subsystems/token-optimization.md) | §4 Prefix caching, mode-gated tools, caps |
 | [subsystems/session-lifecycle.md](./subsystems/session-lifecycle.md) | §5 Session flow, resume |

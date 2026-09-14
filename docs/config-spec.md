@@ -409,12 +409,18 @@ one skill leaves all others unaffected.
 ## 11. `compaction`
 
 - `compaction.threshold` (number, default `0.7`) — the context-window
-  fraction at which auto-compaction triggers.
+  fraction at which auto-compaction triggers (`contextWindow × threshold`).
 - `compaction.auto` (boolean, default `true`) — gates **automatic**
   compaction. When `false`, the agent never auto-compacts mid-conversation
   regardless of `threshold`. Explicit compaction paths are unaffected: the
   manual `/compact` command and the resume-time compaction offer still
   summarize on demand.
+
+Request-time context editing is separate from compaction and has no setting:
+at 100,000 estimated assembled input tokens, Heirloom clears the contents of
+older tool results in the provider-bound copy, while retaining the three newest
+consumed tool uses/results. Every result from the immediately preceding tool
+batch also remains complete, and the local/session transcript is unchanged.
 
 ## 12. `workflow`
 

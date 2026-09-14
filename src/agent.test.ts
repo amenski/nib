@@ -1,9 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { rmSync } from "node:fs";
+import { join } from "node:path";
 import { runAgent } from "./agent.js";
 import { PermissionEngine, ProfileEvaluator } from "./permissions/index.js";
 import { Compactor } from "./compaction/compactor.js";
 import { ErrorReflector } from "./selfreflection/index.js";
 import { ErrorRecovery } from "./errorrecovery/index.js";
+import { CLEARED_TOOL_RESULT_PLACEHOLDER } from "./compaction/context-editing.js";
+import { SessionStore } from "./sessions/store.js";
 import type { Provider, StreamEvent } from "./providers/types.js";
 import type { Message, ToolCall } from "./types.js";
 import { todoStore } from "./tools/todo.js";
@@ -98,6 +102,210 @@ describe("runAgent", () => {
       },
       { role: "tool", toolCallId: "call_1", toolName: "read", content: "file contents" },
       { role: "assistant", content: "done reading" },
+    ]);
+  });
+
+  it("keeps a fresh tool result complete on its immediately following provider request", async () => {
+    const oldContent = "O".repeat(399_980);
+    const fullContent = `${"A".repeat(15_000)}${"Z".repeat(15_000)}`;
+    const onToolResult = vi.fn();
+    const { provider, receivedMessages } = makeProvider([
+      [
+        { type: "tool_call_start", id: "call_1", name: "read" },
+        { type: "tool_call_delta", id: "call_1", arguments: '{"path":"large.txt"}' },
+        { type: "done", finishReason: "tool_calls" },
+      ],
+      textTurn("done"),
+    ]);
+    const history: Message[] = [
+      { role: "user", content: "old task" },
+      { role: "assistant", content: null, toolCalls: [{ id: "old", name: "read", arguments: {} }] },
+      { role: "tool", toolCallId: "old", toolName: "read", content: oldContent },
+      ...["recent_1", "recent_2", "recent_3"].flatMap((id) => [
+        { role: "assistant" as const, content: null, toolCalls: [{ id, name: "read", arguments: {} }] },
+        { role: "tool" as const, toolCallId: id, toolName: "read", content: `${id} output` },
+      ]),
+    ];
+
+    const result = await runAgent("read large.txt", {
+      provider,
+      tools: [],
+      executeTool: async () => ({ content: fullContent }),
+      onToolResult,
+      history,
+    });
+
+    expect(onToolResult).toHaveBeenCalledWith("read", { content: fullContent });
+    const stored = result.newMessages.find((m) => m.role === "tool")!;
+    expect(stored.content).toBe(fullContent);
+    const sent = receivedMessages[1].find((m) => m.role === "tool" && m.toolCallId === "call_1")!;
+    expect(sent.content).toBe(fullContent);
+    expect(receivedMessages[1].find((m) => m.role === "tool" && m.toolCallId === "old")?.content)
+      .toBe(CLEARED_TOOL_RESULT_PLACEHOLDER);
+    expect(result.messages.find((m) => m.role === "tool" && m.toolCallId === "old")?.content)
+      .toBe(oldContent);
+    expect(result.newMessages.find((m) => m.role === "tool")?.content).toBe(fullContent);
+  });
+
+  it("persists complete tool output even when the provider copy was cleared", async () => {
+    const home = join(process.cwd(), ".test-t2-persist");
+    const oldContent = "O".repeat(399_980);
+    const fullContent = `${"A".repeat(15_000)}${"Z".repeat(15_000)}`;
+    try {
+      const { provider, receivedMessages } = makeProvider([
+        [
+          { type: "tool_call_start", id: "call_1", name: "read" },
+          { type: "tool_call_delta", id: "call_1", arguments: '{"path":"large.txt"}' },
+          { type: "done", finishReason: "tool_calls" },
+        ],
+        textTurn("done"),
+      ]);
+      const history: Message[] = [
+        { role: "user", content: "old task" },
+        { role: "assistant", content: null, toolCalls: [{ id: "old", name: "read", arguments: {} }] },
+        { role: "tool", toolCallId: "old", toolName: "read", content: oldContent },
+        ...["recent_1", "recent_2", "recent_3"].flatMap((id) => [
+          { role: "assistant" as const, content: null, toolCalls: [{ id, name: "read", arguments: {} }] },
+          { role: "tool" as const, toolCallId: id, toolName: "read", content: `${id} output` },
+        ]),
+      ];
+
+      const result = await runAgent("read large.txt", {
+        provider,
+        tools: [],
+        executeTool: async () => ({ content: fullContent }),
+        history,
+      });
+
+      // The request copy is edited...
+      expect(receivedMessages[1].find((m) => m.role === "tool" && m.toolCallId === "old")?.content)
+        .toBe(CLEARED_TOOL_RESULT_PLACEHOLDER);
+
+      // ...but the persisted transcript is not. Persisted exactly as the TUI
+      // does it (src/ui/App.tsx onNewMessages): the turn's user message, then
+      // the turn's delta, on top of the already-persisted history.
+      const store = new SessionStore(home);
+      const sessionId = await store.create({
+        cwd: process.cwd(),
+        provider: "fake",
+        model: "fake",
+        mode: "default",
+      });
+      for (const message of [
+        ...history,
+        { role: "user" as const, content: "read large.txt" },
+        ...result.newMessages,
+      ]) {
+        if (message.role !== "system") await store.appendMessage(sessionId, message);
+      }
+
+      const loaded = await store.load(sessionId);
+      expect(loaded).not.toBeNull();
+      const persisted = loaded!.messages;
+      expect(persisted.find((m) => m.role === "tool" && m.toolCallId === "old")?.content).toBe(oldContent);
+      expect(persisted.find((m) => m.role === "tool" && m.toolCallId === "call_1")?.content).toBe(fullContent);
+      expect(persisted.some((m) => m.content === CLEARED_TOOL_RESULT_PLACEHOLDER)).toBe(false);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps every fresh result from a large tool batch complete once before later clearing it", async () => {
+    const batch = ["call_1", "call_2", "call_3", "call_4"];
+    const freshContent = Object.fromEntries(batch.map((id) => [id, id.repeat(17_000)]));
+    const { provider, receivedMessages } = makeProvider([
+      [
+        ...batch.flatMap((id) => [
+          { type: "tool_call_start" as const, id, name: "read" },
+          { type: "tool_call_delta" as const, id, arguments: JSON.stringify({ id }) },
+        ]),
+        { type: "done", finishReason: "tool_calls" },
+      ],
+      [
+        { type: "tool_call_start", id: "call_5", name: "read" },
+        { type: "tool_call_delta", id: "call_5", arguments: '{"id":"call_5"}' },
+        { type: "done", finishReason: "tool_calls" },
+      ],
+      textTurn("done"),
+    ]);
+
+    const result = await runAgent("read files", {
+      provider,
+      tools: [],
+      executeTool: async (call) => ({ content: freshContent[call.id as keyof typeof freshContent] ?? "call_5 output" }),
+    });
+
+    for (const id of batch) {
+      expect(receivedMessages[1].find((m) => m.role === "tool" && m.toolCallId === id)?.content)
+        .toBe(freshContent[id as keyof typeof freshContent]);
+    }
+    expect(receivedMessages[2].find((m) => m.role === "tool" && m.toolCallId === "call_1")?.content)
+      .toBe(CLEARED_TOOL_RESULT_PLACEHOLDER);
+    for (const id of batch.slice(1)) {
+      expect(receivedMessages[2].find((m) => m.role === "tool" && m.toolCallId === id)?.content)
+        .toBe(freshContent[id as keyof typeof freshContent]);
+    }
+    expect(receivedMessages[2].find((m) => m.role === "tool" && m.toolCallId === "call_5")?.content)
+      .toBe("call_5 output");
+    expect(result.messages.filter((m) => m.role === "tool").map((m) => m.content))
+      .toEqual([...batch.map((id) => freshContent[id as keyof typeof freshContent]), "call_5 output"]);
+  });
+
+  it("keeps current-turn messages persistable when pre-request compaction shrinks history", async () => {
+    const history: Message[] = Array.from({ length: 6 }, (_, i) => ({
+      role: i % 2 === 0 ? "user" as const : "assistant" as const,
+      content: "x".repeat(200),
+    }));
+    const { provider: summaryProvider } = makeProvider([textTurn("summary")]);
+    const { provider } = makeProvider([textTurn("reply after compaction")]);
+
+    const result = await runAgent("continue", {
+      provider,
+      tools: [],
+      executeTool: async () => ({ content: "" }),
+      history,
+      compactor: new Compactor(summaryProvider, 100, 0.7),
+    });
+
+    expect(result.newMessages).toEqual([
+      { role: "assistant", content: "reply after compaction" },
+    ]);
+  });
+
+  it("keeps assistant call, tool result, and final reply persistable after post-tool compaction", async () => {
+    const history: Message[] = [
+      { role: "user", content: "old question" },
+      { role: "assistant", content: "old answer" },
+    ];
+    const { provider: summaryProvider } = makeProvider([
+      textTurn("summary one"),
+      textTurn("summary two"),
+    ]);
+    const { provider } = makeProvider([
+      [
+        { type: "tool_call_start", id: "call_1", name: "read" },
+        { type: "tool_call_delta", id: "call_1", arguments: '{"path":"large.txt"}' },
+        { type: "done", finishReason: "tool_calls" },
+      ],
+      textTurn("final reply"),
+    ]);
+
+    const result = await runAgent("continue", {
+      provider,
+      tools: [],
+      executeTool: async () => ({ content: "x".repeat(4_000) }),
+      history,
+      compactor: new Compactor(summaryProvider, 1_000, 0.7),
+    });
+
+    expect(result.newMessages).toEqual([
+      {
+        role: "assistant",
+        content: null,
+        toolCalls: [{ id: "call_1", name: "read", arguments: { path: "large.txt" } }],
+      },
+      { role: "tool", toolCallId: "call_1", toolName: "read", content: "x".repeat(4_000) },
+      { role: "assistant", content: "final reply" },
     ]);
   });
 

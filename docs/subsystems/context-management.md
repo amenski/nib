@@ -1,6 +1,6 @@
 ## 2. Context Management — Beyond Token Counting
 
-**Status:** current · verified 2026-08-13 · covers `src/compaction/{budget,compactor}.ts`
+**Status:** current · verified 2026-09-14 · covers `src/compaction/{budget,compactor,context-editing}.ts`
 
 ### Problem
 
@@ -112,19 +112,28 @@ session (the auto path reinserts the stable preamble for the same reason).
 
 ### When to compact
 
-1. **Threshold:** `threshold × contextWindow` exceeded — checked before each
-   provider call (default 0.7).
+1. **Threshold:** `threshold × contextWindow` is exceeded — checked before
+   each provider call (default 0.7).
 2. **User-driven:** `/compact` command.
 3. **Resume-time:** the session-resume offer summarizes before replay.
 4. `compaction.auto: false` disables only the automatic path.
 
-### Pruning old tool outputs
+### Request-time tool-result editing
 
 Tool outputs are the #1 source of token bloat:
 
-- Keep recent turns' tool outputs verbatim.
-- Replace older outputs with one-line summaries.
-- Exception: user explicitly said "remember this output" → treat as T2.
+When an assembled provider request reaches 100,000 estimated input tokens,
+Heirloom creates a request-only copy that replaces the contents of older tool
+results with an explicit cleared placeholder. The three newest consumed tool
+uses/results remain verbatim, and every result from the immediately preceding
+tool batch is protected too, so a newly produced result is always complete on
+the immediately following provider request. Assistant tool-call records stay
+in order, preserving strict provider tool-call/result pairing.
+
+This is not compaction: `messages`, `newMessages`, the UI output, and the
+append-only session transcript retain complete tool output. `/context` reports
+both the 100,000-token editing trigger and the separate model-relative
+compaction threshold.
 
 ---
 

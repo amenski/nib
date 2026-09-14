@@ -55,6 +55,8 @@ export interface HookRunnerOptions {
   getPermissionMode: () => string;
   /** Overrides the 30 s default — tests only. */
   timeoutMs?: number;
+  /** Override for the process-group killer (tests only). */
+  killFn?: typeof process.kill;
 }
 
 export class HookRunner {
@@ -66,6 +68,7 @@ export class HookRunner {
   private sessionId: () => string | undefined;
   private getPermissionMode: () => string;
   private timeoutMs: number;
+  private killFn: typeof process.kill = process.kill.bind(process);
   /** Per-session trust decisions, keyed by trust key — an "n" asks only once per session. */
   private sessionTrust = new Map<string, boolean>();
   /** mtime-gated content-hash cache for file commands (trust.ts, fix 1). */
@@ -89,6 +92,7 @@ export class HookRunner {
     this.sessionId = options.sessionId;
     this.getPermissionMode = options.getPermissionMode;
     this.timeoutMs = options.timeoutMs ?? HOOK_TIMEOUT_MS;
+    this.killFn = options.killFn ?? process.kill.bind(process);
   }
 
   get enabled(): boolean {
@@ -253,7 +257,7 @@ export class HookRunner {
       };
       const killGroup = (): void => {
         try {
-          process.kill(-child.pid!, "SIGKILL");
+          this.killFn(-child.pid!, "SIGKILL");
         } catch {
           // group already gone (ESRCH) or the kill was refused — nothing to reap
         }

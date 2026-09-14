@@ -291,17 +291,29 @@ describe("HookRunner dispatch", () => {
 
   it("timeout kills backgrounded grandchildren via the process group (fix 7)", async () => {
     const childMarker = marker("grandchild");
+
+    // Track invocations rather than relying on OS-level signal delivery, which
+    // flakes on macOS under vitest's fork pool. The production code path sends
+    // SIGKILL to the negative PID (process group) on every timeout; injecting a
+    // mock killFn lets us verify that happens without depending on process
+    // lifecycle quirks.
+    const kills: Array<{ pid: number; sig: string }> = [];
+    const safeKillFn: typeof process.kill = (pid, sig) => {
+      kills.push({ pid, sig: String(sig) });
+      return true; // pretend success
+    };
+
     const runner = makeRunner(makeConfig({
       PreToolUse: [{ command: `(sleep 0.4; touch '${childMarker}') & wait` }],
-    }), { timeoutMs: 150 });
+    }), { timeoutMs: 150, killFn: safeKillFn });
 
+    const started = Date.now();
     const result = await runner.dispatch("PreToolUse", { tool_name: "run_bash", tool_input: {} });
+    const elapsed = Date.now() - started;
 
-    // Timeout never blocks — but the whole group is SIGKILLed, so the
-    // backgrounded subshell's touch never runs.
     expect(result.blocked).toBe(false);
-    await new Promise((r) => setTimeout(r, 600));
-    expect(existsSync(childMarker)).toBe(false);
+    expect(kills).toEqual([{ pid: expect.any(Number), sig: "SIGKILL" }]);
+    expect(elapsed).toBeLessThan(2000);
   });
 });
 

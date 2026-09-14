@@ -83,14 +83,15 @@ describe("expandFileMentions", () => {
     fs.writeFileSync(path.join(root, "a.ts"), "export const a = 1;");
     fs.writeFileSync(path.join(root, "b.ts"), Buffer.from([0, 1, 2])); // binary
 
-    const blocks = await expandFileMentions("@a.ts and @missing.ts and @b.ts", root);
+    const { blocks, imageUrls } = await expandFileMentions("@a.ts and @missing.ts and @b.ts", root);
     expect(blocks).toHaveLength(1);
     expect(blocks[0]).toBe('<file path="a.ts">\nexport const a = 1;\n</file>');
+    expect(imageUrls).toEqual([]);
   });
 
   it("truncates oversized files with a marker", async () => {
     fs.writeFileSync(path.join(root, "big.txt"), "x".repeat(70_000));
-    const [block] = await expandFileMentions("@big.txt", root);
+    const { blocks: [block] } = await expandFileMentions("@big.txt", root);
     expect(block.length).toBeLessThan(70_000);
     expect(block.includes("… [truncated]")).toBe(true);
   });
@@ -116,7 +117,7 @@ describe("expandFileMentions permission gate", () => {
       root,
     );
 
-    const blocks = await expandFileMentions("@ok.ts and @secret.env", root, gateFor(engine, profile));
+    const { blocks } = await expandFileMentions("@ok.ts and @secret.env", root, gateFor(engine, profile));
     expect(blocks).toEqual([
       '<file path="ok.ts">\nexport const ok = 1;\n</file>',
       '<file path="secret.env">\n[not injected: denied by permissions]\n</file>',
@@ -125,13 +126,70 @@ describe("expandFileMentions permission gate", () => {
 
   it("without a profile, the gate falls through to the rule engine and allows pass", async () => {
     fs.writeFileSync(path.join(root, "plain.ts"), "export const p = 1;");
-    const blocks = await expandFileMentions("@plain.ts", root, gateFor(new PermissionEngine(undefined, root)));
+    const { blocks } = await expandFileMentions("@plain.ts", root, gateFor(new PermissionEngine(undefined, root)));
     expect(blocks).toEqual(['<file path="plain.ts">\nexport const p = 1;\n</file>']);
   });
 
   it("without a gate, behavior is unchanged", async () => {
     fs.writeFileSync(path.join(root, "ungated.ts"), "export const u = 1;");
-    const blocks = await expandFileMentions("@ungated.ts", root);
+    const { blocks } = await expandFileMentions("@ungated.ts", root);
     expect(blocks).toEqual(['<file path="ungated.ts">\nexport const u = 1;\n</file>']);
+  });
+});
+
+describe("expandFileMentions image mentions", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "heirloom-images-"));
+  afterAll(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  // Real image bytes, not a stand-in: the leading 0x00 is what makes this
+  // case interesting — it is exactly the byte that used to trip the binary
+  // guard and drop a path-referenced image on the floor.
+  const IMAGE_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x01]);
+
+  it("attaches an image mention as a data URL instead of dropping it as binary", async () => {
+    fs.writeFileSync(path.join(root, "shot.png"), IMAGE_BYTES);
+
+    const { blocks, imageUrls } = await expandFileMentions("look at @shot.png", root);
+
+    expect(blocks).toEqual([]);
+    expect(imageUrls).toEqual([`data:image/png;base64,${IMAGE_BYTES.toString("base64")}`]);
+  });
+
+  it("keeps text and image mentions on their own channels", async () => {
+    fs.writeFileSync(path.join(root, "notes.md"), "# notes");
+    fs.writeFileSync(path.join(root, "diagram.png"), IMAGE_BYTES);
+
+    const { blocks, imageUrls } = await expandFileMentions("@notes.md and @diagram.png", root);
+
+    expect(blocks).toEqual(['<file path="notes.md">\n# notes\n</file>']);
+    expect(imageUrls).toEqual([`data:image/png;base64,${IMAGE_BYTES.toString("base64")}`]);
+  });
+
+  it("resolves the media type from the path extension", async () => {
+    // Same shape as clipboard.ts: the extension picks the media type.
+    fs.writeFileSync(path.join(root, "photo.jpeg"), IMAGE_BYTES);
+
+    const { imageUrls } = await expandFileMentions("@photo.jpeg", root);
+
+    expect(imageUrls).toEqual([`data:image/jpeg;base64,${IMAGE_BYTES.toString("base64")}`]);
+  });
+
+  it("notes an over-limit image instead of attaching it", async () => {
+    fs.writeFileSync(path.join(root, "huge.png"), Buffer.alloc(5 * 1024 * 1024 + 1));
+
+    const { blocks, imageUrls } = await expandFileMentions("@huge.png", root);
+
+    expect(imageUrls).toEqual([]);
+    expect(blocks.join("")).toContain("image not attached");
+    expect(blocks.join("")).toContain("exceeds the 5 MB limit");
+  });
+
+  it("does not attach an image the permission gate denies", async () => {
+    fs.writeFileSync(path.join(root, "secret.png"), IMAGE_BYTES);
+
+    const { blocks, imageUrls } = await expandFileMentions("@secret.png", root, () => "deny");
+
+    expect(imageUrls).toEqual([]);
+    expect(blocks).toEqual(['<file path="secret.png">\n[not injected: denied by permissions]\n</file>']);
   });
 });

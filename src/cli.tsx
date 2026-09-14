@@ -1644,7 +1644,7 @@ async function runAgentTurnBridge(input: string, cb: any, shared: any, permissio
   // permission-gated like the read_file tool, through authorize() (profile
   // layer 1, then the rule engine): a path the profile or a read rule denies
   // is replaced with a "not injected" note instead of silently dropped.
-  const mentionBlocks = await expandFileMentions(
+  const { blocks: mentionBlocks, imageUrls: mentionImageUrls } = await expandFileMentions(
     input,
     undefined,
     (raw) => (authorize({ tool: "read_file", arguments: { path: raw } }, permissions, permissionProfile).action === "deny" ? "deny" : "allow"),
@@ -1652,6 +1652,10 @@ async function runAgentTurnBridge(input: string, cb: any, shared: any, permissio
   const processed = mentionBlocks.length > 0
     ? `${mentionBlocks.join("\n\n")}\n\n${input}`
     : input;
+  // Mentioned images join any clipboard attachments on the one channel that
+  // carries image bytes to the provider (see mapMessages). Both sources feed
+  // the same array, so `@shot.png` and a Ctrl+V paste behave identically.
+  const attachedImages = [...(imageUrls ?? []), ...mentionImageUrls];
   // Plan mode is read-only: offer only read-group tools so the model cannot
   // call an edit/command tool the plan-mode instruction forbids.
   const tools = planMode
@@ -1681,7 +1685,7 @@ async function runAgentTurnBridge(input: string, cb: any, shared: any, permissio
     memory: memoryInjection ?? undefined, memoryStore, sessionStore, sessionId,
     signal: shared.abort.signal, effort: shared.activeEffort, thinkingEnabled,
     history: shared.conversationHistory.length > 0 ? shared.conversationHistory : undefined,
-    imageUrls,
+    imageUrls: attachedImages.length > 0 ? attachedImages : undefined,
     planMode,
     contextWindow,
     getTodos: () => todoStore.getTodos(),

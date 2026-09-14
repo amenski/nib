@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import ignore from "ignore";
+import { imageDataUrlFromBuffer, isImageFilePath } from "./clipboard.js";
 
 export interface FileMentionItem {
   path: string;
@@ -84,10 +85,28 @@ export function extractMentionedPaths(text: string): string[] {
 /** Per-file cap on content attached via `@` (bytes of text, not tokens). */
 const MAX_MENTION_CHARS = 60_000;
 
+/** Per-file cap on an image attached via `@` (raw bytes, before base64). */
+const MAX_MENTION_IMAGE_BYTES = 5 * 1024 * 1024;
+
+/** What an `@`-mention expands into: text blocks plus image attachments. */
+export interface MentionExpansion {
+  /** One `<file path="…">` block per readable text mention. */
+  blocks: string[];
+  /** Data URLs for image mentions, in first-occurrence order. */
+  imageUrls: string[];
+}
+
 /**
  * Reads each resolvable `@`-mention path and returns one `<file path="…">`
- * block per file, ready to prepend to the prompt. Binary files and unreadable
- * paths are skipped silently — the mention stays in the prompt as text.
+ * block per text file, ready to prepend to the prompt, plus a data URL for
+ * each image mention. Unreadable paths are skipped silently — the mention
+ * stays in the prompt as text.
+ *
+ * Images take a separate channel (MentionExpansion.imageUrls) because they
+ * reach the model as pixels, not text: a base64 `<file>` block would put
+ * bytes the model reads as garbage in the prompt. This branch must run BEFORE
+ * the NUL-byte check below — every compressed image contains NUL bytes, so
+ * without it a path-referenced image is silently dropped as binary.
  *
  * `gate` lets the caller subject mentions to permission rules before content
  * is injected (Claude Code behavior): a path returning "deny" is replaced
@@ -98,8 +117,9 @@ export async function expandFileMentions(
   text: string,
   cwd = process.cwd(),
   gate?: (raw: string) => "allow" | "deny",
-): Promise<string[]> {
+): Promise<MentionExpansion> {
   const blocks: string[] = [];
+  const imageUrls: string[] = [];
   for (const raw of extractMentionedPaths(text)) {
     if (gate?.(raw) === "deny") {
       blocks.push(`<file path="${raw}">\n[not injected: denied by permissions]\n</file>`);
@@ -112,6 +132,18 @@ export async function expandFileMentions(
     } catch {
       continue;
     }
+    if (isImageFilePath(raw)) {
+      if (buf.length === 0) continue;
+      if (buf.length > MAX_MENTION_IMAGE_BYTES) {
+        const mb = (buf.length / (1024 * 1024)).toFixed(1);
+        blocks.push(
+          `<file path="${raw}">\n[image not attached: ${mb} MB exceeds the ${MAX_MENTION_IMAGE_BYTES / (1024 * 1024)} MB limit]\n</file>`,
+        );
+        continue;
+      }
+      imageUrls.push(imageDataUrlFromBuffer(buf, raw));
+      continue;
+    }
     // NUL byte = binary; dumping raw binary into the prompt would garble the
     // model's view of the message and waste context on garbage.
     if (buf.includes(0)) continue;
@@ -121,7 +153,7 @@ export async function expandFileMentions(
     }
     blocks.push(`<file path="${raw}">\n${content}\n</file>`);
   }
-  return blocks;
+  return { blocks, imageUrls };
 }
 
 function scoreFileMention(itemPath: string, query: string): number {

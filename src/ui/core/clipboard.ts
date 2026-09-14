@@ -21,12 +21,22 @@ function bufferToDataUrl(buffer: Buffer, mimeType: string): string {
   return `data:${mimeType};base64,${buffer.toString("base64")}`;
 }
 
-function isImageFilePath(value: string): boolean {
+export function isImageFilePath(value: string): boolean {
   return IMAGE_MIME_BY_EXT.has(path.extname(value.trim()).toLowerCase());
 }
 
 function mimeTypeForPath(value: string): string {
   return IMAGE_MIME_BY_EXT.get(path.extname(value.trim()).toLowerCase()) ?? PNG_MIME;
+}
+
+/**
+ * Data URL for image bytes already read from disk. The caller is responsible
+ * for having established that `filePath` names an image (see
+ * isImageFilePath) — this only decides the media type. Used by the `@`-mention
+ * path, which has the buffer in hand and must not read the file twice.
+ */
+export function imageDataUrlFromBuffer(buffer: Buffer, filePath: string): string {
+  return bufferToDataUrl(buffer, mimeTypeForPath(filePath));
 }
 
 function tryRun(command: string, args: string[]): Buffer | null {

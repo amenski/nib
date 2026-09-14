@@ -206,3 +206,87 @@ describe("OpenRouter request mapping", () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe("image attachments", () => {
+  function stubStreamingFetch(): ReturnType<typeof vi.fn> {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response("data: [DONE]\n\n", { status: 200, headers: { "Content-Type": "text/event-stream" } }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  async function capturedBody(fetchMock: ReturnType<typeof vi.fn>): Promise<any> {
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    return JSON.parse(init.body as string);
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("maps an attached image to a file part alongside the text", () => {
+    const mapped = mapMessages([
+      { role: "user", content: "what is this?", imageUrls: ["data:image/png;base64,AAAB"] },
+    ]);
+
+    expect(mapped).toEqual([
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "what is this?" },
+          { type: "file", mediaType: "image", data: "data:image/png;base64,AAAB" },
+        ],
+      },
+    ]);
+  });
+
+  it("emits an image_url data URL in the request body", async () => {
+    const fetchMock = stubStreamingFetch();
+    const provider = createAISDKProvider(preset("https://api.example.test/v1"), "m", "sk-test");
+
+    for await (const _ of provider.streamChat(
+      [{ role: "user", content: "what is this?", imageUrls: ["data:image/png;base64,AAAB"] }],
+      [],
+    )) {
+      // consume so the SDK performs the request
+    }
+
+    const body = await capturedBody(fetchMock);
+    expect(body.messages.at(-1).content).toEqual([
+      { type: "text", text: "what is this?" },
+      { type: "image_url", image_url: { url: "data:image/png;base64,AAAB" } },
+    ]);
+  });
+
+  it("resolves the media type from the data URL, not the literal 'image' from mapMessages", async () => {
+    const fetchMock = stubStreamingFetch();
+    const provider = createAISDKProvider(preset("https://api.example.test/v1"), "m", "sk-test");
+
+    for await (const _ of provider.streamChat(
+      [{ role: "user", content: "x", imageUrls: ["data:image/jpeg;base64,/9j/4AAQ"] }],
+      [],
+    )) {
+      // consume
+    }
+
+    const body = await capturedBody(fetchMock);
+    expect(body.messages.at(-1).content[1].image_url.url).toBe("data:image/jpeg;base64,/9j/4AAQ");
+  });
+
+  it("sends an image regardless of model — no client-side vision gating", async () => {
+    const fetchMock = stubStreamingFetch();
+    // A text-only model: the client still ships the image.
+    const provider = createAISDKProvider(preset("https://api.example.test/v1"), "deepseek-v4-pro", "sk-test");
+
+    for await (const _ of provider.streamChat(
+      [{ role: "user", content: "x", imageUrls: ["data:image/png;base64,AAAB"] }],
+      [],
+    )) {
+      // consume
+    }
+
+    const body = await capturedBody(fetchMock);
+    expect(body.messages.at(-1).content.some((p: any) => p.type === "image_url")).toBe(true);
+  });
+});

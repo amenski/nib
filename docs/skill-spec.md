@@ -106,12 +106,18 @@ trusted }` — never the content.
 
 ## 7. CLI
 
-## 7. CLI
-
 | Command | Behavior |
 |---------|----------|
 | `/skills` | List available skills: name, description, source path |
-| `/skill <name>` | Force-load a skill immediately, bypassing model discretion |
+| `/skill <name>` | Force-load a skill and **start a turn immediately**, bypassing model discretion |
+
+`/skill` pushes the skill body into history as a user message
+(`buildSkillLoadMessage`, marker `[skill: <name>]`), then starts a turn with
+`SKILL_APPLY_PROMPT` so the model applies it in that same turn. Loading into
+history without starting a turn left the skill inert until the user asked
+again — the model reads history only when a turn runs. The synthetic prompt is
+not echoed into the transcript as a user message (it was never typed). An
+unknown name, or a skill already loaded this conversation, starts no turn.
 
 ## 8. Example
 

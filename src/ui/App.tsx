@@ -68,6 +68,7 @@ import UsageView from "./views/UsageView.js";
 import ResumeChooser from "./views/ResumeChooser.js";
 import { buildReplayLines } from "./core/replay.js";
 import { opensModal } from "./core/modal-commands.js";
+import { parseSkillLoadCommand, SKILL_APPLY_PROMPT } from "./core/skill-load.js";
 import type { Message } from "../types.js";
 import type { AskQuestionItem } from "../tools/types.js";
 import { setAskQuestion } from "../tools/index.js";
@@ -864,7 +865,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
   }, [ctx.compactResumed, resumeSource, replayResumed]);
 
   const runAgentTurn = useCallback(
-    async (input: string, imageUrls?: string[]) => {
+    async (input: string, imageUrls?: string[], options?: { echo?: boolean }) => {
       if (!input.trim()) return;
 
       // The turn gate closes before the (potentially slow) hook dispatch so a
@@ -935,9 +936,15 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
       // chevron (Claude Code style) — the background fill makes input
       // unmistakable, so the assistant reply below can stay plain flush-left
       // text marked only by a leading "●" bullet.
-      scheduleOutput("");
-      scheduleOutput(USER_ECHO_TAG + input);
-      scheduleOutput("");
+      //
+      // A synthetic turn (the one `/skill` starts) suppresses this: the user
+      // did not type that text, and a "› …" bar for it would read as if they
+      // had.
+      if (options?.echo !== false) {
+        scheduleOutput("");
+        scheduleOutput(USER_ECHO_TAG + input);
+        scheduleOutput("");
+      }
 
       // The assistant's answer opens with a dim "●" bullet on the first line of
       // a fresh answer block; continuation lines stay plain. `atBlockStart` is
@@ -1530,6 +1537,25 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
         pushOutput(`Display mode: ${next}`);
       }
       setStatusLine(ctx.buildStatusBar());
+      return;
+    }
+    const skillName = parseSkillLoadCommand(trimmed);
+    if (skillName) {
+      const known = (ctx.skills ?? []).some((s) => s.name === skillName);
+      // Claim the turn gate synchronously: the CLI load below is async, and the
+      // queue drain loops while this gate is open, so without claiming it here
+      // the drain would start the next queued submission and race this turn.
+      if (known) turnActiveRef.current = true;
+      ctx.handleSlash(trimmed).then((lines) => {
+        for (const line of lines) pushOutput(line);
+        setStatusLine(ctx.buildStatusBar());
+        if (!known) return;
+        // Force-load means "start using it now" (skill-spec.md §7). Pushing the
+        // skill into history alone left it inert until the user asked again,
+        // because no turn was running for it to apply to.
+        turnActiveRef.current = false;
+        void runAgentTurn(SKILL_APPLY_PROMPT, undefined, { echo: false });
+      });
       return;
     }
     ctx.handleSlash(trimmed).then((lines) => {

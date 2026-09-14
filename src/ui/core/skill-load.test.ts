@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { Message } from "../../types.js";
-import { skillLoadMarker, isSkillAlreadyLoaded, buildSkillLoadMessage } from "./skill-load.js";
+import { skillLoadMarker, isSkillAlreadyLoaded, buildSkillLoadMessage, parseSkillLoadCommand } from "./skill-load.js";
 
 // These mirror the decisions cli.tsx's `/skill` case makes: find the skill,
 // dedupe against conversationHistory, then push exactly one message.
@@ -33,6 +33,27 @@ describe("isSkillAlreadyLoaded", () => {
   it("does not false-positive on a different skill's marker", () => {
     const history: Message[] = [buildSkillLoadMessage("commit", "body")];
     expect(isSkillAlreadyLoaded(history, "review")).toBe(false);
+  });
+});
+
+describe("parseSkillLoadCommand", () => {
+  it("extracts the name from `/skill <name>`", () => {
+    expect(parseSkillLoadCommand("/skill update-docs")).toBe("update-docs");
+    expect(parseSkillLoadCommand("  /skill   spaced-name  ")).toBe("spaced-name");
+  });
+
+  it("does not match the /skills list command", () => {
+    expect(parseSkillLoadCommand("/skills")).toBeNull();
+  });
+
+  it("does not match a bare /skill with no argument", () => {
+    expect(parseSkillLoadCommand("/skill")).toBeNull();
+    expect(parseSkillLoadCommand("/skill   ")).toBeNull();
+  });
+
+  it("does not match extra arguments or unrelated text", () => {
+    expect(parseSkillLoadCommand("/skill a b")).toBeNull();
+    expect(parseSkillLoadCommand("not a command")).toBeNull();
   });
 });
 

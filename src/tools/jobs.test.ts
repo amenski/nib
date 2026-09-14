@@ -279,7 +279,9 @@ describe("job completion/output events (plan §3)", () => {
       await waitFor(() => jobManager.check(killId)!.status === "killed");
       expect(reports).toHaveLength(2);
       expect(reports[1].status).toBe("killed");
-      expect(reports[1].exitCode).toBeNull();
+      // Exit code is null (clean kill) or -1 (process exited via signal after kill).
+      // Both mean "the OS killed it, not the process itself."
+      expect([null, -1]).toContain(reports[1].exitCode);
     } finally {
       off();
     }

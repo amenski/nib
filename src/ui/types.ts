@@ -127,7 +127,7 @@ export interface AppContext {
   compactor: any;
   diagnostics: any;
   skills: any[];
-  /** Custom slash commands from `.heirloom/commands/*.md` (project > global). */
+  /** Custom slash commands from `.nib/commands/*.md` (project > global). */
   commands: CommandDef[];
   memoryInjection: string | undefined;
   memoryStore: any;

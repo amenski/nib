@@ -1,5 +1,5 @@
 /**
- * Heirloom Syntax Highlighter
+ * Nib Syntax Highlighter
  *
  * Lightweight, zero-dependency syntax highlighting for Ink terminal output.
  * Uses regex-based tokenization — no external grammars, no network calls,

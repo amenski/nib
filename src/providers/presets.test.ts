@@ -5,7 +5,7 @@ import { join } from "node:path";
 import type { ProviderPreset } from "./presets.js";
 import type { Provider } from "./types.js";
 
-const FAKE_HOME = mkdtempSync(join(tmpdir(), "heirloom-presets-test-"));
+const FAKE_HOME = mkdtempSync(join(tmpdir(), "nib-presets-test-"));
 
 vi.mock("node:os", async (importOriginal) => {
   const original = await importOriginal<typeof import("node:os")>();

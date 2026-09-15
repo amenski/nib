@@ -292,7 +292,7 @@ describe("PermissionEngine.resolve", () => {
     });
 
     it("approveAlways forces kind exact when narrowing a destructive-origin match", () => {
-      const dir = mkdtempSync(join(tmpdir(), "heirloom-engine-destructive-always-"));
+      const dir = mkdtempSync(join(tmpdir(), "nib-engine-destructive-always-"));
       try {
         const scopedEngine = new PermissionEngine(undefined, dir);
         const destructiveMatch = rule({ tool: "run_bash", kind: "prefix", pattern: "git reset --hard", origin: "builtin-destructive", action: "deny" });
@@ -341,7 +341,7 @@ describe("PermissionEngine.resolve", () => {
     let dir: string;
 
     beforeEach(() => {
-      dir = mkdtempSync(join(tmpdir(), "heirloom-engine-session-"));
+      dir = mkdtempSync(join(tmpdir(), "nib-engine-session-"));
       engine = new PermissionEngine(undefined, dir);
     });
 
@@ -491,7 +491,7 @@ describe("PermissionEngine.resolve", () => {
     let dir: string;
 
     beforeEach(() => {
-      dir = mkdtempSync(join(tmpdir(), "heirloom-engine-always-"));
+      dir = mkdtempSync(join(tmpdir(), "nib-engine-always-"));
       engine = new PermissionEngine(undefined, dir);
     });
 
@@ -573,7 +573,7 @@ describe("PermissionEngine.resolve", () => {
     });
 
     it("broadens an existing internal directory to a recursive glob", () => {
-      const dir = mkdtempSync(join(tmpdir(), "heirloom-buildrule-dir-"));
+      const dir = mkdtempSync(join(tmpdir(), "nib-buildrule-dir-"));
       try {
         // Create a subdirectory inside the working dir so it's internal
         const subdir = join(dir, "packages");
@@ -594,7 +594,7 @@ describe("PermissionEngine.resolve", () => {
     });
 
     it("guarded narrowing still forces exact even when buildDefaultRule broadens to glob", () => {
-      const dir = mkdtempSync(join(tmpdir(), "heirloom-buildrule-guarded-dir-"));
+      const dir = mkdtempSync(join(tmpdir(), "nib-buildrule-guarded-dir-"));
       try {
         // Create a subdirectory so buildDefaultRule would broaden to glob
         const subdir = join(dir, "config");
@@ -746,7 +746,7 @@ describe("PermissionEngine.resolve", () => {
     let dir: string;
 
     beforeEach(() => {
-      dir = mkdtempSync(join(tmpdir(), "heirloom-engine-pathnorm-"));
+      dir = mkdtempSync(join(tmpdir(), "nib-engine-pathnorm-"));
       engine = new PermissionEngine(undefined, dir);
     });
 
@@ -832,7 +832,7 @@ describe("PermissionEngine.resolve", () => {
     });
 
     it("approveAlways on a guarded match forces kind exact, mirroring destructive narrowing", () => {
-      const dir = mkdtempSync(join(tmpdir(), "heirloom-engine-guarded-"));
+      const dir = mkdtempSync(join(tmpdir(), "nib-engine-guarded-"));
       try {
         const scopedEngine = new PermissionEngine(undefined, dir);
         const envPath = join(dir, ".env");
@@ -847,7 +847,7 @@ describe("PermissionEngine.resolve", () => {
     });
 
     it("buildDefaultRule + guarded narrowToExact only allows the specific file, not the whole guarded glob category", () => {
-      const dir = mkdtempSync(join(tmpdir(), "heirloom-engine-guarded-scope-"));
+      const dir = mkdtempSync(join(tmpdir(), "nib-engine-guarded-scope-"));
       try {
         const scopedEngine = new PermissionEngine(undefined, dir);
         const envPath = join(dir, ".env");
@@ -875,7 +875,7 @@ describe("PermissionEngine: search/glob directory containment", () => {
   let workDir: string;
 
   beforeEach(() => {
-    workDir = mkdtempSync(join(tmpdir(), "heirloom-engine-search-dir-"));
+    workDir = mkdtempSync(join(tmpdir(), "nib-engine-search-dir-"));
     mkdirSync(join(workDir, "src"), { recursive: true });
   });
 
@@ -906,7 +906,7 @@ describe("PermissionEngine: search/glob directory containment", () => {
   });
 
   it("a search with dir outside the workspace resolves ask, isGuarded true, exempt from allowAll", () => {
-    const outside = mkdtempSync(join(tmpdir(), "heirloom-engine-search-outside-"));
+    const outside = mkdtempSync(join(tmpdir(), "nib-engine-search-outside-"));
     try {
       const engine = new PermissionEngine({ defaultMode: "allowAll" }, workDir);
       const result = engine.resolve("search", { pattern: "password", dir: outside });
@@ -919,7 +919,7 @@ describe("PermissionEngine: search/glob directory containment", () => {
   });
 
   it("a glob with cwd outside the workspace resolves ask, isGuarded true", () => {
-    const outside = mkdtempSync(join(tmpdir(), "heirloom-engine-glob-outside-"));
+    const outside = mkdtempSync(join(tmpdir(), "nib-engine-glob-outside-"));
     try {
       const engine = new PermissionEngine(undefined, workDir);
       const result = engine.resolve("glob", { pattern: "**/*", cwd: outside });
@@ -956,7 +956,7 @@ describe("PermissionEngine: search/glob directory containment", () => {
   });
 
   it("a symlink inside the workspace pointing outside it resolves ask (realpath containment, not lexical)", () => {
-    const outside = mkdtempSync(join(tmpdir(), "heirloom-engine-search-symlink-target-"));
+    const outside = mkdtempSync(join(tmpdir(), "nib-engine-search-symlink-target-"));
     try {
       writeFileSync(join(outside, "secret.txt"), "top secret\n");
       const link = join(workDir, "escape-link");
@@ -1010,7 +1010,7 @@ describe("PermissionEngine: search/glob directory containment", () => {
   });
 
   it("the blanket builtin allow (search: any) does not override the out-of-workspace synthetic guard", () => {
-    const outside = mkdtempSync(join(tmpdir(), "heirloom-engine-search-precedence-"));
+    const outside = mkdtempSync(join(tmpdir(), "nib-engine-search-precedence-"));
     try {
       const engine = new PermissionEngine({ defaultMode: "allowAll" }, workDir);
       const result = engine.resolve("search", { pattern: "x", dir: outside });
@@ -1022,7 +1022,7 @@ describe("PermissionEngine: search/glob directory containment", () => {
   });
 
   it("a user-authored allow rule for an out-of-workspace dir DOES resolve the out-of-workspace guard (BUG FIX: escape hatch, same as the write boundary)", () => {
-    const outside = mkdtempSync(join(tmpdir(), "heirloom-engine-search-killswitch-"));
+    const outside = mkdtempSync(join(tmpdir(), "nib-engine-search-killswitch-"));
     try {
       const engine = new PermissionEngine(
         { rules: [{ tool: "search", kind: "exact", pattern: outside, action: "allow", origin: "config" }] },
@@ -1077,7 +1077,7 @@ describe("file-tool write boundary (docs/unified-write-boundary.md §2)", () => 
 
   it("session approval allows the same external edit after its initial guarded ask", () => {
     const engine = new PermissionEngine(undefined, "/workspace", false, { enforceWriteBoundary: true });
-    const args = { path: "/etc/heirloom-session-edit.ts" };
+    const args = { path: "/etc/nib-session-edit.ts" };
     const initial = engine.resolve("edit", args);
     expect(initial.action).toBe("ask");
     expect(initial.isGuarded).toBe(true);
@@ -1087,14 +1087,14 @@ describe("file-tool write boundary (docs/unified-write-boundary.md §2)", () => 
     const approved = engine.resolve("edit", args);
     expect(approved.action).toBe("allow");
     expect(approved.isGuarded).toBe(false);
-    expect(engine.resolve("edit", { path: "/etc/heirloom-unapproved-edit.ts" }).action).toBe("ask");
+    expect(engine.resolve("edit", { path: "/etc/nib-unapproved-edit.ts" }).action).toBe("ask");
   });
 
   it("always approval allows the same external edit after its initial guarded ask", () => {
-    const dir = mkdtempSync(join(tmpdir(), "heirloom-engine-write-approval-"));
+    const dir = mkdtempSync(join(tmpdir(), "nib-engine-write-approval-"));
     try {
       const engine = new PermissionEngine(undefined, dir, false, { enforceWriteBoundary: true });
-      const args = { path: "/etc/heirloom-always-edit.ts" };
+      const args = { path: "/etc/nib-always-edit.ts" };
       const initial = engine.resolve("edit", args);
       expect(initial.action).toBe("ask");
       expect(initial.isGuarded).toBe(true);
@@ -1104,7 +1104,7 @@ describe("file-tool write boundary (docs/unified-write-boundary.md §2)", () => 
       const approved = engine.resolve("edit", args);
       expect(approved.action).toBe("allow");
       expect(approved.isGuarded).toBe(false);
-      expect(engine.resolve("edit", { path: "/etc/heirloom-unapproved-edit.ts" }).action).toBe("ask");
+      expect(engine.resolve("edit", { path: "/etc/nib-unapproved-edit.ts" }).action).toBe("ask");
 
       const settings = JSON.parse(readFileSync(projectSettingsPath(dir), "utf-8"));
       const reloaded = new PermissionEngine(
@@ -1223,7 +1223,7 @@ describe("BUG FIX: external search/glob approval takes effect", () => {
   let workDir: string;
 
   beforeEach(() => {
-    workDir = mkdtempSync(join(tmpdir(), "heirloom-engine-search-approve-"));
+    workDir = mkdtempSync(join(tmpdir(), "nib-engine-search-approve-"));
   });
 
   afterEach(() => {
@@ -1245,7 +1245,7 @@ describe("BUG FIX: external search/glob approval takes effect", () => {
   });
 
   it("session-approving an external search allows a subsequent identical search", () => {
-    const outside = mkdtempSync(join(tmpdir(), "heirloom-engine-search-approve-target-"));
+    const outside = mkdtempSync(join(tmpdir(), "nib-engine-search-approve-target-"));
     try {
       const engine = new PermissionEngine(undefined, workDir);
       const args = { pattern: "TODO", dir: outside };
@@ -1264,7 +1264,7 @@ describe("BUG FIX: external search/glob approval takes effect", () => {
   });
 
   it("always-approving an external glob allows a subsequent identical glob (and survives a reload)", () => {
-    const outside = mkdtempSync(join(tmpdir(), "heirloom-engine-glob-approve-target-"));
+    const outside = mkdtempSync(join(tmpdir(), "nib-engine-glob-approve-target-"));
     try {
       const engine = new PermissionEngine(undefined, workDir);
       const args = { pattern: "**/*", cwd: outside };
@@ -1301,7 +1301,7 @@ describe("BUG FIX: external search/glob approval takes effect", () => {
     mkdirSync(sshDir, { recursive: true });
     writeFileSync(join(sshDir, "id_rsa"), "fake key material\n");
 
-    const outside = mkdtempSync(join(tmpdir(), "heirloom-engine-search-approve-other-"));
+    const outside = mkdtempSync(join(tmpdir(), "nib-engine-search-approve-other-"));
     try {
       const engine = new PermissionEngine(undefined, workDir);
 
@@ -1326,7 +1326,7 @@ describe("BUG FIX: external search/glob approval takes effect", () => {
 
 describe("BUG FIX: persist() invokes onPersist with the settings path", () => {
   it("calls onPersist with the project settings.json path after a successful write", () => {
-    const dir = mkdtempSync(join(tmpdir(), "heirloom-engine-onpersist-"));
+    const dir = mkdtempSync(join(tmpdir(), "nib-engine-onpersist-"));
     try {
       const calls: string[] = [];
       const engine = new PermissionEngine(undefined, dir, false, {
@@ -1340,7 +1340,7 @@ describe("BUG FIX: persist() invokes onPersist with the settings path", () => {
   });
 
   it("does not throw and behaves as before when onPersist is not provided", () => {
-    const dir = mkdtempSync(join(tmpdir(), "heirloom-engine-onpersist-absent-"));
+    const dir = mkdtempSync(join(tmpdir(), "nib-engine-onpersist-absent-"));
     try {
       const engine = new PermissionEngine(undefined, dir);
       expect(() =>

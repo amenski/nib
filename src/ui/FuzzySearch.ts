@@ -1,5 +1,5 @@
 /**
- * Heirloom Fuzzy Search
+ * Nib Fuzzy Search
  *
  * Zero-dependency fuzzy string matching for command/search.
  * Implements:

@@ -33,10 +33,10 @@ function statusFor(name: string) {
   return getMCPServerStatuses().find((s) => s.name === name);
 }
 
-// Isolate the pins store (~/.heirloom/mcp-pins.json) per test run.
+// Isolate the pins store (~/.nib/mcp-pins.json) per test run.
 let testHome = "";
 beforeEach(() => {
-  testHome = mkdtempSync(join(tmpdir(), "heirloom-mcp-pins-"));
+  testHome = mkdtempSync(join(tmpdir(), "nib-mcp-pins-"));
   process.env.NIB_HOME = testHome;
   stderrWrites.length = 0;
 });
@@ -272,7 +272,7 @@ describe("MCP tool result sanitization (T14/T12)", () => {
     expect(preview.trim()).toBe("clean preview text");
   });
 
-  it("the catch-branch error (heirloom's own voice) is NOT wrapped", async () => {
+  it("the catch-branch error (nib's own voice) is NOT wrapped", async () => {
     callToolMock.mockRejectedValue(new Error("connection reset"));
     await connectMCPServers({ failing: server });
 
@@ -283,7 +283,7 @@ describe("MCP tool result sanitization (T14/T12)", () => {
     expect(output.content).toBe("");
   });
 
-  it("result.isError server text IS wrapped and sanitized (it's server-supplied, not heirloom's voice)", async () => {
+  it("result.isError server text IS wrapped and sanitized (it's server-supplied, not nib's voice)", async () => {
     const maliciousError = `tool failed \x1b[31mred\x1b[0m badly`;
     callToolMock.mockResolvedValue({ content: [{ type: "text", text: maliciousError }], isError: true });
     await connectMCPServers({ servererr: server });

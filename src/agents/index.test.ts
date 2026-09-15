@@ -16,7 +16,7 @@ describe("AgentLoader (feature-plans.md §F4)", () => {
     project = mkdtempSync(join(tmpdir(), "agents-proj-"));
     home = mkdtempSync(join(tmpdir(), "agents-home-"));
     prevHome = process.env.NIB_HOME;
-    process.env.NIB_HOME = home; // isolate from a real ~/.heirloom
+    process.env.NIB_HOME = home; // isolate from a real ~/.nib
     mkdirSync(join(projectDirPath(project), "agents"), { recursive: true });
     mkdirSync(join(home, "agents"), { recursive: true });
     warns = [];

@@ -342,7 +342,7 @@ describe("web_search", () => {
     });
 
     await registry.execute({ id: "1", name: "web_search", arguments: { query: "x" } }, makeCtx());
-    expect(sentUA).toContain("heirloom");
+    expect(sentUA).toContain("nib");
     expect(sentRedirect).toBe("manual");
   });
 

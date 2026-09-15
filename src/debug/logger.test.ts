@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { projectDirPath } from "../config/paths.js";
 import { tmpdir } from "node:os";
 
-const TEST_DIR = join(tmpdir(), `heirloom-debug-logger-${process.pid}`);
+const TEST_DIR = join(tmpdir(), `nib-debug-logger-${process.pid}`);
 
 describe("debug logger timing", () => {
   const originalCwd = process.cwd();

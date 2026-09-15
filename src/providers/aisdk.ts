@@ -102,8 +102,8 @@ function createAIInstance(apiType: string, baseUrl: string, apiKey: string, mode
   }
   const headers = hostname === "openrouter.ai"
     ? {
-        "HTTP-Referer": "https://github.com/amenski/heirloom-agent",
-        "X-OpenRouter-Title": "Heirloom",
+        "HTTP-Referer": "https://github.com/amenski/nib",
+        "X-OpenRouter-Title": "Nib",
       }
     : undefined;
   return createOpenAI({ baseURL: baseUrl, apiKey, ...(headers ? { headers } : {}) }).chat(model);
@@ -185,7 +185,7 @@ const SDK_REASONING_LEVELS = ["none", "minimal", "low", "medium", "high", "xhigh
 type SdkReasoningLevel = (typeof SDK_REASONING_LEVELS)[number];
 
 /**
- * Map heirloom's effort value onto the SDK's `reasoning` union.
+ * Map nib's effort value onto the SDK's `reasoning` union.
  *
  * This must go through the top-level `reasoning` option, NOT a top-level
  * `reasoningEffort`: streamText funnels unknown keys into `...settings` and

@@ -1,5 +1,5 @@
 /**
- * Magic-byte sniffing for the image formats heirloom can hand to a model.
+ * Magic-byte sniffing for the image formats nib can hand to a model.
  *
  * Bytes are authoritative where an extension or a Content-Type header is not:
  * a CDN can serve a JPEG from a URL with no extension, and a server can label

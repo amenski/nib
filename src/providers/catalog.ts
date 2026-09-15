@@ -71,7 +71,7 @@ function mergeProvider(
 
 /**
  * Load the bundled catalog and merge the user override
- * (`~/.heirloom/models.json`) on top, provider-by-provider then
+ * (`~/.nib/models.json`) on top, provider-by-provider then
  * model-by-model, user wins. A missing user file is normal (no warning); a
  * malformed one warns to stderr and is skipped entirely so startup never
  * crashes on bad JSON — matching readCredentialsFile/loadConfig.
@@ -92,10 +92,10 @@ export function loadModelCatalog(homeDir?: string): ModelCatalog {
 
   const home = homeDir ?? resolveHome();
 
-  // `heirloom models update` writes a refreshed snapshot here (distinct from
+  // `nib models update` writes a refreshed snapshot here (distinct from
   // the bundled models.json above, which never changes). It sits between the
   // bundled catalog and the user override so a hand-edited
-  // ~/.heirloom/models.json still wins over an updated snapshot (plan §2
+  // ~/.nib/models.json still wins over an updated snapshot (plan §2
   // decision 5). A missing or unreadable cache file is normal (no update has
   // run yet, or `models update` was never confirmed) and silently falls back
   // to the bundled catalog, same as a missing user override.

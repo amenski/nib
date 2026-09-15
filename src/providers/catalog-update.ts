@@ -3,11 +3,11 @@ import { join } from "node:path";
 import { resolveHome } from "../config/loader.js";
 
 /**
- * Cached, updated catalog snapshot written by `heirloom models update`. Lives
+ * Cached, updated catalog snapshot written by `nib models update`. Lives
  * in NIB_HOME, distinct from the bundled src/providers/models.json
  * (ships with the binary, never overwritten — plan §4.C "preserve the bundled
  * snapshot as fallback") and from the user's hand-owned
- * ~/.heirloom/models.json override, which still wins over both (plan §2
+ * ~/.nib/models.json override, which still wins over both (plan §2
  * decision 5).
  */
 export const CATALOG_CACHE_FILENAME = "models-catalog.json";

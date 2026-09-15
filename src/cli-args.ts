@@ -57,8 +57,8 @@ async function configureYargs(argv?: string[]) {
   const rawArgv = argv ?? hideBin(process.argv);
   return Yargs(rawArgv)
     .locale("en")
-    .scriptName("heirloom")
-    .usage("Usage: $0 [options] [command] [prompt]\n\nHeirloom — starts an interactive session by default, use -p/--print for non-interactive output")
+    .scriptName("nib")
+    .usage("Usage: $0 [options] [command] [prompt]\n\nNib — starts an interactive session by default, use -p/--print for non-interactive output")
     .command("$0 [prompt]", "Launch an interactive session", (yargsInstance: Argv) =>
       yargsInstance
         .positional("prompt", { type: "string", describe: "Your prompt" })
@@ -95,19 +95,19 @@ async function configureYargs(argv?: string[]) {
       yargsInstance
         .positional("action", { type: "string", describe: "list | logout <provider> | <provider> [--api-key <key>]" })
     )
-    .command("doctor", "Check the health of your Heirloom setup", () => {})
-    .example("heirloom", "Launch the interactive TUI")
-    .example("heirloom 'explain src/foo.ts'", "Launch with an initial prompt")
-    .example("heirloom -p 'explain this error'", "Run one prompt non-interactively (useful for pipes)")
-    .example("heirloom -r", "Open session picker")
-    .example("heirloom -r <sessionId>", "Resume a specific session")
-    .example("heirloom -c", "Continue the most recent session")
-    .example('cat error.log | heirloom -p "Explain this error"', "Use piped stdin as context")
+    .command("doctor", "Check the health of your Nib setup", () => {})
+    .example("nib", "Launch the interactive TUI")
+    .example("nib 'explain src/foo.ts'", "Launch with an initial prompt")
+    .example("nib -p 'explain this error'", "Run one prompt non-interactively (useful for pipes)")
+    .example("nib -r", "Open session picker")
+    .example("nib -r <sessionId>", "Resume a specific session")
+    .example("nib -c", "Continue the most recent session")
+    .example('cat error.log | nib -p "Explain this error"', "Use piped stdin as context")
     .epilog(
       [
         "Configuration:",
-        "  ~/.heirloom/settings.json    User-level settings (model, API key, base URL)",
-        "  ./.heirloom/settings.json    Project-level settings",
+        "  ~/.nib/settings.json    User-level settings (model, API key, base URL)",
+        "  ./.nib/settings.json    Project-level settings",
         "",
         "Inside the TUI:",
         TUI_KEYS,

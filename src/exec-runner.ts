@@ -194,7 +194,7 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
 
     // createProvider throws for an unknown provider or a missing API key. In
     // headless mode that must be a clean one/two-line message telling the user
-    // what to do (run `heirloom auth`), not a raw Node stack trace (B1).
+    // what to do (run `nib auth`), not a raw Node stack trace (B1).
     let provider;
     try {
       provider = createProvider(providerName, {

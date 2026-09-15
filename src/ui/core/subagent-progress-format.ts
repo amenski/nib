@@ -9,7 +9,7 @@
  *     … +42 tool uses
  *     └ sub-agent finished · 1m 12s
  *
- * heirloom's transcript is an append-only Ink <Static> list (OutputArea.tsx)
+ * nib's transcript is an append-only Ink <Static> list (OutputArea.tsx)
  * — a committed line is never repainted. That rules out a live "Running…"
  * status per line and a live-toggle collapse (both need to rewrite an
  * already-printed line). What IS buildable within that model: each child
@@ -49,9 +49,9 @@ function indentFor(depth: number): string {
 /**
  * "⏺ Agent(description) ModelName" — the header line printed once at spawn,
  * matching Claude Code's "Agent(<task>) <model>" shape. When the task was
- * spawned as a named, defined agent (.heirloom/agents/<name>.md), the name
+ * spawned as a named, defined agent (.nib/agents/<name>.md), the name
  * rides after the model — the screenshot's own reference display has no
- * named-agent concept, so this is heirloom's addition, kept out of the
+ * named-agent concept, so this is nib's addition, kept out of the
  * parens so the description stays the visually primary label.
  */
 export function formatSubagentHeader(opts: {

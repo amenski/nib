@@ -12,7 +12,7 @@ const DEL = ""; // terminal backspace
  * Handles Backspace/Ctrl+H (erase one char), Ctrl+U (clear the line),
  * Ctrl+C (cancel → resolves to `null`, nothing written), and Enter (submit).
  *
- * On a non-TTY stdin (e.g. `echo KEY | heirloom auth ...`), the prompt is
+ * On a non-TTY stdin (e.g. `echo KEY | nib auth ...`), the prompt is
  * skipped and a single line is read verbatim from the pipe.
  *
  * Returns the entered line, or `null` if the user cancelled (Ctrl+C).

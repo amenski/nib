@@ -9,7 +9,7 @@ import type { ToolContext } from "./types.js";
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x01]);
 
 describe("read_file", () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "heirloom-readfile-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "nib-readfile-"));
   afterAll(() => fs.rmSync(root, { recursive: true, force: true }));
 
   const registry = new ToolRegistry();

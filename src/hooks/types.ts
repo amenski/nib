@@ -56,7 +56,7 @@ export interface HookEntry {
   /** Raw matcher string from config (tool events only); omitted = all tools. */
   matcher?: string;
   /**
-   * Origin drives TOFU (hooks-spec.md §6): global (~/.heirloom) hooks are
+   * Origin drives TOFU (hooks-spec.md §6): global (~/.nib) hooks are
    * trusted implicitly; project hooks must clear the trust store.
    */
   origin: "global" | "project";

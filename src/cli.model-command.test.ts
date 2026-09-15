@@ -17,7 +17,7 @@ import { resolveRestoredSelection } from "./modes/model-policy.js";
 let homeDir: string;
 
 beforeEach(() => {
-  homeDir = mkdtempSync(join(tmpdir(), "heirloom-model-cmd-"));
+  homeDir = mkdtempSync(join(tmpdir(), "nib-model-cmd-"));
   process.env.NIB_HOME = homeDir;
 });
 

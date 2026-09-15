@@ -203,14 +203,14 @@ describe("web_fetch", () => {
     expect(result.error).toContain("redirect");
   });
 
-  it("sends an honest User-Agent header naming heirloom-agent", async () => {
+  it("sends an honest User-Agent header naming nib", async () => {
     let sentUA: string | undefined;
     fetchMock.mockImplementation((_url: string, init?: RequestInit) => {
       sentUA = (init?.headers as Record<string, string>)?.["User-Agent"];
       return Promise.resolve(textResponse("ok"));
     });
     await registry.execute({ id: "1", name: "web_fetch", arguments: { url: "https://example.com/ua-check" } }, makeCtx());
-    expect(sentUA).toContain("heirloom-agent/");
+    expect(sentUA).toContain("nib/");
   });
 
   it("uses redirect: manual", async () => {

@@ -1,5 +1,5 @@
 /**
- * Heirloom ErrorBoundary — Graceful error handling for the Ink TUI.
+ * Nib ErrorBoundary — Graceful error handling for the Ink TUI.
  *
  * Wraps the App component tree so that uncaught React render errors
  * display a recoverable message instead of crashing the terminal.
@@ -63,7 +63,7 @@ export default class ErrorBoundary extends Component<
             <Text dimColor>
               {"  Press "}
               <Text bold>Ctrl+C</Text>
-              {" to restart heirloom, or type "}
+              {" to restart nib, or type "}
               <Text bold>/exit</Text>
               {" to quit."}
             </Text>

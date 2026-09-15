@@ -1,5 +1,5 @@
 /**
- * Heirloom inline markdown parser (pure, no React).
+ * Nib inline markdown parser (pure, no React).
  *
  * Parses inline formatting into segments:
  * **bold**, *italic*, _italic_, ***bold italic***, `code`, ~~strike~~,

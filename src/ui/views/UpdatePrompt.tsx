@@ -42,7 +42,7 @@ export function UpdatePrompt({ version, installedVersion, onInstall, onIgnore, o
         <Text color="yellow" bold>Update Available</Text>
       </Box>
       <Text>
-        A new version of heirloom is available:{" "}
+        A new version of nib is available:{" "}
         <Text color="yellow" bold>{version}</Text>
         {" "}(currently {installedVersion})
       </Text>

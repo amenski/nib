@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 
 describe("MemoryStore home routing", () => {
   it("routes memory under an explicit home argument", async () => {
-    const custom = mkdtempSync(join(tmpdir(), "heirloom-mem-home-"));
+    const custom = mkdtempSync(join(tmpdir(), "nib-mem-home-"));
     try {
       const { MemoryStore } = await import("./store.js");
       const ms = new MemoryStore(process.cwd(), custom);

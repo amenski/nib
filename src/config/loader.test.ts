@@ -10,7 +10,7 @@ describe("validatePermissions (rule shape)", () => {
   let dir: string;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "heirloom-loader-"));
+    dir = mkdtempSync(join(tmpdir(), "nib-loader-"));
     mkdirSync(projectDirPath(dir), { recursive: true });
   });
 
@@ -133,7 +133,7 @@ describe("loadConfig: migration integration, no disk write during load", () => {
   let dir: string;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "heirloom-loader-migration-"));
+    dir = mkdtempSync(join(tmpdir(), "nib-loader-migration-"));
     mkdirSync(projectDirPath(dir), { recursive: true });
   });
 
@@ -186,7 +186,7 @@ describe("loadConfig: migration integration, no disk write during load", () => {
   });
 });
 
-// Write a project-level .heirloom/settings.json into a fresh temp dir and load it.
+// Write a project-level .nib/settings.json into a fresh temp dir and load it.
 // NIB_HOME is pointed at an empty dir so no global settings interfere.
 let projectDir: string;
 let homeDir: string;

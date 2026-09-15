@@ -178,7 +178,7 @@ describe("JobManager", () => {
   });
 
   it("rejects a nonexistent working directory without spawning", () => {
-    const result = jobManager.start("echo hi", "/nonexistent/heirloom-jobs-test", 5000);
+    const result = jobManager.start("echo hi", "/nonexistent/nib-jobs-test", 5000);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toContain("Working directory");
   });

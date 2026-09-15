@@ -287,7 +287,7 @@ export class JobManager {
       this.emitOutput(job, text);
     });
     job.proc.on("error", (err) => {
-      job.stderr += (job.stderr ? "\n" : "") + `[heirloom] failed to start: ${err.message}`;
+      job.stderr += (job.stderr ? "\n" : "") + `[nib] failed to start: ${err.message}`;
       job.exitCode = -1;
       job.endTime = Date.now();
       if (job.status === "running") {
@@ -366,7 +366,7 @@ export class JobManager {
   private timeoutJob(jobId: string): void {
     const job = this.jobs.get(jobId);
     if (!job || job.status !== "running") return;
-    job.stderr += (job.stderr ? "\n" : "") + `[heirloom] timed out after ${job.timeoutMs}ms — process killed`;
+    job.stderr += (job.stderr ? "\n" : "") + `[nib] timed out after ${job.timeoutMs}ms — process killed`;
     job.status = "failed";
     job.endTime = Date.now();
     killTree(job.proc);

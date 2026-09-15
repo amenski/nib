@@ -1,5 +1,5 @@
 /**
- * Heirloom Accessibility Utilities
+ * Nib Accessibility Utilities
  *
  * Provides helpers for terminal-based accessibility features:
  * - Screen reader announcements via OSC 9;4 or BEL sequences
@@ -36,7 +36,7 @@ export function announceToScreenReader(
  * Announce a status change (e.g., "busy", "done", "error").
  */
 export function announceStatus(status: string): void {
-  announceToScreenReader(`Heirloom: ${status}`, "polite");
+  announceToScreenReader(`Nib: ${status}`, "polite");
 }
 
 /**

@@ -35,9 +35,9 @@ describe("checkpoint secret handling", () => {
   });
 
   beforeEach(async () => {
-    TEST_HOME = mkdtempSync(join(tmpdir(), "heirloom-chkpt-home-"));
+    TEST_HOME = mkdtempSync(join(tmpdir(), "nib-chkpt-home-"));
 
-    workspaceDir = mkdtempSync(join(tmpdir(), "heirloom-chkpt-workspace-"));
+    workspaceDir = mkdtempSync(join(tmpdir(), "nib-chkpt-workspace-"));
 
     execSync("git init", { cwd: workspaceDir, stdio: "pipe" });
     execSync('git config user.email "test@test.com"', { cwd: workspaceDir, stdio: "pipe" });

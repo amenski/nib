@@ -27,7 +27,7 @@ describe("runModels", () => {
   let errorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "heirloom-models-command-test-"));
+    dir = mkdtempSync(join(tmpdir(), "nib-models-command-test-"));
     logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
   });

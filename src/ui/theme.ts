@@ -1,5 +1,5 @@
 /**
- * Heirloom Theme System
+ * Nib Theme System
  *
  * Fully offline, config-driven color scheme engine.
  * Supports light, dark, and custom themes with 20+ semantic color slots.
@@ -403,7 +403,7 @@ export const HIGH_CONTRAST_THEME: ThemeDefinition = {
 // ── Extra presets ──
 //
 // Faithful ANSI-256 approximations of popular editor themes, re-expressed in
-// Heirloom's rich ThemeDefinition shape (all ~20 semantic slots + 19-color
+// Nib's rich ThemeDefinition shape (all ~20 semantic slots + 19-color
 // SyntaxColors + statusBar sub-palette). promptFg/accent follow the tuned
 // contrast convention: dark presets use bright accents readable on their dark
 // background; the light preset uses a deep blue (like LIGHT_THEME) legible on

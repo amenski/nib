@@ -150,7 +150,7 @@ export async function reconnectMCPServer(
             // MCP server output is external content — same treatment as
             // web-fetch/web-search/bash (T14 sanitize, T12 wrap). Applies to
             // the isError branch too: `text` there is still server-supplied,
-            // not heirloom's own voice, so it's just as untrusted.
+            // not nib's own voice, so it's just as untrusted.
             const sanitized = sanitizeControlChars(text);
             const note = omitted > 0 ? `\n[${omitted} non-text content item(s) omitted]` : "";
             const content = wrapUntrusted(sanitized) + note;
@@ -158,7 +158,7 @@ export async function reconnectMCPServer(
               ? { content, error: content }
               : { content };
           } catch (err) {
-            // heirloom's own transport-layer error (timeout, disconnect, etc.)
+            // nib's own transport-layer error (timeout, disconnect, etc.)
             // — its own voice, so it stays unwrapped.
             return { content: "", error: (err as Error).message };
           }

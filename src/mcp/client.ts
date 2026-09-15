@@ -109,7 +109,7 @@ export async function listTools(
     await mcpRequest<McpInitializeResult>(config.url, "initialize", {
       protocolVersion: PROTOCOL_VERSION,
       capabilities: {},
-      clientInfo: { name: "heirloom", version: pkg.version },
+      clientInfo: { name: "nib", version: pkg.version },
     });
 
     const result = await mcpRequest<McpToolsListResult>(
@@ -230,7 +230,7 @@ export class MCPClient {
       this.sendRequest("initialize", {
         protocolVersion: PROTOCOL_VERSION,
         capabilities: {},
-        clientInfo: { name: "heirloom", version: pkg.version },
+        clientInfo: { name: "nib", version: pkg.version },
       }).then(() => {
         this.sendNotification("notifications/initialized", {});
         resolve();

@@ -19,8 +19,8 @@ export interface CheckpointEntry {
 // exotic global config that could otherwise block commits (commit.gpgsign),
 // execute arbitrary code (core.hooksPath), or corrupt content (autocrlf).
 const GIT_CONFIG_OVERRIDES = [
-  "-c", "user.name=heirloom",
-  "-c", "user.email=heirloom@local",
+  "-c", "user.name=nib",
+  "-c", "user.email=nib@local",
   "-c", "commit.gpgsign=false",
   "-c", "tag.gpgsign=false",
   "-c", "core.hooksPath=/dev/null",

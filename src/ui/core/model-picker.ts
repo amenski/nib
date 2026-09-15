@@ -48,7 +48,7 @@ export const MAX_RECENT_MODELS = 5;
 /**
  * Cap on models shown per provider group in the no-query default view.
  * A catalog update can take a provider from a handful of models to hundreds
- * (e.g. OpenRouter after `heirloom models update`); with no query to filter
+ * (e.g. OpenRouter after `nib models update`); with no query to filter
  * by, the unqueried view must stay a browsable list rather than dumping the
  * whole provider. Typing any query lifts the cap entirely — see buildRows.
  */

@@ -11,7 +11,7 @@ import type { ToolContext } from "./types.js";
 // disk -- no mocked fs, no stubbed handlers. This is the same `registry.execute`
 // path the live agent loop drives via `executeTool` in index.ts.
 
-const TEST_DIR = join(tmpdir(), `heirloom-realworld-${process.pid}`);
+const TEST_DIR = join(tmpdir(), `nib-realworld-${process.pid}`);
 
 function makeRegistry(): ToolRegistry {
   const registry = new ToolRegistry();

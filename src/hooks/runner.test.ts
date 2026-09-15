@@ -10,7 +10,7 @@ import type { HooksConfig, HookEvent } from "./types.js";
 // through /bin/sh -c with a one-line JSON payload on stdin, a 64 KB stdout
 // cap, and the spec's exit-code semantics.
 
-const TEST_DIR = join(tmpdir(), `heirloom-hooks-runner-${process.pid}`);
+const TEST_DIR = join(tmpdir(), `nib-hooks-runner-${process.pid}`);
 const HOME_DIR = join(TEST_DIR, "home");
 
 function makeConfig(hooks: Record<HookEvent, unknown> | Record<string, unknown>): HooksConfig {

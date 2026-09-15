@@ -41,7 +41,7 @@ describe("persistThemeChoice (atomic user-level write)", () => {
   let dir: string;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "heirloom-theme-"));
+    dir = mkdtempSync(join(tmpdir(), "nib-theme-"));
   });
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true });

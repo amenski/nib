@@ -15,7 +15,7 @@ export interface PromptContext {
   workingDir: string;
   skills?: SkillDef[];
   /**
-   * Loaded agent definitions (.heirloom/agents/*.md, feature-plans.md §F4):
+   * Loaded agent definitions (.nib/agents/*.md, feature-plans.md §F4):
    * their name+description index joins the stable preamble so the agent
    * knows which names new_task's `agent` parameter accepts.
    */
@@ -99,7 +99,7 @@ export function buildStablePreamble(ctx: PromptContext): string {
   if (mode) {
     sections.push(mode.roleDefinition);
   } else {
-    sections.push("You are Heirloom, a helpful AI coding assistant.");
+    sections.push("You are Nib, a helpful AI coding assistant.");
   }
 
   sections.push(getBaseRules());
@@ -352,7 +352,7 @@ export function getUserInstructions(home: string = homedir()): string {
   return "";
 }
 
-/** Project instructions: first non-empty of .heirloom/instructions.md, CLAUDE.md, AGENTS.md. */
+/** Project instructions: first non-empty of .nib/instructions.md, CLAUDE.md, AGENTS.md. */
 export function getProjectInstructions(cwd: string): string {
   for (const name of [join(projectDirPath(cwd), "instructions.md"), join(cwd, "CLAUDE.md"), join(cwd, "AGENTS.md")]) {
     if (existsSync(name)) {
@@ -380,7 +380,7 @@ export const MAX_RESEARCH_BYTES = 8 * 1024;
  * skipped as a safety measure. Total content is capped at `byteCap` and
  * truncated with `truncationNote` if exceeded. Returns null when `rootDir` is
  * absent or yields no usable content. Content is treated as user-authored, at
- * the same trust level as `.heirloom/instructions.md`.
+ * the same trust level as `.nib/instructions.md`.
  *
  * Shared by the project-rules and research loaders — the walk, symlink-escape
  * check, and byte cap are security-relevant and must not drift between copies.
@@ -477,14 +477,14 @@ function walkMarkdownSections(
 }
 
 /**
- * Recursively load `.heirloom/rules/**\/*.md` and assemble them into a single
+ * Recursively load `.nib/rules/**\/*.md` and assemble them into a single
  * "# Project Rules" block. Each file becomes a "### Rule: <scope>" section,
  * where <scope> is the file's path relative to the rules dir without the `.md`
  * suffix (e.g. `rules/api/naming.md` → `api/naming`).
  *
  * Returns null when the rules dir is absent or yields no usable content. Rule
  * content is treated as user-authored, at the same trust level as
- * `.heirloom/instructions.md`.
+ * `.nib/instructions.md`.
  */
 export function loadProjectRules(projectDir: string): string | null {
   const sections = walkMarkdownSections(
@@ -499,7 +499,7 @@ export function loadProjectRules(projectDir: string): string | null {
 }
 
 /**
- * Recursively load `.heirloom/research/**\/*.md` and assemble them into a
+ * Recursively load `.nib/research/**\/*.md` and assemble them into a
  * "# Research Notes" block, each file a "### Note: <scope>" section. Same
  * walk, symlink-escape, and truncation semantics as `loadProjectRules`, with a
  * smaller byte cap (research is plan-mode-only context). Returns null when the

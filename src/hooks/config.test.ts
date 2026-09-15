@@ -9,7 +9,7 @@ import { loadConfig } from "../config/loader.js";
 // Config parsing (hooks-spec.md §1): project > global per-event merge with
 // per-entry origin, matcher rules, and fail-fast config errors.
 
-const TEST_DIR = join(tmpdir(), `heirloom-hooks-config-${process.pid}`);
+const TEST_DIR = join(tmpdir(), `nib-hooks-config-${process.pid}`);
 const HOME_DIR = join(TEST_DIR, "home");
 const PROJECT_DIR = join(TEST_DIR, "project");
 

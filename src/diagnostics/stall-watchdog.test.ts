@@ -5,9 +5,9 @@ import { join } from "node:path";
 import { startStallWatchdog } from "./stall-watchdog.js";
 
 // Every test MUST pass an explicit profileDir. Without it the default is the
-// user's real ~/.heirloom/profiles — an earlier version omitted it and every
+// user's real ~/.nib/profiles — an earlier version omitted it and every
 // `npm test` sprayed ~5 cpuprofile pairs into their home directory.
-const tmpProfileDir = () => mkdtempSync(join(tmpdir(), "heirloom-profile-"));
+const tmpProfileDir = () => mkdtempSync(join(tmpdir(), "nib-profile-"));
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

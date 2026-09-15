@@ -5,7 +5,7 @@ import { resolveHome } from "../config/loader.js";
 import { projectDirPath } from "../config/paths.js";
 
 /**
- * A frontmatter agent definition (.heirloom/agents/<name>.md, feature-plans.md
+ * A frontmatter agent definition (.nib/agents/<name>.md, feature-plans.md
  * §F4, decisions D1–D3). A `new_task` call with `agent: <name>` runs the
  * sub-agent with this def's mode/model/instructions instead of the call's
  * mode and the parent's model. Permission inheritance, depth caps, and audit
@@ -189,7 +189,7 @@ async function scanDir(dir: string): Promise<AgentDef[]> {
 }
 
 /**
- * Loads frontmatter agent definitions from `.heirloom/agents/*.md`, resolved
+ * Loads frontmatter agent definitions from `.nib/agents/*.md`, resolved
  * project > global exactly like modes (D3): a project def with a given name
  * shadows the global def of the same name; everything else merges.
  */

@@ -5,7 +5,7 @@ import { projectDirPath } from "../config/paths.js";
 import { tmpdir } from "node:os";
 import { CommandLoader, expandCommand, findCommand } from "./index.js";
 
-const TMP = join(tmpdir(), `heirloom-commands-test-${process.pid}`);
+const TMP = join(tmpdir(), `nib-commands-test-${process.pid}`);
 
 describe("CommandLoader", () => {
   let home: string;

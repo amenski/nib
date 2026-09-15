@@ -19,7 +19,7 @@ let cachedUserAgent: string | undefined;
 
 async function getUserAgent(): Promise<string> {
   if (cachedUserAgent) return cachedUserAgent;
-  cachedUserAgent = `heirloom-agent/${pkg.version} (+cli)`;
+  cachedUserAgent = `nib/${pkg.version} (+cli)`;
   return cachedUserAgent;
 }
 

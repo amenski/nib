@@ -17,7 +17,7 @@ import { trustSettings } from "./config/settings-trust.js";
 // ToolRegistry whose executeTool dispatches through the orchestrator — that is
 // the only way the parent's new_task call reaches the async spawn.
 
-const TEST_DIR = join(tmpdir(), `heirloom-exec-subagent-${process.pid}`);
+const TEST_DIR = join(tmpdir(), `nib-exec-subagent-${process.pid}`);
 const HOME_DIR = join(TEST_DIR, "home");
 const PROJECT_DIR = join(TEST_DIR, "project");
 

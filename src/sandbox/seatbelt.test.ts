@@ -376,7 +376,7 @@ describe("sandbox wiring into run_bash and background jobs", () => {
 
   itOnDarwin("runBashTimed sandboxes the child when a level is passed", async () => {
     const denied = await runBashTimed(
-      "touch /tmp/heirloom-seatbelt-bash-probe.txt",
+      "touch /tmp/nib-seatbelt-bash-probe.txt",
       workspace,
       workspace,
       5000,
@@ -436,7 +436,7 @@ describe("sandbox wiring into run_bash and background jobs", () => {
 
   itOnDarwin("background jobs inherit the sandbox level (write denied in a strict job)", async () => {
     const started = jobManager.start(
-      "touch /tmp/heirloom-seatbelt-job-probe.txt",
+      "touch /tmp/nib-seatbelt-job-probe.txt",
       workspace,
       10_000,
       { stream: false, sandboxLevel: "strict-sandbox", trustedRoot: workspace },
@@ -447,7 +447,7 @@ describe("sandbox wiring into run_bash and background jobs", () => {
     const report = jobManager.check(id);
     expect(report?.status).toBe("failed");
     expect(report?.exitCode).not.toBe(0);
-    expect(existsSync("/tmp/heirloom-seatbelt-job-probe.txt")).toBe(false);
+    expect(existsSync("/tmp/nib-seatbelt-job-probe.txt")).toBe(false);
   }, 15_000);
 
   // ── trusted-root containment through the tools layer (item 8.6) ──

@@ -37,7 +37,7 @@ export interface OrchestratorOptions {
   registry: ToolRegistry;
   modeLoader: ModeLoader;
   /**
-   * Frontmatter agent definitions (.heirloom/agents/*.md, feature-plans.md
+   * Frontmatter agent definitions (.nib/agents/*.md, feature-plans.md
    * §F4): `new_task`'s `agent` parameter resolves through this loader. The
    * def supplies the mode/model/instructions — never the security envelope.
    */
@@ -210,7 +210,7 @@ export class Orchestrator {
           agent: {
             type: "string",
             description:
-              "Optional: the name of a defined agent (.heirloom/agents/<name>.md) to run " +
+              "Optional: the name of a defined agent (.nib/agents/<name>.md) to run " +
               "this task as. The agent's mode, model, and instructions override the mode " +
               "parameter and the parent's model." +
               agentList,

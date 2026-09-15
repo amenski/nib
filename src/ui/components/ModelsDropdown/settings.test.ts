@@ -13,7 +13,7 @@ describe("ModelsDropdown settings persistence (favorites/recent)", () => {
   let dir: string;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "heirloom-models-"));
+    dir = mkdtempSync(join(tmpdir(), "nib-models-"));
   });
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true });

@@ -188,8 +188,8 @@ describe("OpenRouter request mapping", () => {
     }
 
     const requestInit = fetchMock.mock.calls[0][1] as RequestInit;
-    expect(new Headers(requestInit.headers).get("HTTP-Referer")).toBe("https://github.com/amenski/heirloom-agent");
-    expect(new Headers(requestInit.headers).get("X-OpenRouter-Title")).toBe("Heirloom");
+    expect(new Headers(requestInit.headers).get("HTTP-Referer")).toBe("https://github.com/amenski/nib");
+    expect(new Headers(requestInit.headers).get("X-OpenRouter-Title")).toBe("Nib");
 
     vi.unstubAllGlobals();
     const otherFetch = vi.fn().mockResolvedValue(

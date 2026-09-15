@@ -660,7 +660,7 @@ export class PermissionEngine {
   }
 
   /**
-   * Approves `rule` for this process and persists it to .heirloom/settings.json
+   * Approves `rule` for this process and persists it to .nib/settings.json
    * via an atomic write (temp file + rename). A destructive- or
    * guarded-origin match is forced to kind "exact" on the literal subject text.
    */

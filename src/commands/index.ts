@@ -4,10 +4,10 @@ import { resolveHome } from "../config/loader.js";
 import { projectDirPath } from "../config/paths.js";
 
 /**
- * A user-defined slash command from `.heirloom/commands/<name>.md`. Typing
+ * A user-defined slash command from `.nib/commands/<name>.md`. Typing
  * `/<name> [args]` submits the file body as a user prompt, with `$ARGUMENTS`
  * replaced by the trailing args. This is the same shape Claude Code's custom
- * slash commands use, scoped to Heirloom's own `.heirloom` directory.
+ * slash commands use, scoped to Nib's own `.nib` directory.
  */
 export interface CommandDef {
   /** The command name — the file's basename without `.md`. */
@@ -155,7 +155,7 @@ async function scanDir(dir: string): Promise<CommandDef[]> {
 }
 
 /**
- * Loads custom slash commands from `.heirloom/commands/*.md`, resolved project
+ * Loads custom slash commands from `.nib/commands/*.md`, resolved project
  * > global exactly like agents/modes: a project command with a given name
  * shadows the global command of the same name; everything else merges.
  */

@@ -89,8 +89,8 @@ describe("resolveWriteRoots", () => {
 
 describe("realpathNearestAncestor", () => {
   it("expands a leading ~ to the home directory", () => {
-    expect(realpathNearestAncestor("~/heirloom-wr-probe")).toBe(
-      realpathNearestAncestor(join(homedir(), "heirloom-wr-probe")),
+    expect(realpathNearestAncestor("~/nib-wr-probe")).toBe(
+      realpathNearestAncestor(join(homedir(), "nib-wr-probe")),
     );
   });
 });

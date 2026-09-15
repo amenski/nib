@@ -1,5 +1,5 @@
 /**
- * Heirloom HelpOverlay — Interactive keyboard shortcut and command reference.
+ * Nib HelpOverlay — Interactive keyboard shortcut and command reference.
  *
  * Displays a modal overlay with categorized keyboard shortcuts and slash commands.
  * Invoked via Ctrl+Shift+/ (or /help).

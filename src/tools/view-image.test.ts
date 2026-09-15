@@ -190,7 +190,7 @@ describe("view_image", () => {
     await call({ url: "https://example.com/headers-check.png" });
 
     expect(init?.redirect).toBe("manual");
-    expect((init?.headers as Record<string, string>)["User-Agent"]).toContain("heirloom-agent/");
+    expect((init?.headers as Record<string, string>)["User-Agent"]).toContain("nib/");
   });
 
   it("aborts when the context signal is already aborted", async () => {
@@ -211,7 +211,7 @@ describe("view_image", () => {
 });
 
 describe("view_image local files", () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "heirloom-view-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "nib-view-"));
   afterAll(() => fs.rmSync(root, { recursive: true, force: true }));
 
   let registry: InstanceType<typeof ToolRegistry>;

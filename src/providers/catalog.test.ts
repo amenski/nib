@@ -9,7 +9,7 @@ describe("loadModelCatalog", () => {
   let dir: string;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "heirloom-catalog-test-"));
+    dir = mkdtempSync(join(tmpdir(), "nib-catalog-test-"));
     vi.spyOn(console, "warn").mockImplementation(() => {});
   });
 

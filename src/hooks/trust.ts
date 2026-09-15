@@ -5,7 +5,7 @@ import { resolveHome } from "../config/loader.js";
 
 /**
  * Trust-on-first-use store for project-declared hooks (docs/hooks-spec.md §6).
- * Mirrors skill-trust.json: a JSON file under ~/.heirloom (NIB_HOME
+ * Mirrors skill-trust.json: a JSON file under ~/.nib (NIB_HOME
  * honored, same as every other user-level file) keyed by a full sha256 of
  * `event|matcher|command|content-hash` scoped to the project dir, so the
  * trust file never echoes command text it would otherwise not need to hold.
@@ -67,7 +67,7 @@ export function saveHookTrust(store: TrustStore): void {
     renameSync(tmp, path);
     chmodSync(path, 0o600);
   } catch (err) {
-    process.stderr.write(`heirloom: failed to write hooks-trust.json: ${(err as Error).message}\n`);
+    process.stderr.write(`nib: failed to write hooks-trust.json: ${(err as Error).message}\n`);
   }
 }
 

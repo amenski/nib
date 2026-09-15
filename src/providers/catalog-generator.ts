@@ -10,7 +10,7 @@ export interface GeneratorOptions {
    * from the input, or a provider whose models object is empty is fatal —
    * correct for `npm run models:generate`, which runs against a curated
    * checked-in fixture where any of those is a real bug. Set true only for
-   * upstream data we don't control (`heirloom models update` against the
+   * upstream data we don't control (`nib models update` against the
    * live Models.dev feed), where the point of lenient mode is that data we
    * don't control must never be able to hard-fail the whole update: a model
    * that fails normalization is skipped instead of aborting the whole
@@ -143,7 +143,7 @@ function generateCatalogCore(input: unknown, options: GeneratorOptions): Generat
     if (!sourceModels || !Object.keys(sourceModels).length) {
       // Same category as "absent" on the lenient path: upstream gave us
       // nothing usable for this provider (a bad deploy, mid-deprecation),
-      // not a Heirloom bug — the checked-in fixture failing this check IS a
+      // not a Nib bug — the checked-in fixture failing this check IS a
       // real bug, so it stays fatal there.
       if (lenient) { skippedProviders.push({ provider, reason: "empty" }); continue; }
       throw new Error(`${provider} must contain models`);
@@ -174,7 +174,7 @@ export function generateCatalog(input: unknown, options: GeneratorOptions): Reco
 
 /**
  * Same normalization as generateCatalog, plus what lenient mode skipped —
- * `heirloom models update` needs the counts to report a skipped-models line
+ * `nib models update` needs the counts to report a skipped-models line
  * and the list of SUPPORTED_PROVIDERS that came back empty (e.g. `ollama`)
  * so it can carry those providers forward from the active snapshot instead
  * of treating them as removed.

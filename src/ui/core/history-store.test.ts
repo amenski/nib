@@ -7,7 +7,7 @@ import {
 } from "./history-store.js";
 
 const CWD = "/Users/someone/projects/demo-app";
-const tmp = () => mkdtempSync(join(tmpdir(), "heirloom-hist-"));
+const tmp = () => mkdtempSync(join(tmpdir(), "nib-hist-"));
 
 describe("prompt history store", () => {
   it("returns empty for a missing file instead of throwing", () => {

@@ -12,25 +12,25 @@ import {
 import { loadConfig, EXECUTION_CAPABLE_KEYS } from "./loader.js";
 import { ProfileEvaluator } from "../permissions/index.js";
 
-// TOFU trust model for project `.heirloom/settings.json` files that declare
+// TOFU trust model for project `.nib/settings.json` files that declare
 // execution-capable keys (statusline/mcpServers/notify/env — see loader.ts):
-// the user's own global ~/.heirloom/settings.json is trusted implicitly;
+// the user's own global ~/.nib/settings.json is trusted implicitly;
 // project settings are content-hashed and keyed by realpath in
 // settings-trust.json. An unseen or edited project settings file's
 // execution-capable keys are withheld until the ask-tier confirmation (y =
 // trust that hash forever, n = skip this session); headless runs skip with a
 // stderr warning.
 
-const TEST_DIR = join(tmpdir(), `heirloom-settings-trust-${process.pid}`);
+const TEST_DIR = join(tmpdir(), `nib-settings-trust-${process.pid}`);
 const HOME_DIR = join(TEST_DIR, "home");
 const TRUST_FILE = join(HOME_DIR, "settings-trust.json");
 
 let projectDir: string;
 
 function writeProjectSettings(dir: string, settings: Record<string, unknown>): string {
-  const heirloomDir = projectDirPath(dir);
-  mkdirSync(heirloomDir, { recursive: true });
-  const path = join(heirloomDir, "settings.json");
+  const nibDir = projectDirPath(dir);
+  mkdirSync(nibDir, { recursive: true });
+  const path = join(nibDir, "settings.json");
   writeFileSync(path, JSON.stringify(settings, null, 2), "utf-8");
   return path;
 }
@@ -55,9 +55,9 @@ function writeGlobalSettings(settings: Record<string, unknown>): string {
  * write that raw text directly to reproduce the real vulnerability.
  */
 function writeRawProjectSettings(dir: string, json: string): string {
-  const heirloomDir = projectDirPath(dir);
-  mkdirSync(heirloomDir, { recursive: true });
-  const path = join(heirloomDir, "settings.json");
+  const nibDir = projectDirPath(dir);
+  mkdirSync(nibDir, { recursive: true });
+  const path = join(nibDir, "settings.json");
   writeFileSync(path, json, "utf-8");
   return path;
 }
@@ -73,21 +73,21 @@ function real(path: string): string {
 // prefers NIB_HOME, but setting only HOME leaves a gap where an
 // accidental real-home read still lands (a prior bug leaked ~1786 junk
 // entries into a real user's store this exact way).
-let prevHeirloomHome: string | undefined;
+let prevNibHome: string | undefined;
 let prevHome: string | undefined;
 
 beforeEach(() => {
   mkdirSync(HOME_DIR, { recursive: true });
   projectDir = mkdtempSync(join(TEST_DIR, "project-"));
-  prevHeirloomHome = process.env.NIB_HOME;
+  prevNibHome = process.env.NIB_HOME;
   prevHome = process.env.HOME;
   process.env.NIB_HOME = HOME_DIR;
   process.env.HOME = HOME_DIR;
 });
 
 afterEach(() => {
-  if (prevHeirloomHome === undefined) delete process.env.NIB_HOME;
-  else process.env.NIB_HOME = prevHeirloomHome;
+  if (prevNibHome === undefined) delete process.env.NIB_HOME;
+  else process.env.NIB_HOME = prevNibHome;
   if (prevHome === undefined) delete process.env.HOME;
   else process.env.HOME = prevHome;
   rmSync(TEST_DIR, { recursive: true, force: true });
@@ -198,7 +198,7 @@ describe("EXECUTION_CAPABLE_KEYS / loadConfig.projectExecutionKeys attribution",
 });
 
 // Regression coverage for the prototype-pollution TOFU bypass: a project
-// `.heirloom/settings.json` whose only top-level key is `__proto__` (or
+// `.nib/settings.json` whose only top-level key is `__proto__` (or
 // `constructor`/`prototype`) used to make `projectExecutionKeys` come back
 // empty — name-based detection (`Object.keys(projectRaw).filter(...)`) never
 // sees `__proto__` as matching "statusline"/"mcpServers"/etc — while

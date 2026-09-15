@@ -15,7 +15,7 @@ describe("permission system smoke pass", () => {
   let workDir: string;
 
   beforeEach(() => {
-    workDir = mkdtempSync(join(tmpdir(), "heirloom-smoke-"));
+    workDir = mkdtempSync(join(tmpdir(), "nib-smoke-"));
     mkdirSync(join(workDir, "src"), { recursive: true });
   });
 

@@ -7,10 +7,10 @@ import { resolveHome } from "../src/config/loader.js";
 
 const FIXTURES_DIR = resolve(import.meta.dirname!, "..", "fixtures");
 const EVAL_TMP = resolve(import.meta.dirname!, "..", ".eval-tmp");
-const HEIRLOOM_SRC = resolve(import.meta.dirname!, "..", "src", "cli.tsx");
+const NIB_SRC = resolve(import.meta.dirname!, "..", "src", "cli.tsx");
 const TSX_BIN = resolve(import.meta.dirname!, "..", "node_modules", ".bin", "tsx");
 
-// Eval permissions, injected into each copied fixture's .heirloom/ as
+// Eval permissions, injected into each copied fixture's .nib/ as
 // settings.json. Headless runs fail closed (permission-spec.md §Headless
 // Interaction), so a fixture without explicit allow rules would deny every
 // edit and run_bash call and the golden task could never modify anything.
@@ -98,7 +98,7 @@ function evalChildEnv(evalHome: string): Record<string, string> {
   }
   // Fallback: when NO provider env var is set, the isolated child resolves
   // the default provider (deepseek) and would otherwise fail with no key —
-  // the developer's `heirloom auth` credentials are invisible to the eval
+  // the developer's `nib auth` credentials are invisible to the eval
   // home by design. Forward exactly that ONE key from the real credentials
   // file (flat `provider: key` YAML), never the file itself, so `npm run
   // eval` just works with an auth-based setup without leaking every
@@ -120,7 +120,7 @@ function readCredentialKey(provider: string): string | undefined {
       const key = line.slice(0, idx).trim();
       if (key !== provider) continue;
       const value = line.slice(idx + 1).trim();
-      // Strip optional quotes and inline comments (the shape `heirloom auth` writes).
+      // Strip optional quotes and inline comments (the shape `nib auth` writes).
       return value.replace(/^["']|["']$/g, "").replace(/\s+#.*$/, "") || undefined;
     }
   } catch {
@@ -193,7 +193,7 @@ const EVAL_CASES: EvalCase[] = [
 ];
 
 async function main() {
-  console.log("heirloom eval runner\n");
+  console.log("nib eval runner\n");
 
   if (existsSync(EVAL_TMP)) rmSync(EVAL_TMP, { recursive: true });
   mkdirSync(EVAL_TMP, { recursive: true });
@@ -229,7 +229,7 @@ async function main() {
     try {
       result = spawnSync(
         TSX_BIN,
-        [HEIRLOOM_SRC, "-p", testCase.prompt],
+        [NIB_SRC, "-p", testCase.prompt],
         {
           cwd: evalWorkdir,
           encoding: "utf-8",
@@ -264,16 +264,16 @@ async function main() {
     }
 
     // Distinguish "the agent could not run" from "the agent ran and did not
-    // pass": a non-zero heirloom exit (e.g. no provider key) must not be
+    // pass": a non-zero nib exit (e.g. no provider key) must not be
     // reported as a fixture-level task failure.
     if (result!.status !== 0) {
       failed++;
-      console.log("FAIL (heirloom exit)");
+      console.log("FAIL (nib exit)");
       const stderrLine = (result!.stderr || "").trim().split("\n").slice(-1)[0] || "";
       results.push({
         name: testCase.name,
         pass: false,
-        message: `heirloom exited ${result!.status}: ${stderrLine.slice(0, 60)}`,
+        message: `nib exited ${result!.status}: ${stderrLine.slice(0, 60)}`,
         duration,
       });
       continue;

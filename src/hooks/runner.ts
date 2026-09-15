@@ -118,7 +118,7 @@ export class HookRunner {
       } else if (this.headless) {
         this.sessionTrust.set(key, false);
         process.stderr.write(
-          `heirloom: skipping untrusted project hook (${entry.event}) "${entry.command}" — trust it in an interactive session or remove it from the project settings (docs/hooks-spec.md §6)\n`,
+          `nib: skipping untrusted project hook (${entry.event}) "${entry.command}" — trust it in an interactive session or remove it from the project settings (docs/hooks-spec.md §6)\n`,
         );
       }
       // interactive + unseen: leave unmarked → first dispatch asks via confirmTrust
@@ -197,7 +197,7 @@ export class HookRunner {
       // fail closed like the startup path.
       this.sessionTrust.set(key, false);
       process.stderr.write(
-        `heirloom: skipping untrusted project hook (${entry.event}) "${entry.command}" — trust it in an interactive session or remove it from the project settings (docs/hooks-spec.md §6)\n`,
+        `nib: skipping untrusted project hook (${entry.event}) "${entry.command}" — trust it in an interactive session or remove it from the project settings (docs/hooks-spec.md §6)\n`,
       );
       return false;
     }

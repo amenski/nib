@@ -12,7 +12,7 @@ import type { ToolContext } from "./types.js";
 // index.ts, so a shell-injection regression here would be a regression in
 // the real tool, not a test double.
 
-const TEST_DIR = join(tmpdir(), `heirloom-search-test-${process.pid}`);
+const TEST_DIR = join(tmpdir(), `nib-search-test-${process.pid}`);
 
 function makeRegistry(): ToolRegistry {
   const registry = new ToolRegistry();

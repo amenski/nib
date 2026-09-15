@@ -107,7 +107,7 @@ describe("readActiveSnapshot / writeCachedSnapshot", () => {
   let dir: string;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "heirloom-catalog-update-test-"));
+    dir = mkdtempSync(join(tmpdir(), "nib-catalog-update-test-"));
   });
 
   afterEach(() => {

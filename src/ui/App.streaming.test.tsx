@@ -12,7 +12,7 @@ import { ProfileEvaluator } from "../permissions/index.js";
 
 // ── Test doubles ──
 //
-// history-store writes to ~/.heirloom; App's promptHistory initializer calls it
+// history-store writes to ~/.nib; App's promptHistory initializer calls it
 // at mount. Point it at a throwaway temp dir so App-level tests never touch the
 // developer's real prompt history. Accessibility announcements early-return
 // without a TTY, so they are safe to leave live.

@@ -24,12 +24,12 @@ import { loadHookTrust, hookContentHash, hookTrustKey } from "../hooks/trust.js"
 // normal per-artifact gate. These tests exercise both the folder-trust
 // classification itself and its effect on the three real gates.
 
-const TEST_DIR = join(tmpdir(), `heirloom-folder-trust-${process.pid}`);
+const TEST_DIR = join(tmpdir(), `nib-folder-trust-${process.pid}`);
 const HOME_DIR = join(TEST_DIR, "home");
 const TRUST_FILE = join(HOME_DIR, "folder-trust.json");
 
 let projectDir: string;
-let prevHeirloomHome: string | undefined;
+let prevNibHome: string | undefined;
 let prevHome: string | undefined;
 
 function writeSkill(dir: string, name: string, body = "Body of " + name): string {
@@ -41,9 +41,9 @@ function writeSkill(dir: string, name: string, body = "Body of " + name): string
 }
 
 function writeProjectSettings(dir: string, settings: Record<string, unknown>): string {
-  const heirloomDir = projectDirPath(dir);
-  mkdirSync(heirloomDir, { recursive: true });
-  const path = join(heirloomDir, "settings.json");
+  const nibDir = projectDirPath(dir);
+  mkdirSync(nibDir, { recursive: true });
+  const path = join(nibDir, "settings.json");
   writeFileSync(path, JSON.stringify(settings, null, 2), "utf-8");
   return path;
 }
@@ -57,15 +57,15 @@ function real(path: string): string {
 beforeEach(() => {
   mkdirSync(HOME_DIR, { recursive: true });
   projectDir = mkdtempSync(join(TEST_DIR, "project-"));
-  prevHeirloomHome = process.env.NIB_HOME;
+  prevNibHome = process.env.NIB_HOME;
   prevHome = process.env.HOME;
   process.env.NIB_HOME = HOME_DIR;
   process.env.HOME = HOME_DIR;
 });
 
 afterEach(() => {
-  if (prevHeirloomHome === undefined) delete process.env.NIB_HOME;
-  else process.env.NIB_HOME = prevHeirloomHome;
+  if (prevNibHome === undefined) delete process.env.NIB_HOME;
+  else process.env.NIB_HOME = prevNibHome;
   if (prevHome === undefined) delete process.env.HOME;
   else process.env.HOME = prevHome;
   rmSync(TEST_DIR, { recursive: true, force: true });

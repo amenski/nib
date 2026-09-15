@@ -48,16 +48,21 @@ async function writeUpdateState(state: UpdateState): Promise<void> {
   await writeFile(statePath(), JSON.stringify(state, null, 2), "utf-8");
 }
 
-// Incident (2026-08-06): this repo's package has never been published to npm
+// Incident (2026-08-06): this package has never been published to npm
 // (`private: true` in package.json is deliberate), but the update checker
-// queried the registry by name anyway. The npm registry's `heirloom` is an
-// unrelated package (a photo-backup-to-S3 tool, maintainer briangershon,
-// v0.3.0) — a stranger's code. While package.json still carried the scaffold
-// version 1.0.0 this was invisibly masked (1.0.0 > 0.3.0, so "no update"),
-// but setting the honest 0.1.0 exposed it: the CLI started prompting to
-// install v0.3.0 of someone else's package globally. A private package is by
-// definition not on npm under this name, so any registry answer is always
-// about someone else's package — both entry points below must no-op.
+// queried the registry by name anyway. The name it asked about — `heirloom`,
+// what this project was called then — is a stranger's photo-backup-to-S3
+// package (maintainer briangershon, v0.3.0). While package.json still carried
+// the scaffold version 1.0.0 the mismatch was invisibly masked (1.0.0 > 0.3.0,
+// so "no update"), but setting the honest 0.1.0 exposed it: the CLI started
+// prompting to install v0.3.0 of someone else's package globally.
+//
+// Renaming to `nib` does NOT remove the trap — it reproduces it. The registry's
+// `nib` is also a stranger's package (Stylus mixins and utilities, v1.2.0,
+// descended from TJ Holowaychuk's visionmedia/nib), so a published build under
+// the new name would prompt users to install a CSS library. A private package
+// is by definition not on npm under its own name, so any registry answer is
+// always about someone else's package — both entry points below must no-op.
 export async function checkForNpmUpdate(packageInfo: { name: string; version: string; private?: boolean }): Promise<void> {
   if (packageInfo.private) return;
   const { name, version: installed } = packageInfo;
@@ -129,7 +134,7 @@ function fetchLatestVersion(packageName: string): Promise<string | null> {
 export async function promptForPendingUpdate(packageInfo: { name: string; version: string; private?: boolean }): Promise<void> {
   if (packageInfo.private) {
     // Clear any pending entry a prior (buggy) run may have already persisted
-    // for the unrelated npm `heirloom` package — see incident note above.
+    // for an unrelated npm package of the same name — see incident note above.
     const state = await readUpdateState();
     if (state.pending) {
       state.pending = null;

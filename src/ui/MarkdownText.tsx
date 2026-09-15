@@ -1,5 +1,5 @@
 /**
- * Heirloom MarkdownText — Rich markdown renderer with syntax highlighting
+ * Nib MarkdownText — Rich markdown renderer with syntax highlighting
  *
  * Features:
  * - Inline formatting: **bold**, *italic*, `code`, ~~strike~~, [links](url)

@@ -60,7 +60,7 @@ async function fetchImage(startUrl: string, signal: AbortSignal): Promise<{ data
       const res = await fetch(currentUrl, {
         signal: AbortSignal.any([signal, timeoutController.signal]),
         redirect: "manual",
-        headers: { "User-Agent": `heirloom-agent/${pkg.version} (+cli)` },
+        headers: { "User-Agent": `nib/${pkg.version} (+cli)` },
       });
 
       if (res.status >= 300 && res.status < 400) {

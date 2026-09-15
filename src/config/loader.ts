@@ -90,7 +90,7 @@ export interface DeepCodeSettings {
    *  `writeRoots` (docs/unified-write-boundary.md) is GLOBAL-only: extra
    *  directories writable under workspace-write, beyond the workspace root
    *  and the fixed carve-outs. Parsed from the user's own
-   *  `~/.heirloom/settings.json` ONLY — a PROJECT `.heirloom/settings.json`
+   *  `~/.nib/settings.json` ONLY — a PROJECT `.nib/settings.json`
    *  setting this key is ignored with a warning, never merged in (see
    *  loadConfig's sandbox block). This is deliberately separate from
    *  `permissionProfile.fs`, whose "explicit rules narrow only" invariant
@@ -107,7 +107,7 @@ export interface DeepCodeSettings {
   // ── Web Search ──
   /** Path to custom web search script */
   webSearchTool?: string;
-  /** web_search backend config (heirloom extension) */
+  /** web_search backend config (nib extension) */
   webSearch?: WebSearchConfig;
 
   // ── Skills ──
@@ -138,18 +138,18 @@ export interface DeepCodeSettings {
   // ── Temperature ──
   temperature?: number;
 
-  // ── Heirloom extended fields (kept for backward compat, not in Deep Code) ──
-  /** Provider name (heirloom extension — maps env settings to AI SDK provider) */
+  // ── Nib extended fields (kept for backward compat, not in Deep Code) ──
+  /** Provider name (nib extension — maps env settings to AI SDK provider) */
   provider?: string;
-  /** Theme config (heirloom extension) */
+  /** Theme config (nib extension) */
   theme?: {
     mode?: "dark" | "light" | "auto";
     name?: string;
     overrides?: Record<string, unknown>;
   };
-  /** Keybinding config (heirloom extension) */
+  /** Keybinding config (nib extension) */
   keybindings?: Record<string, unknown>;
-  /** Workflow integration (heirloom extension) */
+  /** Workflow integration (nib extension) */
   workflow?: {
     /** Enable the git-status poller (default true) */
     gitStatus?: boolean;
@@ -160,25 +160,25 @@ export interface DeepCodeSettings {
     /** @deprecated ignored — no build-tool detection subsystem consumes it */
     detectBuildTools?: boolean;
   };
-  /** Compaction settings (heirloom extension) */
+  /** Compaction settings (nib extension) */
   compaction?: {
     auto?: boolean;
     threshold?: number;
   };
-  /** Command-group behavior knobs (heirloom extension) */
+  /** Command-group behavior knobs (nib extension) */
   commands?: {
     /** When run_bash hits its 120s timeout, move the process to the
      *  background (job id returned to the model) instead of killing it —
      *  unless the command looks interactive (default true). */
     timeoutToBackground?: boolean;
   };
-  /** Context window override (heirloom extension) */
+  /** Context window override (nib extension) */
   contextWindow?: number;
-  /** Status line provider plugins (heirloom extension, deepcode-compatible) */
+  /** Status line provider plugins (nib extension, deepcode-compatible) */
   statusline?: StatuslineConfig;
-  /** Favorited models in the /model picker, as "provider/model" ids (heirloom extension) */
+  /** Favorited models in the /model picker, as "provider/model" ids (nib extension) */
   favoriteModels?: string[];
-  /** Recently-switched-to models in the /model picker, newest first, capped at 5 (heirloom extension) */
+  /** Recently-switched-to models in the /model picker, newest first, capped at 5 (nib extension) */
   recentModels?: { id: string; at: number }[];
 }
 
@@ -354,7 +354,7 @@ const KNOWN_KEYS = new Set([
   "strictMcpConfig",
   "showCost",
   "temperature",
-  // Heirloom extensions
+  // Nib extensions
   "provider",
   "theme",
   "keybindings",
@@ -369,8 +369,8 @@ const KNOWN_KEYS = new Set([
 
 /**
  * Top-level settings keys that can cause code execution or network-traffic
- * redirection when their VALUE comes from a project's `.heirloom/settings.json`
- * rather than the user's own global `~/.heirloom/settings.json`:
+ * redirection when their VALUE comes from a project's `.nib/settings.json`
+ * rather than the user's own global `~/.nib/settings.json`:
  *  - statusline: providers[].command runs a shell command (manager.ts); a
  *    module provider does `import()` of a project-relative path.
  *  - mcpServers: each entry spawns a subprocess at connect time.
@@ -746,7 +746,7 @@ export function migrateLegacyPermissions(raw: unknown): MigrationResult {
 
   if (seenScopes.size > 0) {
     warnings.push(
-      `permissions: migrated ${seenScopes.size} legacy scope(s) to rule-based permissions — review .heirloom/settings.json and re-approve as needed`,
+      `permissions: migrated ${seenScopes.size} legacy scope(s) to rule-based permissions — review .nib/settings.json and re-approve as needed`,
     );
   }
 
@@ -1203,7 +1203,7 @@ export function loadConfig(projectDir?: string): LoadResult {
       }
       if (isObject(projectRaw?.sandbox) && "writeRoots" in (projectRaw.sandbox as Record<string, unknown>)) {
         warnings.push(
-          "sandbox.writeRoots is global-only and was ignored in project .heirloom/settings.json — set it in ~/.heirloom/settings.json instead",
+          "sandbox.writeRoots is global-only and was ignored in project .nib/settings.json — set it in ~/.nib/settings.json instead",
         );
       }
     } else {
@@ -1325,7 +1325,7 @@ export function loadConfig(projectDir?: string): LoadResult {
     }
   }
 
-  // ── Heirloom extended fields (backward compat) ──
+  // ── Nib extended fields (backward compat) ──
 
   // provider
   if ("provider" in merged) {

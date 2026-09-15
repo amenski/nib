@@ -16,7 +16,7 @@ describe("git environment block — dirty baseline tagging", () => {
   let dir: string;
 
   beforeAll(() => {
-    dir = mkdtempSync(join(tmpdir(), "heirloom-gitenv-"));
+    dir = mkdtempSync(join(tmpdir(), "nib-gitenv-"));
     const git = (args: string[]) =>
       execFileSync("git", args, { cwd: dir, encoding: "utf-8", stdio: "pipe" });
     git(["init", "-q"]);

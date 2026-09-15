@@ -8,13 +8,13 @@ import { checkSkillTrust, trustSkill, loadSkillTrust, saveSkillTrust, skillConte
 import { SkillLoader } from "./index.js";
 
 // TOFU trust model (skill-spec.md §6, security-spec T4): global user skills
-// (~/.heirloom/skills, ~/.agents/skills) are trusted implicitly; project
+// (~/.nib/skills, ~/.agents/skills) are trusted implicitly; project
 // skills are content-hashed and keyed by source path in skill-trust.json. An
 // unseen or edited project skill is withheld from the session until the
 // ask-tier confirmation (y = trust that hash forever, n = skip this session);
 // headless runs skip untrusted skills with a stderr warning.
 
-const TEST_DIR = join(tmpdir(), `heirloom-skills-trust-${process.pid}`);
+const TEST_DIR = join(tmpdir(), `nib-skills-trust-${process.pid}`);
 const HOME_DIR = join(TEST_DIR, "home");
 const TRUST_FILE = join(HOME_DIR, "skill-trust.json");
 
@@ -300,7 +300,7 @@ describe("SkillLoader TOFU flow", () => {
 describe("global user skills are trusted implicitly", () => {
   it("never enters the trust store and never asks or skips", async () => {
     // NIB_HOME *is* the state dir here, so global skills live at its top
-    // level — not in a nested .heirloom. This test previously nested it, which
+    // level — not in a nested .nib. This test previously nested it, which
     // only worked while skills/index.ts ignored the override.
     const globalSkill = join(HOME_DIR, "skills", "global-one");
     mkdirSync(globalSkill, { recursive: true });

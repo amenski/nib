@@ -77,7 +77,7 @@ describe("authSaveKey", () => {
 
     const output = logSpy.mock.calls.map((c) => c.join(" ")).join("\n");
     expect(output).toContain(credsPath());
-    expect(output).toContain("Run `heirloom` to start.");
+    expect(output).toContain("Run `nib` to start.");
   });
 
   it("silent:true saves the key but suppresses the console.log — needed so the Ink TUI's frame isn't corrupted", async () => {

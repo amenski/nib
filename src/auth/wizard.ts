@@ -29,7 +29,7 @@ async function writeCredentials(creds: Record<string, string>): Promise<void> {
 }
 
 /**
- * Persist a single provider's key to ~/.heirloom/credentials.yaml (0600),
+ * Persist a single provider's key to ~/.nib/credentials.yaml (0600),
  * preserving any existing entries. Shared by the interactive wizard, the
  * non-interactive (`--api-key` / piped-stdin) paths, and the in-picker
  * "Connect provider" flow.
@@ -45,7 +45,7 @@ export async function authSaveKey(name: string, key: string, silent = false): Pr
 
   if (silent) return;
   console.log(`API key for ${name} saved to ${credsFile()}`);
-  console.log("Run `heirloom` to start.");
+  console.log("Run `nib` to start.");
 }
 
 export async function authWizard(): Promise<void> {

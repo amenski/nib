@@ -8,7 +8,7 @@ import { stripAnsi } from "./test-helpers.js";
 import { todoStore } from "../tools/todo.js";
 import { buildSkillLoadMessage, SKILL_APPLY_PROMPT } from "./core/skill-load.js";
 
-// App's promptHistory initializer reads ~/.heirloom at mount; point it at a
+// App's promptHistory initializer reads ~/.nib at mount; point it at a
 // throwaway implementation so these tests never touch real history.
 vi.mock("./core/history-store.js", () => ({
   loadPromptHistory: () => [],

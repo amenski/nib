@@ -41,7 +41,7 @@ describe("ModeLoader", () => {
       // to its own module URL, so pointing builtinDir at <dir>/builtin models
       // the bundled binary at <dir>/cli.js. This is the regression under test:
       // tsup must copy the YAMLs so this directory exists next to the bundle.
-      dist = await mkdtemp(join(tmpdir(), "heirloom-dist-"));
+      dist = await mkdtemp(join(tmpdir(), "nib-dist-"));
       await cp(builtinSrc, join(dist, "builtin"), { recursive: true });
     });
 
@@ -68,8 +68,8 @@ describe("ModeLoader", () => {
     let project: string;
 
     beforeAll(async () => {
-      home = await mkdtemp(join(tmpdir(), "heirloom-home-"));
-      project = await mkdtemp(join(tmpdir(), "heirloom-proj-"));
+      home = await mkdtemp(join(tmpdir(), "nib-home-"));
+      project = await mkdtemp(join(tmpdir(), "nib-proj-"));
       await mkdir(join(home, "modes"), { recursive: true });
       await mkdir(join(projectDirPath(project), "modes"), { recursive: true });
     });
@@ -85,7 +85,7 @@ describe("ModeLoader", () => {
         'slug: code\nname: "Project Code"\nroleDefinition: "overridden"\n',
       );
       const prevHome = process.env.NIB_HOME;
-      process.env.NIB_HOME = home; // isolate from a real ~/.heirloom
+      process.env.NIB_HOME = home; // isolate from a real ~/.nib
       try {
         const loader = new ModeLoader();
         const mode = await loader.load("code", project);

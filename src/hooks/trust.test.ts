@@ -6,14 +6,14 @@ import { HookRunner, hookContentHash, hookTrustKey } from "./index.js";
 import { parseHooksConfig } from "./config.js";
 import type { HooksConfig } from "./types.js";
 
-// TOFU trust model (hooks-spec.md §6): global (~/.heirloom) hooks are trusted
+// TOFU trust model (hooks-spec.md §6): global (~/.nib) hooks are trusted
 // implicitly; project hooks must clear hooks-trust.json, prompting exactly
 // once per unseen trust key (y = trust forever, n = skip this session).
 // Keys are content-hashed and project-scoped (fix 1): a script edit or a
 // second project changes the key and re-prompts. Headless runs skip untrusted
 // hooks with a stderr warning.
 
-const TEST_DIR = join(tmpdir(), `heirloom-hooks-trust-${process.pid}`);
+const TEST_DIR = join(tmpdir(), `nib-hooks-trust-${process.pid}`);
 const HOME_DIR = join(TEST_DIR, "home");
 const TRUST_FILE = join(HOME_DIR, "hooks-trust.json");
 

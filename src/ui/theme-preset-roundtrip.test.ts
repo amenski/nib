@@ -18,8 +18,8 @@ describe("named preset config → resolveTheme round-trip", () => {
   let projectDir: string;
 
   beforeEach(() => {
-    home = mkdtempSync(join(tmpdir(), "heirloom-theme-home-"));
-    projectDir = mkdtempSync(join(tmpdir(), "heirloom-theme-proj-"));
+    home = mkdtempSync(join(tmpdir(), "nib-theme-home-"));
+    projectDir = mkdtempSync(join(tmpdir(), "nib-theme-proj-"));
     process.env.NIB_HOME = home;
   });
   afterEach(() => {

@@ -18,7 +18,7 @@ export function credsFile(): string {
 /**
  * Parse a flat `key: value` YAML map (one entry per line). Quotes around the
  * value are stripped; blank lines and `#` comments are ignored. This is the
- * exact shape `heirloom auth` writes.
+ * exact shape `nib auth` writes.
  */
 export function parseFlatYaml(content: string): Record<string, string> {
   const result: Record<string, string> = {};
@@ -41,8 +41,8 @@ export function parseFlatYaml(content: string): Record<string, string> {
 }
 
 /**
- * Read the flat `provider: key` map from `~/.heirloom/credentials.yaml` — the
- * file `heirloom auth` writes. Never throws: a missing or unreadable file
+ * Read the flat `provider: key` map from `~/.nib/credentials.yaml` — the
+ * file `nib auth` writes. Never throws: a missing or unreadable file
  * resolves to an empty map. If the file's permissions are looser than 0600 they
  * are fixed in place (a warning is printed).
  */
@@ -65,7 +65,7 @@ export function readCredentialsFile(
 }
 
 /**
- * Look up a single provider's key from `~/.heirloom/credentials.yaml`.
+ * Look up a single provider's key from `~/.nib/credentials.yaml`.
  * Returns undefined when absent or empty.
  */
 export function getCredential(

@@ -91,7 +91,7 @@ describe("generateCatalog", () => {
   });
 });
 
-// `lenient: true` is what `heirloom models update` sets against the live
+// `lenient: true` is what `nib models update` sets against the live
 // Models.dev feed (unlike `npm run models:generate`, which keeps strict
 // throwing against the checked-in fixture — see GeneratorOptions.lenient).
 describe("generateCatalog / generateCatalogReport — lenient mode", () => {

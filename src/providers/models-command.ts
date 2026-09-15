@@ -30,9 +30,9 @@ function isObject(v: unknown): v is Record<string, unknown> {
 }
 
 function usage(): void {
-  console.error("Usage: heirloom models <update|status>");
-  console.error("  heirloom models update [--url <url>] [--yes]");
-  console.error("  heirloom models status");
+  console.error("Usage: nib models <update|status>");
+  console.error("  nib models update [--url <url>] [--yes]");
+  console.error("  nib models status");
 }
 
 export async function runModels(argv: string[], deps: ModelsCommandDeps = {}): Promise<number> {

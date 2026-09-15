@@ -12,7 +12,7 @@ function setup(
     model: "DeepSeek V4 Pro",
     thinkingEnabled: true,
     reasoningEffort: "high",
-    cwd: "/Users/someone/projects/heirloom-agent",
+    cwd: "/Users/someone/projects/nib",
     ...overrides,
   });
 }
@@ -31,24 +31,24 @@ describe("buildWelcomeLines", () => {
   });
 
   it("renders the wordmark padded for an inverse block, with color enabled", () => {
-    // chip() wraps " HEIRLOOM " in a background-color escape run when
+    // chip() wraps " NIB " in a background-color escape run when
     // colorEnabled is true — assert the ANSI background/foreground escapes
     // bracket the padded text.
     const lines = setup({}, true);
-    const markLine = lines.find((l) => l.includes("HEIRLOOM"))!;
+    const markLine = lines.find((l) => l.includes("NIB"))!;
     expect(markLine).toBeDefined();
-    expect(markLine).toContain(" HEIRLOOM ");
+    expect(markLine).toContain(" NIB ");
     // An ANSI escape (background/foreground set) appears before the mark and
     // a reset follows it — chip()'s colorEnabled branch.
-    expect(markLine).toMatch(/\x1b\[[0-9;]*m HEIRLOOM \x1b\[0m/);
+    expect(markLine).toMatch(/\x1b\[[0-9;]*m NIB \x1b\[0m/);
   });
 
   it("degrades the wordmark to bracketed text when color is disabled", () => {
     // chip()'s colorEnabled:false branch degrades to "[label]" so the mark
     // still reads as a discrete token without color.
     const lines = setup({}, false);
-    const markLine = lines.find((l) => l.includes("HEIRLOOM"))!;
-    expect(markLine).toContain("[HEIRLOOM]");
+    const markLine = lines.find((l) => l.includes("NIB"))!;
+    expect(markLine).toContain("[NIB]");
   });
 
   it("shows the resolved model name, never a placeholder", () => {
@@ -63,7 +63,7 @@ describe("buildWelcomeLines", () => {
     const contextLine = lines.find((l) => l.includes("DeepSeek V4 Pro"));
     expect(contextLine).toBeDefined();
     expect(strip(contextLine!)).toContain("thinking high");
-    expect(strip(contextLine!)).toContain("heirloom-agent");
+    expect(strip(contextLine!)).toContain("nib");
   });
 
   it("reports thinking as off when disabled", () => {

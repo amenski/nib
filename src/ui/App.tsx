@@ -931,7 +931,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
       // subagentStart.
       const subagentDisplay = new Map<number, SubagentDisplayState>();
 
-      announceToScreenReader("Heirloom is processing your request", "polite");
+      announceToScreenReader("Nib is processing your request", "polite");
 
       // Echo the user's message as a full-width highlighted bar with a "›"
       // chevron (Claude Code style) — the background fill makes input
@@ -1329,7 +1329,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           }
         }
 
-        announceToScreenReader("Heirloom has finished processing", "polite");
+        announceToScreenReader("Nib has finished processing", "polite");
       } catch (err) {
         flushStream();
         flushOutputQueue(true);
@@ -1540,7 +1540,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
       setStatusLine(ctx.buildStatusBar());
       return;
     }
-    // Custom slash command (`.heirloom/commands/*.md`): run the file body as a
+    // Custom slash command (`.nib/commands/*.md`): run the file body as a
     // user prompt, with `$ARGUMENTS` replaced by the trailing args. Builtins
     // win name collisions (this branch sits after every builtin above). The
     // command line is already echoed above, so the turn suppresses its own echo
@@ -1981,7 +1981,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
     // running on its open handles (git poll, statusline, stdin) and the CLI
     // hangs at a blank prompt. The transcript stays in scrollback untouched —
     // only the interactive frame goes away.
-    setExitHint(`Resume: heirloom --resume ${ctx.sessionId}`);
+    setExitHint(`Resume: nib --resume ${ctx.sessionId}`);
     // Die on exit (async-subagents.md §3, Q3): kill pending sub-runs where
     // background jobs get killed. In-memory only — nothing to restore on
     // resume; the process exit is the actual kill.

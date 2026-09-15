@@ -29,7 +29,7 @@ describe("SkillLoader.load honors enabledSkills", () => {
   let homeDir: string;
   let prevCwd: string;
   let prevHome: string | undefined;
-  let prevHeirloomHome: string | undefined;
+  let prevNibHome: string | undefined;
 
   function writeSkill(name: string) {
     const dir = join(projectDirPath(projectDir), "skills", name);
@@ -49,7 +49,7 @@ describe("SkillLoader.load honors enabledSkills", () => {
     homeDir = mkdtempSync(join(tmpdir(), "skills-home-"));
     prevCwd = process.cwd();
     prevHome = process.env.HOME;
-    prevHeirloomHome = process.env.NIB_HOME;
+    prevNibHome = process.env.NIB_HOME;
     // isolate the trust store write: resolveHome() prefers NIB_HOME over
     // HOME, so both must be set or a real NIB_HOME in the environment
     // wins and writeSkill()/trustSkill() write into the user's real store.
@@ -64,8 +64,8 @@ describe("SkillLoader.load honors enabledSkills", () => {
     process.chdir(prevCwd);
     if (prevHome === undefined) delete process.env.HOME;
     else process.env.HOME = prevHome;
-    if (prevHeirloomHome === undefined) delete process.env.NIB_HOME;
-    else process.env.NIB_HOME = prevHeirloomHome;
+    if (prevNibHome === undefined) delete process.env.NIB_HOME;
+    else process.env.NIB_HOME = prevNibHome;
     rmSync(projectDir, { recursive: true, force: true });
     rmSync(homeDir, { recursive: true, force: true });
   });

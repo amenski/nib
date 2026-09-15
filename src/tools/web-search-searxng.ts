@@ -1,7 +1,7 @@
 import type { ToolContext } from "./types.js";
 import { pkg } from "../version.js";
 
-const USER_AGENT = `heirloom-agent/${pkg.version} (+cli)`;
+const USER_AGENT = `nib/${pkg.version} (+cli)`;
 const TIMEOUT_MS = 10_000;
 const BODY_CAP_BYTES = 512 * 1024;
 

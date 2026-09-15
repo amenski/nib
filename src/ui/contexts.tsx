@@ -1,5 +1,5 @@
 /**
- * Heirloom React Contexts — Theme, Keybinding, and Accessibility contexts
+ * Nib React Contexts — Theme, Keybinding, and Accessibility contexts
  * for the Ink-based TUI. These wire the theme.ts and keybindings.ts
  * infrastructure into React components via context.
  */

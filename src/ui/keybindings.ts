@@ -1,5 +1,5 @@
 /**
- * Heirloom Keybinding System
+ * Nib Keybinding System
  *
  * Fully offline, configurable keyboard shortcut engine.
  * Supports chord sequences, modifier combinations, and remapping.

@@ -1,5 +1,5 @@
 /**
- * Heirloom StatusBar — the session status line above the hint bar.
+ * Nib StatusBar — the session status line above the hint bar.
  *
  * Segments are built by the caller (see buildStatusBar in cli.tsx) and
  * typically include: active mode/posture, effort level, context usage

@@ -17,7 +17,7 @@ import type { ExecInputStream } from "./exec-input.js";
 // (allow rule, defaultMode ask, guarded tier, destructive deny) through the
 // real runAgent code path that exec-runner wires up.
 
-const TEST_DIR = join(tmpdir(), `heirloom-exec-runner-${process.pid}`);
+const TEST_DIR = join(tmpdir(), `nib-exec-runner-${process.pid}`);
 const HOME_DIR = join(TEST_DIR, "home");
 const PROJECT_DIR = join(TEST_DIR, "project");
 
@@ -134,7 +134,7 @@ describe("runExecMode headless permission enforcement (T11)", () => {
   beforeEach(() => {
     mkdirSync(PROJECT_DIR, { recursive: true });
     mkdirSync(HOME_DIR, { recursive: true });
-    // Isolate from the developer's real ~/.heirloom/settings.json.
+    // Isolate from the developer's real ~/.nib/settings.json.
     process.env.NIB_HOME = HOME_DIR;
     executeToolSpy.mockClear();
     createProviderSpy.mockClear();
@@ -268,7 +268,7 @@ describe("runExecMode first-run failures are clean (B1)", () => {
     writeSettings({ provider: "deepseek" });
     providerFactory = () => {
       throw new Error(
-        'Provider "deepseek" requires DEEPSEEK_API_KEY to be set, or run `heirloom auth` to store a key in credentials.yaml',
+        'Provider "deepseek" requires DEEPSEEK_API_KEY to be set, or run `nib auth` to store a key in credentials.yaml',
       );
     };
 
@@ -277,7 +277,7 @@ describe("runExecMode first-run failures are clean (B1)", () => {
     expect(code).toBe(1);
     const lines = stderr.split("\n").filter(Boolean);
     expect(lines).toHaveLength(1);
-    expect(lines[0]).toContain("heirloom auth");
+    expect(lines[0]).toContain("nib auth");
     expect(stderr).not.toContain("    at "); // no stack frames
   });
 

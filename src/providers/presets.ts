@@ -14,14 +14,14 @@ export interface ProviderPreset {
 
 /**
  * Built-in provider/model catalog, loaded from models.json (bundled) merged
- * with an optional `~/.heirloom/models.json` user override — see
+ * with an optional `~/.nib/models.json` user override — see
  * ./catalog.ts. Kept as a plain object (not a function) so every existing
  * consumer that reads BUILTIN_PRESETS directly keeps working; it is populated
  * synchronously at module load, same as the previous hardcoded literal.
  *
  * NOTE: OpenAI models carry no `effort` cap — OpenAI's chat-completions API
  * rejects reasoning_effort when function tools are also present, and
- * Heirloom always sends tools.
+ * Nib always sends tools.
  */
 export const BUILTIN_PRESETS: Record<string, ProviderPreset> = Object.fromEntries(
   Object.entries(loadModelCatalog().providers).map(([name, p]) => [
@@ -132,7 +132,7 @@ export function createProvider(name: string, options?: ProviderOptions): Provide
     || "";
   if (!apiKey && preset.keyEnv) {
     throw new Error(
-      `Provider "${name}" requires ${preset.keyEnv} to be set, or run \`heirloom auth\` to store a key in credentials.yaml`,
+      `Provider "${name}" requires ${preset.keyEnv} to be set, or run \`nib auth\` to store a key in credentials.yaml`,
     );
   }
 

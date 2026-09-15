@@ -7,7 +7,7 @@
 // re-running on unchanged upstream data produces a byte-identical file.
 //
 // This is never run by `npm run models:generate` (offline/strict/deterministic)
-// or by `heirloom models update` (online/lenient/user-facing) — it is the
+// or by `nib models update` (online/lenient/user-facing) — it is the
 // explicit, network-touching step a maintainer runs to refresh the checked-in
 // fixture itself. Never run in tests.
 import { readFileSync, writeFileSync } from "node:fs";

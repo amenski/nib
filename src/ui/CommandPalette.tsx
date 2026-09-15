@@ -1,5 +1,5 @@
 /**
- * Heirloom CommandPalette — Fuzzy-searchable command palette (Ctrl+Shift+P).
+ * Nib CommandPalette — Fuzzy-searchable command palette (Ctrl+Shift+P).
  *
  * Displays a searchable list of all available slash commands, modes,
  * and actions. As the user types, results are filtered by fuzzy match.

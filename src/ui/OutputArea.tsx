@@ -1,5 +1,5 @@
 /**
- * Heirloom OutputArea — High-performance scrolling output viewer
+ * Nib OutputArea — High-performance scrolling output viewer
  *
  * Features:
  * - Static (committed) line rendering via Ink's <Static> — flushed once into

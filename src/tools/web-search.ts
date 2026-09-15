@@ -6,7 +6,7 @@ import { searchSearxng, SearxngConfigError } from "./web-search-searxng.js";
 import { fetchAndProcess } from "./web-fetch.js";
 import { sanitizeControlChars } from "./web-fetch-guard.js";
 
-const USER_AGENT = `heirloom-agent/${pkg.version} (+cli)`;
+const USER_AGENT = `nib/${pkg.version} (+cli)`;
 const TIMEOUT_MS = 10_000;
 const BODY_CAP_BYTES = 512 * 1024;
 const OUTPUT_CAP_CHARS = 8_000;
@@ -285,7 +285,7 @@ async function enrichResults(results: WebResult[], ctx: ToolContext): Promise<We
  * Renders results with the untrusted-content wrapper around **web content
  * only**. Tool-generated status text (rate limits, empty results, backend
  * fallback notices) stays outside the delimiters — the banner marks what the
- * backend returned, not what Heirloom says about it (web-search-spec.md,
+ * backend returned, not what Nib says about it (web-search-spec.md,
  * Tier 3 output format). Enriched results gain a `---` separator followed by
  * the extracted excerpt; the total cap is 20 000 chars when any content is
  * present, 8 000 for snippet-only output. Exported for tests (the 20 000-char

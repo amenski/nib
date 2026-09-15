@@ -8,7 +8,7 @@ describe("credentials", () => {
   let yamlPath: string;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "heirloom-creds-test-"));
+    dir = mkdtempSync(join(tmpdir(), "nib-creds-test-"));
     yamlPath = join(dir, "credentials.yaml");
     vi.spyOn(console, "warn").mockImplementation(() => {});
   });
@@ -79,7 +79,7 @@ describe("credentials", () => {
 
   describe("round-trip: auth save -> provider resolution", () => {
     it("resolves a key written by authSaveKey through the shared read path", async () => {
-      const FAKE_HOME = mkdtempSync(join(tmpdir(), "heirloom-roundtrip-"));
+      const FAKE_HOME = mkdtempSync(join(tmpdir(), "nib-roundtrip-"));
       vi.doMock("node:os", async (importOriginal) => {
         const original = await importOriginal<typeof import("node:os")>();
         return { ...original, homedir: () => FAKE_HOME };

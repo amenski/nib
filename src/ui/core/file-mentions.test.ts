@@ -11,7 +11,7 @@ import {
 import { PermissionEngine, ProfileEvaluator, authorize } from "../../permissions/index.js";
 
 describe("scanFileMentionItems", () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "heirloom-mentions-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "nib-mentions-"));
   afterAll(() => fs.rmSync(root, { recursive: true, force: true }));
 
   it("lists files and directories with directories first, skipping noise and dotfiles", () => {
@@ -76,7 +76,7 @@ describe("extractMentionedPaths", () => {
 });
 
 describe("expandFileMentions", () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "heirloom-expand-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "nib-expand-"));
   afterAll(() => fs.rmSync(root, { recursive: true, force: true }));
 
   it("reads resolvable files into <file> blocks and skips the rest", async () => {
@@ -98,7 +98,7 @@ describe("expandFileMentions", () => {
 });
 
 describe("expandFileMentions permission gate", () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "heirloom-gate-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "nib-gate-"));
   afterAll(() => fs.rmSync(root, { recursive: true, force: true }));
 
   // The gate cli.tsx's runAgentTurnBridge wires up: each mention is routed
@@ -138,7 +138,7 @@ describe("expandFileMentions permission gate", () => {
 });
 
 describe("expandFileMentions image mentions", () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "heirloom-images-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "nib-images-"));
   afterAll(() => fs.rmSync(root, { recursive: true, force: true }));
 
   // Real image bytes, not a stand-in: the leading 0x00 is what makes this

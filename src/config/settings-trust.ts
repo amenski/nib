@@ -4,14 +4,14 @@ import { dirname } from "node:path";
 import { resolveHome, type DeepCodeSettings } from "./loader.js";
 
 /**
- * Trust-on-first-use store for project `.heirloom/settings.json` files that
+ * Trust-on-first-use store for project `.nib/settings.json` files that
  * declare execution-capable keys (EXECUTION_CAPABLE_KEYS in loader.ts:
  * statusline, mcpServers, notify, env — see loader.ts for why each is
  * execution-capable). Mirrors skill-trust.json / hooks-trust.json: a JSON
- * file under ~/.heirloom (NIB_HOME honored, same as every other
+ * file under ~/.nib (NIB_HOME honored, same as every other
  * user-level file) keyed by the settings file's absolute path, storing only
  * the full sha256 of the file's content — never the content itself. The
- * user's own global ~/.heirloom/settings.json never consults this store — it
+ * user's own global ~/.nib/settings.json never consults this store — it
  * is trusted implicitly (same split hooks-spec §6 and skill-spec §6 chose for
  * global vs project content).
  *
@@ -69,7 +69,7 @@ export function saveSettingsTrust(store: SettingsTrustStore): void {
     renameSync(tmp, path);
     chmodSync(path, 0o600);
   } catch (err) {
-    process.stderr.write(`heirloom: failed to write settings-trust.json: ${(err as Error).message}\n`);
+    process.stderr.write(`nib: failed to write settings-trust.json: ${(err as Error).message}\n`);
   }
 }
 

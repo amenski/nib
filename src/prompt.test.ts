@@ -25,7 +25,7 @@ describe("loadProjectRules", () => {
   }
 
   beforeEach(() => {
-    projectDir = mkdtempSync(join(tmpdir(), "heirloom-rules-"));
+    projectDir = mkdtempSync(join(tmpdir(), "nib-rules-"));
   });
 
   afterEach(() => {
@@ -85,7 +85,7 @@ describe("loadProjectRules", () => {
 
   it("skips symlinked files that resolve outside the project directory", () => {
     // A secret file living entirely outside the project.
-    const outside = mkdtempSync(join(tmpdir(), "heirloom-outside-"));
+    const outside = mkdtempSync(join(tmpdir(), "nib-outside-"));
     const secret = join(outside, "secret.md");
     writeFileSync(secret, "SHOULD NOT BE INJECTED");
 
@@ -131,7 +131,7 @@ describe("loadProjectResearch", () => {
   }
 
   beforeEach(() => {
-    projectDir = mkdtempSync(join(tmpdir(), "heirloom-research-"));
+    projectDir = mkdtempSync(join(tmpdir(), "nib-research-"));
   });
 
   afterEach(() => {
@@ -170,7 +170,7 @@ describe("loadProjectResearch", () => {
   });
 
   it("skips symlinked files that resolve outside the project directory", () => {
-    const outside = mkdtempSync(join(tmpdir(), "heirloom-research-outside-"));
+    const outside = mkdtempSync(join(tmpdir(), "nib-research-outside-"));
     const secret = join(outside, "secret.md");
     writeFileSync(secret, "SHOULD NOT BE INJECTED");
 
@@ -205,7 +205,7 @@ describe("buildVolatileContext — plan-mode research injection", () => {
   let projectDir: string;
 
   beforeEach(() => {
-    projectDir = mkdtempSync(join(tmpdir(), "heirloom-volatile-"));
+    projectDir = mkdtempSync(join(tmpdir(), "nib-volatile-"));
   });
 
   afterEach(() => {
@@ -237,7 +237,7 @@ describe("buildRepoMap", () => {
   let dir: string;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "heirloom-repomap-"));
+    dir = mkdtempSync(join(tmpdir(), "nib-repomap-"));
   });
 
   afterEach(() => {
@@ -285,7 +285,7 @@ describe("buildRepoMap", () => {
 
 describe("buildStablePreamble — repository map injection", () => {
   it("injects the map under a '# Repository map' header, after project rules", () => {
-    const projectDir = mkdtempSync(join(tmpdir(), "heirloom-preamble-"));
+    const projectDir = mkdtempSync(join(tmpdir(), "nib-preamble-"));
     try {
       mkdirSync(join(projectDirPath(projectDir), "rules"), { recursive: true });
       writeFileSync(
@@ -313,6 +313,36 @@ describe("buildStablePreamble — repository map injection", () => {
   it("omits the map header entirely when no map is provided", () => {
     const out = buildStablePreamble({ workingDir: process.cwd() });
     expect(out).not.toContain("# Repository map");
+  });
+});
+
+describe("buildStablePreamble — default persona", () => {
+  // The product name is part of the model's own self-description, and nothing
+  // asserted it: every other `You are` assertion in the suite targets a mode's
+  // roleDefinition or an agent's persona override — both of which REPLACE this
+  // line — so a rename that left the preamble naming the wrong product would
+  // leave the whole suite green.
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "nib-persona-"));
+  });
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("names Nib when no mode supplies a role definition", () => {
+    expect(buildStablePreamble({ workingDir: dir })).toContain(
+      "You are Nib, a helpful AI coding assistant.",
+    );
+  });
+
+  it("uses a mode's role definition instead, never both", () => {
+    const out = buildStablePreamble({
+      workingDir: dir,
+      mode: { slug: "code", name: "Code", roleDefinition: "You are a senior engineer." },
+    });
+    expect(out).toContain("You are a senior engineer.");
+    expect(out).not.toContain("You are Nib");
   });
 });
 
@@ -360,7 +390,7 @@ describe("getProjectInstructions — CLAUDE.md chain", () => {
   let dir: string;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), "heirloom-instructions-"));
+    dir = mkdtempSync(join(tmpdir(), "nib-instructions-"));
   });
 
   afterEach(() => {
@@ -377,10 +407,10 @@ describe("getProjectInstructions — CLAUDE.md chain", () => {
     expect(getProjectInstructions(dir)).toBe("");
   });
 
-  it("prefers .heirloom/instructions.md over CLAUDE.md", () => {
+  it("prefers .nib/instructions.md over CLAUDE.md", () => {
     writeFile("CLAUDE.md", "repo CLAUDE.md");
-    writeFile(`${PROJECT_DIR_NAME}/instructions.md`, "heirloom instructions");
-    expect(getProjectInstructions(dir)).toContain("heirloom instructions");
+    writeFile(`${PROJECT_DIR_NAME}/instructions.md`, "nib instructions");
+    expect(getProjectInstructions(dir)).toContain("nib instructions");
     expect(getProjectInstructions(dir)).not.toContain("repo CLAUDE.md");
   });
 
@@ -406,7 +436,7 @@ describe("getUserInstructions — ~/.claude/CLAUDE.md", () => {
   let home: string;
 
   beforeEach(() => {
-    home = mkdtempSync(join(tmpdir(), "heirloom-home-"));
+    home = mkdtempSync(join(tmpdir(), "nib-home-"));
   });
 
   afterEach(() => {

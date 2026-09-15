@@ -73,9 +73,9 @@ export function buildWelcomeLines(theme: ThemeContextValue, opts: WelcomeOpts): 
   const thinking = opts.thinkingEnabled ? (opts.reasoningEffort ?? "on") : "off";
   const context = `${opts.model} · thinking ${thinking} · ${formatCwd(opts.cwd)}`;
 
-  // chip() adds its own one-space padding on each side, so passing "HEIRLOOM"
-  // reproduces the original " HEIRLOOM " reverse-video mark.
-  const mark = chip("HEIRLOOM", {
+  // chip() adds its own one-space padding on each side, so passing "NIB"
+  // reproduces the original " NIB " reverse-video mark.
+  const mark = chip("NIB", {
     fg: theme.theme.textInverse,
     bg: theme.theme.accent,
     colorEnabled: theme.colorEnabled,

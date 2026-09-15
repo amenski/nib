@@ -7,8 +7,10 @@ import { STATE_DIR_NAME } from "../config/paths.js";
 
 // Regression coverage for the 2026-08-06 incident: this package is
 // `private: true` and has never been published to npm, but the update
-// checker queried the registry by name regardless — and the real npm
-// `heirloom` is an unrelated photo-backup package (v0.3.0). These tests
+// checker queried the registry by name regardless — and the registry name it
+// asked about (this project's own name at the time, `heirloom`) belongs to an
+// unrelated photo-backup package, v0.3.0. Renaming to `nib` did not remove
+// that trap: npm's `nib` is a stranger's Stylus-library package. These tests
 // verify that a private packageInfo makes both entry points complete
 // no-ops, and clears any pending entry a prior buggy run may have left
 // on disk.
@@ -18,7 +20,7 @@ describe("update-check — private package gate", () => {
   let spawnSpy: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    fakeHome = mkdtempSync(join(tmpdir(), "heirloom-update-check-"));
+    fakeHome = mkdtempSync(join(tmpdir(), "nib-update-check-"));
     spawnSpy = vi.fn();
   });
 
@@ -50,7 +52,7 @@ describe("update-check — private package gate", () => {
 
   it("checkForNpmUpdate: private package never spawns npm view (no registry fetch)", async () => {
     const { checkForNpmUpdate } = await load();
-    await checkForNpmUpdate({ name: "heirloom", version: "0.1.0", private: true });
+    await checkForNpmUpdate({ name: "nib", version: "0.1.0", private: true });
     expect(spawnSpy).not.toHaveBeenCalled();
   });
 
@@ -63,7 +65,7 @@ describe("update-check — private package gate", () => {
     );
 
     const { promptForPendingUpdate, readUpdateState } = await load();
-    await promptForPendingUpdate({ name: "heirloom", version: "0.1.0", private: true });
+    await promptForPendingUpdate({ name: "nib", version: "0.1.0", private: true });
 
     // No render/spawn side effects (render() would need `ink`, but since we
     // never reach it, spawn — used by the install handler — must also be untouched).
@@ -89,11 +91,11 @@ describe("update-check — private package gate", () => {
     });
 
     const { checkForNpmUpdate, readUpdateState } = await load();
-    await checkForNpmUpdate({ name: "heirloom", version: "0.1.0", private: false });
+    await checkForNpmUpdate({ name: "nib", version: "0.1.0", private: false });
 
     expect(spawnSpy).toHaveBeenCalledWith(
       "npm",
-      ["view", "heirloom", "dist-tags.latest", "--json"],
+      ["view", "nib", "dist-tags.latest", "--json"],
       expect.anything(),
     );
     const state = await readUpdateState();

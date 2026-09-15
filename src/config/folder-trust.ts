@@ -88,7 +88,7 @@ export function saveFolderTrust(store: FolderTrustStore): void {
     renameSync(tmp, path);
     chmodSync(path, 0o600);
   } catch (err) {
-    process.stderr.write(`heirloom: failed to write folder-trust.json: ${(err as Error).message}\n`);
+    process.stderr.write(`nib: failed to write folder-trust.json: ${(err as Error).message}\n`);
   }
 }
 

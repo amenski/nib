@@ -104,7 +104,7 @@ export function syncModeModel(shared: any, mode: ModeConfig | undefined): void {
 // real CLI startup (which reads real settings.json / calls process.exit on a
 // non-TTY stdin).
 //
-// Compare REALPATHS, not raw URLs: `npm i -g` installs bin/heirloom as a
+// Compare REALPATHS, not raw URLs: `npm i -g` installs bin/nib as a
 // symlink, so process.argv[1] is the symlink path while import.meta.url is
 // already resolved to dist/cli.js. A raw comparison is false in exactly the
 // case that matters and the installed CLI silently exits without running.
@@ -232,7 +232,7 @@ async function main() {
   }
 
   if (!process.stdin.isTTY) {
-    process.stderr.write("heirloom requires an interactive terminal (TTY). Re-run from a real terminal session.\n");
+    process.stderr.write("nib requires an interactive terminal (TTY). Re-run from a real terminal session.\n");
     process.exit(1);
   }
 
@@ -320,7 +320,7 @@ async function main() {
   if (!detected && !configResult.config.provider && !resolvedApiKey) {
     const hasCreds = Object.values(readCredentialsFile()).some((v) => v);
     if (!hasCreds) {
-      console.log("No API keys found. Set config.env.API_KEY, env var, or run `heirloom auth`.");
+      console.log("No API keys found. Set config.env.API_KEY, env var, or run `nib auth`.");
       if (!parsed.prompt) process.exit(0);
     }
   }
@@ -407,12 +407,12 @@ async function main() {
   hooks.verifyTrust();
 
   // Agent definitions (feature-plans.md §F4): loaded once at startup — project
-  // `.heirloom/agents/` wins over global, like modes — indexed into the stable
+  // `.nib/agents/` wins over global, like modes — indexed into the stable
   // preamble, and resolved by new_task's `agent` parameter at spawn time.
   const agentLoader = new AgentLoader();
   const agents = await agentLoader.load(process.cwd());
 
-  // Custom slash commands (`.heirloom/commands/*.md`): loaded once at startup,
+  // Custom slash commands (`.nib/commands/*.md`): loaded once at startup,
   // project > global like agents/modes, and threaded to App for routing + Tab
   // completion. They are pure prompt templates — no execution side effects — so
   // they need no TOFU trust gate (the prompt they inject is the user's own file).
@@ -767,7 +767,7 @@ async function main() {
     // The permission profile level is NOT in the bar: it is static config
     // (set once in settings), not ambient session state — the bar shows what
     // changes mid-session (mode, posture, effort, context fill). The level is
-    // visible in `heirloom doctor` and /permissions (decided 2026-08-14).
+    // visible in `nib doctor` and /permissions (decided 2026-08-14).
 
     // The model is NOT here — it rides as a chip on the input box's right edge
     // (see buildModelPill), because it is a property of the message you are
@@ -956,7 +956,7 @@ async function main() {
       buildModelPill,
       modelDisplayName,
       statusLineManager,
-      getPromptStr: () => (colorEnabled ? `\u001B[34m\u258C\u001B[0m \u001B[34m\u203A\u001B[0m ` : "heirloom > "),
+      getPromptStr: () => (colorEnabled ? `\u001B[34m\u258C\u001B[0m \u001B[34m\u203A\u001B[0m ` : "nib > "),
       getColorEnabled: () => colorEnabled,
       logSessionEnd,
       onExit: () => logSessionEnd().catch(() => null).then((line) => { if (line) process.stderr.write(line + "\n"); process.exit(0); }),
@@ -1295,21 +1295,21 @@ function extractDecisions(summary: string | null): string[] {
   return summary.split(/(?<=[.!?])\s+/).filter(s => /\b(decided|decision|chose|opted|selected|agreed|resolved|concluded|determined)\b/i.test(s)).map(s => s.trim());
 }
 
-// Dispatch for `heirloom auth ...`. Returns the process exit code.
+// Dispatch for `nib auth ...`. Returns the process exit code.
 //   auth                          → interactive wizard (masked key prompt)
 //   auth list                     → list configured providers
 //   auth logout <provider>        → remove a credential
 //   auth <provider> --api-key <k> → non-interactive save (alias -k), no prompt
 //   auth <provider>               → save key for <provider>: masked prompt on a
 //                                   TTY, or one line read verbatim from a pipe
-//                                   (e.g. `echo KEY | heirloom auth <provider>`)
+//                                   (e.g. `echo KEY | nib auth <provider>`)
 async function runAuth(args: string[]): Promise<number> {
   const sub = args[0];
 
   if (sub === "list") { await authList(); return 0; }
   if (sub === "logout") {
     if (args[1]) { await authLogout(args[1]); return 0; }
-    console.log("Usage: heirloom auth logout <provider>");
+    console.log("Usage: nib auth logout <provider>");
     return 0;
   }
   if (sub === undefined) { await authWizard(); return 0; }
@@ -1325,7 +1325,7 @@ async function runAuth(args: string[]): Promise<number> {
       apiKey = a.slice("--api-key=".length);
     } else {
       console.error(`Unknown argument: ${a}`);
-      console.error("Usage: heirloom auth <provider> [--api-key <key>]");
+      console.error("Usage: nib auth <provider> [--api-key <key>]");
       return 1;
     }
   }
@@ -1375,7 +1375,7 @@ export async function probeSearXngHealth(
 }
 
 export async function runDoctor(): Promise<void> {
-  console.log("heirloom doctor\n");
+  console.log("nib doctor\n");
   try { const { execSync } = await import("node:child_process"); console.log(`  git               ${execSync("git --version", { encoding: "utf-8" }).trim()}`); }
   catch { console.log(`  git               NOT FOUND`); }
   try { const configResult = loadConfig(); console.log(`  settings.json     model: ${configResult.config.model || configResult.config.env?.MODEL || "(not set)"}`); }
@@ -1428,7 +1428,7 @@ export async function handleSlashCore(
   const cmd = input.trim().split(/\s+/)[0];
   switch (cmd) {
     case "/help": {
-      console.log("Commands: /exit, /help, /mode <name>, /clear, /modes, /sessions, /new, /skills, /skill <name>, /model <p/m>, /cost, /context, /usage, /effort, /rename <title>\nUse `heirloom auth` to configure a provider.");
+      console.log("Commands: /exit, /help, /mode <name>, /clear, /modes, /sessions, /new, /skills, /skill <name>, /model <p/m>, /cost, /context, /usage, /effort, /rename <title>\nUse `nib auth` to configure a provider.");
       return;
     }
     case "/cost": {
@@ -1506,7 +1506,7 @@ export async function handleSlashCore(
       return;
     }
     case "/doctor": {
-      // Same information as `heirloom doctor`, but reachable without leaving
+      // Same information as `nib doctor`, but reachable without leaving
       // the session — the shell subcommand is intercepted before the UI starts,
       // so it was the one place you could not check the running session's own
       // settings.
@@ -1521,7 +1521,7 @@ export async function handleSlashCore(
       // Not run in-session: stdin here is owned by useTerminalInput's custom
       // wire, which would swallow the terminal's DECRQM reply bytes before
       // the probe ever saw them.
-      const probeNote = "terminal probe: run `heirloom doctor` from a shell";
+      const probeNote = "terminal probe: run `nib doctor` from a shell";
       console.log(colorEnabled ? `\x1b[2m${probeNote}\x1b[0m` : probeNote);
       if (stallWatchdog) {
         console.log(`profiling  active — stalls so far: ${stallWatchdog.getStallCount()}`);

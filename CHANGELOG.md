@@ -12,8 +12,9 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The project is now **nib** — the writing point of a pen. Same tool; the name
 changes everywhere it is user-visible: the binary, the package, the state
 directory, each project's config directory, and the four environment variables.
-This is a rename release — no other behavior was intended, and the code changes
-below are the ones a rename forces.
+This is a rename release. The security fixes below are what the rename itself
+forced; the entries under Fixed are separate defects closed while the rename was
+underway.
 
 **Breaking: the upgrade steps in "Changed" are required, not optional.**
 
@@ -85,6 +86,18 @@ below are the ones a rename forces.
   set no state-dir override — so each run appended a genuine entry to the
   developer's own `settings.json`. Older than this release, but the rename is
   what made it visible, by moving where it landed. It now points at a temp dir.
+- **The checkpoint shadow repo had no bound on what it could stage or keep.**
+  `save()` ran `git add -A` over the entire workspace with nothing but an
+  extension-based exclude list, and nothing ever gc'd or pruned the per-session
+  repo. Incident 2026-08-17: two sessions whose cwd was `$HOME` (235 GB) staged
+  14 GB, and an interrupted repack stranded 14.5 GB and 12.4 GB `tmp_pack` files
+  under `checkpoints/` — 26 GB, none of it reachable, none of it ever collected.
+  Three guards now: a 5000-entry cap counted with `git status --porcelain -uall`
+  (`-uall` is load-bearing — the default collapses an untracked directory to a
+  single line and would have read `$HOME` as 206 entries, so the cap would never
+  have fired), `gc.auto=0` on every shadow-repo git invocation so a checkpoint
+  can never trigger a repack, and a sweep of stranded `tmp_pack_*` at init.
+  See [docs/session-spec.md](docs/session-spec.md) §8.
 
 ### Tests
 

@@ -1,6 +1,6 @@
 # Session Storage Specification
 
-**Status:** current · verified 2026-08-13 · covers `src/sessions/store.ts`, `src/sessions/redact.ts`
+**Status:** current · verified 2026-09-15 · covers `src/sessions/store.ts`, `src/sessions/redact.ts`, `src/checkpoints/index.ts`
 
 ## 1. Overview
 
@@ -272,6 +272,29 @@ Checkpoints live in the shadow Git repo, keyed by session ID
 records the message index at checkpoint time. `restore full` truncates the
 effective conversation to that index — implemented by appending a `state`
 record `{"truncateAt": N}`, never by deleting lines.
+
+### Resource bounds (`src/checkpoints/index.ts`)
+
+The shadow repo is not allowed to grow without limit; two guards enforce that.
+
+- **Entry cap.** `save()` counts `git status --porcelain -uall` and skips the
+  checkpoint above `MAX_CHECKPOINT_ENTRIES` (5000), printing one stderr notice
+  per session. `-uall` is load-bearing, not cosmetic: the default
+  `--porcelain` collapses an untracked directory to one line, so `$HOME`
+  reports 206 entries by default and 1,146,894 with `-uall` (this repo: 404).
+  A cap on the default count would never have fired on the case it exists to
+  prevent. A capped workspace simply has no checkpoints, so `/undo` reports
+  nothing to undo rather than restoring partially.
+- **No repacking.** `gc.auto=0` is applied to every shadow-repo git
+  invocation, and `initialize()` sweeps any stranded `tmp_pack_*`. A killed
+  `git repack` writes its output to `tmp_pack_<rand>` and only renames it on
+  success, so an interrupted one leaves a full-size dead file that nothing
+  would ever collect.
+
+Incident 2026-08-17: two sessions whose cwd was `$HOME` (235 GB) hit both gaps
+at once — `git add -A` staged 14 GB, and an interrupted repack stranded
+14.5 GB and 12.4 GB `tmp_pack` files, 26 GB total. Neither had any bound before
+this.
 
 ## 9. CLI surface
 

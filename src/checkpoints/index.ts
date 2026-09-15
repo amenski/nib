@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { existsSync, mkdirSync, appendFileSync } from "node:fs";
+import { existsSync, mkdirSync, appendFileSync, readdirSync, unlinkSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 import { resolveHome } from "../config/loader.js";
@@ -27,7 +27,32 @@ const GIT_CONFIG_OVERRIDES = [
   "-c", "core.autocrlf=false",
   "-c", "core.fileMode=false",
   "-c", "init.defaultBranch=main",
+
+  // Never let git repack the shadow repo. `gc --auto` fires after `commit` once
+  // the loose-object count trips gc.auto, and repack writes its output to
+  // `tmp_pack_*`, renaming it to `pack-<hash>.pack` only on success. Interrupt
+  // it — the user quits, the machine sleeps — and the temp file is stranded
+  // forever, because nothing here ever gc's or prunes the shadow repo to
+  // collect it. Incident 2026-08-17: two sessions whose cwd was $HOME left
+  // 14.5 GB and 12.4 GB dead packs under checkpoints/. The repo is per-session
+  // and short-lived, so it has nothing to gain from packing anyway.
+  "-c", "gc.auto=0",
 ];
+
+// A workspace presenting more entries than this to a fresh shadow repo is not a
+// project being edited — it is whatever directory happened to be the cwd. This
+// is the only bound on what `add -A` below can stage: the info/exclude list
+// filters by extension, so without a cap the ceiling is whatever the workspace
+// contains, not whatever the agent touched. Same incident as above: cwd was
+// $HOME (235 GB), and the extension filter let 14 GB of it through.
+//
+// Calibration, measured against the two real trees: this repo presents 404
+// entries, $HOME presents 1,146,894. 5000 is ~12x a normally-sized project and
+// four orders of magnitude below the pathological case. Note this bounds ENTRY
+// COUNT, not bytes — a workspace of a few very large files still slips past —
+// which is why gc.auto=0 above and sweepStaleTempPacks() exist: together they
+// bound the consequence instead.
+const MAX_CHECKPOINT_ENTRIES = 5000;
 
 const execFileAsync = promisify(execFile);
 
@@ -35,6 +60,7 @@ export class CheckpointManager {
   private shadowDir: string;
   private workspaceDir: string;
   private initialized = false;
+  private warnedUnbounded = false;
   private _lock: Promise<void> = Promise.resolve();
 
   constructor(sessionId: string, workspaceDir?: string, home: string = resolveHome()) {
@@ -79,7 +105,45 @@ export class CheckpointManager {
       }
     }
 
+    this.sweepStaleTempPacks();
+
     this.initialized = true;
+  }
+
+  // A repack killed mid-write leaves its temp pack behind permanently (see
+  // gc.auto=0 above for the mechanism and the incident). `gc.auto=0` stops new
+  // ones being created; this collects the ones already sitting in a repo this
+  // session is about to use, so resuming a session heals its own residue
+  // instead of carrying it forever. Deliberately outside the `existsSync`
+  // branch above — the residue lives in shadow repos initialized long before
+  // this code existed.
+  //
+  // Scope, stated plainly: this only touches the repo for THIS session id. The
+  // 26 GB stranded by the two dead $HOME sessions of 2026-08-17 is not
+  // reclaimed here — those ids are never constructed again — and still needs
+  // removing by hand.
+  //
+  // Unconditional, with no age check: the shadow repo is per-session, a session
+  // id is unique per run, and gc.auto=0 means no checkpoint-driven repack can be
+  // in flight. A `tmp_pack_*` here is dead by construction. The files are mode
+  // 0444, but unlink needs write permission on the directory, not the file.
+  private sweepStaleTempPacks(): void {
+    const packDir = join(this.shadowDir, ".git", "objects", "pack");
+    let names: string[];
+    try {
+      names = readdirSync(packDir);
+    } catch {
+      return; // no pack dir yet — nothing has ever been packed here
+    }
+
+    for (const name of names) {
+      if (!name.startsWith("tmp_pack_")) continue;
+      try {
+        unlinkSync(join(packDir, name));
+      } catch {
+        // Read-only, in use, or already gone — never fatal to a checkpoint.
+      }
+    }
   }
 
   // Async by hard-won necessity, not style. The 2026-08-06 stall profile
@@ -113,6 +177,19 @@ export class CheckpointManager {
     }
   }
 
+  // Once per session, not once per call: tools/edit.ts saves after every write,
+  // so an unguarded notice would repeat on every single tool call. stderr is the
+  // established channel for this class of notice (see config/folder-trust.ts).
+  private warnUnboundedWorkspace(): void {
+    if (this.warnedUnbounded) return;
+    this.warnedUnbounded = true;
+    process.stderr.write(
+      `nib: checkpoints are off for this session — the workspace has more than ` +
+        `${MAX_CHECKPOINT_ENTRIES} changed or untracked entries, so snapshotting ` +
+        `it would be unbounded. /undo is unavailable here.\n`,
+    );
+  }
+
   async save(message?: string): Promise<string | null> {
     const prev = this._lock;
     let release: () => void;
@@ -122,8 +199,24 @@ export class CheckpointManager {
     try {
       await this.initialize();
 
-      const status = await this.gitSilent(["status", "--porcelain"]);
+      // -uall is load-bearing, not tidiness. Plain --porcelain collapses an
+      // untracked directory into ONE entry while `add -A` below recurses into
+      // all of it — so the default undercounts by exactly the factor that
+      // matters here. Measured: $HOME reports 206 entries by default and
+      // 1,146,894 under -uall. A 5000 cap on the default count would never have
+      // fired on the very incident it exists to prevent.
+      //
+      // (The 10 MB maxBuffer on git() is a second, coarser backstop: at ~40
+      // bytes an entry it trips around 250k, so a tree that size returns null
+      // from the ENOBUFS throw before the cap is ever compared. Same outcome —
+      // nothing is staged — just without the notice.)
+      const status = await this.gitSilent(["status", "--porcelain", "-uall"]);
       if (!status) return null;
+
+      if (status.split("\n").length > MAX_CHECKPOINT_ENTRIES) {
+        this.warnUnboundedWorkspace();
+        return null;
+      }
 
       await this.git(["add", "-A"]);
 

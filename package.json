@@ -1,10 +1,10 @@
 {
-  "name": "heirloom",
-  "version": "0.4.2",
+  "name": "nib",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "bin": {
-    "heirloom": "dist/cli.js"
+    "nib": "dist/cli.js"
   },
   "scripts": {
     "build": "tsup",
@@ -44,16 +44,16 @@
     "typescript": "^5.8.0",
     "vitest": "^4.1.10"
   },
-  "description": "Heirloom — a terminal AI coding agent you own: bring your own key, readable codebase, no telemetry.",
+  "description": "Nib — a terminal AI coding agent you own: bring your own key, readable codebase, no telemetry.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/amenski/heirloom-agent.git"
+    "url": "git+https://github.com/amenski/nib.git"
   },
   "bugs": {
-    "url": "https://github.com/amenski/heirloom-agent/issues"
+    "url": "https://github.com/amenski/nib/issues"
   },
-  "homepage": "https://github.com/amenski/heirloom-agent#readme",
+  "homepage": "https://github.com/amenski/nib#readme",
   "engines": {
     "node": ">=20"
   },

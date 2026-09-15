@@ -183,8 +183,8 @@ export class PermissionEngine {
       toolName === "web_fetch" ||
       (toolName === "view_image" && classifyImageSource(String(a.url ?? "")).kind === "remote");
 
-    const internal = toolName === "run_bash"
-      ? this.resolveBash(String(a.command ?? ""))
+    const internal = toolName === "run_bash" || toolName === "run_bash_background"
+      ? this.resolveBash(toolName, String(a.command ?? ""))
       : usesDomainSubject
         ? this.resolveSubject(toolName, buildSubject(toolName, a))
         : this.resolveSubject(toolName, this.relativizeSubject(buildSubject(toolName, a)));
@@ -343,16 +343,16 @@ export class PermissionEngine {
     return { tool: toolName, kind: "any", pattern: "", action: "ask", origin: "builtin-guarded" };
   }
 
-  private resolveBash(command: string): InternalResolveResult {
+  private resolveBash(toolName: "run_bash" | "run_bash_background", command: string): InternalResolveResult {
     const { segments, wasUnresolved } = buildBashSubject(command);
 
     if (segments.length === 0) {
       return { action: "ask", wasUnresolved: true };
     }
 
-    let combined: InternalResolveResult = this.resolveSubject("run_bash", { tool: "run_bash", text: segments[0] });
+    let combined: InternalResolveResult = this.resolveSubject(toolName, { tool: toolName, text: segments[0] });
     for (const segment of segments.slice(1)) {
-      const result = this.resolveSubject("run_bash", { tool: "run_bash", text: segment });
+      const result = this.resolveSubject(toolName, { tool: toolName, text: segment });
       combined = this.combineMostRestrictive(combined, result);
     }
 
@@ -371,7 +371,10 @@ export class PermissionEngine {
   private resolveSubject(toolName: string, subject: PermissionSubject): InternalResolveResult {
     const outOfWorkspaceRule = this.outOfWorkspaceGuardedRule(toolName, subject);
     const boundaryRule = this.writeBoundaryRule(toolName, subject);
-    const allRules = [...BUILTIN_DESTRUCTIVE_RULES, ...BUILTIN_GUARDED_RULES, ...this.configRules, ...this.sessionRules];
+    const builtinRules = [...BUILTIN_DESTRUCTIVE_RULES, ...BUILTIN_GUARDED_RULES].map((rule) =>
+      toolName === "run_bash_background" && rule.tool === "run_bash" ? { ...rule, tool: toolName } : rule,
+    );
+    const allRules = [...builtinRules, ...this.configRules, ...this.sessionRules];
     const matches = allRules.filter((r) => patternMatches(r, subject));
     // Spliced in alongside the static guarded rules (not short-circuited)
     // so they participate in the same tier/specificity resolution as any
@@ -490,8 +493,8 @@ export class PermissionEngine {
    */
   buildDefaultRule(toolName: string, args?: Record<string, unknown>): PermissionRule {
     const a = args ?? {};
-    if (toolName === "run_bash") {
-      return { tool: "run_bash", kind: "exact", pattern: String(a.command ?? ""), action: "allow", origin: "config" };
+    if (toolName === "run_bash" || toolName === "run_bash_background") {
+      return { tool: toolName, kind: "exact", pattern: String(a.command ?? ""), action: "allow", origin: "config" };
     }
     if (toolName === "web_fetch" || toolName === "view_image") {
       const raw = String(a.url ?? "");

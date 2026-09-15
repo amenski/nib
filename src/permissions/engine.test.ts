@@ -271,6 +271,10 @@ describe("PermissionEngine.resolve", () => {
       expect(engine.resolve("run_bash", { command: "rm -rf / --no-preserve-root" }).action).toBe("deny");
     });
 
+    it("applies the same destructive policy to background Bash", () => {
+      expect(engine.resolve("run_bash_background", { command: "rm -rf / --no-preserve-root" }).action).toBe("deny");
+    });
+
     it("denies git push --force by default", () => {
       expect(engine.resolve("run_bash", { command: "git push --force origin main" }).action).toBe("deny");
     });
@@ -568,11 +572,11 @@ describe("PermissionEngine.resolve", () => {
 
     it("does not let an empty extracted subject create a session-wide allow", () => {
       const built = engine.buildDefaultRule("run_bash_background", { command: "echo safe" });
-      expect(built).toEqual({ tool: "run_bash_background", kind: "exact", pattern: "", action: "allow", origin: "config" });
+      expect(built).toEqual({ tool: "run_bash_background", kind: "exact", pattern: "echo safe", action: "allow", origin: "config" });
 
       engine.approveForSession(built);
 
-      expect(engine.resolve("run_bash_background", { command: "rm -rf ~/projects" }).action).toBe("ask");
+      expect(engine.resolve("run_bash_background", { command: "rm -rf ~/projects" }).action).toBe("deny");
     });
 
     it("does not persist an empty extracted subject as an allow rule", () => {
@@ -605,7 +609,7 @@ describe("PermissionEngine.resolve", () => {
         "/workspace",
       );
 
-      expect(engine.resolve("run_bash_background", { command: "rm -rf ~/projects" }).action).toBe("ask");
+      expect(engine.resolve("run_bash_background", { command: "rm -rf ~/projects" }).action).toBe("deny");
     });
 
     it("broadens an external path to a parent-directory glob", () => {

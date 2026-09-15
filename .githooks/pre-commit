@@ -4,7 +4,9 @@
 # are never echoed to the terminal.
 private_registry_token='codeart'
 private_registry_token="${private_registry_token}fact"
-if git diff --cached -- . ':(exclude).githooks/pre-commit' | grep -Eiq "${private_registry_token}|[[:digit:]]{12}|[[:alnum:]-]+\.(internal|corp)([^[:alnum:]]|$)"; then
+if git diff --cached -- . ':(exclude).githooks/pre-commit' \
+     | grep '^+' | grep -v '^+++' \
+     | grep -Eiq "${private_registry_token}|[[:digit:]]{12}|[[:alnum:]-]+\.(internal|corp)([^[:alnum:]]|$)"; then
   echo "" >&2
   echo "Blocked: private registry / cloud account identifier / internal domain found in staged changes." >&2
   echo "Scrub it before committing." >&2

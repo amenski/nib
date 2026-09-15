@@ -6,7 +6,7 @@ together (user, 2026-08-17).
 
 ## Problem
 
-Heirloom contains writes two ways that draw the boundary in **different
+Nib contains writes two ways that draw the boundary in **different
 places**, so the effective limit depends on which tool the model picks:
 
 - **Seatbelt** (`run_bash`, jobs): kernel-enforced, writes allowed only under
@@ -27,12 +27,12 @@ Consequences:
 
 ## Why the invariant is right — and where it over-reaches
 
-"Explicit rules narrow only" exists so an **untrusted project** `.heirloom/
+"Explicit rules narrow only" exists so an **untrusted project** `.nib/
 settings.json` cannot grant itself the filesystem — the same escalation gated in
 `1bc871c`. That must stay.
 
 But it conflates two sources. The user widening the write-set in their **global**
-`~/.heirloom/settings.json` is trusted; a **project** doing it is not. The
+`~/.nib/settings.json` is trusted; a **project** doing it is not. The
 invariant rejects both. Claude Code's model already draws exactly this line:
 user settings can grant what project settings cannot.
 
@@ -71,7 +71,7 @@ New setting, distinct from `permissionProfile.fs` on purpose: overloading `fs`
 would punch a hole in a rule *defined* as narrowing-only. Keeping it separate
 keeps the project-narrowing semantics clean and self-documenting.
 
-    // ~/.heirloom/settings.json  (GLOBAL only)
+    // ~/.nib/settings.json  (GLOBAL only)
     "sandbox": { "enabled": true, "writeRoots": ["~/SecondBrain/AgentMemory"] }
 
 - **Read from `globalRaw` only.** `sandbox.writeRoots` in a **project** file is
@@ -92,7 +92,7 @@ idiom). `src/cli.tsx` and `src/exec-runner.ts` both call it.
 ## Non-goals / invariants preserved
 
 - Do not weaken or remove Seatbelt — this unifies, it doesn't delete a layer.
-- Project `.heirloom/settings.json` gains **no** new widening power.
+- Project `.nib/settings.json` gains **no** new widening power.
 - `strict-sandbox` stays read-only on both paths.
 - Realpath discipline: a symlink inside the workspace pointing out must not
   escape, on either path.
@@ -118,5 +118,5 @@ idiom). `src/cli.tsx` and `src/exec-runner.ts` both call it.
 It closes the disagreement at its root (one set, two enforcers), makes the user's
 own trusted config able to widen the boundary (the SecondBrain need), and gives a
 hostile project exactly zero new power — the distinction Claude Code's model draws
-and heirloom's current invariant misses. Nothing here relaxes project-side
+and nib's current invariant misses. Nothing here relaxes project-side
 narrowing; it adds a trusted, global, clearly-named grant alongside it.

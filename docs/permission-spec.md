@@ -38,7 +38,7 @@ A **rule** is `{ tool, kind, pattern, action, origin }`:
 - `origin` — `"builtin-destructive" | "builtin-guarded" | "config" | "session"`.
   Determines override eligibility and forced-narrowing behavior.
 
-On disk (`.heirloom/settings.json`), `permissions.rules` is an array of
+On disk (`.nib/settings.json`), `permissions.rules` is an array of
 `{ tool, pattern, action }`; `kind` is inferred at load time — a `:*` pattern
 suffix means `prefix` (stripped before matching), a pattern containing `*`
 or `?` means `glob`, an empty string means `any`, anything else is `exact`.
@@ -121,7 +121,7 @@ it from the raw command text.
 
 1. Collect all rules matching the subject, across three sources: builtin
    rules (destructive + guarded, always present) → `configRules` (loaded
-   from `.heirloom/settings.json`, global then project, in append order) →
+   from `.nib/settings.json`, global then project, in append order) →
    `sessionRules` (in-memory, this process only, appended in approval
    order).
 2. If zero rules match: fall through to `defaultMode` (`allowAll` → allow,
@@ -243,7 +243,7 @@ Chosen per-approval from the 4-option prompt:
   `sessionRules` array (`origin: "session"`). Never written to disk, cleared
   on process restart.
 - **Always** — `engine.approveAlways(rule)` appends to `configRules` (live
-  immediately, no reload needed) *and* persists to `.heirloom/settings.json`
+  immediately, no reload needed) *and* persists to `.nib/settings.json`
   via an atomic write (temp file + `renameSync`), preserving all other
   top-level JSON keys.
 

@@ -47,7 +47,7 @@ detail with a follow-up call.
 ### 4f. RepoMap budgeting
 
 Given a fixed token budget, include as many high-rank symbols as fit, then
-stop. Heirloom caps the whole map at 4 KB (`REPOMAP_BYTE_BUDGET`,
+stop. Nib caps the whole map at 4 KB (`REPOMAP_BYTE_BUDGET`,
 `src/prompt.ts`) and snapshots it per session so it never breaks prefix
 caching.
 

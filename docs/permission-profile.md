@@ -14,7 +14,7 @@ owner approves or redirects.
 
 ## 1. Problem & context
 
-Heirloom's permission architecture today is the Claude-Code family:
+Nib's permission architecture today is the Claude-Code family:
 pattern rules + approval posture + guarded tiers (permission-spec.md,
 security-spec.md). Its protections are *behavioral* — they match what the
 model asked to do (`run_bash` command text, edit-tool paths via
@@ -122,7 +122,7 @@ is in both lists the more specific entry wins, ties go to deny.
   sub-agents inherit the boundary together with the rule engine (§6). No
   parallel context channel.
 - The status line does NOT show the level (reversed 2026-08-14): static
-  config belongs in `heirloom doctor` and `/permissions`, not the bar —
+  config belongs in `nib doctor` and `/permissions`, not the bar —
   the bar shows only session-mutable state.
 - M.1 (in this phase): the approval overlay's edit-in-workspace condition is
   profile-derived — `ProfileEvaluator.editTargetInWriteSet`
@@ -327,7 +327,7 @@ startup notice. This mirrors Codex's backend choice and finally closes the
   **byte-for-byte today's behavior** (layers 2–3 only). The feature is
   additive; nothing existing changes until the owner sets a level.
 - Setting a level below `unrestricted` is a deliberate, visible change —
-  visible in `heirloom doctor` and `/permissions`, not the status line
+  visible in `nib doctor` and `/permissions`, not the status line
   (the earlier status-line segment was removed 2026-08-14: the level is
   static config, and the bar shows only session-mutable state).
 

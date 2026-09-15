@@ -19,7 +19,7 @@ Two changes, shipped as two independent phases (phase 1 is useful alone):
 1. **SearXNG backend (opt-in, user-hosted).** When the user configures a
    SearXNG instance URL, `web_search` queries its JSON API instead of Bing
    RSS. Bing RSS remains the keyless default and the automatic fallback when
-   SearXNG is unreachable. Heirloom still ships no scraper, no key, no
+   SearXNG is unreachable. Nib still ships no scraper, no key, no
    backend — the user runs SearXNG themselves (Docker, one container).
 2. **Inline content enrichment.** After a successful search (either backend),
    fetch the top N result pages concurrently, extract readable text via the
@@ -44,7 +44,7 @@ them in web-search-spec.md as dated status notes and update the rules section:
   `web_fetch` only.
 - Rules 1 (no new deps), 5 (no API keys), 7 (no LLM query prep), 8
   (guarded-tier permission, headless-deny) are **unchanged and binding**.
-- Rule 3 note: SearXNG is not a SERP scrape by Heirloom — it is a JSON API of
+- Rule 3 note: SearXNG is not a SERP scrape by Nib — it is a JSON API of
   a service the user operates. No change to "no HTML scraping in core."
 
 ## Phase 1 — SearXNG backend

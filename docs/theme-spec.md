@@ -4,7 +4,7 @@
 
 ## 1. Overview
 
-Heirloom's theme system lives in `src/ui/theme.ts`: a fully offline,
+Nib's theme system lives in `src/ui/theme.ts`: a fully offline,
 config-driven color engine with ~20 semantic slots, a 19-color
 `SyntaxColors` set, and a `statusBar` sub-palette — richer than most
 terminal-CLI theme systems. Colors are 8-bit ANSI codes (0–255) for broad
@@ -64,7 +64,7 @@ color via the `colorEnabled` gate.
 ## 4. Rejected approaches
 
 - PR #132's thinner 13-token `ThemeTokens` model and `resolver.ts` —
-  explicitly rejected: Heirloom's model is strictly richer and already
+  explicitly rejected: Nib's model is strictly richer and already
   integrated.
 
 ## 5. Known minor issues

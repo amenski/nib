@@ -4,7 +4,7 @@
 
 ## Purpose
 
-This is the canonical index of heirloom's documentation — the definitive
+This is the canonical index of nib's documentation — the definitive
 reference for developers, maintainers, and new contributors. Start here,
 then follow the reading paths below.
 
@@ -75,7 +75,7 @@ then follow the reading paths below.
 | [security-spec.md](./security-spec.md) | Threat model T1–T14, verified-fixed items |
 | [security-destructive-matching.md](./security-destructive-matching.md) | Destructive-matching hardening research (closed) |
 | [skill-spec.md](./skill-spec.md) | Agent Skills loading, trigger, trust |
-| [rules-spec.md](./rules-spec.md) | `.heirloom/rules/` + research notes |
+| [rules-spec.md](./rules-spec.md) | `.nib/rules/` + research notes |
 | [notify-spec.md](./notify-spec.md) | notify hook env contract |
 | [hooks-spec.md](./hooks-spec.md) | Lifecycle hooks contract: events, payload, exit codes, trust model |
 | [web-search-spec.md](./web-search-spec.md) | Bing RSS search tier + anti-drift rules |
@@ -126,7 +126,7 @@ then follow the reading paths below.
 
 ## Known gaps & unverified assumptions (as of 2026-08-13)
 
-1. ~~**`HEIRLOOM_HOME` is only partially honored.**~~ **Resolved 2026-08-13**:
+1. ~~**`NIB_HOME` is only partially honored.**~~ **Resolved 2026-08-13**:
    `resolveHome()` is now the single source of truth and every subsystem
    (credentials, sessions, checkpoints, memory included) routes through
    it.

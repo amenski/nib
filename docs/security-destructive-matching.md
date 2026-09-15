@@ -5,7 +5,7 @@
 ## 1. Overview
 
 The deep-dive behind the destructive-tier matching hardening (formerly
-D3/T2, "`rm -rf` evadable via flag reordering"). Heirloom has no sandbox —
+D3/T2, "`rm -rf` evadable via flag reordering"). Nib has no sandbox —
 **the permission prompt is the only control** (security-spec §6) — so the
 matcher that classifies a shell command as destructive/guarded is
 load-bearing, and must not be evadable by trivially rewriting a command
@@ -31,7 +31,7 @@ The canonical case: a rule for `rm -rf /` must also catch every equivalent:
 | `\rm -rf /`, `command rm -rf /` | escape / builtin indirection |
 | `echo / \| xargs rm -rf` | indirection — `rm` never appears as first token |
 
-## 3. What heirloom does today
+## 3. What nib does today
 
 Three cooperating pieces (all in `src/permissions/`):
 
@@ -95,7 +95,7 @@ tiers: (1) argv-level parse-then-normalize for the permission/UX layer, and
 |---|---|---|---|---|---|
 | Ordered string-prefix (naive) | ❌ | ❌ | ❌ | ❌ | No |
 | Token-set membership | ⚠️ if declustered | ⚠️ needs map | ⚠️ | ❌ | Weak |
-| **Flag-cluster normalization** ← Heirloom | ✅ | ✅ with map | ✅ | ❌ | Weak/UX |
+| **Flag-cluster normalization** ← Nib | ✅ | ✅ with map | ✅ | ❌ | Weak/UX |
 | Full shell parse / AST | ✅ | ✅ | ✅ | ✅ | Better UX, still not enforcement |
 | Deny-by-default / allowlist | ✅ | ✅ | ✅ | ✅ | Stronger posture |
 | **OS sandbox / capability isolation** | contains, not matches | — | — | — | **Yes** |

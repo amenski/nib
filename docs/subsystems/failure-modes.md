@@ -39,7 +39,7 @@ read-before-write.
 
 ### Degradation rules
 
-- **One instance per repo.** Two concurrent heirlooms in one workingDir
+- **One instance per repo.** Two concurrent nibs in one workingDir
   race on files and checkpoints; not detected in v1 (a lockfile is trivial
   later).
 - **Platform: macOS/Linux.** `run_bash` assumes a POSIX shell; Windows is

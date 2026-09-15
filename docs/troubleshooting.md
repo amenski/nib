@@ -4,22 +4,22 @@
 
 ## Setup & keys
 
-- **`heirloom auth`** writes `~/.heirloom/credentials.yaml` (mode `0600`,
+- **`nib auth`** writes `~/.nib/credentials.yaml` (mode `0600`,
   auto-chmoded if looser — `src/config/credentials.ts`). Masked prompt on a
   TTY, `--api-key`/`-k` for scripts, piped stdin for CI.
 - **Env-var keys**: `DEEPSEEK_API_KEY`, `OPENAI_API_KEY`,
   `OPENROUTER_API_KEY`, `GROQ_API_KEY`. Ollama needs no key (local).
-- **"No provider key resolvable"** → exit 1. `heirloom doctor` (or
+- **"No provider key resolvable"** → exit 1. `nib doctor` (or
   `/doctor` in the TUI) shows the configured provider/model and where keys
   are coming from.
 - **Keys in `settings.json` `env.API_KEY`** work but are discouraged —
   settings.json is meant to be shareable (config-spec.md §8).
-- **`HEIRLOOM_HOME`** relocates the whole install — config, credentials,
+- **`NIB_HOME`** relocates the whole install — config, credentials,
   sessions, checkpoints, and memory all honor it (config-spec.md §15).
 
 ## Terminal requirements
 
-- The interactive TUI requires a TTY: without one you get `heirloom
+- The interactive TUI requires a TTY: without one you get `nib
   requires an interactive terminal (TTY)...` and exit 1.
 - `-p/--print` headless mode needs no TTY; stdout stays pipeable, errors
   go to stderr (cli-spec.md §3).
@@ -43,7 +43,7 @@
 
 - **Where's my profile level?** — the PermissionProfile level is NOT on
   the status bar (static config, decided 2026-08-14); it's visible in
-  `heirloom doctor` and `/permissions`.
+  `nib doctor` and `/permissions`.
 - **Edits stopped prompting** — under `workspace-write`, edits inside the
   workspace auto-allow (the M.1 overlay condition); `strict-sandbox` never
   auto-allows edits. Deliberate, not a bug (permission-profile.md §10(d)).
@@ -93,8 +93,8 @@
 
 - **Input stutters while the agent streams** — the known freeze taxonomy
   lives in [input-stall-diagnosis.md](./input-stall-diagnosis.md)
-  (resolved; kept as reference). Watchdog: `HEIRLOOM_PROFILE=1`.
-- **Slow links** — `refresh: "slow"` in settings (or `HEIRLOOM_REFRESH=
+  (resolved; kept as reference). Watchdog: `NIB_PROFILE=1`.
+- **Slow links** — `refresh: "slow"` in settings (or `NIB_REFRESH=
   slow`) lowers TUI repaint cadence (config-spec.md §4).
 
 ## MCP
@@ -110,8 +110,8 @@
   split on the first slash (`openrouter/anthropic/claude-sonnet-4.6`).
   The bundled catalog (`src/providers/models.json`) ships sandbox IDs —
   it is authoritative for what this repo accepts (provider-spec.md §4).
-- **"Unknown provider/model"** — `heirloom doctor` shows what's
-  configured; `~/.heirloom/models.json` deep-merges over the bundled
+- **"Unknown provider/model"** — `nib doctor` shows what's
+  configured; `~/.nib/models.json` deep-merges over the bundled
   catalog for custom entries.
 - `/effort` values come from each model's `effort.values` in the catalog.
 
@@ -121,7 +121,7 @@ From `src/ui/test-helpers.ts` (UI tests):
 
 - **Never assert raw ANSI** — `ink-testing-library` re-encodes escapes;
   assert on the visible shape via `stripAnsi` (see
-  `heirloom-agent/ink-reencodes-ansi` memory note).
+  `ink-reencodes-ansi` SecondBrain memory note).
 - **No repaint under timers** — drive frames with `rerender()`/stdin plus
   flush waits; don't `setTimeout`-poll a frame.
 - **Run `CI=true npm test` locally** — ANSI gating is CI-conditional.

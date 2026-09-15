@@ -16,7 +16,7 @@
 
 Lifecycle hooks: user-configured shell commands fired on agent events. The
 contract adapts Claude Code's event/exit-code model and Gemini's simpler
-matcher syntax to heirloom's loop (feature-plans.md §4). Hooks are an
+matcher syntax to nib's loop (feature-plans.md §4). Hooks are an
 **opt-in, untrusted execution surface** — the trust model (§6) and the
 security-spec T15 threat entry ship with the code.
 
@@ -176,11 +176,11 @@ narrow what survives. The deny-absolute invariant is untouched: hook
 
 ## 6. Trust model (TOFU)
 
-- **Global settings hooks** (the user's own `~/.heirloom`) are trusted
+- **Global settings hooks** (the user's own `~/.nib`) are trusted
   implicitly.
-- **Project-declared hooks** (project `.heirloom/settings.json`): at
+- **Project-declared hooks** (project `.nib/settings.json`): at
   startup, compute the content-hashed, project-scoped trust key and
-  compare against `~/.heirloom/hooks-trust.json` (mirrors
+  compare against `~/.nib/hooks-trust.json` (mirrors
   skill-trust.json). Unseen keys → one ask-tier confirmation listing
   event + matcher (tool events) + the full command (y = trust forever,
   n = skip this session). **Headless: untrusted hooks are skipped with a

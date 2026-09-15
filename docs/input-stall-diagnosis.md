@@ -4,7 +4,7 @@ Status: **resolved — kept as the freeze-taxonomy reference.** Fix D (committed
 active render split) shipped 2026-08-03; fix A (`<Static>` one-shot flush of
 committed output) shipped 2026-08-06 (`src/ui/OutputArea.tsx`). If a stall
 reappears, this doc's symptom/root-cause taxonomy is the starting point —
-watchdog: `HEIRLOOM_PROFILE=1`.
+watchdog: `NIB_PROFILE=1`.
 
 ## Symptom
 

@@ -3,10 +3,10 @@
 **Status:** forward-looking gap analysis · **shipped 2026-09-14: #3 custom slash commands, #4 flag parity (max-turns, allowed/disallowed tools, --name)** · verified 2026-08-10 · not a spec — items land in specs only when shipped. See [improvement-roadmap.md](./improvement-roadmap.md).
 
 
-Status (**2026-09-14**): research-backed comparison of Heirloom's surface against
+Status (**2026-09-14**): research-backed comparison of Nib's surface against
 Claude Code's current CLI, from the official docs (`docs.anthropic.com/en/docs/
 claude-code/cli-reference` + `/headless`, fetched 2026-08-10; the hooks page
-redirects to `code.claude.com/docs/en/hooks`). Every "Heirloom today" cell was
+redirects to `code.claude.com/docs/en/hooks`). Every "Nib today" cell was
 verified against the code in this tree, not memory. This doc **is not a
 commitment to build everything** — each item carries a recommendation, and items
 get promoted to `todo.md` / a spec only when picked up.
@@ -14,26 +14,26 @@ get promoted to `todo.md` / a spec only when picked up.
 > **What this is.** The existing [improvement-roadmap.md](./improvement-roadmap.md)
 > tracks ideas borrowed from *deepcode-cli PRs*. This doc is the same exercise
 > against *Claude Code* — the reference implementation most users will compare
-> Heirloom against. Overlap with the existing roadmap is called out where it
+> Nib against. Overlap with the existing roadmap is called out where it
 > exists (lifecycle hooks, background command output, orchestrator).
 
 ---
 
 ## TL;DR — the parity list, ranked
 
-| # | Feature | Claude Code surface | Heirloom today | Effort | Why |
+| # | Feature | Claude Code surface | Nib today | Effort | Why |
 |---|---|---|---|---|---|
-| 1 | **`--output-format json \| stream-json`** (+ `--verbose`, `--include-partial-messages`) | `claude -p "query" --output-format stream-json` | `-p` prints plain text only; `exec-runner.ts` wires **no** agent callbacks | S–M | The automation unlock. CI, scripts, dashboards can't consume Heirloom today. |
+| 1 | **`--output-format json \| stream-json`** (+ `--verbose`, `--include-partial-messages`) | `claude -p "query" --output-format stream-json` | `-p` prints plain text only; `exec-runner.ts` wires **no** agent callbacks | S–M | The automation unlock. CI, scripts, dashboards can't consume Nib today. |
 | 2 | **Lifecycle hooks** | `PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `SessionStart/End`, `PreCompact`, `Notification`, `Stop`, `SubagentStop`; Setup `init`/`maintenance` matchers | `notify.ts` is a single completion-boundary shell hook | M | Most leverage per line; already flagged in improvement-roadmap (PR #263 hooks). Build on `notify.ts`. |
-| 3 | **Custom slash commands from files** | `.claude/commands/*.md` (frontmatter: description, argument-hint, allowed-tools, model) | ✅ Shipped 2026-09-14: `.heirloom/commands/<name>.md` loader (frontmatter parse), merged into Tab completion + /help, routed via App's handleSlashCommand. `$ARGUMENTS` placeholder supported. ([src/commands/index.ts](src/commands/index.ts)) | — | Done. Project > global, shadowing same as agents/modes. |
+| 3 | **Custom slash commands from files** | `.claude/commands/*.md` (frontmatter: description, argument-hint, allowed-tools, model) | ✅ Shipped 2026-09-14: `.nib/commands/<name>.md` loader (frontmatter parse), merged into Tab completion + /help, routed via App's handleSlashCommand. `$ARGUMENTS` placeholder supported. ([src/commands/index.ts](src/commands/index.ts)) | — | Done. Project > global, shadowing same as agents/modes. |
 | 4 | **Flag parity batch** | `--max-turns`, `--system-prompt-file`, `--append-system-prompt`, `--allowedTools`/`--disallowedTools`, `--permission-mode`, `--name`/`/rename`, `--fork-session`, `--bare`, `--settings` | ✅ Shipped 2026-09-14: `--max-turns <n>` → caps agent turns (exit non-zero at limit), `--allowed-tools`/`--disallowed-tools` → tool availability filter (applied before runAgent in both TUI and exec-runner), `--name <title>`/`/rename` → session display name stored in index. | — | Three flags done. Remaining: system-prompt-file, permission-mode, fork-session, bare, settings. |
-| 5 | **Subagents** (`--agents`, `new_task`) | `claude --agents '{"reviewer":{...}}'`; subagent frontmatter (name, description, tools, model) | `new_task` + frontmatter agent definitions **shipped 2026-08-15**: `.heirloom/agents/*.md` (name, description, mode, model?, instructions), project > global, resolved by `new_task`'s `agent` param; the def changes persona/toolset/model only — permission inheritance, depth cap 3, 10 sub-turns, tagged audit unchanged | M–L | Mostly closed — remaining delta is inline `--agents` JSON definitions (`--agents` flag not built) |
+| 5 | **Subagents** (`--agents`, `new_task`) | `claude --agents '{"reviewer":{...}}'`; subagent frontmatter (name, description, tools, model) | `new_task` + frontmatter agent definitions **shipped 2026-08-15**: `.nib/agents/*.md` (name, description, mode, model?, instructions), project > global, resolved by `new_task`'s `agent` param; the def changes persona/toolset/model only — permission inheritance, depth cap 3, 10 sub-turns, tagged audit unchanged | M–L | Mostly closed — remaining delta is inline `--agents` JSON definitions (`--agents` flag not built) |
 | 6 | **Git worktrees** (`-w`) | `claude -w feature-auth` → isolated worktree at `<repo>/.claude/worktrees/<name>`; `#<n>`/PR URL support | No worktree support; `workflow.gitCommands` is deprecated/ignored (`loader.ts:789`) | L | Greenfield; separate workstream. |
 | 7 | **Background bash at exit** | `claude -p` terminates background Bash ~5s after result, kills the process tree | Long `run_bash` calls tie up the turn (already on improvement-roadmap as "background/streaming command output") | M | Reuses the existing roadmap item; different framing (exit semantics + tree kill). |
 
 Ranking note: **1 and 2 are the pair to build first** — 1 is pure surface on the
 existing agent loop, 2 is the natural generalization of `notify.ts`. Both are
-prerequisites for anything that wants to observe Heirloom from outside.
+prerequisites for anything that wants to observe Nib from outside.
 
 ---
 
@@ -55,7 +55,7 @@ prerequisites for anything that wants to observe Heirloom from outside.
 - Scripts branch on exit code; failures print the failure as the result on
   stdout, invalid flags → stderr.
 
-**Heirloom today (code-verified):**
+**Nib today (code-verified):**
 
 - `src/exec-runner.ts` runs the agent and writes only `lastReply` to stdout
   (`exec-runner.ts:165`). It passes **no** callbacks into `runAgent` — the
@@ -75,7 +75,7 @@ with `total_cost_usd` (reuse `estimateTokens`-style pricing math). Exit code
 semantics unchanged. `--json-schema` can ride along later (validate with a tiny
 inline validator; no new dep needed for basic schemas).
 
-**Verification:** `heirloom -p "..." --output-format json | jq .result` in CI;
+**Verification:** `nib -p "..." --output-format json | jq .result` in CI;
 `--output-format stream-json` feeds a live dashboard; `total_cost_usd` agrees
 with the interactive `/cost` figure.
 
@@ -102,7 +102,7 @@ with the interactive `/cost` figure.
 - Security posture: arbitrary user-config shell on agent events — same trust
   level as settings.json itself, never derived from model output.
 
-**Heirloom today (code-verified):**
+**Nib today (code-verified):**
 
 - `src/notify.ts` is already a minimal, security-conscious shell hook: spawns
   `shell:false` with an explicit argv, passes data via env vars, secret-redacts
@@ -129,7 +129,7 @@ or migrate it to a `SessionEnd`-style hook. Document in a `hooks-spec.md` +
 
 ## 3. Custom slash commands from files — ✅ SHIPPED 2026-09-14
 
-Shipped as `.heirloom/commands/<name>.md`. Loader scans project + global dirs, merges by name (project shadows global). Frontmatter: `description`, `argument-hint` (Claude Code also has `allowed-tools`, `model`, `disable-model-invocation` — not yet implemented). Body serves as prompt template; `$ARGUMENTS` replaced with trailing args via `expandCommand()` in App.tsx's handleSlashCommand. Surfaces in Tab completion and `/help`. No TOUF gate needed (pure prompt injection). ([src/commands/index.ts](src/commands/index.ts))
+Shipped as `.nib/commands/<name>.md`. Loader scans project + global dirs, merges by name (project shadows global). Frontmatter: `description`, `argument-hint` (Claude Code also has `allowed-tools`, `model`, `disable-model-invocation` — not yet implemented). Body serves as prompt template; `$ARGUMENTS` replaced with trailing args via `expandCommand()` in App.tsx's handleSlashCommand. Surfaces in Tab completion and `/help`. No TOUF gate needed (pure prompt injection). ([src/commands/index.ts](src/commands/index.ts))
 
 ### Remaining gap vs. Claude Code
 - `allowed-tools`, `model`, `disable-model-invocation` frontmatter fields — could be added when there's demand for per-command tool caps or model overrides.
@@ -144,7 +144,7 @@ submits its body as the prompt with `{arg}` substituted.
 
 ### Shipped (2026-09-14)
 
-| Flag | Claude Code semantics | Heirloom implementation | Notes |
+| Flag | Claude Code semantics | Nib implementation | Notes |
 |---|---|---|---|
 | `--max-turns <n>` | Cap agentic turns in print mode; exit error at limit | ✅ Plugged through `parseArguments` → `shared.maxTurns` → `runAgent` options. Reuses existing `onMaxTurns` callback from agent.ts. Exits non-zero when hit. (`src/cli-args.ts`, `src/cli.tsx`, `src/exec-runner.ts`) | TUI gets it via `shared.maxTurns`; exec-runner passes it directly as `maxTurns`. |
 | `--allowedTools` | Restrict tools to allowlist | ✅ `filterToolDefs()` applied before `runAgent` in both TUI (`cli.tsx` `runAgentTurnBridge`) and headless (`exec-runner.ts`). Available tools = `[tool name]` strings, comma-separated. Strictly stronger than permission deny (disallowed tool can never be called). (`src/tools/filter.ts`) | Denylist works the same way. These are availability filters, not permission rules. |
@@ -175,9 +175,9 @@ nest; `--append-subagent-system-prompt` appends text to every subagent's prompt.
 In `stream-json`, subagent messages carry `parent_tool_use_id` for transcript
 reconstruction.
 
-**Heirloom today (code-verified 2026-08-15):** `src/orchestrator/index.ts` has an `Orchestrator` class + a `new_task` tool def, **wired** in both the TUI (`cli.tsx`) and headless `-p` (`exec-runner.ts`) registries. Sub-agents run a real `runAgent` turn in the requested mode's toolset, inheriting the parent's **live** permission engine (rules + approval posture — no escalation) and the parent's provider factory (follows mid-session `/model` switches). Enforcement: depth cap 3, max 10 sub-agent turns; sub-agent tools = target mode's group tools + `new_task` (for recursion).
+**Nib today (code-verified 2026-08-15):** `src/orchestrator/index.ts` has an `Orchestrator` class + a `new_task` tool def, **wired** in both the TUI (`cli.tsx`) and headless `-p` (`exec-runner.ts`) registries. Sub-agents run a real `runAgent` turn in the requested mode's toolset, inheriting the parent's **live** permission engine (rules + approval posture — no escalation) and the parent's provider factory (follows mid-session `/model` switches). Enforcement: depth cap 3, max 10 sub-agent turns; sub-agent tools = target mode's group tools + `new_task` (for recursion).
 
-**Shipped 2026-08-15 — frontmatter agent definitions (feature-plans.md §F4).** `.heirloom/agents/<name>.md` with frontmatter `name` (required), `description` (required — the prompt index line), `mode` (required — the sub-agent's toolset), `model` (optional `provider/model`, validated against the model catalog at startup, unknown → warning), `instructions` (optional — prepended to the sub-agent's system prompt). Resolution is project > global (`~/.heirloom/agents/`), project winning per name. `new_task` gained an optional `agent?: string` parameter: with it, the sub-run uses the def's mode/model/instructions; without it, today's behavior is byte-identical. Unknown agent names fail with `UNKNOWN_AGENT` listing the available names. The def changes persona/toolset/model only — permission inheritance, depth caps, and the tagged `source: "subagent"` audit are unchanged. The name+description index is injected into the stable preamble ("Available agents", one line per agent), and `/skills` prints a one-line agent list.
+**Shipped 2026-08-15 — frontmatter agent definitions (feature-plans.md §F4).** `.nib/agents/<name>.md` with frontmatter `name` (required), `description` (required — the prompt index line), `mode` (required — the sub-agent's toolset), `model` (optional `provider/model`, validated against the model catalog at startup, unknown → warning), `instructions` (optional — prepended to the sub-agent's system prompt). Resolution is project > global (`~/.nib/agents/`), project winning per name. `new_task` gained an optional `agent?: string` parameter: with it, the sub-run uses the def's mode/model/instructions; without it, today's behavior is byte-identical. Unknown agent names fail with `UNKNOWN_AGENT` listing the available names. The def changes persona/toolset/model only — permission inheritance, depth caps, and the tagged `source: "subagent"` audit are unchanged. The name+description index is injected into the stable preamble ("Available agents", one line per agent), and `/skills` prints a one-line agent list.
 
 **Remaining gap vs. Claude Code:** inline `--agents` JSON definitions (`--agents` flag not built) and per-subagent tool lists beyond a mode's group set.
 
@@ -190,7 +190,7 @@ at `<repo>/.claude/worktrees/<name>`; `-w #123` or `-w <PR URL>` fetches that PR
 from origin and branches the worktree from it; `--tmux` pairs it with a tmux
 pane.
 
-**Heirloom today:** nothing. The `workflow.*` config subtree exists
+**Nib today:** nothing. The `workflow.*` config subtree exists
 (`gitStatus`, `gitPollInterval`, `gitCommands`, `detectBuildTools`) but
 `gitCommands`/`gitStatus`/`detectBuildTools` are deprecated or ignored
 (`loader.ts:789` warns on `gitCommands`); only `gitPollInterval` has a consumer.
@@ -209,7 +209,7 @@ server, watch build) gets a ~5s grace after the final result, then the process
 tree is killed so `claude -p` always exits. SIGTERM kills the in-progress turn +
 tree, runs `SessionEnd` hooks, exits 143.
 
-**Heirloom today:** `run_bash` runs to completion inside the turn; a dev server
+**Nib today:** `run_bash` runs to completion inside the turn; a dev server
 ties up the tool call (this is the improvement-roadmap "background/streaming
 command output" item, unscheduled). No exit-grace or tree-kill semantics.
 
@@ -244,7 +244,7 @@ These weren't in the original Claude Code comparison but shipped alongside it:
   `code.claude.com/docs/en/hooks` (the page exceeds web_fetch's 2MB cap; read it
   in a browser or via a curl-to-file when implementing).
 - `stream-json`: decide event-type names (mirror Claude Code's
-  `system/init` / `result` / `assistant` / `tool_use`? or Heirloom's own? —
+  `system/init` / `result` / `assistant` / `tool_use`? or Nib's own? —
   mirroring eases drop-in CI parity, but the repo's ethos favors its own
   readable schema; recommendation: mirror the *shape*, own the *names*).
 - `--json-schema`: scope to basic JSON Schema (object/array/string/number +

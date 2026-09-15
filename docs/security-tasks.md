@@ -3,7 +3,7 @@
 Work items for closing the remaining ungated project-config channels.
 One task per section. Mark `[x]` when done **and verified**.
 
-Context: a cloned repo's `.heirloom/` is attacker-controlled. Heirloom already
+Context: a cloned repo's `.nib/` is attacker-controlled. Nib already
 gates project **hooks** (`src/hooks/trust.ts`), **skills** (`src/skills/trust.ts`),
 and — as of `8f3a343` + `30fdd67` — **execution-capable settings**
 (`src/config/settings-trust.ts`, gating `statusline` / `mcpServers` / `notify` /
@@ -22,7 +22,7 @@ Prior art to follow, in order of relevance:
 **Status:** `[x]` — done and verified
 **Severity:** High — privilege escalation
 
-A project `.heirloom/settings.json` can currently set permission rules, the
+A project `.nib/settings.json` can currently set permission rules, the
 permission profile, and sandbox config with **no consent**. Worse, two consumers
 read the *unstripped* config even for keys that are gated today:
 
@@ -96,12 +96,12 @@ consumer (e.g. that `ProfileEvaluator` never sees the hostile profile).
   matching the pattern already used elsewhere in the same files.
 - `npx vitest run`: 119 files / 1660 passed / 1 skipped (was 1651+1 baseline
   — 9 new tests added, all green). `npx tsc --noEmit`: clean.
-- `~/.heirloom/skill-trust.json`: still exactly 25 entries — confirmed after
+- `~/.nib/skill-trust.json`: still exactly 25 entries — confirmed after
   all exploit/test runs.
 
 ---
 
-## Task 2 — audit `.heirloom/agents/*.md`
+## Task 2 — audit `.nib/agents/*.md`
 
 **Status:** `[x]` — investigated, no gate recommended (see evidence below)
 **Severity:** Unknown — investigate before deciding
@@ -133,7 +133,7 @@ fields: `name`, `description`, `mode` (string, required), `model` (optional
 
 - **`mode`** is the interesting field: it's passed unvalidated to
   `ModeLoader.load(modeSlug)` (`orchestrator/index.ts:264`), which can load a
-  **project-supplied** `.heirloom/modes/<slug>.yaml` defining a `groups`
+  **project-supplied** `.nib/modes/<slug>.yaml` defining a `groups`
   list (`orchestrator/index.ts:272`, `tools/registry.ts` `getByMode`) that
   controls which tools are exposed as callable to the sub-agent's LLM. In
   principle a hostile repo could define a custom mode combining all 5 tool
@@ -148,8 +148,8 @@ fields: `name`, `description`, `mode` (string, required), `model` (optional
   production code path does (`grep` for `new PermissionEngine`/
   `new ProfileEvaluator` outside test files returns nothing in
   `orchestrator/` or `agents/`) — so mode/groups only changes the *menu* the
-  LLM sees, never what a call actually resolves to. Also: `.heirloom/agents/`
-  and `.heirloom/modes/` are both already inside the attacker-controlled
+  LLM sees, never what a call actually resolves to. Also: `.nib/agents/`
+  and `.nib/modes/` are both already inside the attacker-controlled
   project tree in this threat model, so a hostile agent def referencing a
   hostile mode file isn't reaching anything it doesn't already own.
 - **`model`** ("provider/model") is passed to `this.options.provider(modelId)`
@@ -302,7 +302,7 @@ here doesn't reintroduce the same bypass.
   gated correctly) and the two `web-search.ts` call sites fixed above. No
   other tool or module reads a gated key via a fresh per-call `loadConfig()`.
 - **Both-direction tool-level proof** (not just the resolved config object):
-  a standalone script (run via `tsx`, isolated `HEIRLOOM_HOME`/`HOME`, real
+  a standalone script (run via `tsx`, isolated `NIB_HOME`/`HOME`, real
   `fetch` mocked) drove the actual production entry point
   (`executeTool` from `tools/index.ts` — the same function `cli.tsx`/
   `exec-runner.ts` call) end-to-end: `loadConfig` → `checkSettingsTrust` →
@@ -324,20 +324,20 @@ here doesn't reintroduce the same bypass.
   `setSandboxLevel`/`setTimeoutToBackground` mock stubs.
 - `npx vitest run`: 119 files / 1668 passed / 1 skipped (baseline 119/1660/1
   — 8 new tests, all green). `npx tsc --noEmit`: clean.
-- `~/.heirloom/skill-trust.json`: still exactly 25 entries; no
-  `settings-trust.json` in the real `~/.heirloom` — confirmed after all
-  exploit/test runs (isolated `HEIRLOOM_HOME` used throughout, including the
+- `~/.nib/skill-trust.json`: still exactly 25 entries; no
+  `settings-trust.json` in the real `~/.nib` — confirmed after all
+  exploit/test runs (isolated `NIB_HOME` used throughout, including the
   standalone exploit script).
 
 ---
 
 ## Ground rules for all tasks
 
-- **Test isolation:** set *and* restore **both** `HEIRLOOM_HOME` and `HOME` in
-  `beforeEach`/`afterEach`. `resolveHome()` prefers `HEIRLOOM_HOME`; a past bug
+- **Test isolation:** set *and* restore **both** `NIB_HOME` and `HOME` in
+  `beforeEach`/`afterEach`. `resolveHome()` prefers `NIB_HOME`; a past bug
   leaked ~1786 junk entries into the user's real store because a test set only
   `HOME`. Do not repeat it.
-- **Never touch the user's real `~/.heirloom/`.** Confirm at the end:
+- **Never touch the user's real `~/.nib/`.** Confirm at the end:
   `skill-trust.json` still has exactly **25** entries.
 - **Baseline:** `npx vitest run` → 119 files / 1651 passed / 1 skipped.
   `npx tsc --noEmit` clean. Report new numbers.
@@ -379,7 +379,7 @@ answering "yes" to every pending per-artifact prompt individually.
 ### Deliberate limits (do not "fix" these)
 
 - **Not a blanket grant.** Folder trust's own store
-  (`<HEIRLOOM_HOME>/folder-trust.json`) records the content hash of every
+  (`<NIB_HOME>/folder-trust.json`) records the content hash of every
   artifact that was present at trust time. If anything is **added** or
   **edited** afterward, `checkFolderTrust` reclassifies the folder as
   `changed` — but more importantly, the artifact itself has no matching entry
@@ -458,7 +458,7 @@ auto-trusts" above) — a comment at the settings-trust gate documents why.
 - `npx vitest run`: 120 files / 1682 passed / 1 skipped (baseline
   119/1668/1 — 14 new tests in `src/config/folder-trust.test.ts`, all green,
   no regressions). `npx tsc --noEmit`: clean.
-- Real-run proof (isolated `HEIRLOOM_HOME`, driving the actual production
+- Real-run proof (isolated `NIB_HOME`, driving the actual production
   functions, not mocks): (a) a project with a skill + `mcpServers` settings
   key — `checkFolderTrust` starts `new`, `trustFolder()` flips it (and the
   real `checkSkillTrust`/`checkSettingsTrust`) to `trusted`; (b) editing the
@@ -470,7 +470,7 @@ auto-trusts" above) — a comment at the settings-trust gate documents why.
   stderr warning fires when untrusted and is silent (gate passes) after a
   simulated prior interactive `trustFolder()` call, with no folder-trust code
   present in `exec-runner.ts` at all.
-- `~/.heirloom/skill-trust.json`: still exactly 25 entries; no stray
-  `folder-trust.json`/`settings-trust.json` in the real `~/.heirloom` —
-  confirmed after all test/exploit runs (isolated `HEIRLOOM_HOME`/`HOME`
+- `~/.nib/skill-trust.json`: still exactly 25 entries; no stray
+  `folder-trust.json`/`settings-trust.json` in the real `~/.nib` —
+  confirmed after all test/exploit runs (isolated `NIB_HOME`/`HOME`
   throughout).

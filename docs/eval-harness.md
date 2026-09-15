@@ -4,7 +4,7 @@
 
 ## 1. Overview
 
-`scripts/eval.ts` is the agent-level eval runner: it spawns heirloom
+`scripts/eval.ts` is the agent-level eval runner: it spawns nib
 headless against small fixture projects and checks outcomes — the "golden
 tasks" story that unit tests cannot cover (mocking an LLM tests the mock).
 The full golden-task table (G1–G6) lives in conventions.md §Testing.
@@ -29,21 +29,21 @@ G1/G4/G6 from conventions.md are not wired into the harness yet.
   per case, then runs the case's `assert(workdir)`.
 - **Isolation**: the spawn gets a child environment built from an
   **explicit allowlist** (PATH, HOME, SHELL, NO_COLOR, TERM, TMPDIR,
-  HEIRLOOM_HOME — plus only the provider-key env vars) — never
+  NIB_HOME — plus only the provider-key env vars) — never
   `...process.env`, so the eval agent cannot inherit arbitrary developer
-  credentials. `HOME`/`HEIRLOOM_HOME` point at `.eval-tmp/.home` (no
+  credentials. `HOME`/`NIB_HOME` point at `.eval-tmp/.home` (no
   global settings, no MCP servers to spawn at startup, nothing written to
   the real `~`), and `input: ""` closes stdin (an open pipe would hang
   headless's stdin read).
-- **Eval permissions**: the runner injects a `.heirloom/settings.json`
+- **Eval permissions**: the runner injects a `.nib/settings.json`
   into each copied fixture with explicit `allow` rules for the edit tools
   and **narrow `run_bash` prefixes** (`node --test:*`,
   `node src/index.js:*`) — headless fails closed, so without these the
   agent could never modify a fixture, and `run_bash` is deliberately NOT
   blanket-allowed: a prompt-injected model must not gain arbitrary
   command execution on the developer's machine.
-- **Failure attribution**: a non-zero heirloom exit (e.g. no provider key)
-  reports `heirloom exited N: <stderr>` — distinct from a fixture-level
+- **Failure attribution**: a non-zero nib exit (e.g. no provider key)
+  reports `nib exited N: <stderr>` — distinct from a fixture-level
   task failure, so a missing key can't masquerade as "the agent failed
   the task".
 - Results print as a per-task table plus a summary line; exit 0 iff every
@@ -92,12 +92,12 @@ npm run eval
 
 Auth works out of the box either way:
 
-- **`heirloom auth` key** — the runner forwards the single default
+- **`nib auth` key** — the runner forwards the single default
   provider's key (deepseek) from the real `credentials.yaml` into the
   child. No setup needed.
 - **Env var** — exporting any provider key env var
   (`DEEPSEEK_API_KEY`, `OPENAI_API_KEY`, …) forwards that one and wins.
 
-The eval child is still isolated from the developer's real `~/.heirloom`
+The eval child is still isolated from the developer's real `~/.nib`
 (see §3) — exactly one provider key crosses the boundary, never the whole
 credentials file, never arbitrary env. No TTY needed.

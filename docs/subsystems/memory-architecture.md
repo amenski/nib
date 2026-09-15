@@ -20,10 +20,10 @@ preferences, and common pitfalls.
 ### Decision: Markdown files (+ optional embeddings later)
 
 **Storage** (`src/memory/store.ts`): per-project dir
-`~/.heirloom/memory/<project-slug>/` plus a global `MEMORY.md` index:
+`~/.nib/memory/<project-slug>/` plus a global `MEMORY.md` index:
 
 ```
-~/.heirloom/memory/
+~/.nib/memory/
 ├── MEMORY.md              # Index: one line per memory file
 └── <project-slug>/
     ├── sessions.md        # Rolling session log, newest first

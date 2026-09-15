@@ -1,4 +1,4 @@
-# Optional local SearXNG instance — heirloom's self-hosted search backend.
+# Optional local SearXNG instance — nib's self-hosted search backend.
 #
 # Bing RSS remains the keyless default; this compose is an additive
 # convenience. The instance binds to 127.0.0.1 ONLY (localhost), so it is

@@ -7,21 +7,21 @@ self-contained Node.js project with a mission for the agent.
 
 ```sh
 cd fixtures/calc
-heirloom -p "fix the failing test" --approve all
+nib -p "fix the failing test" --approve all
 ```
 
 ## G3 — Add a feature flag
 
 ```sh
 cd fixtures/cli
-heirloom -p "add a --greeting flag" --approve all
+nib -p "add a --greeting flag" --approve all
 ```
 
 ## G5 — Diagnose memory growth
 
 ```sh
 cd fixtures/leaky
-heirloom -p "why does this server grow memory" --approve all
+nib -p "why does this server grow memory" --approve all
 ```
 
 Set `DEEPSEEK_API_KEY` before running.

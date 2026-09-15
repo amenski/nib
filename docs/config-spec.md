@@ -4,15 +4,15 @@
 
 ## 1. Overview
 
-Heirloom config is **JSON**, loaded and merged by `src/config/loader.ts`.
+Nib config is **JSON**, loaded and merged by `src/config/loader.ts`.
 Two files are read and deep-merged (project wins over global):
 
-- **Global:** `~/.heirloom/settings.json` (or `$HEIRLOOM_HOME/settings.json`)
-- **Project:** `./.heirloom/settings.json` (in the current working directory)
+- **Global:** `~/.nib/settings.json` (or `$NIB_HOME/settings.json`)
+- **Project:** `./.nib/settings.json` (in the current working directory)
 
-There is no YAML config file. `config.yaml`, `~/.heirloom/config.yaml`, and a
+There is no YAML config file. `config.yaml`, `~/.nib/config.yaml`, and a
 `providers:` registry map are **not** read by the loader; the only YAML file
-heirloom reads is the credentials store (see §8).
+nib reads is the credentials store (see §8).
 
 Every field is optional. Keys the loader recognizes (`KNOWN_KEYS` in
 `src/config/loader.ts:205`); anything else emits a
@@ -46,7 +46,7 @@ are fatal — `main()` exits 1 (`src/cli.tsx`).
   "reasoningEffort": "high",              // "low" | "high" | "max"
   "temperature": 0.2,                     // number, 0..2
 
-  // Repaint cadence (heirloom extension): "fast" | "balanced" | "slow"
+  // Repaint cadence (nib extension): "fast" | "balanced" | "slow"
   "refresh": "balanced",
 
   // Permission rules (rule-based shape). See §3 and permission-spec.md.
@@ -102,7 +102,7 @@ are fatal — `main()` exits 1 (`src/cli.tsx`).
   // stays intact behind this flag.
   "showCost": false,
 
-  // Theme (heirloom extension)
+  // Theme (nib extension)
   "theme": {
     "mode": "dark",                        // "dark" | "light" | "auto"
     "overrides": {}                        // optional token overrides
@@ -157,7 +157,7 @@ translates it to `rules` in memory and emits:
 
 ```
 permissions: migrated N legacy scope(s) to rule-based permissions —
-review .heirloom/settings.json and re-approve as needed
+review .nib/settings.json and re-approve as needed
 ```
 
 That warning fires on **every launch** until the file is rewritten to the
@@ -182,7 +182,7 @@ terminal (`deny-by-profile` audit decision, permission-spec.md §11).
   and absolute allowed) with `action` `deny` | `read` | `write`. Rules
   narrow only: a `write` rule under `strict-sandbox`, or not
   workspace-relative under `workspace-write`, is a config error.
-  `.git/**` and the profile file itself (`.heirloom/settings.json`) are
+  `.git/**` and the profile file itself (`.nib/settings.json`) are
   always denied — no rule can rescue them.
 - `network` entries are exact hostnames (case-insensitive) or `"*"` (any
   host — the only wildcard). The most specific matching entry wins; a tie
@@ -221,7 +221,7 @@ permission-profile.md §8.
 `"fast" | "balanced" | "slow"` (default `balanced`). Controls TUI repaint
 throttling (`src/ui/core/refresh-rates.ts`); invalid values warn and fall
 back to the default rather than erroring. Precedence:
-settings.json `refresh` > `HEIRLOOM_REFRESH` env > `balanced`.
+settings.json `refresh` > `NIB_REFRESH` env > `balanced`.
 Use `slow` on high-latency links.
 
 ## 5. `favoriteModels` / `recentModels`
@@ -318,14 +318,14 @@ order:
    set.
 2. The provider's env var (`DEEPSEEK_API_KEY`, `OPENAI_API_KEY`,
    `OPENROUTER_API_KEY`, `GROQ_API_KEY`).
-3. `~/.heirloom/credentials.yaml` via `getCredential(name)`.
+3. `~/.nib/credentials.yaml` via `getCredential(name)`.
 
-The **canonical, recommended** store is `~/.heirloom/credentials.yaml` — a
+The **canonical, recommended** store is `~/.nib/credentials.yaml` — a
 flat `provider: key` YAML map at mode `0600` (auto-chmoded if looser,
-`src/config/credentials.ts`), written by `heirloom auth`:
+`src/config/credentials.ts`), written by `nib auth`:
 
 ```yaml
-# ~/.heirloom/credentials.yaml  (managed by `heirloom auth`)
+# ~/.nib/credentials.yaml  (managed by `nib auth`)
 deepseek: sk-...
 openrouter: sk-or-...
 ```
@@ -336,10 +336,10 @@ into version control. Prefer the credentials file or an env var.
 
 ## 9. Web search
 
-Heirloom ships the built-in `web_search` tool — keyless, Bing-backed,
+Nib ships the built-in `web_search` tool — keyless, Bing-backed,
 guarded-tier (always asks; see web-search-spec.md). For search via an
 external provider, add a search MCP server under `mcpServers`; it is gated
-by the existing `mcp__*` permission rules. Heirloom ships and endorses
+by the existing `mcp__*` permission rules. Nib ships and endorses
 none:
 
 ```jsonc
@@ -417,7 +417,7 @@ one skill leaves all others unaffected.
   summarize on demand.
 
 Request-time context editing is separate from compaction and has no setting:
-at 100,000 estimated assembled input tokens, Heirloom clears the contents of
+at 100,000 estimated assembled input tokens, Nib clears the contents of
 older tool results in the provider-bound copy, while retaining the three newest
 consumed tool uses/results. Every result from the immediately preceding tool
 batch also remains complete, and the local/session transcript is unchanged.
@@ -473,7 +473,7 @@ config shape.
 
 ## 15. No telemetry
 
-Heirloom collects **no telemetry**. This is a deliberate guarantee, not a
+Nib collects **no telemetry**. This is a deliberate guarantee, not a
 default that a config key can flip. There is no telemetry subsystem in the
 codebase and no config key enables one — the former `telemetryEnabled` key
 (and the `env.TELEMETRY_ENABLED` string) were never consumed and have been
@@ -492,16 +492,16 @@ this repo is.
 | `debugLogEnabled` (boolean) | Parsed but ignored; emits a warning | Use the `--debug` CLI flag |
 | `workflow.gitCommands` (boolean) | Parsed but ignored; emits a warning | None — no git-command subsystem consumes it |
 | `workflow.detectBuildTools` (boolean) | Parsed but ignored; emits a warning | None — no build-tool detection subsystem consumes it |
-| `telemetryEnabled` (boolean) | **Removed** — now an unknown-field warning | None — Heirloom has no telemetry (see §15) |
+| `telemetryEnabled` (boolean) | **Removed** — now an unknown-field warning | None — Nib has no telemetry (see §15) |
 
 ## 17. Environment variables
 
 | Variable | Purpose |
 |----------|---------|
-| `HEIRLOOM_HOME` | Override the config home (default `~/.heirloom`) — **partially honored**, see below |
-| `HEIRLOOM_REFRESH` | Repaint cadence: `fast \| balanced \| slow` (lower priority than settings.json `refresh`) |
-| `HEIRLOOM_PROFILE` | `"1"` enables the event-loop stall watchdog (troubleshooting.md) |
-| `HEIRLOOM_HIGH_CONTRAST` | `"1"` enables high-contrast rendering |
+| `NIB_HOME` | Override the config home (default `~/.nib`) — **partially honored**, see below |
+| `NIB_REFRESH` | Repaint cadence: `fast \| balanced \| slow` (lower priority than settings.json `refresh`) |
+| `NIB_PROFILE` | `"1"` enables the event-loop stall watchdog (troubleshooting.md) |
+| `NIB_HIGH_CONTRAST` | `"1"` enables high-contrast rendering |
 | `NO_COLOR`, `CI`, `TERM`, `COLORTERM` | Color/terminal capability gating |
 | `DEEPSEEK_API_KEY` | DeepSeek API key |
 | `OPENAI_API_KEY` | OpenAI API key |
@@ -509,11 +509,11 @@ this repo is.
 | `GROQ_API_KEY` | Groq API key |
 | `ANTHROPIC_API_KEY`, `TOGETHER_API_KEY` | Detected for provider inference; no bundled presets |
 
-### HEIRLOOM_HOME support
+### NIB_HOME support
 
 `resolveHome()` (`src/config/loader.ts`) is the single source of truth:
-`HEIRLOOM_HOME` if set, else `~/.heirloom`. Every subsystem routes through
+`NIB_HOME` if set, else `~/.nib`. Every subsystem routes through
 it — config, modes, theme dropdown, prompt history, stall watchdog,
 credentials, sessions, checkpoints, and memory. A full install under a
-custom home is portable: `HEIRLOOM_HOME=/tmp/hh heirloom` keeps everything
+custom home is portable: `NIB_HOME=/tmp/hh nib` keeps everything
 (config, credentials, sessions, checkpoints, memory) under `/tmp/hh`.

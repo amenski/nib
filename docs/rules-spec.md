@@ -5,8 +5,8 @@
 ## 1. Overview
 
 Scoped, user-authored rule files recursively loaded from
-`.heirloom/rules/**/*.md` and injected into the system prompt. Additive to
-the single-file `.heirloom/instructions.md` / `AGENTS.md` mechanism — it
+`.nib/rules/**/*.md` and injected into the system prompt. Additive to
+the single-file `.nib/instructions.md` / `AGENTS.md` mechanism — it
 does not replace it.
 
 Implemented by `loadProjectRules(projectDir)` in `src/prompt.ts`, called
@@ -15,7 +15,7 @@ section (so rules land in the cacheable prefix, before the skills index).
 
 ## 2. Format
 
-Each `*.md` file under `.heirloom/rules/` becomes one section:
+Each `*.md` file under `.nib/rules/` becomes one section:
 
 ```
 ### Rule: <scope>
@@ -33,9 +33,9 @@ The `<scope>` is the file's path relative to the rules directory, with the
 
 | File | Scope |
 | ---- | ----- |
-| `.heirloom/rules/style.md` | `style` |
-| `.heirloom/rules/api/naming.md` | `api/naming` |
-| `.heirloom/rules/db/schema.md` | `db/schema` |
+| `.nib/rules/style.md` | `style` |
+| `.nib/rules/api/naming.md` | `api/naming` |
+| `.nib/rules/db/schema.md` | `db/schema` |
 
 ## 4. Ordering
 
@@ -59,18 +59,18 @@ sections are dropped and a truncation note is appended:
 ## 6. Trust model
 
 Rule content is treated as **user-authored**, at the same trust level as
-`.heirloom/instructions.md`. It carries no new attack surface beyond what
+`.nib/instructions.md`. It carries no new attack surface beyond what
 the existing instructions file already grants.
 
 Hardening: a `*.md` entry whose real path (after resolving symlinks) falls
-**outside** `projectDir` is skipped, so a symlink inside `.heirloom/rules/`
+**outside** `projectDir` is skipped, so a symlink inside `.nib/rules/`
 cannot pull arbitrary files from elsewhere on disk into the prompt. Empty
 and unreadable files (including dangling symlinks) are silently skipped.
 
 ## 7. Plan-mode research notes
 
 A sibling of the rules loader for prior investigation notes. Markdown files
-are recursively loaded from `.heirloom/research/**/*.md` and injected
+are recursively loaded from `.nib/research/**/*.md` and injected
 **only in plan mode**, so planning is grounded in existing research.
 
 Implemented by `loadProjectResearch(projectDir)` in `src/prompt.ts` (shares
@@ -87,7 +87,7 @@ Format: same mechanics, different heading:
 <trimmed file content>
 ```
 
-`<scope>` is the path relative to `.heirloom/research/`, `.md` stripped,
+`<scope>` is the path relative to `.nib/research/`, `.md` stripped,
 separators normalized to `/`. Ordering and trust model match the rules
 loader. Total research content is capped at **8 KB**
 (`MAX_RESEARCH_BYTES`) with the same truncate-with-note behavior.

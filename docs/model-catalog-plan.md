@@ -7,7 +7,7 @@ limits, and cost estimate.
 ## 1. Goal
 
 Replace the small hand-maintained model metadata list with a reproducible
-Models.dev-derived snapshot for the providers Heirloom already supports.
+Models.dev-derived snapshot for the providers Nib already supports.
 The catalog must remain available offline at startup, and local configuration
 must remain able to add or correct entries.
 
@@ -25,18 +25,18 @@ changes model routing, credential resolution, permissions, or billing.
    tier 2) — see §4.D. The three tiers (capture / generate / update) each
    carry the strictness their audience needs: capture is the only one that
    touches the network and is maintainer-only; generate is offline and strict
-   against the curated fixture; `heirloom models update` (§4.C) is online and
+   against the curated fixture; `nib models update` (§4.C) is online and
    lenient against the live feed.
-2. **The shipped snapshot is authoritative at runtime.** Heirloom must never
+2. **The shipped snapshot is authoritative at runtime.** Nib must never
    contact Models.dev at startup or while selecting a model. A network outage
    or catalog change cannot make a previously working installation unusable.
 3. **Only implemented providers are shipped.** Initially: DeepSeek, OpenAI,
    OpenRouter, Groq, and Ollama. Models.dev records for other providers are
-   not selectable until Heirloom supports their API/authentication contract.
+   not selectable until Nib supports their API/authentication contract.
 4. **Provider configuration remains hand-owned.** Base URL, API shape, key
    environment variable, and default model are integration facts, not model
    catalog data. Keep them in a compact checked-in provider-preset source.
-5. **User overrides win.** `~/.heirloom/models.json` stays the last merge
+5. **User overrides win.** `~/.nib/models.json` stays the last merge
    layer. It can add a model or override any generated value without copying
    the full provider catalog.
 6. **Costs are estimates, never billing truth.** A resolved catalog cost is
@@ -46,10 +46,10 @@ changes model routing, credential resolution, permissions, or billing.
 
 ## 3. Catalog shape
 
-Normalize Models.dev data at generation time into Heirloom's internal shape;
+Normalize Models.dev data at generation time into Nib's internal shape;
 do not make runtime code interpret a third-party schema.
 
-| Models.dev | Heirloom catalog | Consumer |
+| Models.dev | Nib catalog | Consumer |
 |---|---|---|
 | `name` | `displayName` | model picker |
 | `limit.context` | `contextWindow` | compaction |
@@ -87,11 +87,11 @@ called at startup, in builds, or in tests.
 ### B. Runtime merge and capability consumers
 
 **✅ Shipped 2026-08-21.** The loader composes presets and the bundled
-snapshot before applying the unchanged `~/.heirloom/models.json` override.
+snapshot before applying the unchanged `~/.nib/models.json` override.
 Qwen3.7 Flash is included as an OpenRouter model.
 
 - Load stable provider presets + generated snapshot, then preserve today's
-  deep merge of `~/.heirloom/models.json`.
+  deep merge of `~/.nib/models.json`.
 - Extend `ModelCapabilities` only for normalized metadata that has a present
   consumer. Keep unknown/malformed user fields non-fatal and warn as today.
 - Regression-test default resolution, `/model` completion, context-window
@@ -100,16 +100,16 @@ Qwen3.7 Flash is included as an OpenRouter model.
 
 ### C. Explicit update command
 
-**✅ Shipped 2026-08-23.** `heirloom models update` downloads the Models.dev
+**✅ Shipped 2026-08-23.** `nib models update` downloads the Models.dev
 feed (10 s timeout, injectable fetch for tests), validates it by running it
 through `generateCatalogReport` (the same normalization `generateCatalog`
 uses, wrapping the shared core), diffs it against the active snapshot, and
-only writes `HEIRLOOM_HOME/models-catalog.json` (atomically, via
-temp-file-then-rename) after confirmation. `heirloom models status` reports
+only writes `NIB_HOME/models-catalog.json` (atomically, via
+temp-file-then-rename) after confirmation. `nib models status` reports
 whether the active snapshot is bundled or an updated cache, its source
 revision/date, and provider/model counts.
 
-- `heirloom models update` downloads the official Models.dev feed with a
+- `nib models update` downloads the official Models.dev feed with a
   timeout and schema validation; regenerates in memory; shows added, removed,
   and changed models and prices; requires confirmation before replacing the
   local cached snapshot (`--yes` skips the prompt; a non-TTY without `--yes`
@@ -117,7 +117,7 @@ revision/date, and provider/model counts.
 - The bundled snapshot is preserved as fallback and never overwritten. A
   failed download, a non-object/malformed feed, or a declined diff leaves the
   active catalog untouched.
-- `heirloom models status` shows source revision/date and whether a local
+- `nib models status` shows source revision/date and whether a local
   updated snapshot is active.
 - **Lenient validation against the live feed (added 2026-08-23).** The real
   Models.dev feed (measured: 193 providers) is not the curated fixture
@@ -128,7 +128,7 @@ revision/date, and provider/model counts.
   `GeneratorOptions.lenient`, which: (1) skips an individual model that fails
   normalization instead of aborting the whole catalog — the live feed
   legitimately carries models with no context limit (image/audio, e.g. Groq
-  Whisper, OpenAI's `gpt-image-*`), which Heirloom can't use anyway; (2) skips
+  Whisper, OpenAI's `gpt-image-*`), which Nib can't use anyway; (2) skips
   a SUPPORTED_PROVIDERS entry rather than treating it as fatal whether the
   feed doesn't list it at all (`ollama` — local inference, never a Models.dev
   provider) or lists it with an empty models object (an upstream glitch or a
@@ -188,7 +188,7 @@ live-feed comparison found 8 of the 12 bundled models measurably wrong
   instead of hardcoding a placeholder — the earlier hardcoded
   `fixture-2026-08-21`/`2026-08-21` was accurate only while the fixture was a
   static hand-authored file; once it became a dated upstream capture, that
-  hardcoding made `heirloom models status` actively lie about how fresh the
+  hardcoding made `nib models status` actively lie about how fresh the
   bundled catalog was. A fixture with no `capture` block (a legacy fixture
   predating this, or an arbitrary URL/file passed directly to
   `models:generate`) falls back to that same placeholder/wall-clock behavior

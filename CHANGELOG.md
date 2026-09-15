@@ -1,11 +1,109 @@
 # Changelog
 
-All notable changes to Heirloom are documented here.
+All notable changes to Nib are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.5.0] — 2026-09-15
+
+The project is now **nib** — the writing point of a pen. Same tool; the name
+changes everywhere it is user-visible: the binary, the package, the state
+directory, each project's config directory, and the four environment variables.
+This is a rename release — no other behavior was intended, and the code changes
+below are the ones a rename forces.
+
+**Breaking: the upgrade steps in "Changed" are required, not optional.**
+
+### Changed
+
+- **The command is `nib`.** The package, its `bin` entry, and everything that
+  names the product (persona line, welcome wordmark, help and usage text, error
+  strings, the `User-Agent`, the MCP `clientInfo`, and the git identity on
+  checkpoint commits) all follow. The `HTTP-Referer` and OpenRouter title now
+  point at the real new slug.
+- **Upgrade: the state directory is `~/.nib/`.** Copy the precious subset from
+  `~/.heirloom/` — `sessions/`, `memory/`, `prompt_history/`,
+  `credentials.yaml`, `settings.json`, `models.json`, `mcp-pins.json`,
+  `update-check.json`, and the four `*-trust.json` stores. Copy rather than
+  move: the old directory then *is* the backup. There is no read-fallback and no
+  directory symlink — a symlink would resolve onto the stale trusted keys and
+  silently skip a trust prompt.
+- **Upgrade: each project's config directory is `.nib/`.** Existing
+  `.heirloom/` directories are left untouched; the new one starts empty, so
+  project settings are re-trusted on first run — expect one trust prompt per
+  project.
+- **Upgrade: environment variables renamed** — `HEIRLOOM_HOME` → `NIB_HOME`,
+  `HEIRLOOM_REFRESH` → `NIB_REFRESH`, `HEIRLOOM_PROFILE` → `NIB_PROFILE`,
+  `HEIRLOOM_HIGH_CONTRAST` → `NIB_HIGH_CONTRAST`. No aliases, because nothing
+  outside this repo ever referenced the old names — no shell profile sets them.
+- **Upgrade: sessions and prompt history need their slug fixed.** Both are keyed
+  by `slugify(cwd)`, so moving the checkout orphans the entries already on disk:
+  rename the slug directory under `~/.nib/sessions/` and the slug file under
+  `~/.nib/prompt_history/` to match the new path. `nib --resume` confirms it.
+- Repository is now `github.com/amenski/nib`; the old URL redirects. The old
+  global bin needs removing by hand — `npm rm -g` resolves the symlink back into
+  the renamed folder.
+
+### Security
+
+- **Closed a false-accept between the loader and the trust gates.** The project
+  settings path was constructed independently at four sites — what the loader
+  reads, what the interactive gate asks about, what the headless gate asks
+  about, and what folder-trust hashes. Renaming the directory could have flipped
+  one and not the others: a project keeping a content-unchanged `.heirloom/`
+  settings file would still match its stale trusted entry, while the keys
+  actually in effect came from a freshly-added `.nib/` file — so `mcpServers`,
+  `statusline` and `env.BASE_URL` would take effect with no prompt. All four now
+  build the path from one function. A constant alone would not have been enough;
+  a constant can still be missed at one site.
+- **The always-deny guard now covers both directory names.** `isAlwaysDenied` is
+  the only thing standing between the agent and the settings file that carries
+  `permissions.rules`, and it matches by path suffix. Left on the old name it
+  would have failed open and silently: writes to `.nib/settings.json` would have
+  dropped out of the always-deny set with nothing to notice. The state-dir
+  settings file had already fallen out of that set when the state dir moved, and
+  is covered again here.
+- **`update-check` and skill loading now honor the state-dir override.** Both
+  ignored it. `update-check`'s prompt path reads *and clears* its state file, so
+  tests that believed they were isolated were clearing the real one; and skill
+  loading was the only state-dir path ignoring an override its own trust store
+  honored, so with the override set, skills loaded from one tree while trust was
+  recorded in another.
+- The npm-registry update check stays inert, but the rename did not retire its
+  trap — it reproduced it. npm's `nib` is also someone else's package, so a
+  published build under the new name would prompt users to install a CSS
+  library. `private: true` is what makes it a no-op; see
+  [docs/update-check.md](docs/update-check.md).
+
+### Fixed
+
+- **A test wrote into the real state directory on every run.** The `/model`
+  switch test exercises the code path that records a recent-models entry, and it
+  set no state-dir override — so each run appended a genuine entry to the
+  developer's own `settings.json`. Older than this release, but the rename is
+  what made it visible, by moving where it landed. It now points at a temp dir.
+
+### Tests
+
+- **The default persona line is asserted for the first time.** "You are Nib, a
+  helpful AI coding assistant." had no test anywhere: every other `You are`
+  assertion targets a mode's `roleDefinition` or an agent's persona override,
+  both of which replace this line. A rename could have left the preamble naming
+  the wrong product with the whole suite green. Verified by flipping the line
+  back and watching the new test fail.
+
+### Notes
+
+- The stable prompt preamble is documented as byte-stable across turns, and this
+  release changes one of its bytes. The first turn after upgrading pays a full
+  uncached prefix, then re-caches. Unavoidable, and it happens once.
+- `docs/archive/**` keeps the old name. It is the historical record.
+- Historical entries below and `docs/release-0.3.0.md` also keep it: they state
+  what was true when they were written, and rewriting the paths in them would
+  claim those paths never existed.
 
 ## [0.4.2] — 2026-09-15
 
@@ -342,10 +440,12 @@ further injection sinks.
 Earlier releases predate this changelog. See the git history for
 `v0.1.0..v0.2.1`.
 
-[Unreleased]: https://github.com/amenski/heirloom-agent/compare/v0.4.1...HEAD
-[0.4.1]: https://github.com/amenski/heirloom-agent/compare/v0.4.0...v0.4.1
-[0.4.0]: https://github.com/amenski/heirloom-agent/compare/v0.3.2...v0.4.0
-[0.3.2]: https://github.com/amenski/heirloom-agent/compare/v0.3.1...v0.3.2
-[0.3.1]: https://github.com/amenski/heirloom-agent/compare/v0.3.0...v0.3.1
-[0.3.0]: https://github.com/amenski/heirloom-agent/compare/v0.2.1...v0.3.0
-[0.2.1]: https://github.com/amenski/heirloom-agent/releases/tag/v0.2.1
+[Unreleased]: https://github.com/amenski/nib/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/amenski/nib/compare/v0.4.2...v0.5.0
+[0.4.2]: https://github.com/amenski/nib/compare/v0.4.1...v0.4.2
+[0.4.1]: https://github.com/amenski/nib/compare/v0.4.0...v0.4.1
+[0.4.0]: https://github.com/amenski/nib/compare/v0.3.2...v0.4.0
+[0.3.2]: https://github.com/amenski/nib/compare/v0.3.1...v0.3.2
+[0.3.1]: https://github.com/amenski/nib/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/amenski/nib/compare/v0.2.1...v0.3.0
+[0.2.1]: https://github.com/amenski/nib/releases/tag/v0.2.1

@@ -6,7 +6,7 @@
 
 The providers layer abstracts LLM backends behind one contract. Wire formats
 are handled by the **Vercel AI SDK v7** (`ai` + `@ai-sdk/openai` /
-`@ai-sdk/anthropic`) in `src/providers/aisdk.ts`; heirloom layers presets, a
+`@ai-sdk/anthropic`) in `src/providers/aisdk.ts`; nib layers presets, a
 model catalog, and key resolution on top.
 
 - **Provider** — a named config entry: an API (`openai-compatible` or
@@ -15,7 +15,7 @@ model catalog, and key resolution on top.
   connection settings, while `src/providers/models.json` is a generated,
   Models.dev-shaped metadata snapshot for the supported providers (deepseek,
   openai, openrouter, groq, ollama). A user file
-  `~/.heirloom/models.json` deep-merges last over the combined catalog
+  `~/.nib/models.json` deep-merges last over the combined catalog
   (`src/providers/catalog.ts`) — add or override providers/models without
   touching code.
 - **AI SDK** — `src/providers/aisdk.ts` maps `streamText` events to the
@@ -105,11 +105,11 @@ Requests whose configured base URL has the exact hostname `openrouter.ai` carry
 the following AI SDK client headers:
 
 ```text
-HTTP-Referer: https://github.com/amenski/heirloom-agent
-X-OpenRouter-Title: Heirloom
+HTTP-Referer: https://github.com/amenski/nib
+X-OpenRouter-Title: Nib
 ```
 
-This identifies Heirloom in OpenRouter's activity and rankings surfaces. The
+This identifies Nib in OpenRouter's activity and rankings surfaces. The
 headers are not sent to other OpenAI-compatible providers, even when they use
 the same adapter.
 
@@ -120,11 +120,11 @@ order:
 
 1. `options.apiKey` (from settings.json `env.API_KEY`, provider-scoped)
 2. `process.env[preset.keyEnv]` (e.g. `DEEPSEEK_API_KEY`)
-3. `~/.heirloom/credentials.yaml` (`heirloom auth` writes it; file enforced
+3. `~/.nib/credentials.yaml` (`nib auth` writes it; file enforced
    `0600`, `src/config/credentials.ts`)
 
 No key resolvable for a provider that requires one → thrown error naming the
-env var and suggesting `heirloom auth`. Providers without `keyEnv` (ollama —
+env var and suggesting `nib auth`. Providers without `keyEnv` (ollama —
 local) need none.
 
 ## 4. Bundled catalog
@@ -144,7 +144,7 @@ Per-model capabilities (`ModelCapabilities`, `src/providers/types.ts`):
 `contextWindow` (drives compaction), `effort.values` (drives `/effort`),
 `pricing` (**approximate** — feeds only the status-bar cost estimate, never
 billing or routing). `api: "anthropic"` is supported by `aisdk.ts` but has
-no bundled preset — add one via `~/.heirloom/models.json`.
+no bundled preset — add one via `~/.nib/models.json`.
 
 Selection precedence (`src/cli.tsx`): `--model` flag > settings.json
 `model` > settings `env.MODEL`; provider: settings `provider` >
@@ -188,7 +188,7 @@ Models.dev feed, pass its URL explicitly:
 npm run models:generate -- https://models.dev/api.json
 ```
 
-This is a maintainer action only. Heirloom never fetches model data while
+This is a maintainer action only. Nib never fetches model data while
 starting, building, testing, or selecting a model. The snapshot remains the
 runtime fallback; an inspectable user-facing update command is planned in
 `model-catalog-plan.md` slice C.
@@ -196,7 +196,7 @@ runtime fallback; an inspectable user-facing update command is planned in
 ## 5. Adding a provider
 
 **OpenAI-compatible service** (zero code):
-1. Add a preset entry to `~/.heirloom/models.json` (or the bundled catalog).
+1. Add a preset entry to `~/.nib/models.json` (or the bundled catalog).
 
 **A provider the catalog can't express** (code change):
 1. Add the connection preset to `src/providers/provider-presets.json`, the

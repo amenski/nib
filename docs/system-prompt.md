@@ -28,8 +28,8 @@ hit provider caches — subsystems.md §4a):
 [2] Base rules  — the invariant core (§3 below)
 [3] Tool guide  — only the groups the active mode allows (§4)
 [4] Mode custom — mode's customInstructions, if any
-[5] Project     — .heirloom/instructions.md, or AGENTS.md fallback (§6)
-[6] Project rules — .heirloom/rules/**/*.md, loaded by loadProjectRules (§7)
+[5] Project     — .nib/instructions.md, or AGENTS.md fallback (§6)
+[6] Project rules — .nib/rules/**/*.md, loaded by loadProjectRules (§7)
 [7] Skills      — index of available skills, one line each (skill-spec.md)
 [8] Agents      — index of defined agents, one line each (§F4)
 [9] Memory      — memory excerpts, ≤1024-token injection (§8)
@@ -57,7 +57,7 @@ Empty sections are omitted entirely — no empty headers.
 ## 3. Base rules
 
 The identity line is **not** repeated here: the preamble already emits the
-mode's `roleDefinition` (or a Heirloom fallback when no mode is active)
+mode's `roleDefinition` (or a Nib fallback when no mode is active)
 immediately above, so opening the rules with a second "You are…" would
 produce two competing identity statements back to back.
 
@@ -144,12 +144,12 @@ saves the model one `git status` call per session.
 
 **User-level** (`getUserInstructions`, `src/prompt.ts`): `~/.claude/CLAUDE.md`
 is included in every session when present, under a `# User instructions`
-header — heirloom honors the Claude Code global-instructions convention.
+header — nib honors the Claude Code global-instructions convention.
 
 **Project-level** (`getProjectInstructions`, `src/prompt.ts`): the first
 non-empty of, in order:
 
-1. `.heirloom/instructions.md` (heirloom-native)
+1. `.nib/instructions.md` (nib-native)
 2. `CLAUDE.md` (repo root — the Claude Code convention)
 3. `AGENTS.md` (repo root — the opencode convention)
 
@@ -159,7 +159,7 @@ rules read first and repo conventions layer on top.
 
 ## 7. Project rules
 
-`.heirloom/rules/**/*.md` files are concatenated under a rules section by
+`.nib/rules/**/*.md` files are concatenated under a rules section by
 `loadProjectRules()` (`src/prompt.ts:372`) — walk is symlink-escape-safe,
 byte-capped at 20 KB. Full precedence rules: rules-spec.md.
 
@@ -188,7 +188,7 @@ Instead, analyze the request and produce a detailed plan.
 Your reply must end with a <proposed_plan>...</proposed_plan> block containing the step-by-step plan.
 ```
 
-Plus the `.heirloom/research/**/*.md` notes (`loadProjectResearch`), which
+Plus the `.nib/research/**/*.md` notes (`loadProjectResearch`), which
 are plan-mode-only context. The TUI parses the `<proposed_plan>` block and
 offers Implement / Stay / Switch-to-Default
 (`src/ui/views/PlanImplementationPrompt.tsx`).

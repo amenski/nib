@@ -4,7 +4,7 @@
 
 ## 1. Overview
 
-Heirloom speaks the Model Context Protocol over **stdio**: each configured
+Nib speaks the Model Context Protocol over **stdio**: each configured
 server is a child process; its tools appear to the model as
 `mcp__<server>__<tool>` calls, gated by the same permission engine as any
 other tool.
@@ -75,7 +75,7 @@ one model-facing tool:
 - **Tool-definition pinning (security-spec T10, fixed 2026-08-14)**:
   `src/mcp/pins.ts` hashes each advertised tool (`name + description +
   canonicalized inputSchema`) and persists per server name to
-  `~/.heirloom/mcp-pins.json` (mode 0600, atomic tmp+rename, hashes only).
+  `~/.nib/mcp-pins.json` (mode 0600, atomic tmp+rename, hashes only).
   Every connect — first-ever or reconnect — compares against the pin: a
   description/schema change (or a tool added/removed) marks the server
   `pinChanged` in `/mcp` (`pinned-defs changed — re-approve`), the changed

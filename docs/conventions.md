@@ -1,4 +1,4 @@
-# Heirloom — Code Conventions
+# Nib — Code Conventions
 
 ## TypeScript
 

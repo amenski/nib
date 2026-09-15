@@ -8,7 +8,7 @@
 
 ## 1. Overview
 
-Heirloom ships **one** built-in search surface: `web_search`, a general
+Nib ships **one** built-in search surface: `web_search`, a general
 web-search tool over Bing's keyless `format=rss` XML feed — one pinned host
 (`www.bing.com`), no API key, no scraper, no backend. This doc governs
 **search** (finding pages you don't have a URL for); `web_fetch`
@@ -36,7 +36,7 @@ problem* (the instance's `search.formats` doesn't include `json`), not a
 transient failure — no retry, and it does **not** fall back to Bing silently;
 the returned text tells the user how to fix their instance. Why this doesn't
 violate rule 2 in spirit: the SearXNG base URL is **user-authored config**,
-the same trust boundary as `mcpServers` — Heirloom still ships no search
+the same trust boundary as `mcpServers` — Nib still ships no search
 index, no scraper, no key, no backend of its own; the user runs and points at
 their own instance. See the Tier 3 section's new "SearXNG backend" subsection
 and the Anti-drift rules amendment below. security-spec.md's host list is
@@ -185,7 +185,7 @@ above and the rule-4 carve-out below.
 - **Body cap**: 512 KB streamed, abort past cap.
 - **Redirects**: `redirect: "manual"` — any 3xx is a failure. No
   cross-host follows.
-- **User-Agent**: `heirloom-agent/<version> (+cli)` — verified 200 against
+- **User-Agent**: `nib/<version> (+cli)` — verified 200 against
   live Bing.
 - **403/429** → `web_search: Bing rate-limited the request, try again
   shortly.` as content. **Never retried.**
@@ -238,7 +238,7 @@ explicitly carved out of rules 1, 3, and 4.
    security-spec.md first. **Carve-out (2026-08-11):** a SearXNG base URL the
    user sets via `webSearch.searxngUrl` in `settings.json` is an approved
    search host — user-authored config, the same trust boundary as
-   `mcpServers`, not a host Heirloom pins or ships. See the SearXNG backend
+   `mcpServers`, not a host Nib pins or ships. See the SearXNG backend
    subsection above and security-spec.md's host list.
 3. **No HTML scraping of any host. No SERP scraper.** The Bing
    `format=rss` XML feed is the sole approved general-search surface.

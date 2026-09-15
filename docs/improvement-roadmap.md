@@ -13,7 +13,7 @@ Status (**refreshed 2026-08-08**): **the entire do-now tier and the whole
 in-flight wave have shipped.** What remains is the design-first tier — items
 that need a decision or a design doc before any code, plus a handful of small
 follow-ons. This started as a review of several `lessweb/deepcode-cli` PRs for
-ideas worth bringing into Heirloom, adapted to its architecture and ethos.
+ideas worth bringing into Nib, adapted to its architecture and ethos.
 **We are not doing all of this** — the table below sorts each idea into
 **do-now / roadmap / reject**. Detailed per-PR analysis follows; once an item
 is picked up and built, its behavior moves into the matching subsystem spec
@@ -21,7 +21,7 @@ is picked up and built, its behavior moves into the matching subsystem spec
 [permission-spec.md](./permission-spec.md)).
 
 > **Blind spot worth naming.** This doc was derived from reviewing *other
-> people's PRs*, so it tracks what deepcode-cli built — not what Heirloom's own
+> people's PRs*, so it tracks what deepcode-cli built — not what Nib's own
 > use surfaces. Two of the highest-value gaps found from real usage appear
 > nowhere below: **mid-turn steering** (inject a message into a running turn
 > instead of losing it to Esc) and **background/streaming command output** (a
@@ -40,7 +40,7 @@ PRs reviewed: [#266](https://github.com/lessweb/deepcode-cli/pull/266) ·
 
 Recurring theme: these PRs are worth mining for **ideas**, rarely for **code** —
 several put keys in config or data in SQLite/plaintext in ways that cut against
-Heirloom's stated ethos, and a few duplicate things Heirloom already does
+Nib's stated ethos, and a few duplicate things Nib already does
 better. Pick the small, high-value, on-ethos wins first; park the big
 architectural swings on the roadmap; drop the rest.
 
@@ -59,7 +59,7 @@ architectural swings on the roadmap; drop the rest.
 | ~~**Long→short flag map** for destructive rules~~ ✅ **shipped 2026-08-02** | local | S | `rm` map landed in the prior wave; this wave extended it to `git` (`--force`/`--directory`/`--ignored`), closing the `git clean --force -dx` escape. See [security-destructive-matching.md](./security-destructive-matching.md). |
 | ~~**`docs_search` tool**~~ ✅ **shipped 2026-08-01** | local | M | Keyless official-API search, live-smoke verified; general web via MCP. Spec: [web-search-spec.md](./web-search-spec.md). **Removed 2026-08-10 — subsumed by `web_search`.** |
 | ~~**`web_search` tool**~~ ✅ **shipped 2026-08-10** | local | M | Built-in general web search via Bing `format=rss` (keyless, one pinned host); guarded-tier permission, headless-deny. Spec: [web-search-spec.md](./web-search-spec.md). |
-| ~~**Hierarchical project rules** (`.heirloom/rules/**`)~~ ✅ **shipped 2026-08-01** | #266 | M | Recursively-loaded scoped rule sections injected alongside `instructions.md`/`AGENTS.md` (`7290aab`). Promoted from Roadmap. |
+| ~~**Hierarchical project rules** (`.nib/rules/**`)~~ ✅ **shipped 2026-08-01** | #266 | M | Recursively-loaded scoped rule sections injected alongside `instructions.md`/`AGENTS.md` (`7290aab`). Promoted from Roadmap. |
 
 > **Local (non-borrow) findings** also tracked in their own docs, with priorities:
 > the two rows above are the do-now items; the input-stutter fix
@@ -74,7 +74,7 @@ architectural swings on the roadmap; drop the rest.
 |---|---|---|---|
 | **PermissionProfile ACL model** (path/network/git sandbox) | #263 | L | A *parallel* permission architecture to the current rule engine — needs its own design doc + a reconcile-or-migrate decision. |
 | ~~**Sub-task orchestration**~~ (`new_task` tool, `src/orchestrator/`) ✅ **wired 2026-08-11** · **design doc + tagged audit shipped 2026-08-13** | — | L | `new_task` is mounted in both the TUI (`cli.tsx:181–189`) and headless `-p` (`exec-runner.ts:141–150`) registries; sub-agents run a real `runAgent` turn in the target mode's toolset, inherit the parent's live permission engine (rules + approval posture, no escalation) and per-spawn provider factory (follows `/model` switches). Enforcement: depth cap 3, max 10 sub-agent turns. The inheritance/recursion design doc is [subsystems/orchestration.md](./subsystems/orchestration.md) §7; sub-agent audit/token rows now land in the parent session tagged `source: "subagent"` (session-spec.md). |
-| ~~**Hierarchical project rules** (`.heirloom/rules/**`)~~ ✅ **shipped 2026-08-01** (`7290aab`) | #266 | M | Additive to `instructions.md`/`AGENTS.md`; landed — promoted to Do-now shipped list. |
+| ~~**Hierarchical project rules** (`.nib/rules/**`)~~ ✅ **shipped 2026-08-01** (`7290aab`) | #266 | M | Additive to `instructions.md`/`AGENTS.md`; landed — promoted to Do-now shipped list. |
 | ~~**Auto error-fix loop + `<error_analysis>`**~~ ✅ **shipped 2026-08-15** | #266 | M | Audited → build-the-delta: `run_bash` non-zero+stderr exits now set `error` and prepend a grepped `<error_analysis>` block; retry-cap exhaustion fires an escalation diagnostic. |
 | **Lifecycle hooks** (shell on events) | #263 | M | Powerful but another untrusted-exec surface — opt-in + security-spec first. Highest-leverage of the remaining roadmap tier. |
 | **Mid-turn steering** | local (usage) | M | Inject a message typed during a running turn into the live agent loop, instead of the user losing the turn to Esc. Pairs with input queueing (buffer a message typed mid-turn, send it next). Not from any PR — surfaced by real use. |
@@ -87,11 +87,11 @@ architectural swings on the roadmap; drop the rest.
 
 | Item | Source | Why not |
 |---|---|---|
-| PR's `ThemeTokens` model / `resolver.ts` | #132 | Heirloom's theme model is **strictly richer** and already integrated. |
-| `buildLoginSettings` writing the key into `settings.json` | #225 | Heirloom keeps keys out of config (`credentials.yaml`, chmod 600). Take the ergonomics, not this. |
+| PR's `ThemeTokens` model / `resolver.ts` | #132 | Nib's theme model is **strictly richer** and already integrated. |
+| `buildLoginSettings` writing the key into `settings.json` | #225 | Nib keeps keys out of config (`credentials.yaml`, chmod 600). Take the ergonomics, not this. |
 | Wholesale cherry-pick of #263 | #263 | Branch has a **literal unresolved Git merge-conflict marker** in `permissions.ts`. Reimplement ideas, don't lift. |
 | `job-queue.ts`, `skill-parser.ts` | #263 | Out of scope for these goals (background exec / skill-frontmatter tied to PermissionProfile). |
-| Vendored `cli.js` blob, Python skill templates, prompt-text | #266/#263 | Noise / go through Heirloom's own system-prompt change protocol. |
+| Vendored `cli.js` blob, Python skill templates, prompt-text | #266/#263 | Noise / go through Nib's own system-prompt change protocol. |
 
 ---
 
@@ -112,7 +112,7 @@ handles, so this doc reflects reality rather than intent:
 | `strictMcpConfig` command allowlist + settings→`connectMCPServers` wiring | 07-31 | `3d5b6c4`, `21bb982` | [security-spec.md](./security-spec.md) |
 | Auth ergonomics: masked key input, `--api-key`, piped-stdin | 07-31 | `66e1df6` | [provider-spec.md](./provider-spec.md) |
 | Credentials fix — unify config read path with auth's `credentials.yaml` | 07-31 | `7840ba5` | [config-spec.md](./config-spec.md) |
-| Hierarchical project rules (`.heirloom/rules/**`, recursive, scoped) | 07-31 | `7290aab` | [rules-spec.md](./rules-spec.md) |
+| Hierarchical project rules (`.nib/rules/**`, recursive, scoped) | 07-31 | `7290aab` | [rules-spec.md](./rules-spec.md) |
 | Session observability — permission audit trail + per-turn token-usage log | 08-01 | `78f3b01` | [session-spec.md](./session-spec.md) |
 | QA wave B1–B6 + docs alignment (cli-spec / config-spec / README; `/new`+`/plan` routing; resume-by-ID; help/palette advertise only working commands; clean exec errors; `env.BASE_URL` override) | 07-31 | `04da259`, `5bd15e9`, `6e6e57e`, `4fe4275`, `4febc94`, `5ffb588` | cli-spec / config-spec |
 | CI lockfile fix — regenerate against public npm registry | 08-01 | `e72047f` | — |
@@ -127,7 +127,7 @@ findings. Verified against the code on 2026-08-08 (not from memory):
 
 | Shipped item | Evidence |
 |---|---|
-| **Checkpoint git identity** | `-c user.name=heirloom` / `user.email=heirloom@local` in `src/checkpoints/index.ts:21-22`. |
+| **Checkpoint git identity** | `-c user.name=nib` / `user.email=nib@local` in `src/checkpoints/index.ts:21-22`. |
 | **Dist mode-YAML packaging** | `dist/builtin/*.yaml` present; `ModeLoader` resolves via `import.meta.url`, so the published bundle finds them. |
 | **`notify`** | `fireNotify` called from both the interactive (`cli.tsx`) and headless (`exec-runner.ts`) completion boundaries. |
 | **`statusline`** | `src/ui/statusline/` consumed by the TUI. |
@@ -160,7 +160,7 @@ captured so they aren't lost:
 | **Audit refinements — remainder** | (a) **allow-by-posture emission** — the canonical decision value still isn't written by `agent.ts` (the audit closure lacks posture visibility; needs plumbing, deferred with the exit-summary wave). Color/label coverage for all canonical values + **double-row dedup** ✅ **shipped 2026-08-02**. |
 | ~~**Doctor: `credentials.json` label**~~ ✅ **shipped 2026-08-02** | `doctor` diagnostics now print `credentials.yaml`, the real file. |
 | ~~**`ansi-light` / `ansi-dark` presets**~~ ✅ **shipped 2026-08-02** | Both ANSI presets (base-16 only, "dumb-terminal" variants of dark/light) added in `ThemeDefinition` shape; `/theme` picker auto-adopts them. |
-| ~~**Plan-mode research read**~~ ✅ **shipped 2026-08-02** | Plan mode now loads `.heirloom/research/**/*.md` (the `.deepcode/docs/research/` path from the original note is stale — the repo renamed its config namespace to `.heirloom`) and injects it into the volatile plan-mode context each turn. |
+| ~~**Plan-mode research read**~~ ✅ **shipped 2026-08-02** | Plan mode now loads `.nib/research/**/*.md` (the `.deepcode/docs/research/` path from the original note is stale — the repo renamed its config namespace to `.nib`) and injects it into the volatile plan-mode context each turn. |
 | **CodeArtifact-URL-in-git-history scrub — decision** | A CodeArtifact registry URL leaked into git history (via a lockfile now fixed forward in `e72047f`). Decide whether to history-scrub (rewrite) or leave-and-document; it is a URL, not a secret. Owner decision pending. |
 
 ---
@@ -178,7 +178,7 @@ genuinely reusable core is five concepts, all in
 | 2 | **Permission audit trail** | Every allow/deny/ask decision recorded with tool, scopes, decision, reason — plus a history query. |
 | 3 | **Token-budget audit** | Per-turn token rows (`turn`, `total`, `max`, `remaining`); "budget left" query. |
 | 4 | **Auto error-fix loop** | On tool failure, inject a "don't move on — fix it" reminder; retry ≤3× then escalate. Bash output gets a grepped `<error_analysis>` header. |
-| 5 | **Hierarchical project rules** | `.heirloom/rules/**/*.md` recursively loaded, injected as scoped rule sections. |
+| 5 | **Hierarchical project rules** | `.nib/rules/**/*.md` recursively loaded, injected as scoped rule sections. |
 
 The PR's original design persists all of this to a **SQLite database** (`sql.js`,
 pure-WASM) with tables `session_logs`, `token_budget`, `permission_audit`,
@@ -186,15 +186,15 @@ pure-WASM) with tables `session_logs`, `token_budget`, `permission_audit`,
 
 ---
 
-## What Heirloom already has (gap analysis)
+## What Nib already has (gap analysis)
 
-| PR concept | Heirloom today | Actual gap |
+| PR concept | Nib today | Actual gap |
 |---|---|---|
-| Session log | Append-only **JSONL** per session — `SessionStore`, `~/.heirloom/sessions/<slug>/<id>.jsonl`, records typed `meta \| message \| state \| compaction` (`src/sessions/store.ts`). | Not the *store* — the **queryability** and the *event types* (permission, token). |
-| Permission saving | Approved rules **persist** to `.heirloom/settings.json` via atomic write (`engine.ts: approveAlways → persist`). | No **audit trail**: denies, one-time allows, and the *reason* a decision was made are never recorded. |
+| Session log | Append-only **JSONL** per session — `SessionStore`, `~/.nib/sessions/<slug>/<id>.jsonl`, records typed `meta \| message \| state \| compaction` (`src/sessions/store.ts`). | Not the *store* — the **queryability** and the *event types* (permission, token). |
+| Permission saving | Approved rules **persist** to `.nib/settings.json` via atomic write (`engine.ts: approveAlways → persist`). | No **audit trail**: denies, one-time allows, and the *reason* a decision was made are never recorded. |
 | Token budget | `estimateTokens` / `shouldCompact` drive compaction (`src/compaction/budget.ts`). | Usage is **never recorded** per turn; no history, no "remaining" surfaced. |
 | Auto error-fix | `src/errorrecovery/` + `src/selfreflection/` already exist. | Possible **overlap** — must audit before porting, or we duplicate. |
-| Project rules | Single `.heirloom/instructions.md` / `AGENTS.md`. | No **directory of scoped rules**. Additive. |
+| Project rules | Single `.nib/instructions.md` / `AGENTS.md`. | No **directory of scoped rules**. Additive. |
 
 Net: the two things you specifically asked for — **session-log saving** and
 **permission saving** — are *partly* already present. The new value is the
@@ -205,9 +205,9 @@ Net: the two things you specifically asked for — **session-log saving** and
 
 ## The gating decision: SQLite vs. JSONL
 
-Everything downstream depends on this. Heirloom's README promises "no magic,
+Everything downstream depends on this. Nib's README promises "no magic,
 every layer independently readable and replaceable" and "sessions are plaintext
-files under `~/.heirloom/`." Adopting SQLite pushes against that.
+files under `~/.nib/`." Adopting SQLite pushes against that.
 
 ### Path A — Keep JSONL, add typed sidecar logs  ← **recommended**
 
@@ -280,7 +280,7 @@ files keyed by session id — decide per phase.
   compaction already computes.
 
 ### Phase 3 — Hierarchical project rules — ✅ shipped 2026-07-31 (`7290aab`)
-- Loader for `.heirloom/rules/**/*.md`, recursively, scoped by subdirectory
+- Loader for `.nib/rules/**/*.md`, recursively, scoped by subdirectory
   (mirror the PR's `loadProjectRules`), injected alongside the existing
   `instructions.md` / `AGENTS.md`.
 - **Verify:** a nested rule file (`rules/api/naming.md`) appears as a scoped
@@ -340,18 +340,18 @@ unresolved Git merge-conflict marker** (`>>>>>>> ea93ba2 (…)`) left in the
 source. So #263 is not a clean, mergeable branch — treat it as a **grab-bag of
 ideas to reimplement**, never as something to cherry-pick wholesale.
 
-### New modules and how they map to Heirloom
+### New modules and how they map to Nib
 
-| Module (in #263) | What it is | Verdict for Heirloom |
+| Module (in #263) | What it is | Verdict for Nib |
 |---|---|---|
-| **`permission-profile.ts`** (+335) | A structured, ACL-style permission model (Codex "PermissionProfile"): `unrestricted \| legacy \| managed`, path-level `read/write/deny` entries with glob matching, plus network + git sub-permissions and preset profiles (`STRICT_SANDBOX`, `DEFAULT_DEV`). Self-contained glob engine, no deps. | **Strongest idea in the PR.** But it's a *parallel* permission system to Heirloom's existing rule engine (`src/permissions/engine.ts`), not a drop-in. Adopting it is a **permission-model redesign**, not an add-on — big decision, own workstream. See below. |
-| **`telemetry.ts` metrics** (+87) | In-memory per-session counters: permission accept/reject counts, and `ToolUsageMetrics` (cost USD, API duration, lines added/removed, tool calls). Get/reset API. | **Cheap and useful.** Pure in-memory, no deps, no storage. Pairs naturally with Phase 2 (token log) — surface in an exit summary / status line. Heirloom already has `src/ui/exit-summary.ts` to extend. |
-| **`strictMcpConfig`** (mcp-manager +29, settings +32) | A `--strict-mcp-config`-style flag: when on, MCP servers may only launch from an allowlisted command (`npx`, `node`, `python3`, `uvx`, `bun`, `deno`, `go`, `java`); anything else is blocked with a descriptive error. | **Take it — small, real security win.** Heirloom has `src/mcp/` and treats MCP tools as untrusted (per security-spec). A command allowlist is a clean, low-risk hardening. ~30 lines + a settings key. |
+| **`permission-profile.ts`** (+335) | A structured, ACL-style permission model (Codex "PermissionProfile"): `unrestricted \| legacy \| managed`, path-level `read/write/deny` entries with glob matching, plus network + git sub-permissions and preset profiles (`STRICT_SANDBOX`, `DEFAULT_DEV`). Self-contained glob engine, no deps. | **Strongest idea in the PR.** But it's a *parallel* permission system to Nib's existing rule engine (`src/permissions/engine.ts`), not a drop-in. Adopting it is a **permission-model redesign**, not an add-on — big decision, own workstream. See below. |
+| **`telemetry.ts` metrics** (+87) | In-memory per-session counters: permission accept/reject counts, and `ToolUsageMetrics` (cost USD, API duration, lines added/removed, tool calls). Get/reset API. | **Cheap and useful.** Pure in-memory, no deps, no storage. Pairs naturally with Phase 2 (token log) — surface in an exit summary / status line. Nib already has `src/ui/exit-summary.ts` to extend. |
+| **`strictMcpConfig`** (mcp-manager +29, settings +32) | A `--strict-mcp-config`-style flag: when on, MCP servers may only launch from an allowlisted command (`npx`, `node`, `python3`, `uvx`, `bun`, `deno`, `go`, `java`); anything else is blocked with a descriptive error. | **Take it — small, real security win.** Nib has `src/mcp/` and treats MCP tools as untrusted (per security-spec). A command allowlist is a clean, low-risk hardening. ~30 lines + a settings key. |
 | **`hooks.ts`** (+76) | A lifecycle-hook dispatcher: user-configured shell commands fired on events (`beforeWrite`, `afterWrite`, `beforeCommand`, `onError`, `onSessionStart`, `onCompact`, …) with `{placeholder}` substitution. | **Attractive but security-sensitive.** This runs arbitrary shell on agent events — powerful (formatters, notifiers) but it's another untrusted-execution surface. Only behind explicit opt-in config, and document it in security-spec. Defer past the core phases. |
-| **`compact.ts`** (+245) | A runtime content-compressor: smart JSON tool-result truncation (shrinks only the `output` field), binary detection, plain-text capping, plus lossy message-history summarization. | **Partial overlap** with Heirloom's `src/compaction/` + tool-result truncation in `src/tools/`. Mine it for the *smart-JSON-truncation* idea specifically; don't wholesale-import a second compaction path. |
-| **`skill-parser.ts`** (+313) | Extended `SKILL.md` frontmatter parser: `agent.dependencies`, `agent.interface` (default prompt, brand color, screenshots), `agent.policy` (required permissions, allowed/denied paths → a PermissionProfile). Uses `gray-matter`. | **Only relevant if** the PermissionProfile model is adopted (its payoff is `skillPolicyToProfile`). Heirloom already parses Agent Skills (`src/skills/`); this is a superset tied to the profile system. Defer with it. |
+| **`compact.ts`** (+245) | A runtime content-compressor: smart JSON tool-result truncation (shrinks only the `output` field), binary detection, plain-text capping, plus lossy message-history summarization. | **Partial overlap** with Nib's `src/compaction/` + tool-result truncation in `src/tools/`. Mine it for the *smart-JSON-truncation* idea specifically; don't wholesale-import a second compaction path. |
+| **`skill-parser.ts`** (+313) | Extended `SKILL.md` frontmatter parser: `agent.dependencies`, `agent.interface` (default prompt, brand color, screenshots), `agent.policy` (required permissions, allowed/denied paths → a PermissionProfile). Uses `gray-matter`. | **Only relevant if** the PermissionProfile model is adopted (its payoff is `skillPolicyToProfile`). Nib already parses Agent Skills (`src/skills/`); this is a superset tied to the profile system. Defer with it. |
 | **`job-queue.ts`** (+361) | A generic child-process job queue: 3-phase spawn protocol, exponential-backoff retry, timeout, concurrency cap, event callbacks. | **Out of scope for the session-log goal.** Solves background/parallel task execution, unrelated to logging or permission saving. Note it exists; don't pull it in for this workstream. |
-| **`AGENTIC_BEHAVIOR_PROMPT` / `TOOL_CHAINING_PROMPT`** (prompt.ts) | System-prompt text: the plan→execute→verify→auto-fix discipline, and a tool-chaining efficiency pattern. | **Compare, don't copy.** Heirloom has its own `src/prompt.ts` + `docs/system-prompt.md` with a change protocol. If any of this is wanted, it goes through that protocol, not a paste. |
+| **`AGENTIC_BEHAVIOR_PROMPT` / `TOOL_CHAINING_PROMPT`** (prompt.ts) | System-prompt text: the plan→execute→verify→auto-fix discipline, and a tool-chaining efficiency pattern. | **Compare, don't copy.** Nib has its own `src/prompt.ts` + `docs/system-prompt.md` with a change protocol. If any of this is wanted, it goes through that protocol, not a paste. |
 
 ### What this changes about the plan
 
@@ -360,7 +360,7 @@ ideas to reimplement**, never as something to cherry-pick wholesale.
   and reinforce Phases 1–2. Fold them in as **Phase 2.5**.
 - **Big separate decision — PermissionProfile.** `permission-profile.ts` is the
   most valuable idea here, but it's an *alternative* permission architecture
-  (path-level ACL + sandbox profiles) sitting beside Heirloom's rule-engine +
+  (path-level ACL + sandbox profiles) sitting beside Nib's rule-engine +
   approval-posture model. Choosing it means reconciling two models (or
   migrating). That deserves its **own design doc and its own decision**, not a
   bolt-on. Flagged, not scheduled.
@@ -386,16 +386,16 @@ ideas to reimplement**, never as something to cherry-pick wholesale.
 
 Unrelated to session logging. A small (515-line), **clean** PR — no vendored
 blob, no merge markers — adding a `deepcode login` command that saves an API key
-(and a ready-to-use default config) to `~/.heirloom/settings.json`.
+(and a ready-to-use default config) to `~/.nib/settings.json`.
 
 ### This is mostly overlap, not gap
 
-Heirloom **already has** an auth flow: `auth` (interactive wizard), `auth list`,
+Nib **already has** an auth flow: `auth` (interactive wizard), `auth list`,
 `auth logout <provider>` in `src/auth/wizard.ts`, saving keys to
-`~/.heirloom/credentials.yaml` (chmod 600). So #225 is not a missing feature —
-but it does three things better than Heirloom's current wizard:
+`~/.nib/credentials.yaml` (chmod 600). So #225 is not a missing feature —
+but it does three things better than Nib's current wizard:
 
-| #225 idea | Heirloom today | Take it? |
+| #225 idea | Nib today | Take it? |
 |---|---|---|
 | **Non-interactive `--api-key` flag + piped-stdin fallback** | `authWizard` is interactive-only (`rl.question`); can't script or pipe a key. | **Yes** — real win for CI / headless / scripting. Small. |
 | **Hidden, masked key input** (raw-mode `*`, Backspace / Ctrl+U / Ctrl+C aware, non-TTY fallback) | Key is typed in **plaintext** via `rl.question` — visible on screen and in scrollback. | **Yes** — genuine secret-handling improvement. `readHiddenLine` is a clean, dep-free reference. |
@@ -403,14 +403,14 @@ but it does three things better than Heirloom's current wizard:
 
 ### ⚠ Ethos conflict — do NOT copy the storage mechanism
 
-#225 writes the API key **into `settings.json`** as `env.API_KEY`. Heirloom
+#225 writes the API key **into `settings.json`** as `env.API_KEY`. Nib
 deliberately does the opposite — the README states **"Keys never go in config —
 env vars or the `auth`-managed credentials file"**, and keys live in
 `credentials.yaml` (chmod 600), separate from config. Copying `buildLoginSettings`
 verbatim would put a secret into a non-secret, potentially-committed file.
 
 **So:** adopt the *ergonomics* (`--api-key`, piped stdin, masked input, "you're
-ready to go" confirmation), keep Heirloom's *separation* (key → `credentials.yaml`;
+ready to go" confirmation), keep Nib's *separation* (key → `credentials.yaml`;
 optionally seed a minimal `settings.json` with **model/baseURL only, never the
 key**).
 
@@ -418,17 +418,17 @@ key**).
 
 `login.ts` imports `writeStdout`/`writeStderrLine` from a pre-existing
 `../utils/stdio-helpers` and uses their core `readSettings`/`writeSettings`/
-`getUserSettingsPath`. It's a **pattern to reimplement** against Heirloom's
+`getUserSettingsPath`. It's a **pattern to reimplement** against Nib's
 `src/config/credentials.ts` + `src/config/loader.ts`, not a file to lift.
 
 ### Proposed (small, self-contained — not part of the phase sequence above)
 
 - **Enhance `src/auth/wizard.ts`:** add masked input (port `readHiddenLine`), a
   non-interactive `--api-key` / piped-stdin path, and a post-save "run
-  `heirloom` to start" confirmation.
+  `nib` to start" confirmation.
 - **Optionally** seed a minimal project/global `settings.json` (model + baseURL
   for the chosen provider) on first login — **key stays in `credentials.yaml`.**
-- **Verify:** `heirloom auth --api-key sk-… ` (no TTY) writes the credential;
+- **Verify:** `nib auth --api-key sk-… ` (no TTY) writes the credential;
   interactive entry is masked; existing config fields are preserved; the key
   never lands in `settings.json`.
 
@@ -441,15 +441,15 @@ command that queries `GET api.deepseek.com/user/balance` and renders the credit
 balance / availability in a bordered Ink view (`Esc` to close), gated on
 `baseURL.includes("api.deepseek.com")`.
 
-### The UI pattern fits Heirloom perfectly; the data does not
+### The UI pattern fits Nib perfectly; the data does not
 
 - **Pattern — reusable as-is.** The bordered-view + `useInput(Esc→close)` +
-  slash-command-registry approach is exactly how Heirloom already does `/mcp`
+  slash-command-registry approach is exactly how Nib already does `/mcp`
   (`src/ui/views/McpStatusList.tsx`, `showMcpStatus` routing in `App.tsx`,
   `slash-commands.ts`). Adding a `/usage` view is low-friction structurally.
 - **Data — provider-specific.** The `GET /user/balance` endpoint and the
   `balance_infos` (`total/granted/topped_up`) shape are **proprietary to
-  DeepSeek**. Heirloom is provider-agnostic (Anthropic, OpenAI, DeepSeek,
+  DeepSeek**. Nib is provider-agnostic (Anthropic, OpenAI, DeepSeek,
   OpenRouter, Groq, Ollama). Most of those have **no balance endpoint**, or a
   completely different one (e.g. OpenRouter has `GET /credits`; Anthropic/OpenAI
   expose usage via dashboards/other APIs; Ollama is local — no balance at all).
@@ -469,7 +469,7 @@ balance / availability in a bordered Ink view (`Esc` to close), gated on
    behind a uniform adapter.
 
 **Recommendation:** if wanted, do **option 1** (adapter method) — it's the small
-extra cost that keeps Heirloom's provider-agnostic promise intact. Low priority
+extra cost that keeps Nib's provider-agnostic promise intact. Low priority
 relative to the logging/permission work; it's a convenience, not a capability
 gap.
 
@@ -483,9 +483,9 @@ tokens), a `resolveTheme` resolver (preset / overrides / tokens), 8 presets
 dropdown with live preview, a `ThemeableStatic` component, a system light/dark
 detector (with 318 lines of tests), and a React-rendered exit summary.
 
-### Key finding: Heirloom's theme *model* is already ahead — the *machinery* is what's missing
+### Key finding: Nib's theme *model* is already ahead — the *machinery* is what's missing
 
-Heirloom already has a wired-up theme system in `src/ui/theme.ts`:
+Nib already has a wired-up theme system in `src/ui/theme.ts`:
 - **A richer token model than the PR** — ~20 semantic slots **plus** a full
   `SyntaxColors` set (19 syntax colors) **plus** a `statusBar` sub-palette,
   versus the PR's 13 flat tokens.
@@ -498,25 +498,25 @@ Heirloom already has a wired-up theme system in `src/ui/theme.ts`:
 
 So **do NOT adopt the PR's `ThemeTokens` model or `resolver.ts`** — that would be
 a *downgrade* and a large, invasive rewrite of already-working code. The value is
-in four things Heirloom is **missing**:
+in four things Nib is **missing**:
 
-| #132 piece | Heirloom today | Take it? |
+| #132 piece | Nib today | Take it? |
 |---|---|---|
 | **`/theme` command — live preview + `Esc` reverts** | **No `/theme` command at all** (slash set is clear/continue/exit/help/mcp/model/new/plan/raw/resume/skills/undo). Theme is only set via config file. | **Yes — the headline win.** A `/theme` picker (mirroring the existing `/model` dropdown + `/mcp` view patterns) that previews live and persists to settings on confirm. |
-| **More presets** (github-light/dark, monokai, dracula, ansi ×2) | Only `dark`, `light`, `high-contrast`. | **Yes, cheap** — but *re-express them in Heirloom's richer `ThemeDefinition` shape*, don't import the PR's thinner token objects. Pure data. |
+| **More presets** (github-light/dark, monokai, dracula, ansi ×2) | Only `dark`, `light`, `high-contrast`. | **Yes, cheap** — but *re-express them in Nib's richer `ThemeDefinition` shape*, don't import the PR's thinner token objects. Pure data. |
 | **Real system light/dark detection** (`detect-system-theme.ts`, 204 lines + 318 test lines: parses macOS `AppleInterfaceStyle`, terminal `COLORFGBG`, env hints) | `detectSystemTheme()` in `theme.ts` is a **weak stub** — the `matchMedia` branch never fires in a terminal, and it just checks whether `~/.config/dconf/user` exists, else returns `"dark"`. `mode: "auto"` is effectively "always dark." | **Yes — real bug fix.** Port the detector (especially `COLORFGBG` + macOS `defaults read`) so `auto` actually works. Comes with a ready test suite to adapt. |
 | **`ThemeableStatic`** — re-mount Ink `<Static>` on theme change so scrollback recolors | Uses raw Ink `<Static>` in `OutputArea.tsx`; a live theme switch would leave already-printed lines in the old palette. | **Only needed if** live-preview `/theme` is added — it's what makes preview actually repaint history. Take it together with the `/theme` command. |
 | **React-rendered exit summary** (`ExitSummaryView` replacing `process.stdout.write`) | `src/ui/exit-summary.ts` writes directly to stdout. | **Optional / independent.** A nice robustness fix (survives terminal scroll) but orthogonal to theming — evaluate separately. |
 
 ### Verdict
 
-**The one to actually build here is the `/theme` command** — Heirloom has all
+**The one to actually build here is the `/theme` command** — Nib has all
 the theming infrastructure and zero user-facing way to switch at runtime. Bundle
 it with: (a) the extra presets re-expressed in `ThemeDefinition` shape, (b) the
 real system-theme detector (fixes the broken `auto` mode), and (c)
 `ThemeableStatic` so live preview repaints scrollback.
 
-Explicitly **reject** the PR's token model / `resolver.ts` — Heirloom's is
+Explicitly **reject** the PR's token model / `resolver.ts` — Nib's is
 strictly richer and already integrated. This is the clearest "borrow the
 *feature*, keep our *architecture*" case of all the PRs reviewed.
 

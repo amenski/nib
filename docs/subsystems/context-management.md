@@ -123,7 +123,7 @@ session (the auto path reinserts the stable preamble for the same reason).
 Tool outputs are the #1 source of token bloat:
 
 When an assembled provider request reaches 100,000 estimated input tokens,
-Heirloom creates a request-only copy that replaces the contents of older tool
+Nib creates a request-only copy that replaces the contents of older tool
 results with an explicit cleared placeholder. The three newest consumed tool
 uses/results remain verbatim, and every result from the immediately preceding
 tool batch is protected too, so a newly produced result is always complete on

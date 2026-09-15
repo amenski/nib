@@ -1,6 +1,6 @@
-# Contributing to Heirloom
+# Contributing to Nib
 
-Thanks for your interest in Heirloom. Bug reports, docs fixes, new provider
+Thanks for your interest in Nib. Bug reports, docs fixes, new provider
 presets, and features are all welcome. This guide covers how to get set up,
 what's expected in a PR, and where things live.
 
@@ -14,8 +14,8 @@ By participating, you agree to abide by our
 Requires **Node 20+**.
 
 ```bash
-git clone https://github.com/amenski/heirloom-agent.git
-cd heirloom-agent
+git clone https://github.com/amenski/nib.git
+cd nib
 npm install
 ```
 
@@ -29,11 +29,11 @@ npm run build         # bundle with tsup
 npm start             # run the TUI from source (tsx)
 ```
 
-To run your local build as the `heirloom` binary:
+To run your local build as the `nib` binary:
 
 ```bash
 npm run build && npm link
-heirloom doctor       # sanity-check your setup
+nib doctor            # sanity-check your setup
 ```
 
 You'll need an API key for at least one provider to actually exercise the
@@ -63,7 +63,7 @@ the [README](./README.md#quickstart) for the provider list.
 
 ## Where things live
 
-Heirloom is deliberately framework-free — plain TypeScript in readable layers.
+Nib is deliberately framework-free — plain TypeScript in readable layers.
 A quick map of the source tree:
 
 | Path | What's there |
@@ -105,8 +105,8 @@ we'll point you at the right layer.
 ## Reporting bugs & security issues
 
 - **Bugs / ideas:** open a GitHub issue with steps to reproduce (and the output
-  of `heirloom doctor` if it's environment-related).
-- **Security:** Heirloom executes LLM-chosen commands on your machine — see
+  of `nib doctor` if it's environment-related).
+- **Security:** Nib executes LLM-chosen commands on your machine — see
   [`docs/security-spec.md`](./docs/security-spec.md) for the threat model.
   Please report security-sensitive issues privately to **amantwd@gmail.com**
   rather than filing a public issue.

@@ -222,7 +222,7 @@ sub-turns ≤ 10, mode-scoped tool set, shared permission engine with
 ask-tier prompts surfaced in the parent UI, summary-only return (the
 parent sees the summary, never raw tool output). With
 `agent: <name>`, the run uses the definition's mode/model/instructions
-(`.heirloom/agents/<name>.md`, project > global, feature-plans.md §F4);
+(`.nib/agents/<name>.md`, project > global, feature-plans.md §F4);
 unknown agent names fail with `UNKNOWN_AGENT` listing the available names.
 
 **Async contract (async-subagents.md, shipped 2026-08-16).** The call

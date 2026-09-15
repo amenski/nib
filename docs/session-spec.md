@@ -11,7 +11,7 @@ reference session state.
 ## 2. Storage layout
 
 ```
-~/.heirloom/sessions/
+~/.nib/sessions/
 └── <project-slug>/
     ├── 20260728T142301-ab3f.jsonl
     ├── 20260728T191045-c81d.jsonl
@@ -268,7 +268,7 @@ loses at most the in-flight turn.
 ## 8. Checkpoint interplay
 
 Checkpoints live in the shadow Git repo, keyed by session ID
-(`~/.heirloom/checkpoints/<sessionId>/`). Each checkpoint commit message
+(`~/.nib/checkpoints/<sessionId>/`). Each checkpoint commit message
 records the message index at checkpoint time. `restore full` truncates the
 effective conversation to that index — implemented by appending a `state`
 record `{"truncateAt": N}`, never by deleting lines.
@@ -277,9 +277,9 @@ record `{"truncateAt": N}`, never by deleting lines.
 
 | Command | Behavior |
 |---------|----------|
-| `heirloom` | New session |
-| `heirloom --continue` / `-c` | Resume the most recent session for this cwd |
-| `heirloom --resume [id]` / `-r` | Resume a specific session (or open the picker) |
+| `nib` | New session |
+| `nib --continue` / `-c` | Resume the most recent session for this cwd |
+| `nib --resume [id]` / `-r` | Resume a specific session (or open the picker) |
 | `/sessions` | List this project's sessions from the index: status marker, title, relative activity time, message count. Ctrl+R renames; Del deletes. |
 | `/new` | Save current, start fresh |
 

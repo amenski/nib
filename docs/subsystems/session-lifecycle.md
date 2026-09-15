@@ -5,9 +5,9 @@
 ```
 NEW SESSION
   │
-  ├── Load config (~/.heirloom/settings.json + ./.heirloom/settings.json)
-  ├── Load modes (~/.heirloom/modes/, ./.heirloom/modes/)
-  ├── Load project memory (~/.heirloom/memory/<project-slug>/)
+  ├── Load config (~/.nib/settings.json + ./.nib/settings.json)
+  ├── Load modes (~/.nib/modes/, ./.nib/modes/)
+  ├── Load project memory (~/.nib/memory/<project-slug>/)
   │     └── Inject ≤1024-token memory block into the stable preamble
   ├── Build RepoMap snapshot (≤4 KB)
   │
@@ -30,7 +30,7 @@ END SESSION
 ### Storage
 
 Per-session append-only JSONL at
-`~/.heirloom/sessions/<slug>/<id>.jsonl` with a `sessions-index.json` cache.
+`~/.nib/sessions/<slug>/<id>.jsonl` with a `sessions-index.json` cache.
 Record types, secret redaction, torn-line → `failed` status, and resume
 semantics: session-spec.md.
 

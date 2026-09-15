@@ -93,8 +93,8 @@ per-turn callback, so text renders whether or not a turn is active.
 ### Agent definitions (feature-plans.md §F4, shipped 2026-08-15)
 
 Frontmatter agent definitions let a delegation name a *persona* instead of
-just a mode. `.heirloom/agents/<name>.md` (project dir) and
-`~/.heirloom/agents/<name>.md` (global, `HEIRLOOM_HOME`-aware) are scanned by
+just a mode. `.nib/agents/<name>.md` (project dir) and
+`~/.nib/agents/<name>.md` (global, `NIB_HOME`-aware) are scanned by
 `src/agents/index.ts` (`AgentLoader`) at startup — project wins per name,
 exactly like modes. A def carries:
 

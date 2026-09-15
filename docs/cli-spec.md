@@ -5,15 +5,15 @@
 ## 1. Invocation
 
 ```
-heirloom [flags]                        # interactive TUI (the normal case)
-heirloom -p "<prompt>" [flags]          # headless: run one task, print, exit
-heirloom auth                           # interactive provider setup wizard
-heirloom auth list                      # show configured providers + key sources
-heirloom auth logout <provider>         # remove a credential
-heirloom auth <provider>                # set <provider>'s key (masked prompt)
-heirloom auth <provider> --api-key <key># non-interactive; -k alias
-echo <key> | heirloom auth <provider>   # piped: key read from stdin
-heirloom doctor                         # print environment / config diagnostics
+nib [flags]                        # interactive TUI (the normal case)
+nib -p "<prompt>" [flags]          # headless: run one task, print, exit
+nib auth                           # interactive provider setup wizard
+nib auth list                      # show configured providers + key sources
+nib auth logout <provider>         # remove a credential
+nib auth <provider>                # set <provider>'s key (masked prompt)
+nib auth <provider> --api-key <key># non-interactive; -k alias
+echo <key> | nib auth <provider>   # piped: key read from stdin
+nib doctor                         # print environment / config diagnostics
 ```
 
 `doctor` and `auth` are the only real subcommands — special-cased in
@@ -34,17 +34,17 @@ Bing.` — `src/cli.tsx` `probeSearXngHealth`.
   echoes `*` per character — the key is never shown in plaintext. Enter
   submits, Ctrl+C cancels (nothing is written).
 - **Non-interactive `--api-key` (alias `-k`)** — for scripts and CI.
-- **Piped stdin** — when stdin is not a TTY, `heirloom auth <provider>`
+- **Piped stdin** — when stdin is not a TTY, `nib auth <provider>`
   reads one line from stdin as the key.
 
-The API key belongs in `~/.heirloom/credentials.yaml` (0600) or an env var.
+The API key belongs in `~/.nib/credentials.yaml` (0600) or an env var.
 `env.API_KEY` in settings.json works but is discouraged (settings.json is
 meant to be shareable). See config-spec.md §Credentials.
 
 ### Running it
 
 - Dev: `npm start -- <args>` runs the CLI through `tsx`.
-- Built binary: `npm run build && npm link` puts `heirloom` on `PATH`.
+- Built binary: `npm run build && npm link` puts `nib` on `PATH`.
 
 ## 2. Flags
 
@@ -198,7 +198,7 @@ unresolved/guarded tiers; `plan` is read-only and requires a
 **Profile level is NOT on the status line** (decided 2026-08-14): the
 level is static configuration, not ambient session state, and the bar
 shows only what changes mid-session (mode, posture, effort, context
-fill). The configured level is visible in `heirloom doctor` and
+fill). The configured level is visible in `nib doctor` and
 `/permissions` instead.
 
 ## 7. Keybindings
@@ -243,7 +243,7 @@ commands typed mid-turn stay queued and run at turn end (FIFO). Shipped
   (headless).
 - Errors and warnings go to **stderr**, so `-p` stdout stays pipeable.
 - The interactive UI is an Ink TUI and requires a TTY; launching the
-  interactive path without a TTY prints `heirloom requires an interactive
+  interactive path without a TTY prints `nib requires an interactive
   terminal (TTY)...` and exits 1. (`-p` headless mode does not need a TTY.)
 
 ## 9. In-session delegation — `new_task`
@@ -257,7 +257,7 @@ in subsystems/orchestration.md §7. Parameters:
 |-------|----------|---------|
 | `description` | yes | Self-contained task description (the sub-agent cannot see the parent conversation) |
 | `mode` | no | The sub-agent's mode/toolset; defaults to `code` |
-| `agent` | no | A defined agent name (`.heirloom/agents/<name>.md`, feature-plans.md §F4) — overrides `mode` and the parent's model with the def's own; unknown name → tool error listing available agents |
+| `agent` | no | A defined agent name (`.nib/agents/<name>.md`, feature-plans.md §F4) — overrides `mode` and the parent's model with the def's own; unknown name → tool error listing available agents |
 
 With `agent` absent, behavior is unchanged (call-provided `mode`, parent
 model). Defined agents' `name` + `description` lines are indexed into the

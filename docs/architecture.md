@@ -8,7 +8,7 @@
 ## 1. Philosophy
 
 Build an agent that **you fully understand**. Every line has a known
-purpose. The name "heirloom" means something you build once and keep — the
+purpose. The name "nib" means something you build once and keep — the
 architecture reflects that: each layer is independently understandable,
 replaceable, and testable. No layer depends on implementation details of
 another.
@@ -198,18 +198,18 @@ cli-spec.md.
 
 | Scope | Location |
 |-------|----------|
-| Global config | `~/.heirloom/settings.json` (or `$HEIRLOOM_HOME/settings.json` — partial support, see config-spec.md §15) |
-| Global credentials | `~/.heirloom/credentials.yaml` (0600) |
-| Global modes | `~/.heirloom/modes/<slug>.yaml` |
-| Project config | `./.heirloom/settings.json` |
-| Project modes | `./.heirloom/modes/<slug>.yaml` |
-| Project instructions | `./.heirloom/instructions.md` (or `AGENTS.md`) |
-| Project rules | `./.heirloom/rules/**/*.md` |
-| Project research | `./.heirloom/research/**/*.md` |
-| Project skills | `./.heirloom/skills/`, `./.agents/skills/` |
-| Sessions | `~/.heirloom/sessions/<slug>/<id>.jsonl` |
-| Checkpoints | `~/.heirloom/checkpoints/<sessionId>/` (shadow git repo) |
-| Memory | `~/.heirloom/memory/<slug>/` + global `MEMORY.md` |
+| Global config | `~/.nib/settings.json` (or `$NIB_HOME/settings.json` — partial support, see config-spec.md §15) |
+| Global credentials | `~/.nib/credentials.yaml` (0600) |
+| Global modes | `~/.nib/modes/<slug>.yaml` |
+| Project config | `./.nib/settings.json` |
+| Project modes | `./.nib/modes/<slug>.yaml` |
+| Project instructions | `./.nib/instructions.md` (or `AGENTS.md`) |
+| Project rules | `./.nib/rules/**/*.md` |
+| Project research | `./.nib/research/**/*.md` |
+| Project skills | `./.nib/skills/`, `./.agents/skills/` |
+| Sessions | `~/.nib/sessions/<slug>/<id>.jsonl` |
+| Checkpoints | `~/.nib/checkpoints/<sessionId>/` (shadow git repo) |
+| Memory | `~/.nib/memory/<slug>/` + global `MEMORY.md` |
 
 ## 11. File manifest
 
@@ -226,7 +226,7 @@ src/
 │   ├── types.ts                # Provider interface, StreamEvent, ModelCapabilities
 │   ├── presets.ts              # BUILTIN_PRESETS, createProvider, key resolution
 │   ├── aisdk.ts                # AI SDK v7 streamText → StreamEvent mapping
-│   ├── catalog.ts              # ~/.heirloom/models.json merge
+│   ├── catalog.ts              # ~/.nib/models.json merge
 │   ├── registry.ts             # capability lookup
 │   ├── provider-presets.json   # bundled provider connection settings
 │   └── models.json             # generated bundled model metadata snapshot
@@ -262,7 +262,7 @@ src/
 ├── selfreflection/             # error reflection
 ├── errorrecovery/              # JSON-correction + fatal handling
 ├── diagnostics/                # post-edit checks + stall watchdog
-├── auth/                       # heirloom auth wizard
+├── auth/                       # nib auth wizard
 ├── notify.ts                   # notify hook
 └── ui/                         # Ink TUI: App, core/, views/, components/,
                                 # contexts, keybindings, theme, statusline
@@ -283,7 +283,7 @@ src/
 5. **readline vs Ink TUI.** Decided 2026-07-29: **Ink** (React for
    terminals) — shipped (`src/ui/`).
 6. **Single process vs client/server.** opencode runs a local server; the
-   TUI is a client. Decision: single process — heirloom is a personal
+   TUI is a client. Decision: single process — nib is a personal
    agent, and the extra protocol layer buys nothing yet. Guardrail held:
    the agent loop does no I/O itself — output flows through callbacks, and
    headless printing lives in `src/exec-runner.ts` — so a server frontend

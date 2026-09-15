@@ -5,7 +5,7 @@ this behavior exists until built; anchors verified against src/ on 2026-08-13.
 
 How the remaining roadmap items were planned: each entry below states what the
 state-of-the-art CLIs do (Claude Code, OpenAI Codex, Gemini CLI, aider, opencode
-— researched 2026-08-13 from official docs and repos), what heirloom has today,
+— researched 2026-08-13 from official docs and repos), what nib has today,
 the proposed design, and any decision the owner needs to make. Once an item is
 built, its behavior moves into the owning `*-spec.md` and this entry is struck.
 
@@ -223,7 +223,7 @@ spliced into the loop.
 
 ### Proposed design
 
-1. **Event set** (adapted from Claude Code's, mapped onto heirloom's loop):
+1. **Event set** (adapted from Claude Code's, mapped onto nib's loop):
    - Block/decide: `SessionStart`, `UserPromptSubmit`, `PreToolUse`
      (tool events only), `PermissionRequest` — can deny/rewrite.
    - Feedback: `PostToolUse`, `PostToolUseFailure`, `PostToolBatch`,
@@ -439,14 +439,14 @@ security-spec.md.
   network domain rules, superseding the legacy approval modes.
 - **Claude Code:** no OS sandbox; posture modes + rule engine (deny→ask→allow
   precedence) + guarded circuit breakers — the same architecture family as
-  heirloom.
+  nib.
 - The deepcode PR #263 analysis (improvement-roadmap.md) already identified
   `permission-profile.ts` as the strongest borrowable idea and a *parallel*
   permission architecture — "own design doc + reconcile-or-migrate decision."
 
 ### Current state
 
-Heirloom's rule engine + posture + guarded tiers (security-spec) is the
+Nib's rule engine + posture + guarded tiers (security-spec) is the
 Claude Code architecture. OS sandboxing is already flagged in
 security-destructive-matching.md as the large, model-changing item.
 
@@ -587,11 +587,11 @@ mitigation.
 **SOTA:** Claude Code subagents = frontmatter files (name, description,
 model, tools) in `.claude/agents/`, discovered and listed; opencode =
 markdown frontmatter in `.opencode/agents/` with mode + tool permissions.
-**State:** heirloom's `new_task` takes a *mode*; sub-agents run the
+**State:** nib's `new_task` takes a *mode*; sub-agents run the
 target mode's toolset with parent permission/profile inheritance (depth
 3, max 10 sub-turns, tagged audit). No per-subagent definition surface.
 
-**Design:** `.heirloom/agents/<name>.md` with frontmatter
+**Design:** `.nib/agents/<name>.md` with frontmatter
 (`name`, `description`, `mode`, `model?`, `instructions`) resolved
 project > global like modes; `new_task` gains an `agent?: string`
 parameter; startup loads + indexes defs (description lines into the
@@ -601,7 +601,7 @@ absent. Permission inheritance, depth caps, audit tagging unchanged.
 
 **Decisions (owner, 2026-08-15):** D1 — file-based only. D2 — per-agent
 `model` overrides allowed (absent = inherit parent's model). D3 —
-`.heirloom/agents/`, project > global resolution.
+`.nib/agents/`, project > global resolution.
 
 ### F5. Auto error-fix loop audit — M (audit-first, no code until verdict)
 

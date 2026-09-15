@@ -80,7 +80,7 @@ reasoningEffort: low
 A session with no explicit `--mode`/`/mode` starts here — `activeMode` is
 never left `undefined` at startup (`src/cli.tsx`); a resumed session's last
 mode wins over this default, and an explicit `--mode` wins over both.
-Headless (`heirloom -x`, `src/exec-runner.ts`) resolves the same default: an
+Headless (`nib -x`, `src/exec-runner.ts`) resolves the same default: an
 unrecognized `--mode` still exits 1 with the "unknown mode" message, and a
 valid explicit `--mode` gates tools to its own groups instead.
 
@@ -142,8 +142,8 @@ workflow capability directly.
 `ModeLoader.load(slug, projectDir?)` (`src/modes/loader.ts:74`) searches, in
 order (first hit wins, results cached):
 
-1. `./.heirloom/modes/<slug>.yaml` (project — only when projectDir is passed)
-2. `$HEIRLOOM_HOME || ~/.heirloom/modes/<slug>.yaml` (global)
+1. `./.nib/modes/<slug>.yaml` (project — only when projectDir is passed)
+2. `$NIB_HOME || ~/.nib/modes/<slug>.yaml` (global)
 3. `src/modes/builtin/<slug>.yaml` (built-in defaults)
 
 Project overrides global; global overrides built-in. `listAll()` enumerates
@@ -152,7 +152,7 @@ built-in slugs only.
 ## 7. Custom modes
 
 ```yaml
-# ~/.heirloom/modes/reviewer.yaml
+# ~/.nib/modes/reviewer.yaml
 slug: reviewer
 name: PR Reviewer
 roleDefinition: "You are a thorough code reviewer. Check for bugs, style violations, security issues, and performance problems."

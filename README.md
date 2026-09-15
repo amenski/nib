@@ -1,6 +1,6 @@
-# Heirloom
+# Nib
 
-[![Build](https://github.com/amenski/heirloom-agent/actions/workflows/build.yml/badge.svg)](https://github.com/amenski/heirloom-agent/actions/workflows/build.yml)
+[![Build](https://github.com/amenski/nib/actions/workflows/build.yml/badge.svg)](https://github.com/amenski/nib/actions/workflows/build.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
 [![Node.js 20+](https://img.shields.io/badge/node-%3E%3D20-green.svg)](https://nodejs.org)
 
@@ -12,8 +12,8 @@ readable codebase.
 ## Install
 
 ```bash
-git clone https://github.com/amenski/heirloom-agent.git
-cd heirloom-agent
+git clone https://github.com/amenski/nib.git
+cd nib
 npm install
 npm run build && npm link
 ```
@@ -21,26 +21,26 @@ npm run build && npm link
 Then add an API key:
 
 ```bash
-heirloom auth                    # guided setup (stores in ~/.heirloom/credentials.yaml)
+nib auth                         # guided setup (stores in ~/.nib/credentials.yaml)
 export DEEPSEEK_API_KEY=...      # or set an env var
 ```
 
 Launch:
 
 ```bash
-heirloom                         # interactive
-heirloom "explain src/foo.ts"    # start with a prompt
-heirloom -c                      # continue the most recent session
-heirloom -p "..."                # one-shot, no TUI (for scripts)
-heirloom doctor                  # verify your setup
+nib                              # interactive
+nib "explain src/foo.ts"         # start with a prompt
+nib -c                           # continue the most recent session
+nib -p "..."                     # one-shot, no TUI (for scripts)
+nib doctor                       # verify your setup
 ```
 
-Check your setup any time with `heirloom doctor`.
+Check your setup any time with `nib doctor`.
 
 ---
 
 <p align="center">
-  <img src="assets/prompt-screen.png" alt="Heirloom TUI screenshot" width="720">
+  <img src="assets/prompt-screen.png" alt="Nib TUI screenshot" width="720">
 </p>
 
 ---
@@ -48,13 +48,13 @@ Check your setup any time with `heirloom doctor`.
 ## Everyday use
 
 ```
-heirloom [general] > explain this codebase       read-only by default
-heirloom [general] > /mode code                  enable implementation tools
-heirloom [code]    > Shift+Tab                   cycle normal / auto-approve / plan
+nib [general] > explain this codebase            read-only by default
+nib [general] > /mode code                       enable implementation tools
+nib [code]    > Shift+Tab                        cycle normal / auto-approve / plan
 ```
 
 New sessions start in `General`, a fast, read-only chat mode. Switch to `Code`
-when you want Heirloom to edit files, run commands, or delegate a larger task
+when you want Nib to edit files, run commands, or delegate a larger task
 to a sub-agent. `Shift+Tab` is an independent permission posture: it cycles
 `normal → auto-approve → plan` in whichever mode is active.
 
@@ -86,14 +86,14 @@ to a sub-agent. `Shift+Tab` is an independent permission posture: it cycles
 | `-d, --debug` | opt in to diagnostic request/response JSONL (includes conversation and tool payloads, with secret redaction) |
 
 ```bash
-cat error.log | heirloom -p "Explain this error"
+cat error.log | nib -p "Explain this error"
 ```
 
 ---
 
 ## Configuration
 
-Create `~/.heirloom/settings.json` (or `./.heirloom/settings.json` per project;
+Create `~/.nib/settings.json` (or `./.nib/settings.json` per project;
 project wins when both exist):
 
 ```jsonc
@@ -117,10 +117,10 @@ reasoning effort to keep everyday chat fast and inexpensive. An explicit
 provider or model selection in settings, flags, or slash commands takes
 precedence; use `model` and `provider` here, `--model`, or `/model` to choose.
 
-- Store API keys in `~/.heirloom/credentials.yaml` (via `heirloom auth`) or env
+- Store API keys in `~/.nib/credentials.yaml` (via `nib auth`) or env
   vars — not in settings.json.
-- Project instructions: `.heirloom/instructions.md` (or `AGENTS.md`).
-- Custom modes: drop a YAML file into `~/.heirloom/modes/`.
+- Project instructions: `.nib/instructions.md` (or `AGENTS.md`).
+- Custom modes: drop a YAML file into `~/.nib/modes/`.
 
 Full schema: [`docs/config-spec.md`](./docs/config-spec.md).
 
@@ -165,7 +165,7 @@ Because that feed is undocumented, it can change shape without notice. When a
 response no longer parses as RSS, the tool says so explicitly rather than
 reporting "no results" — a broken search never masquerades as an empty web.
 For a stronger index, add a search MCP server with your own key
-([`docs/config-spec.md`](./docs/config-spec.md)); Heirloom ships none and
+([`docs/config-spec.md`](./docs/config-spec.md)); Nib ships none and
 stores no keys.
 
 ### Stale-file detection
@@ -194,7 +194,7 @@ enabling it for sensitive sessions unless you need that detail.
 
 `web_search` works out of the box via keyless Bing RSS — thin, snippet-only
 results. For richer results (and inline content excerpts), run your own
-[SearXNG](https://docs.searxng.org/) instance locally and point heirloom at it:
+[SearXNG](https://docs.searxng.org/) instance locally and point nib at it:
 
 ```bash
 # 1. Start it (localhost-only, port 8888). The compose file renders a fresh
@@ -207,7 +207,7 @@ curl -s http://localhost:8888/healthz    # → OK
 curl -s "http://localhost:8888/search?q=test&format=json" | head -c 120
 ```
 
-Then add one line to `~/.heirloom/settings.json`:
+Then add one line to `~/.nib/settings.json`:
 
 ```json
 "webSearch": { "searxngUrl": "http://localhost:8888" }
@@ -227,7 +227,7 @@ localhost; a remote instance must use `https://`. See
 
 ### Why another AI coding agent?
 
-Heirloom started as a fix for an agent that broke inside IntelliJ's embedded
+Nib started as a fix for an agent that broke inside IntelliJ's embedded
 terminal. It grew into a full tool by combining the best ideas from opencode,
 RooCode, Aider, and SWE-agent — modes, checkpoints, permission rules — with
 zero telemetry and no vendor lock-in. Every design decision is documented in
@@ -235,13 +235,13 @@ zero telemetry and no vendor lock-in. Every design decision is documented in
 
 ### Does it send my data anywhere?
 
-Heirloom has no telemetry or analytics. It sends prompts and tool results to
+Nib has no telemetry or analytics. It sends prompts and tool results to
 the model provider you select, and may contact integrations you explicitly
 configure or invoke, such as web search, MCP servers, hooks, or notifications.
 
 ### Is it safe to use on production code?
 
-Heirloom executes model-chosen commands on your machine. The permission system
+Nib executes model-chosen commands on your machine. The permission system
 is the safety net — read [`docs/security-spec.md`](./docs/security-spec.md)
 before enabling auto-approve on code you didn't write.
 
@@ -290,8 +290,8 @@ Having trouble? See [`docs/troubleshooting.md`](./docs/troubleshooting.md).
 ## Contributing
 
 ```bash
-git clone https://github.com/amenski/heirloom-agent.git
-cd heirloom-agent
+git clone https://github.com/amenski/nib.git
+cd nib
 npm install
 npm test              # run the test suite
 npx tsc --noEmit      # type gate

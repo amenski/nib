@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { projectDirPath } from "../config/paths.js";
 import { tmpdir } from "node:os";
 import { SkillLoader, isSkillEnabled } from "./index.js";
 import { trustSkill } from "./trust.js";
@@ -31,7 +32,7 @@ describe("SkillLoader.load honors enabledSkills", () => {
   let prevHeirloomHome: string | undefined;
 
   function writeSkill(name: string) {
-    const dir = join(projectDir, ".heirloom", "skills", name);
+    const dir = join(projectDirPath(projectDir), "skills", name);
     mkdirSync(dir, { recursive: true });
     const path = join(dir, "SKILL.md");
     writeFileSync(

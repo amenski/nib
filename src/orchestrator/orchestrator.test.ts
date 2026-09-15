@@ -3,6 +3,7 @@ import { readFileSync, rmSync } from "node:fs";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { projectDirPath } from "../config/paths.js";
 import { Orchestrator } from "./index.js";
 import { ToolRegistry } from "../tools/registry.js";
 import { ModeLoader } from "../modes/loader.js";
@@ -524,7 +525,7 @@ describe("Orchestrator", () => {
       project = await mkdtemp(join(tmpdir(), "agents-proj-"));
       prevHome = process.env.HEIRLOOM_HOME;
       process.env.HEIRLOOM_HOME = home;
-      await mkdir(join(project, ".heirloom", "agents"), { recursive: true });
+      await mkdir(join(projectDirPath(project), "agents"), { recursive: true });
     });
 
     afterEach(async () => {
@@ -541,7 +542,7 @@ describe("Orchestrator", () => {
         textTurn("review done"),
       ]);
       await writeFile(
-        join(project, ".heirloom", "agents", "reviewer.md"),
+        join(projectDirPath(project), "agents", "reviewer.md"),
         "---\nname: reviewer\ndescription: reviews code\nmode: code\nmodel: deepseek/deepseek-v4-flash\ninstructions: |\n  Be critical.\n  Cite paths.\n---\n",
       );
       const agentLoader = new AgentLoader();
@@ -584,7 +585,7 @@ describe("Orchestrator", () => {
       const { registry } = makeRegistry();
       const { provider } = makeProvider([textTurn("never used")]);
       await writeFile(
-        join(project, ".heirloom", "agents", "reviewer.md"),
+        join(projectDirPath(project), "agents", "reviewer.md"),
         "---\nname: reviewer\ndescription: reviews code\nmode: code\n---\n",
       );
       const agentLoader = new AgentLoader();
@@ -616,7 +617,7 @@ describe("Orchestrator", () => {
         textTurn("plain done"),
       ]);
       await writeFile(
-        join(project, ".heirloom", "agents", "reviewer.md"),
+        join(projectDirPath(project), "agents", "reviewer.md"),
         "---\nname: reviewer\ndescription: reviews code\nmode: code\ninstructions: |\n  Be critical.\n---\n",
       );
       const agentLoader = new AgentLoader();

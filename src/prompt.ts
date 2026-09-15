@@ -8,6 +8,7 @@ import { execFile } from "node:child_process";
 import { join, relative, sep } from "node:path";
 import { promisify } from "node:util";
 import { homedir, platform } from "node:os";
+import { projectDirPath } from "./config/paths.js";
 
 export interface PromptContext {
   mode?: ModeConfig;
@@ -353,7 +354,7 @@ export function getUserInstructions(home: string = homedir()): string {
 
 /** Project instructions: first non-empty of .heirloom/instructions.md, CLAUDE.md, AGENTS.md. */
 export function getProjectInstructions(cwd: string): string {
-  for (const name of [join(cwd, ".heirloom", "instructions.md"), join(cwd, "CLAUDE.md"), join(cwd, "AGENTS.md")]) {
+  for (const name of [join(projectDirPath(cwd), "instructions.md"), join(cwd, "CLAUDE.md"), join(cwd, "AGENTS.md")]) {
     if (existsSync(name)) {
       const content = readFileSync(name, "utf-8").trim();
       if (content) return `# Project instructions\n${content}`;
@@ -488,7 +489,7 @@ function walkMarkdownSections(
 export function loadProjectRules(projectDir: string): string | null {
   const sections = walkMarkdownSections(
     projectDir,
-    join(projectDir, ".heirloom", "rules"),
+    join(projectDirPath(projectDir), "rules"),
     (scope) => `### Rule: ${scope}`,
     MAX_RULES_BYTES,
     "*(Project rules truncated: size cap reached.)*",
@@ -507,7 +508,7 @@ export function loadProjectRules(projectDir: string): string | null {
 export function loadProjectResearch(projectDir: string): string | null {
   const sections = walkMarkdownSections(
     projectDir,
-    join(projectDir, ".heirloom", "research"),
+    join(projectDirPath(projectDir), "research"),
     (scope) => `### Note: ${scope}`,
     MAX_RESEARCH_BYTES,
     "*(Research notes truncated: size cap reached.)*",

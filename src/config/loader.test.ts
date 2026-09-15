@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, statSync, rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import { projectDirPath, projectSettingsPath } from "./paths.js";
 import { tmpdir } from "node:os";
 import { loadConfig, migrateLegacyPermissions, resolveHome, sandboxSupportedOnPlatform } from "./loader.js";
 import { homedir } from "node:os";
@@ -10,7 +11,7 @@ describe("validatePermissions (rule shape)", () => {
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), "heirloom-loader-"));
-    mkdirSync(join(dir, ".heirloom"), { recursive: true });
+    mkdirSync(projectDirPath(dir), { recursive: true });
   });
 
   afterEach(() => {
@@ -18,7 +19,7 @@ describe("validatePermissions (rule shape)", () => {
   });
 
   function writeSettings(json: unknown) {
-    writeFileSync(join(dir, ".heirloom", "settings.json"), JSON.stringify(json), "utf-8");
+    writeFileSync(projectSettingsPath(dir), JSON.stringify(json), "utf-8");
   }
 
   it("accepts a well-formed rules array", () => {
@@ -133,7 +134,7 @@ describe("loadConfig: migration integration, no disk write during load", () => {
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), "heirloom-loader-migration-"));
-    mkdirSync(join(dir, ".heirloom"), { recursive: true });
+    mkdirSync(projectDirPath(dir), { recursive: true });
   });
 
   afterEach(() => {
@@ -141,7 +142,7 @@ describe("loadConfig: migration integration, no disk write during load", () => {
   });
 
   it("migrates a legacy-shape settings.json in-memory and surfaces a warning", () => {
-    const settingsPath = join(dir, ".heirloom", "settings.json");
+    const settingsPath = projectSettingsPath(dir);
     writeFileSync(settingsPath, JSON.stringify({ permissions: { allow: ["read-in-cwd"], defaultMode: "askAll" } }), "utf-8");
 
     const { config, warnings } = loadConfig(dir);
@@ -152,7 +153,7 @@ describe("loadConfig: migration integration, no disk write during load", () => {
   });
 
   it("does not write to disk during loadConfig, even when migration occurs", () => {
-    const settingsPath = join(dir, ".heirloom", "settings.json");
+    const settingsPath = projectSettingsPath(dir);
     const original = JSON.stringify({ permissions: { allow: ["read-in-cwd"], defaultMode: "askAll" } });
     writeFileSync(settingsPath, original, "utf-8");
     const statBefore = statSync(settingsPath).mtimeMs;
@@ -166,7 +167,7 @@ describe("loadConfig: migration integration, no disk write during load", () => {
   });
 
   it("is idempotent: loading an already-migrated (new-shape) file does not re-migrate or warn", () => {
-    const settingsPath = join(dir, ".heirloom", "settings.json");
+    const settingsPath = projectSettingsPath(dir);
     writeFileSync(
       settingsPath,
       JSON.stringify({ permissions: { rules: [{ tool: "read_file", pattern: "./**", action: "allow" }] } }),
@@ -181,7 +182,7 @@ describe("loadConfig: migration integration, no disk write during load", () => {
   it("no settings.json is created by loadConfig alone", () => {
     // No settings.json written at all — loadConfig must not create one.
     loadConfig(dir);
-    expect(existsSync(join(dir, ".heirloom", "settings.json"))).toBe(false);
+    expect(existsSync(projectSettingsPath(dir))).toBe(false);
   });
 });
 
@@ -192,7 +193,7 @@ let homeDir: string;
 let prevHome: string | undefined;
 
 function writeProjectSettings(obj: unknown): void {
-  const dir = join(projectDir, ".heirloom");
+  const dir = projectDirPath(projectDir);
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, "settings.json"), JSON.stringify(obj), "utf-8");
 }

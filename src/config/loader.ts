@@ -5,6 +5,7 @@ import type { PermissionConfig, PermissionRule, PatternKind, PermissionAction, P
 import { compileGlob } from "../permissions/index.js";
 import type { HooksConfig } from "../hooks/types.js";
 import { parseHooksConfig } from "../hooks/config.js";
+import { STATE_DIR_NAME, projectSettingsPath } from "./paths.js";
 
 // ── Deep Code settings.json schema ──
 
@@ -260,7 +261,7 @@ function deepMerge<T extends Record<string, unknown>>(
 }
 
 export function resolveHome(): string {
-  return process.env.HEIRLOOM_HOME || join(homedir(), ".nib");
+  return process.env.HEIRLOOM_HOME || join(homedir(), STATE_DIR_NAME);
 }
 
 /**
@@ -1063,7 +1064,7 @@ export function loadConfig(projectDir?: string): LoadResult {
 
   const globalPath = join(resolveHome(), "settings.json");
   const projDir = projectDir ?? process.cwd();
-  const projectPath = join(projDir, ".heirloom", "settings.json");
+  const projectPath = projectSettingsPath(projDir);
 
   const globalRaw = loadJsonFile(globalPath, warnings);
   const projectRaw = loadJsonFile(projectPath, warnings);

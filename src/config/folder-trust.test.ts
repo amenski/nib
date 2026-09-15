@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, statSync, readdirSync, realpathSync } from "node:fs";
 import { join } from "node:path";
+import { projectDirPath } from "./paths.js";
 import { tmpdir } from "node:os";
 import {
   checkFolderTrust,
@@ -32,7 +33,7 @@ let prevHeirloomHome: string | undefined;
 let prevHome: string | undefined;
 
 function writeSkill(dir: string, name: string, body = "Body of " + name): string {
-  const skillDir = join(dir, ".heirloom", "skills", name);
+  const skillDir = join(projectDirPath(dir), "skills", name);
   mkdirSync(skillDir, { recursive: true });
   const path = join(skillDir, "SKILL.md");
   writeFileSync(path, `---\nname: ${name}\ndescription: test ${name}\n---\n${body}`, "utf-8");
@@ -40,7 +41,7 @@ function writeSkill(dir: string, name: string, body = "Body of " + name): string
 }
 
 function writeProjectSettings(dir: string, settings: Record<string, unknown>): string {
-  const heirloomDir = join(dir, ".heirloom");
+  const heirloomDir = projectDirPath(dir);
   mkdirSync(heirloomDir, { recursive: true });
   const path = join(heirloomDir, "settings.json");
   writeFileSync(path, JSON.stringify(settings, null, 2), "utf-8");

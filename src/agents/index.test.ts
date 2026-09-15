@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { projectDirPath } from "../config/paths.js";
 import { tmpdir } from "node:os";
 import { AgentLoader } from "./index.js";
 import { buildStablePreamble } from "../prompt.js";
@@ -16,7 +17,7 @@ describe("AgentLoader (feature-plans.md §F4)", () => {
     home = mkdtempSync(join(tmpdir(), "agents-home-"));
     prevHome = process.env.HEIRLOOM_HOME;
     process.env.HEIRLOOM_HOME = home; // isolate from a real ~/.heirloom
-    mkdirSync(join(project, ".heirloom", "agents"), { recursive: true });
+    mkdirSync(join(projectDirPath(project), "agents"), { recursive: true });
     mkdirSync(join(home, "agents"), { recursive: true });
     warns = [];
     vi.spyOn(console, "warn").mockImplementation((...args) => {
@@ -34,7 +35,7 @@ describe("AgentLoader (feature-plans.md §F4)", () => {
 
   it("loads project and global defs, project winning per name (D3)", async () => {
     writeFileSync(
-      join(project, ".heirloom", "agents", "reviewer.md"),
+      join(projectDirPath(project), "agents", "reviewer.md"),
       "---\nname: reviewer\ndescription: reviews code\nmode: code\n---\n",
     );
     writeFileSync(
@@ -60,11 +61,11 @@ describe("AgentLoader (feature-plans.md §F4)", () => {
 
   it("skips files missing name/description/mode with a warning naming the fields", async () => {
     writeFileSync(
-      join(project, ".heirloom", "agents", "a.md"),
+      join(projectDirPath(project), "agents", "a.md"),
       "---\ndescription: no name\nmode: code\n---\n",
     );
     writeFileSync(
-      join(project, ".heirloom", "agents", "b.md"),
+      join(projectDirPath(project), "agents", "b.md"),
       "---\nname: b\ndescription: no mode\n---\n",
     );
 
@@ -77,9 +78,9 @@ describe("AgentLoader (feature-plans.md §F4)", () => {
   });
 
   it("skips files without frontmatter with a warning, ignores non-md files silently", async () => {
-    writeFileSync(join(project, ".heirloom", "agents", "bogus.md"), "no frontmatter here\n");
+    writeFileSync(join(projectDirPath(project), "agents", "bogus.md"), "no frontmatter here\n");
     writeFileSync(
-      join(project, ".heirloom", "agents", "notes.txt"),
+      join(projectDirPath(project), "agents", "notes.txt"),
       "---\nname: x\ndescription: X\nmode: code\n---\n",
     );
 
@@ -93,7 +94,7 @@ describe("AgentLoader (feature-plans.md §F4)", () => {
 
   it("warns on unknown frontmatter fields but still loads the file", async () => {
     writeFileSync(
-      join(project, ".heirloom", "agents", "a.md"),
+      join(projectDirPath(project), "agents", "a.md"),
       "---\nname: a\ndescription: Agent A\nmode: code\ntools: [read_file]\n---\n",
     );
 
@@ -106,7 +107,7 @@ describe("AgentLoader (feature-plans.md §F4)", () => {
 
   it("warns on an unknown model but still loads the def (D2 fallback semantics)", async () => {
     writeFileSync(
-      join(project, ".heirloom", "agents", "a.md"),
+      join(projectDirPath(project), "agents", "a.md"),
       "---\nname: a\ndescription: Agent A\nmode: code\nmodel: deepseek/does-not-exist\n---\n",
     );
 
@@ -119,7 +120,7 @@ describe("AgentLoader (feature-plans.md §F4)", () => {
 
   it("accepts a known model without a warning", async () => {
     writeFileSync(
-      join(project, ".heirloom", "agents", "a.md"),
+      join(projectDirPath(project), "agents", "a.md"),
       "---\nname: a\ndescription: Agent A\nmode: code\nmodel: deepseek/deepseek-v4-flash\n---\n",
     );
 
@@ -132,7 +133,7 @@ describe("AgentLoader (feature-plans.md §F4)", () => {
 
   it("parses multiline instructions and quoted descriptions", async () => {
     writeFileSync(
-      join(project, ".heirloom", "agents", "a.md"),
+      join(projectDirPath(project), "agents", "a.md"),
       "---\nname: a\ndescription: \"Agent A\"\nmode: code\ninstructions: |\n  Be critical.\n  Cite paths.\n---\nBody is not part of the def.\n",
     );
 
@@ -144,7 +145,7 @@ describe("AgentLoader (feature-plans.md §F4)", () => {
   });
 
   it("returns an empty list when no agent dirs exist", async () => {
-    rmSync(join(project, ".heirloom", "agents"), { recursive: true, force: true });
+    rmSync(join(projectDirPath(project), "agents"), { recursive: true, force: true });
     rmSync(join(home, "agents"), { recursive: true, force: true });
 
     const loader = new AgentLoader();

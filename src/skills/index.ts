@@ -5,6 +5,7 @@ import type { ToolDef } from "../types.js";
 import type { ToolHandler } from "../tools/types.js";
 import { checkSkillTrust, trustSkill } from "./trust.js";
 import { resolveHome } from "../config/loader.js";
+import { projectDirPath } from "../config/paths.js";
 
 export interface SkillDef {
   name: string;
@@ -191,7 +192,7 @@ export class SkillLoader {
     // of hooks-spec §6): global dirs are the user's own — trusted implicitly;
     // project-declared skills run content-hashed TOFU.
     const dirs: Array<{ dir: string; global: boolean }> = [
-      { dir: join(process.cwd(), ".heirloom", "skills"), global: false },
+      { dir: join(projectDirPath(process.cwd()), "skills"), global: false },
       { dir: join(process.cwd(), ".agents", "skills"), global: false },
       { dir: join(resolveHome(), "skills"), global: true },
       { dir: join(homedir(), ".agents", "skills"), global: true },

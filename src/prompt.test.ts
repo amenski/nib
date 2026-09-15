@@ -7,6 +7,7 @@ import {
   symlinkSync,
 } from "node:fs";
 import { join } from "node:path";
+import { projectDirPath, PROJECT_DIR_NAME } from "./config/paths.js";
 import { tmpdir } from "node:os";
 import { loadProjectRules, loadProjectResearch, buildVolatileContext, buildStablePreamble, buildRepoMap, getUserInstructions, getProjectInstructions, REPOMAP_BYTE_BUDGET, MAX_RESEARCH_BYTES } from "./prompt.js";
 
@@ -14,7 +15,7 @@ describe("loadProjectRules", () => {
   let projectDir: string;
 
   function rulesDir(): string {
-    return join(projectDir, ".heirloom", "rules");
+    return join(projectDirPath(projectDir), "rules");
   }
 
   function writeRule(relPath: string, content: string): void {
@@ -120,7 +121,7 @@ describe("loadProjectResearch", () => {
   let projectDir: string;
 
   function researchDir(): string {
-    return join(projectDir, ".heirloom", "research");
+    return join(projectDirPath(projectDir), "research");
   }
 
   function writeNote(relPath: string, content: string): void {
@@ -286,9 +287,9 @@ describe("buildStablePreamble — repository map injection", () => {
   it("injects the map under a '# Repository map' header, after project rules", () => {
     const projectDir = mkdtempSync(join(tmpdir(), "heirloom-preamble-"));
     try {
-      mkdirSync(join(projectDir, ".heirloom", "rules"), { recursive: true });
+      mkdirSync(join(projectDirPath(projectDir), "rules"), { recursive: true });
       writeFileSync(
-        join(projectDir, ".heirloom", "rules", "naming.md"),
+        join(projectDirPath(projectDir), "rules", "naming.md"),
         "Use camelCase.",
       );
 
@@ -378,7 +379,7 @@ describe("getProjectInstructions — CLAUDE.md chain", () => {
 
   it("prefers .heirloom/instructions.md over CLAUDE.md", () => {
     writeFile("CLAUDE.md", "repo CLAUDE.md");
-    writeFile(".heirloom/instructions.md", "heirloom instructions");
+    writeFile(`${PROJECT_DIR_NAME}/instructions.md`, "heirloom instructions");
     expect(getProjectInstructions(dir)).toContain("heirloom instructions");
     expect(getProjectInstructions(dir)).not.toContain("repo CLAUDE.md");
   });

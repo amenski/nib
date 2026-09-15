@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { existsSync, readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
+import { projectSettingsPath } from "../config/paths.js";
 import { homedir, tmpdir } from "node:os";
 import { PermissionEngine, type PermissionRule } from "./engine.js";
 
@@ -355,7 +356,7 @@ describe("PermissionEngine.resolve", () => {
 
     it("approveForSession never writes settings.json", () => {
       engine.approveForSession(rule({ tool: "run_bash", kind: "exact", pattern: "npm test", action: "allow" }));
-      expect(existsSync(join(dir, ".heirloom", "settings.json"))).toBe(false);
+      expect(existsSync(projectSettingsPath(dir))).toBe(false);
     });
 
     it("a fresh engine instance does not see a session-approved rule", () => {
@@ -505,7 +506,7 @@ describe("PermissionEngine.resolve", () => {
 
     it("approveAlways writes settings.json with the new rules shape", () => {
       engine.approveAlways(rule({ tool: "run_bash", kind: "exact", pattern: "npm test", action: "allow" }));
-      const settingsPath = join(dir, ".heirloom", "settings.json");
+      const settingsPath = projectSettingsPath(dir);
       expect(existsSync(settingsPath)).toBe(true);
       const written = JSON.parse(readFileSync(settingsPath, "utf-8"));
       expect(written.permissions.rules).toEqual([{ tool: "run_bash", pattern: "npm test", action: "allow" }]);
@@ -513,7 +514,7 @@ describe("PermissionEngine.resolve", () => {
 
     it("a fresh engine instance loaded from the persisted rules resolves the same way", () => {
       engine.approveAlways(rule({ tool: "run_bash", kind: "exact", pattern: "npm test", action: "allow" }));
-      const settingsPath = join(dir, ".heirloom", "settings.json");
+      const settingsPath = projectSettingsPath(dir);
       const written = JSON.parse(readFileSync(settingsPath, "utf-8"));
       const reloaded = new PermissionEngine(
         { rules: written.permissions.rules.map((r: { tool: string; pattern: string; action: string }) => ({ ...r, kind: "exact", origin: "config" })) },
@@ -524,7 +525,7 @@ describe("PermissionEngine.resolve", () => {
 
     it("preserves unrelated top-level JSON keys already on disk", () => {
       engine.approveAlways(rule({ tool: "run_bash", kind: "exact", pattern: "npm test", action: "allow" }));
-      const settingsPath = join(dir, ".heirloom", "settings.json");
+      const settingsPath = projectSettingsPath(dir);
       const first = JSON.parse(readFileSync(settingsPath, "utf-8"));
       first.someOtherKey = "preserved";
       writeFileSync(settingsPath, JSON.stringify(first, null, 2), "utf-8");
@@ -1105,7 +1106,7 @@ describe("file-tool write boundary (docs/unified-write-boundary.md §2)", () => 
       expect(approved.isGuarded).toBe(false);
       expect(engine.resolve("edit", { path: "/etc/heirloom-unapproved-edit.ts" }).action).toBe("ask");
 
-      const settings = JSON.parse(readFileSync(join(dir, ".heirloom", "settings.json"), "utf-8"));
+      const settings = JSON.parse(readFileSync(projectSettingsPath(dir), "utf-8"));
       const reloaded = new PermissionEngine(
         { rules: settings.permissions.rules.map((r: { tool: string; pattern: string; action: string }) => ({ ...r, kind: "exact", origin: "config" })) },
         dir,
@@ -1277,7 +1278,7 @@ describe("BUG FIX: external search/glob approval takes effect", () => {
       const approved = engine.resolve("glob", args);
       expect(approved.action).toBe("allow");
 
-      const settings = JSON.parse(readFileSync(join(workDir, ".heirloom", "settings.json"), "utf-8"));
+      const settings = JSON.parse(readFileSync(projectSettingsPath(workDir), "utf-8"));
       expect(settings.permissions.rules).toContainEqual(
         expect.objectContaining({ tool: "glob", action: "allow" }),
       );
@@ -1332,7 +1333,7 @@ describe("BUG FIX: persist() invokes onPersist with the settings path", () => {
         onPersist: (settingsPath) => calls.push(settingsPath),
       });
       engine.approveAlways({ tool: "run_bash", kind: "exact", pattern: "echo hi", action: "allow", origin: "config" });
-      expect(calls).toEqual([join(dir, ".heirloom", "settings.json")]);
+      expect(calls).toEqual([projectSettingsPath(dir)]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

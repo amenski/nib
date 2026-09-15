@@ -1,6 +1,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { resolveHome } from "../config/loader.js";
+import { projectDirPath } from "../config/paths.js";
 
 /**
  * A user-defined slash command from `.heirloom/commands/<name>.md`. Typing
@@ -165,7 +166,7 @@ export class CommandLoader {
     this.byName.clear();
 
     const projectCommands = projectDir
-      ? await scanDir(join(projectDir, ".heirloom", "commands"))
+      ? await scanDir(join(projectDirPath(projectDir), "commands"))
       : [];
     for (const command of projectCommands) this.byName.set(command.name, command);
 

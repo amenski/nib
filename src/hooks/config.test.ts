@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { projectDirPath, projectSettingsPath } from "../config/paths.js";
 import { tmpdir } from "node:os";
 import { parseHooksConfig } from "./config.js";
 import { loadConfig } from "../config/loader.js";
@@ -146,9 +147,9 @@ describe("loadConfig integration", () => {
       JSON.stringify({ hooks: { Notification: [{ command: "global-notify.sh" }] } }),
       "utf-8",
     );
-    mkdirSync(join(PROJECT_DIR, ".heirloom"), { recursive: true });
+    mkdirSync(projectDirPath(PROJECT_DIR), { recursive: true });
     writeFileSync(
-      join(PROJECT_DIR, ".heirloom", "settings.json"),
+      projectSettingsPath(PROJECT_DIR),
       JSON.stringify({
         hooks: { PreToolUse: [{ matcher: "run_bash", command: "guard.sh" }] },
         disableAllHooks: true,
@@ -168,9 +169,9 @@ describe("loadConfig integration", () => {
   });
 
   it("fails config fast on an invalid matcher regex", () => {
-    mkdirSync(join(PROJECT_DIR, ".heirloom"), { recursive: true });
+    mkdirSync(projectDirPath(PROJECT_DIR), { recursive: true });
     writeFileSync(
-      join(PROJECT_DIR, ".heirloom", "settings.json"),
+      projectSettingsPath(PROJECT_DIR),
       JSON.stringify({ hooks: { PreToolUse: [{ matcher: "(bad", command: "guard.sh" }] } }),
       "utf-8",
     );
@@ -181,9 +182,9 @@ describe("loadConfig integration", () => {
   });
 
   it("errors when disableAllHooks is not a boolean", () => {
-    mkdirSync(join(PROJECT_DIR, ".heirloom"), { recursive: true });
+    mkdirSync(projectDirPath(PROJECT_DIR), { recursive: true });
     writeFileSync(
-      join(PROJECT_DIR, ".heirloom", "settings.json"),
+      projectSettingsPath(PROJECT_DIR),
       JSON.stringify({ disableAllHooks: "yes" }),
       "utf-8",
     );

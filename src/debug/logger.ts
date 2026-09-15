@@ -1,10 +1,11 @@
 import { appendFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import { projectDirPath } from "../config/paths.js";
 
 let debugPath: string | null = null;
 
 export function enableDebug(sessionId: string): void {
-  const dir = join(process.cwd(), ".heirloom", "debug");
+  const dir = join(projectDirPath(process.cwd()), "debug");
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   debugPath = join(dir, `${sessionId}.jsonl`);
 }

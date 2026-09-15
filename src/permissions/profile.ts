@@ -3,6 +3,7 @@ import { isAbsolute, join, relative, resolve } from "node:path";
 import type { PermissionEngine, ResolveResult } from "./engine.js";
 import { extractHostname } from "./rules.js";
 import { isPathWithinWriteRoots, resolveWriteRoots } from "../sandbox/write-roots.js";
+import { PROJECT_DIR_NAME, STATE_DIR_NAME } from "../config/paths.js";
 
 /**
  * PermissionProfile — the capability-boundary layer (docs/permission-profile.md §3).
@@ -121,13 +122,21 @@ function canonicalizePath(raw: string, cwd: string, home: string): string {
 
 /**
  * Always-denied by construction (§3): any path under a `.git` directory
- * (any depth), and the profile file itself — `.heirloom/settings.json`,
- * project or global. No explicit rule can rescue these: the check runs
+ * (any depth), and the profile file itself — the project copy and the global
+ * copy under the state dir. No explicit rule can rescue these: the check runs
  * before rule matching at every level.
+ *
+ * Both names are matched explicitly rather than assuming they stay equal. This
+ * is the only guard on the file that carries `permissions.rules`; if one name
+ * changes and this line still tested the other, writes to the real file would
+ * silently drop out of the deny set — a fail-open with no visible error.
  */
 function isAlwaysDenied(canonical: string): boolean {
   if (canonical.split("/").includes(".git")) return true;
-  return canonical.endsWith("/.heirloom/settings.json");
+  return (
+    canonical.endsWith(`/${PROJECT_DIR_NAME}/settings.json`) ||
+    canonical.endsWith(`/${STATE_DIR_NAME}/settings.json`)
+  );
 }
 
 /** Network entry matching: "*" matches any host; otherwise exact, case-insensitive. */

@@ -38,6 +38,7 @@ import { SkillLoader, createLoadSkillTool, type SkillDef } from "./skills/index.
 import { AgentLoader, type AgentDef } from "./agents/index.js";
 import { CommandLoader, type CommandDef } from "./commands/index.js";
 import { loadConfig } from "./config/loader.js";
+import { projectSettingsPath } from "./config/paths.js";
 import { checkSettingsTrust, trustSettings, stripExecutionKeys } from "./config/settings-trust.js";
 import { checkFolderTrust, trustFolder, buildFolderContentSummary, hasGatedContent } from "./config/folder-trust.js";
 import { readCredentialsFile } from "./config/credentials.js";
@@ -270,17 +271,17 @@ async function main() {
   // deferring past the point these values are captured below. A "no" strips
   // the keys from the effective config for the rest of this session.
   if (configResult.projectExecutionKeys.length > 0) {
-    const projectSettingsPath = join(process.cwd(), ".heirloom", "settings.json");
-    const trust = checkSettingsTrust(projectSettingsPath);
+    const projectSettingsFile = projectSettingsPath(process.cwd());
+    const trust = checkSettingsTrust(projectSettingsFile);
     if (trust.status !== "trusted") {
       const trusted = await promptSettingsTrust(
         configResult.projectExecutionKeys,
-        projectSettingsPath,
+        projectSettingsFile,
         trust.status,
         { mode: configResult.config.theme?.mode, name: configResult.config.theme?.name, overrides: configResult.config.theme?.overrides },
       );
       if (trusted) {
-        trustSettings(projectSettingsPath);
+        trustSettings(projectSettingsFile);
       } else {
         configResult = {
           ...configResult,

@@ -6,6 +6,7 @@ import { ProfileEvaluator, authorize, compileGlob } from "./profile.js";
 import type { PermissionProfileConfig } from "./profile.js";
 import { PermissionEngine, type PermissionRule } from "./engine.js";
 import { buildSeatbeltProfile } from "../sandbox/seatbelt.js";
+import { PROJECT_DIR_NAME, STATE_DIR_NAME } from "../config/paths.js";
 import { realpathNearestAncestor, resolveWriteRoots } from "../sandbox/write-roots.js";
 import { SessionStore, type PermissionDecision } from "../sessions/store.js";
 
@@ -134,8 +135,8 @@ describe("ProfileEvaluator.decide — always denied by construction (§3)", () =
 
     it(`denies the profile file at level ${level}`, () => {
       const ev = evaluator(level);
-      expect(ev.decide("read_file", { path: "/workspace/.heirloom/settings.json" })).toBe("deny");
-      expect(ev.decide("read_file", { path: join(HOME, ".heirloom", "settings.json") })).toBe("deny");
+      expect(ev.decide("read_file", { path: join("/workspace", PROJECT_DIR_NAME, "settings.json") })).toBe("deny");
+      expect(ev.decide("read_file", { path: join(HOME, STATE_DIR_NAME, "settings.json") })).toBe("deny");
     });
   }
 });

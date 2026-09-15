@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, statSync, readdirSync, existsSync, realpathSync } from "node:fs";
 import { join } from "node:path";
+import { projectDirPath } from "./paths.js";
 import { tmpdir } from "node:os";
 import {
   checkSettingsTrust,
@@ -27,7 +28,7 @@ const TRUST_FILE = join(HOME_DIR, "settings-trust.json");
 let projectDir: string;
 
 function writeProjectSettings(dir: string, settings: Record<string, unknown>): string {
-  const heirloomDir = join(dir, ".heirloom");
+  const heirloomDir = projectDirPath(dir);
   mkdirSync(heirloomDir, { recursive: true });
   const path = join(heirloomDir, "settings.json");
   writeFileSync(path, JSON.stringify(settings, null, 2), "utf-8");
@@ -54,7 +55,7 @@ function writeGlobalSettings(settings: Record<string, unknown>): string {
  * write that raw text directly to reproduce the real vulnerability.
  */
 function writeRawProjectSettings(dir: string, json: string): string {
-  const heirloomDir = join(dir, ".heirloom");
+  const heirloomDir = projectDirPath(dir);
   mkdirSync(heirloomDir, { recursive: true });
   const path = join(heirloomDir, "settings.json");
   writeFileSync(path, json, "utf-8");

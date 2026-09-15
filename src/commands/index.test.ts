@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { projectDirPath } from "../config/paths.js";
 import { tmpdir } from "node:os";
 import { CommandLoader, expandCommand, findCommand } from "./index.js";
 
@@ -23,9 +24,9 @@ describe("CommandLoader", () => {
 
   it("loads a project command from its filename and frontmatter", async () => {
     const project = join(TMP, "project");
-    mkdirSync(join(project, ".heirloom", "commands"), { recursive: true });
+    mkdirSync(join(projectDirPath(project), "commands"), { recursive: true });
     writeFileSync(
-      join(project, ".heirloom", "commands", "review.md"),
+      join(projectDirPath(project), "commands", "review.md"),
       "---\ndescription: Review the changes\nargument-hint: \"[focus]\"\n---\nReview $ARGUMENTS carefully.\n",
       "utf-8",
     );
@@ -44,9 +45,9 @@ describe("CommandLoader", () => {
 
   it("lets a project command shadow a global one of the same name", async () => {
     const project = join(TMP, "project");
-    mkdirSync(join(project, ".heirloom", "commands"), { recursive: true });
+    mkdirSync(join(projectDirPath(project), "commands"), { recursive: true });
     writeFileSync(join(home, "commands", "review.md"), "---\ndescription: global\n---\nGLOBAL\n", "utf-8");
-    writeFileSync(join(project, ".heirloom", "commands", "review.md"), "---\ndescription: project\n---\nPROJECT\n", "utf-8");
+    writeFileSync(join(projectDirPath(project), "commands", "review.md"), "---\ndescription: project\n---\nPROJECT\n", "utf-8");
 
     const loader = new CommandLoader();
     const commands = await loader.load(project);
@@ -60,9 +61,9 @@ describe("CommandLoader", () => {
 
   it("skips files with missing frontmatter or an empty body, with a warning", async () => {
     const project = join(TMP, "project");
-    mkdirSync(join(project, ".heirloom", "commands"), { recursive: true });
-    writeFileSync(join(project, ".heirloom", "commands", "nofm.md"), "no frontmatter\n", "utf-8");
-    writeFileSync(join(project, ".heirloom", "commands", "empty.md"), "---\n---\n\n", "utf-8");
+    mkdirSync(join(projectDirPath(project), "commands"), { recursive: true });
+    writeFileSync(join(projectDirPath(project), "commands", "nofm.md"), "no frontmatter\n", "utf-8");
+    writeFileSync(join(projectDirPath(project), "commands", "empty.md"), "---\n---\n\n", "utf-8");
 
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const loader = new CommandLoader();

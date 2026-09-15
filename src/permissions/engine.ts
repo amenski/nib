@@ -9,6 +9,7 @@ import { BUILTIN_GUARDED_RULES } from "./guarded.js";
 import { BUILTIN_ALLOW_RULES } from "./builtin-allow.js";
 import { isPathWithinWriteRoots, resolveWriteRoots } from "../sandbox/write-roots.js";
 import { classifyImageSource } from "../image-source.js";
+import { projectDirPath } from "../config/paths.js";
 
 export type { PermissionAction, PermissionRule, PatternKind, RuleOrigin } from "./rules.js";
 
@@ -116,7 +117,7 @@ export class PermissionEngine {
     this.workingDir = workingDir ?? process.cwd();
     this.configRules = (config?.rules ?? []).map((r) => this.normalizeConfigRule(r));
     this.defaultMode = config?.defaultMode ?? "askAll";
-    this.projectConfigDir = join(this.workingDir, ".heirloom");
+    this.projectConfigDir = projectDirPath(this.workingDir);
     this.hasMcpServersConfigured = hasMcpServersConfigured ?? false;
     this.enforceWriteBoundary = opts?.enforceWriteBoundary ?? false;
     this.onPersist = opts?.onPersist;

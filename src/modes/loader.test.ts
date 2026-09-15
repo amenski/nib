@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { mkdtemp, mkdir, writeFile, rm, cp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
+import { projectDirPath } from "../config/paths.js";
 import { fileURLToPath } from "node:url";
 import { ModeLoader } from "./loader.js";
 
@@ -70,7 +71,7 @@ describe("ModeLoader", () => {
       home = await mkdtemp(join(tmpdir(), "heirloom-home-"));
       project = await mkdtemp(join(tmpdir(), "heirloom-proj-"));
       await mkdir(join(home, "modes"), { recursive: true });
-      await mkdir(join(project, ".heirloom", "modes"), { recursive: true });
+      await mkdir(join(projectDirPath(project), "modes"), { recursive: true });
     });
 
     afterAll(async () => {
@@ -80,7 +81,7 @@ describe("ModeLoader", () => {
 
     it("prefers a project mode over the builtin of the same slug", async () => {
       await writeFile(
-        join(project, ".heirloom", "modes", "code.yaml"),
+        join(projectDirPath(project), "modes", "code.yaml"),
         'slug: code\nname: "Project Code"\nroleDefinition: "overridden"\n',
       );
       const prevHome = process.env.HEIRLOOM_HOME;

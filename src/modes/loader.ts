@@ -2,6 +2,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { ToolGroup } from "../tools/types.js";
 import { resolveHome } from "../config/loader.js";
+import { projectDirPath } from "../config/paths.js";
 
 export interface ModeConfig {
   slug: string;
@@ -82,7 +83,7 @@ export class ModeLoader {
 
     const paths: string[] = [];
     if (projectDir) {
-      paths.push(join(projectDir, ".heirloom", "modes", `${slug}.yaml`));
+      paths.push(join(projectDirPath(projectDir), "modes", `${slug}.yaml`));
     }
     const home = resolveHome();
     paths.push(join(home, "modes", `${slug}.yaml`));

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdirSync, rmSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import { projectDirPath } from "../config/paths.js";
 import { tmpdir } from "node:os";
 
 const TEST_DIR = join(tmpdir(), `heirloom-debug-logger-${process.pid}`);
@@ -22,7 +23,7 @@ describe("debug logger timing", () => {
     vi.resetModules();
     const { logTiming } = await import("./logger.js");
     logTiming({ phase: "prompt_assembly", durationsMs: { total: 1 } });
-    expect(existsSync(join(TEST_DIR, ".heirloom", "debug"))).toBe(false);
+    expect(existsSync(join(projectDirPath(TEST_DIR), "debug"))).toBe(false);
   });
 
   it("writes a timing row once enabled", async () => {
@@ -39,7 +40,7 @@ describe("debug logger timing", () => {
       durationsMs: { total: 120, toFirstEvent: 80, toFirstText: 90 },
     });
 
-    const file = join(TEST_DIR, ".heirloom", "debug", "sess-timing.jsonl");
+    const file = join(projectDirPath(TEST_DIR), "debug", "sess-timing.jsonl");
     const lines = readFileSync(file, "utf8").trim().split("\n");
     const entry = JSON.parse(lines[lines.length - 1]);
     expect(entry.type).toBe("timing");

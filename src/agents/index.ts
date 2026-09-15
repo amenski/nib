@@ -2,6 +2,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { BUILTIN_PRESETS, getProviderModels } from "../providers/presets.js";
 import { resolveHome } from "../config/loader.js";
+import { projectDirPath } from "../config/paths.js";
 
 /**
  * A frontmatter agent definition (.heirloom/agents/<name>.md, feature-plans.md
@@ -198,7 +199,7 @@ export class AgentLoader {
   async load(projectDir?: string): Promise<AgentDef[]> {
     this.byName.clear();
 
-    const projectDefs = projectDir ? await scanDir(join(projectDir, ".heirloom", "agents")) : [];
+    const projectDefs = projectDir ? await scanDir(join(projectDirPath(projectDir), "agents")) : [];
     for (const def of projectDefs) this.byName.set(def.name, def);
 
     const home = resolveHome();

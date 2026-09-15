@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync, renameSync, existsSync, mkdirSync, chmodSync, realpathSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { resolveHome, type LoadResult } from "./loader.js";
+import { PROJECT_DIR_NAME, projectSettingsPath } from "./paths.js";
 import type { HookEntry } from "../hooks/types.js";
 import { hookContentHash, hookTrustKey, loadHookTrust, saveHookTrust, type ContentHashCache } from "../hooks/trust.js";
 import { loadSkillTrust, saveSkillTrust, skillContentHash } from "../skills/trust.js";
@@ -121,7 +122,7 @@ export interface DiscoveredSkill {
  */
 export function discoverProjectSkills(projectDir: string): DiscoveredSkill[] {
   const found: DiscoveredSkill[] = [];
-  for (const sub of [".heirloom/skills", ".agents/skills"]) {
+  for (const sub of [`${PROJECT_DIR_NAME}/skills`, ".agents/skills"]) {
     const dir = join(projectDir, ...sub.split("/"));
     let entries;
     try {
@@ -160,7 +161,7 @@ export function buildFolderContentSummary(projectDir: string, configResult: Load
   return {
     skills: discoverProjectSkills(projectDir),
     settingsKeys: configResult.projectExecutionKeys,
-    settingsPath: join(projectDir, ".heirloom", "settings.json"),
+    settingsPath: projectSettingsPath(projectDir),
     hooks: (configResult.config.hooks?.entries ?? []).filter((e) => e.origin === "project"),
   };
 }

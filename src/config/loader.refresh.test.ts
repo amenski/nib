@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { projectDirPath, projectSettingsPath } from "./paths.js";
 import { tmpdir } from "node:os";
 import { loadConfig } from "./loader.js";
 
@@ -28,7 +29,7 @@ describe("config.refresh validation", () => {
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), "heirloom-loader-refresh-"));
-    mkdirSync(join(dir, ".heirloom"), { recursive: true });
+    mkdirSync(projectDirPath(dir), { recursive: true });
   });
 
   afterEach(() => {
@@ -36,7 +37,7 @@ describe("config.refresh validation", () => {
   });
 
   function writeSettings(json: unknown) {
-    writeFileSync(join(dir, ".heirloom", "settings.json"), JSON.stringify(json), "utf-8");
+    writeFileSync(projectSettingsPath(dir), JSON.stringify(json), "utf-8");
   }
 
   it("warns (not errors) on an invalid value and leaves config.refresh unset", () => {

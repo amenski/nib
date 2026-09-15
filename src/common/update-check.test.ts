@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EventEmitter } from "node:events";
+import { STATE_DIR_NAME } from "../config/paths.js";
 
 // Regression coverage for the 2026-08-06 incident: this package is
 // `private: true` and has never been published to npm, but the update
@@ -41,8 +42,10 @@ describe("update-check — private package gate", () => {
     return await import("./update-check.js");
   }
 
+  // The state dir under the mocked homedir — not a project dir. Resolved from
+  // the constant rather than spelled out so it tracks the state dir's name.
   function stateFile() {
-    return join(fakeHome, ".heirloom", "update-check.json");
+    return join(fakeHome, STATE_DIR_NAME, "update-check.json");
   }
 
   it("checkForNpmUpdate: private package never spawns npm view (no registry fetch)", async () => {
@@ -52,7 +55,7 @@ describe("update-check — private package gate", () => {
   });
 
   it("promptForPendingUpdate: private package with a stored pending entry does not prompt and clears the entry", async () => {
-    mkdirSync(join(fakeHome, ".heirloom"), { recursive: true });
+    mkdirSync(join(fakeHome, STATE_DIR_NAME), { recursive: true });
     writeFileSync(
       stateFile(),
       JSON.stringify({ ignoredVersions: [], pending: { version: "0.3.0", checkedAt: new Date().toISOString() } }),
@@ -68,6 +71,10 @@ describe("update-check — private package gate", () => {
 
     const state = await readUpdateState();
     expect(state.pending).toBeNull();
+    // Asserted on the raw file too: if the code read a different path, the
+    // entry above would still be sitting here and the check above would pass
+    // on an absent file rather than a cleared one.
+    expect(JSON.parse(readFileSync(stateFile(), "utf-8")).pending).toBeNull();
   });
 
   it("checkForNpmUpdate: non-private package still queries the registry (existing behavior unchanged)", async () => {

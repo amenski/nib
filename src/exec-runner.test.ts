@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { projectDirPath, projectSettingsPath } from "./config/paths.js";
 import { tmpdir } from "node:os";
 import type { StreamEvent } from "./providers/types.js";
 import type { ToolCall, ToolOutput, Message } from "./types.js";
@@ -99,8 +100,8 @@ function nonTtyInput(): ExecInputStream {
 }
 
 function writeSettings(settings: Record<string, unknown>): void {
-  mkdirSync(join(PROJECT_DIR, ".heirloom"), { recursive: true });
-  writeFileSync(join(PROJECT_DIR, ".heirloom", "settings.json"), JSON.stringify(settings), "utf-8");
+  mkdirSync(projectDirPath(PROJECT_DIR), { recursive: true });
+  writeFileSync(projectSettingsPath(PROJECT_DIR), JSON.stringify(settings), "utf-8");
 }
 
 async function run(opts?: { mode?: string; model?: string; debug?: boolean; prompt?: string }): Promise<{ code: number; stderr: string }> {
@@ -154,7 +155,7 @@ describe("runExecMode headless permission enforcement (T11)", () => {
     // project settings file so the configured allow rule actually reaches the
     // PermissionEngine instead of being stripped to the ask-all default.
     const { trustSettings } = await import("./config/settings-trust.js");
-    trustSettings(join(PROJECT_DIR, ".heirloom", "settings.json"));
+    trustSettings(projectSettingsPath(PROJECT_DIR));
     scriptedCall = { name: "run_bash", args: { command: "git status" } };
 
     const { stderr } = await run();
@@ -216,7 +217,7 @@ describe("runExecMode headless permission enforcement (T11)", () => {
     // profile actually reaches ProfileEvaluator instead of being forced to
     // strict-sandbox by the untrusted-strip fallback.
     const { trustSettings } = await import("./config/settings-trust.js");
-    trustSettings(join(PROJECT_DIR, ".heirloom", "settings.json"));
+    trustSettings(projectSettingsPath(PROJECT_DIR));
     scriptedCall = { name: "read_file", args: { path: join(PROJECT_DIR, "secret.env") } };
 
     const { code, stderr } = await run();
@@ -512,7 +513,7 @@ describe("runExecMode honors config BASE_URL / API_KEY (B2)", () => {
     // fails closed on an untrusted project settings file, so this test trusts
     // it first to observe the value actually reaching createProvider.
     const { trustSettings } = await import("./config/settings-trust.js");
-    trustSettings(join(PROJECT_DIR, ".heirloom", "settings.json"));
+    trustSettings(projectSettingsPath(PROJECT_DIR));
 
     const { code } = await run();
 
@@ -582,7 +583,7 @@ describe("runExecMode fires the notify hook at the completion boundary", () => {
     // notify and env are execution-capable keys — trust the project settings
     // file so the configured script path/env actually reach fireNotify.
     const { trustSettings } = await import("./config/settings-trust.js");
-    trustSettings(join(PROJECT_DIR, ".heirloom", "settings.json"));
+    trustSettings(projectSettingsPath(PROJECT_DIR));
 
     const { code } = await run();
 
@@ -599,7 +600,7 @@ describe("runExecMode fires the notify hook at the completion boundary", () => {
   it("fires with status 'failed' and a FAIL_REASON when the provider throws", async () => {
     writeSettings({ provider: "deepseek", notify: "/tmp/notify.sh" });
     const { trustSettings } = await import("./config/settings-trust.js");
-    trustSettings(join(PROJECT_DIR, ".heirloom", "settings.json"));
+    trustSettings(projectSettingsPath(PROJECT_DIR));
     providerFactory = () => ({
       name: "fake",
       // eslint-disable-next-line require-yield

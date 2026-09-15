@@ -8,6 +8,7 @@ import { todoStore } from "./tools/todo.js";
 import { initPresets, createProvider, getPreset } from "./providers/presets.js";
 import { imageSupportWarning } from "./providers/registry.js";
 import { PermissionEngine, ProfileEvaluator, authorize } from "./permissions/index.js";
+import { projectSettingsPath } from "./config/paths.js";
 import { expandFileMentions } from "./ui/core/file-mentions.js";
 import { ErrorRecovery } from "./errorrecovery/index.js";
 import { ErrorReflector } from "./selfreflection/index.js";
@@ -112,11 +113,11 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
     // untrusted-skill skip.
     let effectiveConfig = configResult.config;
     if (configResult.projectExecutionKeys.length > 0) {
-      const projectSettingsPath = join(options.projectRoot, ".heirloom", "settings.json");
-      const trust = checkSettingsTrust(projectSettingsPath);
+      const projectSettingsFile = projectSettingsPath(options.projectRoot);
+      const trust = checkSettingsTrust(projectSettingsFile);
       if (trust.status !== "trusted") {
         writeErr(
-          `[warn] Untrusted project settings (${trust.status}) — skipping execution-capable keys: ${configResult.projectExecutionKeys.join(", ")} (${projectSettingsPath})`,
+          `[warn] Untrusted project settings (${trust.status}) — skipping execution-capable keys: ${configResult.projectExecutionKeys.join(", ")} (${projectSettingsFile})`,
         );
         effectiveConfig = stripExecutionKeys(configResult.config, configResult.projectExecutionKeys);
       }

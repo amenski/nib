@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, statSync, readdirSync, existsSync, realpathSync } from "node:fs";
 import { join } from "node:path";
+import { projectDirPath } from "../config/paths.js";
 import { tmpdir } from "node:os";
 import { checkSkillTrust, trustSkill, loadSkillTrust, saveSkillTrust, skillContentHash } from "./trust.js";
 import { SkillLoader } from "./index.js";
@@ -21,7 +22,7 @@ let projectDir: string;
 let prevCwd: string;
 
 function writeSkill(dir: string, name: string, body = "Body of " + name) {
-  const skillDir = join(dir, ".heirloom", "skills", name);
+  const skillDir = join(projectDirPath(dir), "skills", name);
   mkdirSync(skillDir, { recursive: true });
   const path = join(skillDir, "SKILL.md");
   writeFileSync(
@@ -185,7 +186,7 @@ describe("legacy 16-char hash migration (pre-204f856 truncated digests)", () => 
     const betaKey = real(betaPath);
 
     // A gone entry: key points at a file that no longer exists on disk.
-    const goneKey = join(projectDir, ".heirloom", "skills", "gone", "SKILL.md");
+    const goneKey = join(projectDirPath(projectDir), "skills", "gone", "SKILL.md");
     writeLegacyEntry(goneKey, "1111111111111111");
     // A live, already-migrated (full-length) entry that should survive untouched.
     trustSkill(betaPath, "beta");
@@ -282,7 +283,7 @@ describe("SkillLoader TOFU flow", () => {
 
   it("headless runs skills trusted by a previous interactive session", async () => {
     writeSkill(projectDir, "alpha");
-    trustSkill(join(projectDir, ".heirloom", "skills", "alpha", "SKILL.md"), "alpha");
+    trustSkill(join(projectDirPath(projectDir), "skills", "alpha", "SKILL.md"), "alpha");
 
     const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     try {

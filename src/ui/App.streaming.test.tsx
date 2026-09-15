@@ -571,6 +571,28 @@ describe("permission profile overlay — consolidation M.1 (§5)", () => {
 
     expect(askResult).toBe(false);
   });
+
+  it("auto-approve cannot bypass a background command without a safe persistent scope", async () => {
+    let askPromise: Promise<boolean> | null = null;
+    const ctx = makeAskCtx(async (_input: string, cb: any) => {
+      askPromise = cb.askUser("run_bash_background", { command: "echo hi" });
+      return { stopReason: "done", messages: [], newMessages: [] };
+    }, "strict-sandbox");
+    ctx.mutable.posture = "autoApprove";
+    const inst = render(<App ctx={ctx} />);
+    mounted.push(inst);
+    inst.stdin.write("run it");
+    await flush();
+    inst.stdin.write("\r");
+    await flush();
+    await flush();
+
+    expect(stripAnsi(inst.lastFrame() ?? "")).toContain("Permission required");
+    expect(askPromise).toBeInstanceOf(Promise);
+    inst.stdin.write("1");
+    await flush();
+    expect(await askPromise).toBe(true);
+  });
 });
 
 describe("background jobs (plan §3)", () => {

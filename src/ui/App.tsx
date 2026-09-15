@@ -1230,12 +1230,17 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
             return "posture";
           }
 
+          // These tools do not yet expose their actual command/file targets to
+          // the permission layer, so only an interactive one-time approval is
+          // safe until capability extraction exists.
+          const oneTimeOnly = toolName === "run_bash_background" || toolName === "apply_patch";
+
           // Auto-approve posture bypasses an ordinary rule-derived ask, but
           // never a result the bash normalizer couldn't safely classify, and
           // never a secret-adjacent path guard — both must always surface the
           // real prompt, regardless of posture. "posture" (not true) tells
           // agent.ts to record allow-by-posture instead of ask-approved.
-          if (ctx.mutable.posture === "autoApprove" && !wasUnresolved && !isGuarded) {
+          if (ctx.mutable.posture === "autoApprove" && !wasUnresolved && !isGuarded && !oneTimeOnly) {
             return "posture";
           }
 
@@ -1251,7 +1256,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
               defaultRule,
               folderRule,
               externalTreeRule,
-              oneTimeOnly: toolName === "run_bash_background" || toolName === "apply_patch",
+              oneTimeOnly,
               cursor: 0,
             });
           });

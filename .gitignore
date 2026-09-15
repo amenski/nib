@@ -8,6 +8,10 @@ dist/
 .idea/
 .DS_Store
 todo.md
+# Project-local config dir. Both names: .nib/ is current, .heirloom/ is what
+# existing checkouts still have on disk. Dropping the old entry would surface
+# every one of those directories — debug logs included — as untracked.
+.nib/
 .heirloom/
 dev-todo.md
 

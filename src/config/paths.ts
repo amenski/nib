@@ -15,7 +15,7 @@
 import { join } from "node:path";
 
 /** Per-project config directory, e.g. `<project>/.nib/`. */
-export const PROJECT_DIR_NAME = ".heirloom";
+export const PROJECT_DIR_NAME = ".nib";
 
 /** State directory under the user's home, e.g. `~/.nib/` (see `resolveHome`). */
 export const STATE_DIR_NAME = ".nib";

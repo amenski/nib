@@ -1,4 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 // handleSlashCore is exported from cli.tsx specifically so its /model case
 // (persist + validate + roll back) is unit-testable. Importing cli.tsx does
@@ -6,6 +9,22 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // module is the process entrypoint, which is false under vitest.
 import { handleSlashCore, syncModeModel } from "./cli.js";
 import { resolveRestoredSelection } from "./modes/model-policy.js";
+
+// The successful-switch case runs recordRecentModel, which writes
+// recentModels into the *state dir's* settings.json — resolveHome() with no
+// override. Without this, the test records a real recent-models entry into
+// ~/.nib/settings.json on every run.
+let homeDir: string;
+
+beforeEach(() => {
+  homeDir = mkdtempSync(join(tmpdir(), "heirloom-model-cmd-"));
+  process.env.NIB_HOME = homeDir;
+});
+
+afterEach(() => {
+  delete process.env.NIB_HOME;
+  rmSync(homeDir, { recursive: true, force: true });
+});
 
 function makeShared(overrides: Partial<Record<string, unknown>> = {}) {
   return {

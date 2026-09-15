@@ -276,6 +276,24 @@ export function sandboxSupportedOnPlatform(platform: NodeJS.Platform = process.p
 }
 
 /**
+ * States the effective containment guarantee for the startup UI. Permission
+ * prompts still work without it, but they are consent rather than a boundary
+ * around the user's account and filesystem.
+ */
+export function containmentWarning(
+  config: Pick<DeepCodeSettings, "permissionProfile" | "sandbox">,
+  platform: NodeJS.Platform = process.platform,
+): string | undefined {
+  if (!config.permissionProfile || config.permissionProfile.level === "unrestricted" || !config.sandbox?.enabled) {
+    return "⚠ No active OS containment — approvals run with your account's normal access.";
+  }
+  if (!sandboxSupportedOnPlatform(platform)) {
+    return "⚠ OS containment is configured, but the platform cannot enforce it — approvals run policy-only.";
+  }
+  return undefined;
+}
+
+/**
  * Object keys that must never be accepted from a parsed settings file.
  * `JSON.parse('{"__proto__": ...}')` creates `__proto__` as a real own
  * enumerable property (unlike an object literal, where it invokes the

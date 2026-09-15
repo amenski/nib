@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, statSync, rmSync, 
 import { join } from "node:path";
 import { projectDirPath, projectSettingsPath } from "./paths.js";
 import { tmpdir } from "node:os";
-import { loadConfig, migrateLegacyPermissions, resolveHome, sandboxSupportedOnPlatform } from "./loader.js";
+import { containmentWarning, loadConfig, migrateLegacyPermissions, resolveHome, sandboxSupportedOnPlatform } from "./loader.js";
 import { homedir } from "node:os";
 
 describe("validatePermissions (rule shape)", () => {
@@ -78,6 +78,20 @@ describe("validatePermissions (rule shape)", () => {
     const { config, errors } = loadConfig(dir);
     expect(errors).toEqual([]);
     expect(config.permissions?.rules?.[0]).toMatchObject({ tool: "glob", kind: "any", action: "allow" });
+  });
+});
+
+describe("containmentWarning", () => {
+  it("warns when no OS containment is active", () => {
+    expect(containmentWarning({}, "darwin")).toContain("No active OS containment");
+  });
+
+  it("does not warn for a supported enabled sandbox with a restrictive profile", () => {
+    expect(containmentWarning({ permissionProfile: { level: "workspace-write" }, sandbox: { enabled: true } }, "darwin")).toBeUndefined();
+  });
+
+  it("warns when the platform cannot enforce the configured sandbox", () => {
+    expect(containmentWarning({ permissionProfile: { level: "strict-sandbox" }, sandbox: { enabled: true } }, "linux")).toContain("platform cannot enforce");
   });
 });
 

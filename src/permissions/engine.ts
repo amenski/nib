@@ -158,6 +158,15 @@ export class PermissionEngine {
     return rule.action === "allow" && rule.kind !== "any" && rule.pattern.trim() === "";
   }
 
+  /** Approval callers must use the canonical form buildDefaultRule produces. */
+  private isInvalidApprovalRule(rule: PermissionRule): boolean {
+    return PermissionEngine.isEmptySubjectAllowRule(rule) || (
+      rule.kind === "exact" &&
+      PermissionEngine.FILE_TOOLS.has(rule.tool) &&
+      rule.pattern !== this.normalizePath(rule.pattern)
+    );
+  }
+
   /**
    * Resolves a tool call to an action. For run_bash, splits the command into
    * independent segments and resolves each against the same rule set,
@@ -667,7 +676,7 @@ export class PermissionEngine {
       this.sessionRules.push({ tool: "web_search", kind: "any", pattern: "", action: "allow", origin: "session" });
       return;
     }
-    if (PermissionEngine.isEmptySubjectAllowRule(rule)) return;
+    if (this.isInvalidApprovalRule(rule)) return;
     const narrowed = matchedBuiltin ? this.narrowToExact(rule, matchedBuiltin) : rule;
     this.sessionRules.push({ ...narrowed, origin: "session" });
   }
@@ -678,7 +687,7 @@ export class PermissionEngine {
    * guarded-origin match is forced to kind "exact" on the literal subject text.
    */
   approveAlways(rule: PermissionRule, matchedBuiltin?: PermissionRule): void {
-    if (PermissionEngine.isEmptySubjectAllowRule(rule)) return;
+    if (this.isInvalidApprovalRule(rule)) return;
     const narrowed = matchedBuiltin ? this.narrowToExact(rule, matchedBuiltin) : rule;
     const configRule: PermissionRule = { ...narrowed, origin: "config" };
     this.configRules.push(configRule);

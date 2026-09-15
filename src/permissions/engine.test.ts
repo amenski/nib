@@ -587,6 +587,18 @@ describe("PermissionEngine.resolve", () => {
       }
     });
 
+    it("does not persist a non-canonical file approval target", () => {
+      const dir = mkdtempSync(join(tmpdir(), "nib-noncanonical-rule-"));
+      try {
+        const scopedEngine = new PermissionEngine(undefined, dir);
+        scopedEngine.approveAlways({ tool: "read_file", kind: "exact", pattern: "src/main.ts", action: "allow", origin: "config" });
+
+        expect(existsSync(projectSettingsPath(dir))).toBe(false);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
     it("ignores a legacy empty extracted-subject allow rule on load", () => {
       engine = new PermissionEngine(
         { rules: [rule({ tool: "run_bash_background", kind: "exact", pattern: "", action: "allow" })] },

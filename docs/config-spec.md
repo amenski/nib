@@ -480,9 +480,8 @@ codebase and no config key enables one — the former `telemetryEnabled` key
 removed; `telemetryEnabled` now warns as an unknown field. If you set it,
 nothing happens because there is nothing to enable.
 
-The **only automatic network contact** is the npm update check
-(update-check.md) — and it is inert while the package is `private`, which
-this repo is.
+Nib makes no automatic network contacts. Network requests occur only when you
+select a model provider or explicitly configure or invoke an integration.
 
 ## 16. Deprecated keys
 

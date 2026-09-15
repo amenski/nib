@@ -93,9 +93,8 @@ export interface FetchFeedOptions {
 
 /**
  * Download the Models.dev feed with a hard timeout. `fetchImpl` is
- * injectable so tests never touch the network (plan §6 criterion 5) — same
- * pattern as update-check.ts's fetchLatestVersion and cli.tsx's
- * probeSearXngHealth. Non-2xx, abort/timeout, and non-JSON bodies are all
+ * injectable so tests never touch the network (plan §6 criterion 5), like
+ * cli.tsx's probeSearXngHealth. Non-2xx, abort/timeout, and non-JSON bodies are all
  * surfaced as one error type so the caller can print-and-exit-1 uniformly
  * without inspecting the cause.
  */

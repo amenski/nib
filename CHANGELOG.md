@@ -7,6 +7,26 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-09-15
+
+### Added
+
+- **Public npm and Homebrew distribution.** Nib publishes as
+  `@amenski/nib` while keeping the `nib` executable. A release workflow checks
+  the `vX.Y.Z` tag against package metadata, runs the full build gate, smoke
+  tests the packed tarball in an isolated prefix, and uses npm Trusted
+  Publishing. The Homebrew formula source is a checksum-placeholder template
+  until the scoped tarball exists; the release procedure documents the separate
+  tap update.
+
+### Changed
+
+- **Package-manager upgrades are now owned by the package manager.** Nib no
+  longer queries the npm registry, displays an update UI, or invokes global npm
+  installation itself. This removes automatic network contact; providers and
+  integrations are contacted only when configured or invoked.
+- **License text is the canonical Apache License 2.0.**
+
 ## [0.5.0] — 2026-09-15
 
 The project is now **nib** — the writing point of a pen. Same tool; the name
@@ -27,8 +47,8 @@ underway.
   point at the real new slug.
 - **Upgrade: the state directory is `~/.nib/`.** Copy the precious subset from
   `~/.heirloom/` — `sessions/`, `memory/`, `prompt_history/`,
-  `credentials.yaml`, `settings.json`, `models.json`, `mcp-pins.json`,
-  `update-check.json`, and the four `*-trust.json` stores. Copy rather than
+  `credentials.yaml`, `settings.json`, `models.json`, `mcp-pins.json`, and the
+  four `*-trust.json` stores. Copy rather than
   move: the old directory then *is* the backup. There is no read-fallback and no
   directory symlink — a symlink would resolve onto the stale trusted keys and
   silently skip a trust prompt.
@@ -76,8 +96,7 @@ underway.
 - The npm-registry update check stays inert, but the rename did not retire its
   trap — it reproduced it. npm's `nib` is also someone else's package, so a
   published build under the new name would prompt users to install a CSS
-  library. `private: true` is what makes it a no-op; see
-  [docs/update-check.md](docs/update-check.md).
+  library. `private: true` is what makes it a no-op.
 
 ### Fixed
 
@@ -453,7 +472,8 @@ further injection sinks.
 Earlier releases predate this changelog. See the git history for
 `v0.1.0..v0.2.1`.
 
-[Unreleased]: https://github.com/amenski/nib/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/amenski/nib/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/amenski/nib/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/amenski/nib/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/amenski/nib/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/amenski/nib/compare/v0.4.0...v0.4.1

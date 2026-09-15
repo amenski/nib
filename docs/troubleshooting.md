@@ -143,8 +143,9 @@ From `src/ui/test-helpers.ts` (UI tests):
 
 ## FAQ
 
-- **Does it phone home?** No telemetry. The npm update checker is inert while
-  the package remains private (config-spec.md §15; update-check.md).
+- **Does it phone home?** No telemetry and no automatic network contacts.
+  Provider and integration requests occur only when you configure or invoke
+  them (config-spec.md §15).
 - **Background commands?** `run_bash_background` → `check_job`/`kill_job`
   (max 10 jobs, default 5-min timeout — tool-spec.md §5).
 - **Undo?** Interactive Shadow-Git checkpoints: `/undo`, saved at each turn

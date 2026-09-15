@@ -9,4 +9,4 @@ import { fileURLToPath } from "node:url";
 // inline pkg read.
 export const pkg = JSON.parse(
   readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "package.json"), "utf-8"),
-) as { name: string; version: string; private?: boolean };
+) as { name: string; version: string };

@@ -81,7 +81,6 @@ then follow the reading paths below.
 | [web-search-spec.md](./web-search-spec.md) | Bing RSS search tier + anti-drift rules |
 | [theme-spec.md](./theme-spec.md) | Theme engine, presets, detection |
 | [mcp-spec.md](./mcp-spec.md) | MCP stdio protocol, tool registration, strictMcpConfig |
-| [update-check.md](./update-check.md) | npm update checker (inert for private packages) |
 | [eval-harness.md](./eval-harness.md) | Golden-task runner (fixed 2026-08-13: correct entry, injected permissions, isolated home) |
 
 ### Ops
@@ -89,6 +88,7 @@ then follow the reading paths below.
 | Doc | Covers |
 |-----|--------|
 | [input-stall-diagnosis.md](./input-stall-diagnosis.md) | Freeze taxonomy (resolved; reference) |
+| [releasing.md](./releasing.md) | npm Trusted Publishing and Homebrew tap release procedure |
 
 ### Roadmaps & research
 
@@ -142,7 +142,7 @@ then follow the reading paths below.
    effort (mode-spec.md §5); the anthropic API type is supported via the AI
    SDK but has no bundled preset.
 4. **Previously uncovered areas, now documented (2026-08-13):**
-   [eval-harness.md](./eval-harness.md), [update-check.md](./update-check.md),
+   [eval-harness.md](./eval-harness.md),
    [mcp-spec.md](./mcp-spec.md). Still thin: memory-injection mechanics
    beyond the ≤1024-token cap, and the theme ansi ×2 preset follow-on
    (noted in theme-spec.md §2). The eval runner was broken as written

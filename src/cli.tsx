@@ -4,7 +4,6 @@ import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createElement } from "react";
 import { pkg } from "./version.js";
-import { checkForNpmUpdate, promptForPendingUpdate } from "./common/update-check.js";
 import { parseArguments, resolveAdditionalDirs } from "./cli-args.js";
 import { runExecMode } from "./exec-runner.js";
 import { initPresets, createProvider, getPreset, getKnownProviderNames, getProviderModels, getConfiguredProviders, type ProviderOptions } from "./providers/presets.js";
@@ -1130,19 +1129,11 @@ async function main() {
     };
   }
 
-  const packageInfo = { name: pkg.name, version: pkg.version, private: pkg.private };
-
-  if (!parsed.print && !parsed.resume) {
-    await promptForPendingUpdate(packageInfo);
-  }
-
   if (process.env.NIB_PROFILE === "1" || process.env.NIB_PROFILE === "true") {
     stallWatchdog = startStallWatchdog();
   }
 
   startApp();
-
-  checkForNpmUpdate(packageInfo).catch(() => {});
 }
 
 function detectProvider(configEnv: Record<string, string | undefined> | undefined): string | null {

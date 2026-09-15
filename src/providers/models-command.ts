@@ -13,9 +13,8 @@ import {
 } from "./catalog-update.js";
 
 /**
- * Test seams: real network/TTY/clock swapped for injected fakes, same
- * fetchImpl-injection pattern as update-check.ts and probeSearXngHealth
- * (cli.tsx) — no test may touch the network or a real TTY.
+ * Test seams: real network/TTY/clock swapped for injected fakes, like
+ * probeSearXngHealth (cli.tsx) — no test may touch the network or a real TTY.
  */
 export interface ModelsCommandDeps {
   fetchImpl?: typeof fetch;

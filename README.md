@@ -14,7 +14,32 @@ checkpoints, skills, and MCP — without a hosted service or telemetry.
 
 ## Quick start
 
-Requires Node.js 20+ and Git. Nib is currently installed from source:
+Requires Node.js 20+ and Git.
+
+> **Distribution:** package-manager distribution begins with v0.5.1. If the
+> relevant npm registry or Homebrew tap artifact is not yet available, install
+> from source instead.
+
+Install with npm:
+
+```bash
+npm install -g @amenski/nib
+nib doctor
+```
+
+Or run it without a global install:
+
+```bash
+npx @amenski/nib doctor
+```
+
+Install from Homebrew:
+
+```bash
+brew install amenski/tap/nib
+```
+
+Install from source when a package-manager artifact is unavailable:
 
 ```bash
 git clone https://github.com/amenski/nib.git

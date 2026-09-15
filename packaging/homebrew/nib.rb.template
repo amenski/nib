@@ -1,0 +1,25 @@
+# RELEASE TEMPLATE — do not copy to a tap unchanged.
+#
+# Replace VERSION and SHA256 after @amenski/nib VERSION is published. The
+# release process is documented in docs/releasing.md.
+class Nib < Formula
+  desc "Terminal AI coding agent you can inspect, configure, and own"
+  homepage "https://github.com/amenski/nib"
+  url "https://registry.npmjs.org/@amenski/nib/-/nib-VERSION.tgz"
+  sha256 "SHA256"
+  license "Apache-2.0"
+
+  depends_on "node"
+  uses_from_macos "git"
+
+  def install
+    system "npm", "install", *std_npm_args
+    bin.install_symlink libexec/"bin/nib"
+  end
+
+  test do
+    output = shell_output("#{bin}/nib doctor")
+    assert_match "nib doctor", output
+    assert_match "API key", output
+  end
+end

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { resolveHome } from "./loader.js";
 
 // Resolved lazily (per call, not baked in at module load) so tests can mock
-// the home (and because HEIRLOOM_HOME may change between calls). Honors the
+// the home (and because NIB_HOME may change between calls). Honors the
 // same override as the config loader (resolveHome). This is the single source
 // of truth for where credentials live; auth/wizard.ts imports these helpers so
 // the write and read paths cannot drift.

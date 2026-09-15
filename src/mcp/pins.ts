@@ -7,7 +7,7 @@ import { resolveHome } from "../config/loader.js";
  * Tool-definition pins for MCP servers (security-spec.md T10, mcp-spec.md §6):
  * at connect, each server's advertised tool definitions (names + descriptions
  * + schemas) are hashed and persisted per server name to
- * `~/.heirloom/mcp-pins.json` (HEIRLOOM_HOME honored, mode 0600, atomic
+ * `~/.heirloom/mcp-pins.json` (NIB_HOME honored, mode 0600, atomic
  * tmp+rename — same hygiene as the hooks/skill trust stores). Every later
  * connect compares against the pin: a description/schema change — the "rug
  * pull" — flags the server for re-approval, and the changed tools are not

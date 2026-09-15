@@ -135,7 +135,7 @@ describe("runExecMode headless permission enforcement (T11)", () => {
     mkdirSync(PROJECT_DIR, { recursive: true });
     mkdirSync(HOME_DIR, { recursive: true });
     // Isolate from the developer's real ~/.heirloom/settings.json.
-    process.env.HEIRLOOM_HOME = HOME_DIR;
+    process.env.NIB_HOME = HOME_DIR;
     executeToolSpy.mockClear();
     createProviderSpy.mockClear();
     providerFactory = () => scriptedProvider();
@@ -145,7 +145,7 @@ describe("runExecMode headless permission enforcement (T11)", () => {
   });
 
   afterEach(() => {
-    delete process.env.HEIRLOOM_HOME;
+    delete process.env.NIB_HOME;
     rmSync(TEST_DIR, { recursive: true, force: true });
   });
 
@@ -253,14 +253,14 @@ describe("runExecMode first-run failures are clean (B1)", () => {
   beforeEach(() => {
     mkdirSync(PROJECT_DIR, { recursive: true });
     mkdirSync(HOME_DIR, { recursive: true });
-    process.env.HEIRLOOM_HOME = HOME_DIR;
+    process.env.NIB_HOME = HOME_DIR;
     createProviderSpy.mockClear();
     providerFactory = () => scriptedProvider();
     scriptedCall = null;
   });
 
   afterEach(() => {
-    delete process.env.HEIRLOOM_HOME;
+    delete process.env.NIB_HOME;
     rmSync(TEST_DIR, { recursive: true, force: true });
   });
 
@@ -345,7 +345,7 @@ describe("runExecMode provider failures are concise (B6)", () => {
   beforeEach(() => {
     mkdirSync(PROJECT_DIR, { recursive: true });
     mkdirSync(HOME_DIR, { recursive: true });
-    process.env.HEIRLOOM_HOME = HOME_DIR;
+    process.env.NIB_HOME = HOME_DIR;
     createProviderSpy.mockClear();
     providerFactory = () => scriptedProvider();
     scriptedCall = null;
@@ -353,7 +353,7 @@ describe("runExecMode provider failures are concise (B6)", () => {
   });
 
   afterEach(() => {
-    delete process.env.HEIRLOOM_HOME;
+    delete process.env.NIB_HOME;
     rmSync(TEST_DIR, { recursive: true, force: true });
   });
 
@@ -493,14 +493,14 @@ describe("runExecMode honors config BASE_URL / API_KEY (B2)", () => {
   beforeEach(() => {
     mkdirSync(PROJECT_DIR, { recursive: true });
     mkdirSync(HOME_DIR, { recursive: true });
-    process.env.HEIRLOOM_HOME = HOME_DIR;
+    process.env.NIB_HOME = HOME_DIR;
     createProviderSpy.mockClear();
     providerFactory = () => scriptedProvider();
     scriptedCall = null;
   });
 
   afterEach(() => {
-    delete process.env.HEIRLOOM_HOME;
+    delete process.env.NIB_HOME;
     rmSync(TEST_DIR, { recursive: true, force: true });
   });
 
@@ -549,7 +549,7 @@ describe("runExecMode fires the notify hook at the completion boundary", () => {
   beforeEach(() => {
     mkdirSync(PROJECT_DIR, { recursive: true });
     mkdirSync(HOME_DIR, { recursive: true });
-    process.env.HEIRLOOM_HOME = HOME_DIR;
+    process.env.NIB_HOME = HOME_DIR;
     createProviderSpy.mockClear();
     fireNotifySpy.mockClear();
     providerFactory = () => scriptedProvider();
@@ -557,7 +557,7 @@ describe("runExecMode fires the notify hook at the completion boundary", () => {
   });
 
   afterEach(() => {
-    delete process.env.HEIRLOOM_HOME;
+    delete process.env.NIB_HOME;
     rmSync(TEST_DIR, { recursive: true, force: true });
   });
 
@@ -705,14 +705,14 @@ describe("runExecMode config errors fail fast (fix 5)", () => {
   beforeEach(() => {
     mkdirSync(PROJECT_DIR, { recursive: true });
     mkdirSync(HOME_DIR, { recursive: true });
-    process.env.HEIRLOOM_HOME = HOME_DIR;
+    process.env.NIB_HOME = HOME_DIR;
     createProviderSpy.mockClear();
     providerFactory = () => scriptedProvider();
     scriptedCall = null;
   });
 
   afterEach(() => {
-    delete process.env.HEIRLOOM_HOME;
+    delete process.env.NIB_HOME;
     rmSync(TEST_DIR, { recursive: true, force: true });
   });
 
@@ -738,14 +738,14 @@ describe("runExecMode lifecycle hooks (headless)", () => {
   beforeEach(() => {
     mkdirSync(PROJECT_DIR, { recursive: true });
     mkdirSync(HOME_DIR, { recursive: true });
-    process.env.HEIRLOOM_HOME = HOME_DIR;
+    process.env.NIB_HOME = HOME_DIR;
     createProviderSpy.mockClear();
     providerFactory = () => scriptedProvider();
     scriptedCall = null;
   });
 
   afterEach(() => {
-    delete process.env.HEIRLOOM_HOME;
+    delete process.env.NIB_HOME;
     rmSync(TEST_DIR, { recursive: true, force: true });
   });
 
@@ -787,14 +787,14 @@ describe("runExecMode @mention parity with the TUI", () => {
   beforeEach(() => {
     mkdirSync(PROJECT_DIR, { recursive: true });
     mkdirSync(HOME_DIR, { recursive: true });
-    process.env.HEIRLOOM_HOME = HOME_DIR;
+    process.env.NIB_HOME = HOME_DIR;
     providerFactory = () => scriptedProvider();
     scriptedCall = null;
     lastMessages = undefined;
   });
 
   afterEach(() => {
-    delete process.env.HEIRLOOM_HOME;
+    delete process.env.NIB_HOME;
     rmSync(TEST_DIR, { recursive: true, force: true });
   });
 

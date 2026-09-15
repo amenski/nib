@@ -20,11 +20,11 @@ function parse(hooks: Record<string, unknown>, errors: string[] = []) {
 beforeEach(() => {
   mkdirSync(PROJECT_DIR, { recursive: true });
   mkdirSync(HOME_DIR, { recursive: true });
-  process.env.HEIRLOOM_HOME = HOME_DIR;
+  process.env.NIB_HOME = HOME_DIR;
 });
 
 afterEach(() => {
-  delete process.env.HEIRLOOM_HOME;
+  delete process.env.NIB_HOME;
   rmSync(TEST_DIR, { recursive: true, force: true });
 });
 

@@ -6,7 +6,7 @@ import { resolveHome } from "../config/loader.js";
 /**
  * Trust-on-first-use store for project-declared skills (security-spec.md T4,
  * skill-spec.md §6). Mirrors hooks-trust.json: a JSON file under ~/.heirloom
- * (HEIRLOOM_HOME honored, same as every other user-level file) keyed by the
+ * (NIB_HOME honored, same as every other user-level file) keyed by the
  * skill's absolute source path, storing only the full sha256 of the SKILL.md
  * content — never the content itself. Global user skills (~/.heirloom/skills,
  * ~/.agents/skills) never consult this store — they are trusted implicitly

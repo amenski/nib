@@ -56,9 +56,9 @@ export function isHighContrastMode(): boolean {
   // Check for macOS accessibility settings (system-wide)
   try {
     // macOS: `defaults read` is expensive — check env vars first
-    if (process.env.HEIRLOOM_HIGH_CONTRAST) {
-      return process.env.HEIRLOOM_HIGH_CONTRAST === "1" ||
-        process.env.HEIRLOOM_HIGH_CONTRAST === "true";
+    if (process.env.NIB_HIGH_CONTRAST) {
+      return process.env.NIB_HIGH_CONTRAST === "1" ||
+        process.env.NIB_HIGH_CONTRAST === "true";
     }
   } catch {
     // ignore

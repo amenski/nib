@@ -15,8 +15,8 @@ describe("AgentLoader (feature-plans.md §F4)", () => {
   beforeEach(() => {
     project = mkdtempSync(join(tmpdir(), "agents-proj-"));
     home = mkdtempSync(join(tmpdir(), "agents-home-"));
-    prevHome = process.env.HEIRLOOM_HOME;
-    process.env.HEIRLOOM_HOME = home; // isolate from a real ~/.heirloom
+    prevHome = process.env.NIB_HOME;
+    process.env.NIB_HOME = home; // isolate from a real ~/.heirloom
     mkdirSync(join(projectDirPath(project), "agents"), { recursive: true });
     mkdirSync(join(home, "agents"), { recursive: true });
     warns = [];
@@ -27,8 +27,8 @@ describe("AgentLoader (feature-plans.md §F4)", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
-    if (prevHome === undefined) delete process.env.HEIRLOOM_HOME;
-    else process.env.HEIRLOOM_HOME = prevHome;
+    if (prevHome === undefined) delete process.env.NIB_HOME;
+    else process.env.NIB_HOME = prevHome;
     rmSync(project, { recursive: true, force: true });
     rmSync(home, { recursive: true, force: true });
   });

@@ -100,16 +100,16 @@ describe("credentials", () => {
   });
 });
 
-describe("credsDir — HEIRLOOM_HOME", () => {
-  it("honors HEIRLOOM_HOME over the mocked homedir", async () => {
-    const prev = process.env.HEIRLOOM_HOME;
-    process.env.HEIRLOOM_HOME = "/tmp/hh-creds";
+describe("credsDir — NIB_HOME", () => {
+  it("honors NIB_HOME over the mocked homedir", async () => {
+    const prev = process.env.NIB_HOME;
+    process.env.NIB_HOME = "/tmp/hh-creds";
     try {
       const { credsDir } = await import("./credentials.js");
       expect(credsDir()).toBe("/tmp/hh-creds");
     } finally {
-      if (prev === undefined) delete process.env.HEIRLOOM_HOME;
-      else process.env.HEIRLOOM_HOME = prev;
+      if (prev === undefined) delete process.env.NIB_HOME;
+      else process.env.NIB_HOME = prev;
     }
   });
 });

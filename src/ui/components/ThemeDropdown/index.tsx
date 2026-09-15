@@ -43,7 +43,7 @@ export function resolveThemeOutcome(
  * Read-modify-write the user-level settings.json: read (tolerating a missing
  * or corrupt file), hand the parsed object to `mutate` to merge in whatever
  * changed, then write back atomically (temp file + rename), mirroring the
- * permission engine's persist(). `homeDir` defaults to HEIRLOOM_HOME. Never
+ * permission engine's persist(). `homeDir` defaults to NIB_HOME. Never
  * writes project settings.
  *
  * Shared by every settings.json writer in the picker UI (theme, favorite

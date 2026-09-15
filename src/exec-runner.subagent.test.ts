@@ -166,7 +166,7 @@ describe("runExecMode async sub-agent continuation (async-subagents.md §2)", ()
   beforeEach(() => {
     mkdirSync(PROJECT_DIR, { recursive: true });
     mkdirSync(HOME_DIR, { recursive: true });
-    process.env.HEIRLOOM_HOME = HOME_DIR;
+    process.env.NIB_HOME = HOME_DIR;
     createProviderSpy.mockClear();
     fireNotifySpy.mockClear();
     // new_task must be allowed (default askAll would resolve it to an ask,
@@ -184,7 +184,7 @@ describe("runExecMode async sub-agent continuation (async-subagents.md §2)", ()
   });
 
   afterEach(() => {
-    delete process.env.HEIRLOOM_HOME;
+    delete process.env.NIB_HOME;
     rmSync(TEST_DIR, { recursive: true, force: true });
   });
 

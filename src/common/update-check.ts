@@ -7,7 +7,7 @@ import UpdatePrompt from "../ui/views/UpdatePrompt.js";
 import { resolveHome } from "../config/loader.js";
 
 // Resolved per call, not at import: a module-level constant freezes the state
-// dir before a test can point HEIRLOOM_HOME at a temp dir, and this file both
+// dir before a test can point NIB_HOME at a temp dir, and this file both
 // reads and *clears* its state file.
 function statePath(): string {
   return join(resolveHome(), "update-check.json");

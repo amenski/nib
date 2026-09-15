@@ -81,7 +81,7 @@ const EVAL_SETTINGS = JSON.stringify({
 // credentials (GITHUB_TOKEN, AWS_*, etc.). The provider key env vars are
 // included deliberately: real evals need exactly one of them to
 // authenticate. HOME is pointed at the eval home so no subsystem writes to
-// the developer's real ~; HEIRLOOM_HOME is set to the same place so every
+// the developer's real ~; NIB_HOME is set to the same place so every
 // state-dir path (all of which now resolve through resolveHome()) follows.
 function evalChildEnv(evalHome: string): Record<string, string> {
   const env: Record<string, string> = {
@@ -91,7 +91,7 @@ function evalChildEnv(evalHome: string): Record<string, string> {
     NO_COLOR: "1",
     TERM: "dumb",
     TMPDIR: evalHome,
-    HEIRLOOM_HOME: evalHome,
+    NIB_HOME: evalHome,
   };
   for (const key of ["DEEPSEEK_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY", "GROQ_API_KEY", "ANTHROPIC_API_KEY", "TOGETHER_API_KEY"]) {
     if (process.env[key]) env[key] = process.env[key]!;

@@ -18,24 +18,24 @@ describe("resolveRefreshProfile", () => {
   });
 
   it("selects a named profile", () => {
-    expect(resolveRefreshProfile({ HEIRLOOM_REFRESH: "slow" }).indicatorMs).toBe(200);
-    expect(resolveRefreshProfile({ HEIRLOOM_REFRESH: "fast" }).indicatorMs).toBe(80);
+    expect(resolveRefreshProfile({ NIB_REFRESH: "slow" }).indicatorMs).toBe(200);
+    expect(resolveRefreshProfile({ NIB_REFRESH: "fast" }).indicatorMs).toBe(80);
   });
 
   it("is case- and whitespace-insensitive", () => {
-    expect(resolveRefreshProfile({ HEIRLOOM_REFRESH: "  SLOW " }).flushMs).toBe(150);
+    expect(resolveRefreshProfile({ NIB_REFRESH: "  SLOW " }).flushMs).toBe(150);
   });
 
   it("falls back to the default on an unknown value rather than throwing", () => {
     // A typo in an env var must not stop the CLI from starting.
-    expect(resolveRefreshProfile({ HEIRLOOM_REFRESH: "quick" }).flushMs).toBe(100);
-    expect(resolveRefreshProfile({ HEIRLOOM_REFRESH: "" }).flushMs).toBe(100);
+    expect(resolveRefreshProfile({ NIB_REFRESH: "quick" }).flushMs).toBe(100);
+    expect(resolveRefreshProfile({ NIB_REFRESH: "" }).flushMs).toBe(100);
   });
 
   it("orders the profiles from most to least traffic", () => {
-    const fast = resolveRefreshProfile({ HEIRLOOM_REFRESH: "fast" });
+    const fast = resolveRefreshProfile({ NIB_REFRESH: "fast" });
     const balanced = resolveRefreshProfile({});
-    const slow = resolveRefreshProfile({ HEIRLOOM_REFRESH: "slow" });
+    const slow = resolveRefreshProfile({ NIB_REFRESH: "slow" });
     for (const key of ["flushMs", "activeLineMs", "indicatorMs"] as const) {
       expect(fast[key], `${key} should ascend fast < balanced < slow`).toBeLessThan(balanced[key]);
       expect(balanced[key], `${key} should ascend fast < balanced < slow`).toBeLessThan(slow[key]);
@@ -47,7 +47,7 @@ describe("resolveRefreshProfile", () => {
     // floor: below it we judged the indicator reads as intermittent flicker
     // rather than movement, which defeats the point of having one.
     for (const name of REFRESH_PROFILE_NAMES) {
-      const { indicatorMs } = resolveRefreshProfile({ HEIRLOOM_REFRESH: name });
+      const { indicatorMs } = resolveRefreshProfile({ NIB_REFRESH: name });
       const stepsPerSecond = 1000 / indicatorMs;
       expect(stepsPerSecond, `${name} indicator is too slow to read as motion`)
         .toBeGreaterThanOrEqual(4);
@@ -58,7 +58,7 @@ describe("resolveRefreshProfile", () => {
     // The intervals fall back to the default (a typo must not stop the CLI
     // starting), but the raw value is carried through so /doctor can say the
     // setting was not understood.
-    const typo = resolveRefreshProfile({ HEIRLOOM_REFRESH: "slowww" });
+    const typo = resolveRefreshProfile({ NIB_REFRESH: "slowww" });
     const fallback = resolveRefreshProfile({});
     expect(typo.flushMs).toBe(fallback.flushMs);
     expect(typo.indicatorMs).toBe(fallback.indicatorMs);
@@ -70,14 +70,14 @@ describe("resolveRefreshProfile", () => {
   it("prefers settings.json over the environment variable", () => {
     // Config is the deliberate, per-project choice and travels with the repo;
     // the env var is a per-invocation override for trying a profile.
-    const r = resolveRefreshProfile({ HEIRLOOM_REFRESH: "fast" }, "slow");
+    const r = resolveRefreshProfile({ NIB_REFRESH: "fast" }, "slow");
     expect(r.name).toBe("slow");
     expect(r.source).toBe("config");
   });
 
   it("falls back to the env var when config is absent or unknown", () => {
-    expect(resolveRefreshProfile({ HEIRLOOM_REFRESH: "slow" }, undefined).source).toBe("env");
-    expect(resolveRefreshProfile({ HEIRLOOM_REFRESH: "slow" }, "bogus").source).toBe("env");
+    expect(resolveRefreshProfile({ NIB_REFRESH: "slow" }, undefined).source).toBe("env");
+    expect(resolveRefreshProfile({ NIB_REFRESH: "slow" }, "bogus").source).toBe("env");
   });
 
   it("labels the default so /doctor can distinguish it from an explicit choice", () => {
@@ -97,13 +97,13 @@ describe("describeRefreshSource", () => {
   });
 
   it("labels an env-sourced profile", () => {
-    const r = resolveRefreshProfile({ HEIRLOOM_REFRESH: "fast" });
-    expect(describeRefreshSource(r)).toBe("(from HEIRLOOM_REFRESH)");
+    const r = resolveRefreshProfile({ NIB_REFRESH: "fast" });
+    expect(describeRefreshSource(r)).toBe("(from NIB_REFRESH)");
   });
 
   it("names the unrecognised value when the env var wasn't understood", () => {
-    const r = resolveRefreshProfile({ HEIRLOOM_REFRESH: "slowww" });
-    expect(describeRefreshSource(r)).toBe('(HEIRLOOM_REFRESH="slowww" not recognised — using default)');
+    const r = resolveRefreshProfile({ NIB_REFRESH: "slowww" });
+    expect(describeRefreshSource(r)).toBe('(NIB_REFRESH="slowww" not recognised — using default)');
   });
 
   it("labels a plain default with no env or config involved", () => {

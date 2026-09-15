@@ -67,7 +67,7 @@ import { toModelId } from "./ui/core/model-picker.js";
 import { loadFavoriteModels, loadRecentModels, persistRecentModel, persistToggleFavorite } from "./ui/components/ModelsDropdown/settings.js";
 import { GENERAL_MODEL_ID, GENERAL_REASONING_EFFORT, parseModelId, resolveRestoredSelection } from "./modes/model-policy.js";
 
-// Opt-in stall watchdog (HEIRLOOM_PROFILE=1|true): started before the Ink
+// Opt-in stall watchdog (NIB_PROFILE=1|true): started before the Ink
 // render() call, stopped + reported inside logSessionEnd. Module-level so
 // both logSessionEnd and the /doctor slash command can read it without
 // threading a new field through `shared`'s type.
@@ -1136,7 +1136,7 @@ async function main() {
     await promptForPendingUpdate(packageInfo);
   }
 
-  if (process.env.HEIRLOOM_PROFILE === "1" || process.env.HEIRLOOM_PROFILE === "true") {
+  if (process.env.NIB_PROFILE === "1" || process.env.NIB_PROFILE === "true") {
     stallWatchdog = startStallWatchdog();
   }
 
@@ -1394,7 +1394,7 @@ export async function runDoctor(): Promise<void> {
   // Surface the repaint cadence, and say plainly when an env value was not
   // understood — resolveRefreshProfile falls back silently so a typo cannot
   // stop the CLI starting, which otherwise leaves no way to tell whether
-  // HEIRLOOM_REFRESH took effect.
+  // NIB_REFRESH took effect.
   const refresh = resolveRefreshProfile(process.env, loadConfig().config.refresh);
   const source = describeRefreshSource(refresh);
   console.log(`  refresh           ${refresh.name} ${source}`);

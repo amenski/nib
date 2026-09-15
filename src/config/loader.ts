@@ -261,7 +261,7 @@ function deepMerge<T extends Record<string, unknown>>(
 }
 
 export function resolveHome(): string {
-  return process.env.HEIRLOOM_HOME || join(homedir(), STATE_DIR_NAME);
+  return process.env.NIB_HOME || join(homedir(), STATE_DIR_NAME);
 }
 
 /**

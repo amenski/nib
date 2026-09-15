@@ -69,8 +69,8 @@ function real(path: string): string {
   return realpathSync(path);
 }
 
-// Both HEIRLOOM_HOME and HOME are set/restored on every test — resolveHome()
-// prefers HEIRLOOM_HOME, but setting only HOME leaves a gap where an
+// Both NIB_HOME and HOME are set/restored on every test — resolveHome()
+// prefers NIB_HOME, but setting only HOME leaves a gap where an
 // accidental real-home read still lands (a prior bug leaked ~1786 junk
 // entries into a real user's store this exact way).
 let prevHeirloomHome: string | undefined;
@@ -79,15 +79,15 @@ let prevHome: string | undefined;
 beforeEach(() => {
   mkdirSync(HOME_DIR, { recursive: true });
   projectDir = mkdtempSync(join(TEST_DIR, "project-"));
-  prevHeirloomHome = process.env.HEIRLOOM_HOME;
+  prevHeirloomHome = process.env.NIB_HOME;
   prevHome = process.env.HOME;
-  process.env.HEIRLOOM_HOME = HOME_DIR;
+  process.env.NIB_HOME = HOME_DIR;
   process.env.HOME = HOME_DIR;
 });
 
 afterEach(() => {
-  if (prevHeirloomHome === undefined) delete process.env.HEIRLOOM_HOME;
-  else process.env.HEIRLOOM_HOME = prevHeirloomHome;
+  if (prevHeirloomHome === undefined) delete process.env.NIB_HOME;
+  else process.env.NIB_HOME = prevHeirloomHome;
   if (prevHome === undefined) delete process.env.HOME;
   else process.env.HOME = prevHome;
   rmSync(TEST_DIR, { recursive: true, force: true });
@@ -111,7 +111,7 @@ describe("checkSettingsTrust / trustSettings — content-hashed classification",
 });
 
 describe("trust store hygiene", () => {
-  it("writes mode 0600, atomically, under HEIRLOOM_HOME, storing the hash not the content", () => {
+  it("writes mode 0600, atomically, under NIB_HOME, storing the hash not the content", () => {
     const path = writeProjectSettings(projectDir, { notify: "/tmp/notify-canary.sh" });
     trustSettings(path);
 
@@ -134,7 +134,7 @@ describe("trust store hygiene", () => {
 
   it("a save failure is swallowed with a stderr note — never an unhandled rejection", () => {
     writeFileSync(join(TEST_DIR, "blocker"), "x");
-    process.env.HEIRLOOM_HOME = join(TEST_DIR, "blocker", "home");
+    process.env.NIB_HOME = join(TEST_DIR, "blocker", "home");
 
     const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     const path = writeProjectSettings(projectDir, { notify: "/tmp/x.sh" });

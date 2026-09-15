@@ -57,15 +57,15 @@ function real(path: string): string {
 beforeEach(() => {
   mkdirSync(HOME_DIR, { recursive: true });
   projectDir = mkdtempSync(join(TEST_DIR, "project-"));
-  prevHeirloomHome = process.env.HEIRLOOM_HOME;
+  prevHeirloomHome = process.env.NIB_HOME;
   prevHome = process.env.HOME;
-  process.env.HEIRLOOM_HOME = HOME_DIR;
+  process.env.NIB_HOME = HOME_DIR;
   process.env.HOME = HOME_DIR;
 });
 
 afterEach(() => {
-  if (prevHeirloomHome === undefined) delete process.env.HEIRLOOM_HOME;
-  else process.env.HEIRLOOM_HOME = prevHeirloomHome;
+  if (prevHeirloomHome === undefined) delete process.env.NIB_HOME;
+  else process.env.NIB_HOME = prevHeirloomHome;
   if (prevHome === undefined) delete process.env.HOME;
   else process.env.HOME = prevHome;
   rmSync(TEST_DIR, { recursive: true, force: true });
@@ -284,7 +284,7 @@ describe("folder declined — the three existing gates behave exactly as today",
 });
 
 describe("trust store hygiene", () => {
-  it("writes mode 0600, atomically, under HEIRLOOM_HOME, storing hashes not content", () => {
+  it("writes mode 0600, atomically, under NIB_HOME, storing hashes not content", () => {
     writeSkill(projectDir, "alpha", "secret-canary-body");
     const configResult = loadConfig(projectDir);
     const summary = buildFolderContentSummary(projectDir, configResult);

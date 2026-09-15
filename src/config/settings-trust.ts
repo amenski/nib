@@ -8,7 +8,7 @@ import { resolveHome, type DeepCodeSettings } from "./loader.js";
  * declare execution-capable keys (EXECUTION_CAPABLE_KEYS in loader.ts:
  * statusline, mcpServers, notify, env — see loader.ts for why each is
  * execution-capable). Mirrors skill-trust.json / hooks-trust.json: a JSON
- * file under ~/.heirloom (HEIRLOOM_HOME honored, same as every other
+ * file under ~/.heirloom (NIB_HOME honored, same as every other
  * user-level file) keyed by the settings file's absolute path, storing only
  * the full sha256 of the file's content — never the content itself. The
  * user's own global ~/.heirloom/settings.json never consults this store — it

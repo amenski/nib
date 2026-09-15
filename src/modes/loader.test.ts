@@ -84,16 +84,16 @@ describe("ModeLoader", () => {
         join(projectDirPath(project), "modes", "code.yaml"),
         'slug: code\nname: "Project Code"\nroleDefinition: "overridden"\n',
       );
-      const prevHome = process.env.HEIRLOOM_HOME;
-      process.env.HEIRLOOM_HOME = home; // isolate from a real ~/.heirloom
+      const prevHome = process.env.NIB_HOME;
+      process.env.NIB_HOME = home; // isolate from a real ~/.heirloom
       try {
         const loader = new ModeLoader();
         const mode = await loader.load("code", project);
         expect(mode?.name).toBe("Project Code");
         expect(mode?.roleDefinition).toBe("overridden");
       } finally {
-        if (prevHome === undefined) delete process.env.HEIRLOOM_HOME;
-        else process.env.HEIRLOOM_HOME = prevHome;
+        if (prevHome === undefined) delete process.env.NIB_HOME;
+        else process.env.NIB_HOME = prevHome;
       }
     });
   });

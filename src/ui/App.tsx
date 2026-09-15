@@ -2439,7 +2439,7 @@ interface AppProps {
   ctx: AppContext;
   themeConfig?: ThemeProviderOptions;
   keybindingConfig?: KeybindingConfig;
-  /** Resolved repaint cadence (settings.json > HEIRLOOM_REFRESH > default). */
+  /** Resolved repaint cadence (settings.json > NIB_REFRESH > default). */
   refresh?: ResolvedRefresh;
 }
 

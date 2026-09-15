@@ -45,13 +45,13 @@ beforeEach(() => {
   projectDir = mkdtempSync(join(TEST_DIR, "project-"));
   prevCwd = process.cwd();
   process.chdir(projectDir);
-  process.env.HEIRLOOM_HOME = HOME_DIR;
+  process.env.NIB_HOME = HOME_DIR;
   process.env.HOME = HOME_DIR;
 });
 
 afterEach(() => {
   process.chdir(prevCwd);
-  delete process.env.HEIRLOOM_HOME;
+  delete process.env.NIB_HOME;
   delete process.env.HOME;
   rmSync(TEST_DIR, { recursive: true, force: true });
 });
@@ -84,7 +84,7 @@ describe("checkSkillTrust / trustSkill — content-hashed classification", () =>
 });
 
 describe("trust store hygiene", () => {
-  it("writes mode 0600, atomically, under HEIRLOOM_HOME, storing the hash not the content", () => {
+  it("writes mode 0600, atomically, under NIB_HOME, storing the hash not the content", () => {
     const path = writeSkill(projectDir, "alpha");
     trustSkill(path, "alpha");
 
@@ -107,9 +107,9 @@ describe("trust store hygiene", () => {
   });
 
   it("a save failure is swallowed with a stderr note — never an unhandled rejection", () => {
-    // Point HEIRLOOM_HOME at a path that cannot be created (a file in the way).
+    // Point NIB_HOME at a path that cannot be created (a file in the way).
     writeFileSync(join(TEST_DIR, "blocker"), "x");
-    process.env.HEIRLOOM_HOME = join(TEST_DIR, "blocker", "home");
+    process.env.NIB_HOME = join(TEST_DIR, "blocker", "home");
 
     const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     const path = writeSkill(projectDir, "alpha");
@@ -299,7 +299,7 @@ describe("SkillLoader TOFU flow", () => {
 
 describe("global user skills are trusted implicitly", () => {
   it("never enters the trust store and never asks or skips", async () => {
-    // HEIRLOOM_HOME *is* the state dir here, so global skills live at its top
+    // NIB_HOME *is* the state dir here, so global skills live at its top
     // level — not in a nested .heirloom. This test previously nested it, which
     // only worked while skills/index.ts ignored the override.
     const globalSkill = join(HOME_DIR, "skills", "global-one");

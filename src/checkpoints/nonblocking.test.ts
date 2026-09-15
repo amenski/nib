@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 /**
- * The 2026-08-06 stall profile (HEIRLOOM_PROFILE=1 on a real session) caught
+ * The 2026-08-06 stall profile (NIB_PROFILE=1 on a real session) caught
  * execSync inside the checkpoint manager blocking the main thread for 475ms —
  * the surviving cause of the FOLLOWUPS §0 freeze after the render amplifiers
  * were eliminated. Mid-turn checkpoint saves froze the working indicator and

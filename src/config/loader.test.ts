@@ -187,7 +187,7 @@ describe("loadConfig: migration integration, no disk write during load", () => {
 });
 
 // Write a project-level .heirloom/settings.json into a fresh temp dir and load it.
-// HEIRLOOM_HOME is pointed at an empty dir so no global settings interfere.
+// NIB_HOME is pointed at an empty dir so no global settings interfere.
 let projectDir: string;
 let homeDir: string;
 let prevHome: string | undefined;
@@ -201,15 +201,15 @@ function writeProjectSettings(obj: unknown): void {
 beforeEach(() => {
   projectDir = mkdtempSync(join(tmpdir(), "loader-proj-"));
   homeDir = mkdtempSync(join(tmpdir(), "loader-home-"));
-  prevHome = process.env.HEIRLOOM_HOME;
-  process.env.HEIRLOOM_HOME = homeDir;
+  prevHome = process.env.NIB_HOME;
+  process.env.NIB_HOME = homeDir;
 });
 
 afterEach(() => {
   rmSync(projectDir, { recursive: true, force: true });
   rmSync(homeDir, { recursive: true, force: true });
-  if (prevHome === undefined) delete process.env.HEIRLOOM_HOME;
-  else process.env.HEIRLOOM_HOME = prevHome;
+  if (prevHome === undefined) delete process.env.NIB_HOME;
+  else process.env.NIB_HOME = prevHome;
 });
 
 describe("loadConfig strictMcpConfig", () => {
@@ -518,17 +518,17 @@ describe("loadConfig telemetryEnabled (deleted key)", () => {
 });
 
 describe("resolveHome", () => {
-  it("honors HEIRLOOM_HOME", () => {
+  it("honors NIB_HOME", () => {
     expect(resolveHome()).toBe(homeDir);
   });
 
   it("falls back to the user home when unset", () => {
-    const prev = process.env.HEIRLOOM_HOME;
-    delete process.env.HEIRLOOM_HOME;
+    const prev = process.env.NIB_HOME;
+    delete process.env.NIB_HOME;
     try {
       expect(resolveHome()).toBe(join(homedir(), ".nib"));
     } finally {
-      if (prev !== undefined) process.env.HEIRLOOM_HOME = prev;
+      if (prev !== undefined) process.env.NIB_HOME = prev;
     }
   });
 });

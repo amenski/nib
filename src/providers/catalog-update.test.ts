@@ -138,7 +138,7 @@ describe("readActiveSnapshot / writeCachedSnapshot", () => {
     expect(leftoverTempFiles).toEqual([]);
   });
 
-  it("creates HEIRLOOM_HOME if it does not exist yet", () => {
+  it("creates NIB_HOME if it does not exist yet", () => {
     const missingHome = join(dir, "does-not-exist-yet");
     expect(existsSync(missingHome)).toBe(false);
     writeCachedSnapshot({ providers: {} }, missingHome);

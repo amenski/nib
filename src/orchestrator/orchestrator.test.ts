@@ -523,14 +523,14 @@ describe("Orchestrator", () => {
     beforeEach(async () => {
       home = await mkdtemp(join(tmpdir(), "agents-home-"));
       project = await mkdtemp(join(tmpdir(), "agents-proj-"));
-      prevHome = process.env.HEIRLOOM_HOME;
-      process.env.HEIRLOOM_HOME = home;
+      prevHome = process.env.NIB_HOME;
+      process.env.NIB_HOME = home;
       await mkdir(join(projectDirPath(project), "agents"), { recursive: true });
     });
 
     afterEach(async () => {
-      if (prevHome === undefined) delete process.env.HEIRLOOM_HOME;
-      else process.env.HEIRLOOM_HOME = prevHome;
+      if (prevHome === undefined) delete process.env.NIB_HOME;
+      else process.env.NIB_HOME = prevHome;
       await rm(home, { recursive: true, force: true });
       await rm(project, { recursive: true, force: true });
     });

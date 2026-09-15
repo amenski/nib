@@ -37,11 +37,11 @@ function statusFor(name: string) {
 let testHome = "";
 beforeEach(() => {
   testHome = mkdtempSync(join(tmpdir(), "heirloom-mcp-pins-"));
-  process.env.HEIRLOOM_HOME = testHome;
+  process.env.NIB_HOME = testHome;
   stderrWrites.length = 0;
 });
 afterEach(() => {
-  delete process.env.HEIRLOOM_HOME;
+  delete process.env.NIB_HOME;
   rmSync(testHome, { recursive: true, force: true });
 });
 

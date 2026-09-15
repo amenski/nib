@@ -4,7 +4,7 @@ import { resolveHome } from "../config/loader.js";
 
 /**
  * Cached, updated catalog snapshot written by `heirloom models update`. Lives
- * in HEIRLOOM_HOME, distinct from the bundled src/providers/models.json
+ * in NIB_HOME, distinct from the bundled src/providers/models.json
  * (ships with the binary, never overwritten — plan §4.C "preserve the bundled
  * snapshot as fallback") and from the user's hand-owned
  * ~/.heirloom/models.json override, which still wins over both (plan §2
@@ -71,7 +71,7 @@ export function readActiveSnapshot(homeDir?: string): ActiveSnapshot {
 
 /**
  * Atomically persist a freshly generated and confirmed catalog to
- * HEIRLOOM_HOME/models-catalog.json: write a temp file in the same
+ * NIB_HOME/models-catalog.json: write a temp file in the same
  * directory, then rename over the target. A crash mid-write leaves the temp
  * file orphaned rather than a truncated models-catalog.json that would
  * poison the next startup's loadModelCatalog.

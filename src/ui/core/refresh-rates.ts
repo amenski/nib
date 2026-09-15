@@ -67,7 +67,7 @@ export type ResolvedRefresh = RefreshProfile & {
 /**
  * Resolve the active refresh profile.
  *
- * Precedence: settings.json `refresh` > `HEIRLOOM_REFRESH` > default.
+ * Precedence: settings.json `refresh` > `NIB_REFRESH` > default.
  *
  * Config wins because it is the deliberate, per-project choice that travels
  * with the repo; the env var stays as a per-invocation override for trying a
@@ -85,7 +85,7 @@ export function resolveRefreshProfile(
     return { ...PROFILES[fromConfig], name: fromConfig, source: "config" };
   }
 
-  const raw = (env.HEIRLOOM_REFRESH ?? "").trim();
+  const raw = (env.NIB_REFRESH ?? "").trim();
   const fromEnv = raw.toLowerCase();
   if (fromEnv && PROFILES[fromEnv]) {
     return { ...PROFILES[fromEnv], name: fromEnv, source: "env" };
@@ -107,8 +107,8 @@ export function describeRefreshSource(r: ResolvedRefresh): string {
   return r.source === "config"
     ? "(from settings.json)"
     : r.source === "env"
-      ? "(from HEIRLOOM_REFRESH)"
+      ? "(from NIB_REFRESH)"
       : r.invalid
-        ? `(HEIRLOOM_REFRESH="${r.invalid}" not recognised — using default)`
+        ? `(NIB_REFRESH="${r.invalid}" not recognised — using default)`
         : "(default)";
 }

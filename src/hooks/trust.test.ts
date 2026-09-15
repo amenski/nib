@@ -63,11 +63,11 @@ const holdStdin = (cmd: string): string => `${cmd}; cat > /dev/null`;
 beforeEach(() => {
   mkdirSync(TEST_DIR, { recursive: true });
   mkdirSync(HOME_DIR, { recursive: true });
-  process.env.HEIRLOOM_HOME = HOME_DIR;
+  process.env.NIB_HOME = HOME_DIR;
 });
 
 afterEach(() => {
-  delete process.env.HEIRLOOM_HOME;
+  delete process.env.NIB_HOME;
   rmSync(TEST_DIR, { recursive: true, force: true });
 });
 
@@ -347,9 +347,9 @@ describe("trust file hygiene (fix 6)", () => {
   });
 
   it("a save failure is swallowed with a stderr note — never an unhandled rejection", async () => {
-    // Point HEIRLOOM_HOME at a path that cannot be created (a file in the way).
+    // Point NIB_HOME at a path that cannot be created (a file in the way).
     writeFileSync(join(TEST_DIR, "blocker"), "x");
-    process.env.HEIRLOOM_HOME = join(TEST_DIR, "blocker", "home");
+    process.env.NIB_HOME = join(TEST_DIR, "blocker", "home");
 
     const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     const runner = makeRunner(projectConfig({

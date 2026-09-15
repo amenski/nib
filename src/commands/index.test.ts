@@ -13,12 +13,12 @@ describe("CommandLoader", () => {
   beforeEach(() => {
     home = join(TMP, "home");
     mkdirSync(join(home, "commands"), { recursive: true });
-    process.env.HEIRLOOM_HOME = home;
+    process.env.NIB_HOME = home;
     vi.resetModules();
   });
 
   afterEach(() => {
-    delete process.env.HEIRLOOM_HOME;
+    delete process.env.NIB_HOME;
     rmSync(TMP, { recursive: true, force: true });
   });
 

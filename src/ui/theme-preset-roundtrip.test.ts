@@ -13,18 +13,18 @@ import { persistThemeChoice } from "./components/ThemeDropdown/index.js";
  * preset — so a config-selected preset actually renders.
  */
 describe("named preset config → resolveTheme round-trip", () => {
-  const prevHome = process.env.HEIRLOOM_HOME;
+  const prevHome = process.env.NIB_HOME;
   let home: string;
   let projectDir: string;
 
   beforeEach(() => {
     home = mkdtempSync(join(tmpdir(), "heirloom-theme-home-"));
     projectDir = mkdtempSync(join(tmpdir(), "heirloom-theme-proj-"));
-    process.env.HEIRLOOM_HOME = home;
+    process.env.NIB_HOME = home;
   });
   afterEach(() => {
-    if (prevHome === undefined) delete process.env.HEIRLOOM_HOME;
-    else process.env.HEIRLOOM_HOME = prevHome;
+    if (prevHome === undefined) delete process.env.NIB_HOME;
+    else process.env.NIB_HOME = prevHome;
     rmSync(home, { recursive: true, force: true });
     rmSync(projectDir, { recursive: true, force: true });
   });

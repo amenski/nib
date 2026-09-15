@@ -298,7 +298,10 @@ describe("SkillLoader TOFU flow", () => {
 
 describe("global user skills are trusted implicitly", () => {
   it("never enters the trust store and never asks or skips", async () => {
-    const globalSkill = join(HOME_DIR, ".heirloom", "skills", "global-one");
+    // HEIRLOOM_HOME *is* the state dir here, so global skills live at its top
+    // level — not in a nested .heirloom. This test previously nested it, which
+    // only worked while skills/index.ts ignored the override.
+    const globalSkill = join(HOME_DIR, "skills", "global-one");
     mkdirSync(globalSkill, { recursive: true });
     writeFileSync(
       join(globalSkill, "SKILL.md"),

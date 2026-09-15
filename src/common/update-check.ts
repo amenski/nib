@@ -1,13 +1,17 @@
 import { spawn } from "node:child_process";
 import { join } from "node:path";
-import { homedir } from "node:os";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { render } from "ink";
 import { createElement } from "react";
 import UpdatePrompt from "../ui/views/UpdatePrompt.js";
+import { resolveHome } from "../config/loader.js";
 
-const STATE_DIR = join(homedir(), ".heirloom");
-const STATE_PATH = join(STATE_DIR, "update-check.json");
+// Resolved per call, not at import: a module-level constant freezes the state
+// dir before a test can point HEIRLOOM_HOME at a temp dir, and this file both
+// reads and *clears* its state file.
+function statePath(): string {
+  return join(resolveHome(), "update-check.json");
+}
 
 interface UpdateState {
   ignoredVersions: string[];
@@ -27,12 +31,12 @@ function cmpSemver(a: string, b: string): number {
 }
 
 async function ensureDir(): Promise<void> {
-  try { await mkdir(STATE_DIR, { recursive: true }); } catch {}
+  try { await mkdir(resolveHome(), { recursive: true }); } catch {}
 }
 
 export async function readUpdateState(): Promise<UpdateState> {
   try {
-    const raw = await readFile(STATE_PATH, "utf-8");
+    const raw = await readFile(statePath(), "utf-8");
     return JSON.parse(raw);
   } catch {
     return { ignoredVersions: [], pending: null };
@@ -41,7 +45,7 @@ export async function readUpdateState(): Promise<UpdateState> {
 
 async function writeUpdateState(state: UpdateState): Promise<void> {
   await ensureDir();
-  await writeFile(STATE_PATH, JSON.stringify(state, null, 2), "utf-8");
+  await writeFile(statePath(), JSON.stringify(state, null, 2), "utf-8");
 }
 
 // Incident (2026-08-06): this repo's package has never been published to npm

@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import type { ToolDef } from "../types.js";
 import type { ToolHandler } from "../tools/types.js";
 import { checkSkillTrust, trustSkill } from "./trust.js";
+import { resolveHome } from "../config/loader.js";
 
 export interface SkillDef {
   name: string;
@@ -192,7 +193,7 @@ export class SkillLoader {
     const dirs: Array<{ dir: string; global: boolean }> = [
       { dir: join(process.cwd(), ".heirloom", "skills"), global: false },
       { dir: join(process.cwd(), ".agents", "skills"), global: false },
-      { dir: join(homedir(), ".heirloom", "skills"), global: true },
+      { dir: join(resolveHome(), "skills"), global: true },
       { dir: join(homedir(), ".agents", "skills"), global: true },
     ];
 

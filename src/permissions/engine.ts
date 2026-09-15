@@ -115,7 +115,9 @@ export class PermissionEngine {
     opts?: { writeRoots?: string[]; enforceWriteBoundary?: boolean; onPersist?: (settingsPath: string) => void },
   ) {
     this.workingDir = workingDir ?? process.cwd();
-    this.configRules = (config?.rules ?? []).map((r) => this.normalizeConfigRule(r));
+    this.configRules = (config?.rules ?? [])
+      .filter((r) => !PermissionEngine.isEmptySubjectAllowRule(r))
+      .map((r) => this.normalizeConfigRule(r));
     this.defaultMode = config?.defaultMode ?? "askAll";
     this.projectConfigDir = projectDirPath(this.workingDir);
     this.hasMcpServersConfigured = hasMcpServersConfigured ?? false;
@@ -144,6 +146,16 @@ export class PermissionEngine {
       return { ...r, origin: "config" as const, pattern: this.normalizePath(r.pattern) };
     }
     return { ...r, origin: "config" as const };
+  }
+
+  /**
+   * An empty non-`any` allow pattern is never a valid approval scope. It is
+   * produced when a tool's effect lives in an argument the permission layer
+   * did not extract (for example apply_patch.patch), and matches every
+   * subject. `any` remains valid because it is an explicit catch-all rule.
+   */
+  private static isEmptySubjectAllowRule(rule: PermissionRule): boolean {
+    return rule.action === "allow" && rule.kind !== "any" && rule.pattern.trim() === "";
   }
 
   /**
@@ -655,6 +667,7 @@ export class PermissionEngine {
       this.sessionRules.push({ tool: "web_search", kind: "any", pattern: "", action: "allow", origin: "session" });
       return;
     }
+    if (PermissionEngine.isEmptySubjectAllowRule(rule)) return;
     const narrowed = matchedBuiltin ? this.narrowToExact(rule, matchedBuiltin) : rule;
     this.sessionRules.push({ ...narrowed, origin: "session" });
   }
@@ -665,6 +678,7 @@ export class PermissionEngine {
    * guarded-origin match is forced to kind "exact" on the literal subject text.
    */
   approveAlways(rule: PermissionRule, matchedBuiltin?: PermissionRule): void {
+    if (PermissionEngine.isEmptySubjectAllowRule(rule)) return;
     const narrowed = matchedBuiltin ? this.narrowToExact(rule, matchedBuiltin) : rule;
     const configRule: PermissionRule = { ...narrowed, origin: "config" };
     this.configRules.push(configRule);

@@ -566,6 +566,36 @@ describe("PermissionEngine.resolve", () => {
       expect(engine.resolve("run_bash", { command: "npm test -- --watch" }).action).toBe("ask");
     });
 
+    it("does not let an empty extracted subject create a session-wide allow", () => {
+      const built = engine.buildDefaultRule("run_bash_background", { command: "echo safe" });
+      expect(built).toEqual({ tool: "run_bash_background", kind: "exact", pattern: "", action: "allow", origin: "config" });
+
+      engine.approveForSession(built);
+
+      expect(engine.resolve("run_bash_background", { command: "rm -rf ~/projects" }).action).toBe("ask");
+    });
+
+    it("does not persist an empty extracted subject as an allow rule", () => {
+      const dir = mkdtempSync(join(tmpdir(), "nib-empty-rule-"));
+      try {
+        const scopedEngine = new PermissionEngine(undefined, dir);
+        scopedEngine.approveAlways(scopedEngine.buildDefaultRule("apply_patch", { patch: "+++ b/../../outside" }));
+
+        expect(existsSync(projectSettingsPath(dir))).toBe(false);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("ignores a legacy empty extracted-subject allow rule on load", () => {
+      engine = new PermissionEngine(
+        { rules: [rule({ tool: "run_bash_background", kind: "exact", pattern: "", action: "allow" })] },
+        "/workspace",
+      );
+
+      expect(engine.resolve("run_bash_background", { command: "rm -rf ~/projects" }).action).toBe("ask");
+    });
+
     it("broadens an external path to a parent-directory glob", () => {
       const built = engine.buildDefaultRule("read_file", { path: "/etc/nginx/nginx.conf" });
       expect(built.kind).toBe("glob");

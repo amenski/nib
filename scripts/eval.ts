@@ -1,8 +1,9 @@
 #!/usr/bin/env tsx
 import { execSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, rmSync, cpSync, writeFileSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { projectDirPath } from "../src/config/paths.js";
+import { resolveHome } from "../src/config/loader.js";
 
 const FIXTURES_DIR = resolve(import.meta.dirname!, "..", "fixtures");
 const EVAL_TMP = resolve(import.meta.dirname!, "..", ".eval-tmp");
@@ -80,7 +81,8 @@ const EVAL_SETTINGS = JSON.stringify({
 // credentials (GITHUB_TOKEN, AWS_*, etc.). The provider key env vars are
 // included deliberately: real evals need exactly one of them to
 // authenticate. HOME is pointed at the eval home so no subsystem writes to
-// the developer's real ~ (update-check.ts uses homedir() directly).
+// the developer's real ~; HEIRLOOM_HOME is set to the same place so every
+// state-dir path (all of which now resolve through resolveHome()) follows.
 function evalChildEnv(evalHome: string): Record<string, string> {
   const env: Record<string, string> = {
     PATH: process.env.PATH || "",
@@ -108,10 +110,10 @@ function evalChildEnv(evalHome: string): Record<string, string> {
   return env;
 }
 
-/** Read one provider's key from ~/.heirloom/credentials.yaml (flat `key: value` lines). */
+/** Read one provider's key from the state dir's credentials.yaml (flat `key: value` lines). */
 function readCredentialKey(provider: string): string | undefined {
   try {
-    const raw = readFileSync(join(homedir(), ".heirloom", "credentials.yaml"), "utf-8");
+    const raw = readFileSync(join(resolveHome(), "credentials.yaml"), "utf-8");
     for (const line of raw.split("\n")) {
       const idx = line.indexOf(":");
       if (idx === -1) continue;
@@ -215,7 +217,7 @@ async function main() {
 
     // Inject eval permissions so headless fail-closed doesn't deny the
     // edits the task requires (see EVAL_SETTINGS above).
-    const settingsDir = join(evalWorkdir, ".heirloom");
+    const settingsDir = projectDirPath(evalWorkdir);
     if (!existsSync(settingsDir)) mkdirSync(settingsDir, { recursive: true });
     writeFileSync(join(settingsDir, "settings.json"), EVAL_SETTINGS);
 

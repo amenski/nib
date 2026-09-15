@@ -525,7 +525,7 @@ describe("resolveHome", () => {
     const prev = process.env.HEIRLOOM_HOME;
     delete process.env.HEIRLOOM_HOME;
     try {
-      expect(resolveHome()).toBe(join(homedir(), ".heirloom"));
+      expect(resolveHome()).toBe(join(homedir(), ".nib"));
     } finally {
       if (prev !== undefined) process.env.HEIRLOOM_HOME = prev;
     }

@@ -28,7 +28,7 @@ describe("createProvider key resolution", () => {
   beforeEach(() => {
     originalEnv = process.env[ENV_KEY];
     delete process.env[ENV_KEY];
-    mkdirSync(join(FAKE_HOME, ".heirloom"), { recursive: true });
+    mkdirSync(join(FAKE_HOME, ".nib"), { recursive: true });
     vi.resetModules();
     aisdkMock.mockClear();
   });
@@ -36,11 +36,11 @@ describe("createProvider key resolution", () => {
   afterEach(() => {
     if (originalEnv === undefined) delete process.env[ENV_KEY];
     else process.env[ENV_KEY] = originalEnv;
-    rmSync(join(FAKE_HOME, ".heirloom"), { recursive: true, force: true });
+    rmSync(join(FAKE_HOME, ".nib"), { recursive: true, force: true });
   });
 
   it("reads credentials.yaml when the env var is unset", async () => {
-    writeFileSync(join(FAKE_HOME, ".heirloom", "credentials.yaml"), "deepseek: sk-test-dummy\n");
+    writeFileSync(join(FAKE_HOME, ".nib", "credentials.yaml"), "deepseek: sk-test-dummy\n");
 
     const { createProvider } = await import("./presets.js");
     createProvider("deepseek");
@@ -51,7 +51,7 @@ describe("createProvider key resolution", () => {
 
   it("prefers the env var over credentials.yaml when both are set", async () => {
     process.env[ENV_KEY] = "sk-env-dummy";
-    writeFileSync(join(FAKE_HOME, ".heirloom", "credentials.yaml"), "deepseek: sk-test-dummy\n");
+    writeFileSync(join(FAKE_HOME, ".nib", "credentials.yaml"), "deepseek: sk-test-dummy\n");
 
     const { createProvider } = await import("./presets.js");
     createProvider("deepseek");

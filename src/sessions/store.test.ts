@@ -28,7 +28,7 @@ describe("SessionStore", () => {
   });
 
   function sessionDir(): string {
-    return join(TEST_HOME, ".heirloom", "sessions", SESSION_SLUG);
+    return join(TEST_HOME, ".nib", "sessions", SESSION_SLUG);
   }
 
   it("routes sessions under an explicit home argument", async () => {

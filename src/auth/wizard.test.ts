@@ -10,7 +10,7 @@ vi.mock("node:os", async (importOriginal) => {
 });
 
 function credsPath(): string {
-  return join(TEST_HOME, ".heirloom", "credentials.yaml");
+  return join(TEST_HOME, ".nib", "credentials.yaml");
 }
 
 function parseFlatYaml(content: string): Record<string, string> {
@@ -39,7 +39,7 @@ describe("authSaveKey", () => {
     vi.restoreAllMocks();
   });
 
-  it("writes the credential to ~/.heirloom/credentials.yaml", async () => {
+  it("writes the credential to ~/.nib/credentials.yaml", async () => {
     await authSaveKey("deepseek", "sk-test-dummy");
 
     expect(existsSync(credsPath())).toBe(true);
@@ -96,7 +96,7 @@ describe("authSaveKey", () => {
   });
 
   it("upgrades permissions on a pre-existing loose-perm file before rewriting", async () => {
-    mkdirSync(join(TEST_HOME, ".heirloom"), { recursive: true });
+    mkdirSync(join(TEST_HOME, ".nib"), { recursive: true });
     writeFileSync(credsPath(), "existing: sk-keep\n", { mode: 0o644 });
 
     await authSaveKey("added", "sk-add");

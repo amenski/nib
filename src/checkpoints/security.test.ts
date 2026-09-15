@@ -23,7 +23,7 @@ describe("checkpoint secret handling", () => {
   }
 
   function shadowGitDir(): string {
-    return join(TEST_HOME, ".heirloom", "checkpoints", "test-session", ".git");
+    return join(TEST_HOME, ".nib", "checkpoints", "test-session", ".git");
   }
 
   it("routes the shadow repo under an explicit home argument", async () => {

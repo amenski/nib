@@ -260,7 +260,7 @@ function deepMerge<T extends Record<string, unknown>>(
 }
 
 export function resolveHome(): string {
-  return process.env.HEIRLOOM_HOME || join(homedir(), ".heirloom");
+  return process.env.HEIRLOOM_HOME || join(homedir(), ".nib");
 }
 
 /**

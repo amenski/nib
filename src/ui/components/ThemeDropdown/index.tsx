@@ -8,10 +8,10 @@ import {
   renameSync,
 } from "node:fs";
 import { randomBytes } from "node:crypto";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import DropdownMenu from "../DropdownMenu/index.js";
 import { BUILTIN_THEMES } from "../../theme.js";
+import { resolveHome } from "../../../config/loader.js";
 
 /** Sentinel name for the "follow the system theme" entry. */
 export const AUTO_THEME = "auto";
@@ -23,14 +23,6 @@ export const AUTO_THEME = "auto";
  */
 export function themeChoices(): string[] {
   return [...Object.keys(BUILTIN_THEMES), AUTO_THEME];
-}
-
-/**
- * Resolve the HEIRLOOM_HOME directory (user-level config root), respecting the
- * HEIRLOOM_HOME override, matching src/config/loader.ts.
- */
-export function resolveDeepcodeHome(): string {
-  return process.env.HEIRLOOM_HOME || join(homedir(), ".heirloom");
 }
 
 /**
@@ -61,7 +53,7 @@ export function updateSettings(
   mutate: (config: Record<string, unknown>) => void,
   homeDir?: string,
 ): void {
-  const dir = homeDir ?? resolveDeepcodeHome();
+  const dir = homeDir ?? resolveHome();
   const settingsPath = join(dir, "settings.json");
 
   let config: Record<string, unknown> = {};

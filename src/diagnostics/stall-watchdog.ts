@@ -4,8 +4,8 @@
 // timer that watches its own lateness, backed by a CPU profiler when one is
 // available, so a >=150ms stall can be traced to the actual blocking frame.
 import { mkdirSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { resolveHome } from "../config/loader.js";
 
 export type StallEvent = { at: number; lagMs: number };
 
@@ -19,7 +19,7 @@ export type StallReport = {
 const MAX_EVENTS = 1000;
 
 function defaultProfileDir(): string {
-  return join(process.env.HEIRLOOM_HOME || join(homedir(), ".heirloom"), "profiles");
+  return join(resolveHome(), "profiles");
 }
 
 export function startStallWatchdog(opts?: {

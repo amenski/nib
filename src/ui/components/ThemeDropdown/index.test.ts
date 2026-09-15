@@ -6,7 +6,6 @@ import {
   themeChoices,
   persistThemeChoice,
   resolveThemeOutcome,
-  resolveDeepcodeHome,
   AUTO_THEME,
 } from "./index.js";
 import { BUILTIN_THEMES } from "../../theme.js";
@@ -35,18 +34,6 @@ describe("resolveThemeOutcome (revert-on-escape logic)", () => {
   });
   it("revert is a no-op when nothing changed", () => {
     expect(resolveThemeOutcome("light", "light", "revert")).toBe("light");
-  });
-});
-
-describe("resolveDeepcodeHome", () => {
-  const prev = process.env.HEIRLOOM_HOME;
-  afterEach(() => {
-    if (prev === undefined) delete process.env.HEIRLOOM_HOME;
-    else process.env.HEIRLOOM_HOME = prev;
-  });
-  it("respects HEIRLOOM_HOME", () => {
-    process.env.HEIRLOOM_HOME = "/tmp/custom-home";
-    expect(resolveDeepcodeHome()).toBe("/tmp/custom-home");
   });
 });
 

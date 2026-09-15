@@ -1,6 +1,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { ToolGroup } from "../tools/types.js";
+import { resolveHome } from "../config/loader.js";
 
 export interface ModeConfig {
   slug: string;
@@ -83,7 +84,7 @@ export class ModeLoader {
     if (projectDir) {
       paths.push(join(projectDir, ".heirloom", "modes", `${slug}.yaml`));
     }
-    const home = process.env.HEIRLOOM_HOME || join(process.env.HOME || "~", ".heirloom");
+    const home = resolveHome();
     paths.push(join(home, "modes", `${slug}.yaml`));
     paths.push(join(this.builtinDir, `${slug}.yaml`));
 
@@ -114,7 +115,7 @@ export class ModeLoader {
 
   async listAll(projectDir?: string): Promise<ModeConfig[]> {
     const slugs = new Set<string>();
-    const home = process.env.HEIRLOOM_HOME || join(process.env.HOME || "~", ".heirloom");
+    const home = resolveHome();
 
     try {
       for (const entry of await readdir(this.builtinDir)) {

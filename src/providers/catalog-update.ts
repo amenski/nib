@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, renameSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { resolveDeepcodeHome } from "../ui/components/ThemeDropdown/index.js";
+import { resolveHome } from "../config/loader.js";
 
 /**
  * Cached, updated catalog snapshot written by `heirloom models update`. Lives
@@ -62,7 +62,7 @@ export interface ActiveSnapshot {
  * block that loadModelCatalog discards after merging providers together.
  */
 export function readActiveSnapshot(homeDir?: string): ActiveSnapshot {
-  const home = homeDir ?? resolveDeepcodeHome();
+  const home = homeDir ?? resolveHome();
   const cached = readJsonFile(join(home, CATALOG_CACHE_FILENAME));
   if (cached) return { origin: "cached", snapshot: cached as GeneratedSnapshot };
   const bundled = readJsonFile(BUNDLED_SNAPSHOT_PATH);
@@ -77,7 +77,7 @@ export function readActiveSnapshot(homeDir?: string): ActiveSnapshot {
  * poison the next startup's loadModelCatalog.
  */
 export function writeCachedSnapshot(snapshot: unknown, homeDir?: string): void {
-  const home = homeDir ?? resolveDeepcodeHome();
+  const home = homeDir ?? resolveHome();
   mkdirSync(home, { recursive: true });
   const finalPath = join(home, CATALOG_CACHE_FILENAME);
   const tmpPath = join(home, `.${CATALOG_CACHE_FILENAME}.tmp-${process.pid}-${Date.now()}`);

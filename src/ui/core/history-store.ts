@@ -17,9 +17,9 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { mkdir, appendFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { slugify } from "../../sessions/store.js";
+import { resolveHome } from "../../config/loader.js";
 
 /** Entries returned to the UI; also the compaction target size. */
 export const HISTORY_CAP = 1000;
@@ -28,7 +28,7 @@ export const HISTORY_CAP = 1000;
 const COMPACT_THRESHOLD = 2000;
 
 export function historyFilePath(cwd: string, baseDir?: string): string {
-  const base = baseDir ?? process.env.HEIRLOOM_HOME ?? join(homedir(), ".heirloom");
+  const base = baseDir ?? resolveHome();
   return join(base, "prompt_history", `${slugify(cwd)}.jsonl`);
 }
 

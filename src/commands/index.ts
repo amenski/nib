@@ -1,6 +1,6 @@
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { homedir } from "node:os";
+import { resolveHome } from "../config/loader.js";
 
 /**
  * A user-defined slash command from `.heirloom/commands/<name>.md`. Typing
@@ -169,7 +169,7 @@ export class CommandLoader {
       : [];
     for (const command of projectCommands) this.byName.set(command.name, command);
 
-    const home = process.env.HEIRLOOM_HOME || join(homedir(), ".heirloom");
+    const home = resolveHome();
     for (const command of await scanDir(join(home, "commands"))) {
       if (!this.byName.has(command.name)) this.byName.set(command.name, command);
     }

@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { resolveDeepcodeHome, updateSettings } from "../ThemeDropdown/index.js";
+import { updateSettings } from "../ThemeDropdown/index.js";
+import { resolveHome } from "../../../config/loader.js";
 import { addRecentModel, toggleFavoriteModel, type RecentModel } from "../../core/model-picker.js";
 
 /**
@@ -15,7 +16,7 @@ interface ModelSettings {
 }
 
 function readModelSettings(homeDir?: string): ModelSettings {
-  const dir = homeDir ?? resolveDeepcodeHome();
+  const dir = homeDir ?? resolveHome();
   const settingsPath = join(dir, "settings.json");
   if (!existsSync(settingsPath)) return { favoriteModels: [], recentModels: [] };
   try {

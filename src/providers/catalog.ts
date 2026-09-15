@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ModelCapabilities } from "./types.js";
-import { resolveDeepcodeHome } from "../ui/components/ThemeDropdown/index.js";
+import { resolveHome } from "../config/loader.js";
 import { CATALOG_CACHE_FILENAME } from "./catalog-update.js";
 
 /**
@@ -90,7 +90,7 @@ export function loadModelCatalog(homeDir?: string): ModelCatalog {
     providers[name] = mergeProvider(undefined, { ...(preset as Partial<CatalogProvider>), ...(models as Partial<CatalogProvider>) });
   }
 
-  const home = homeDir ?? resolveDeepcodeHome();
+  const home = homeDir ?? resolveHome();
 
   // `heirloom models update` writes a refreshed snapshot here (distinct from
   // the bundled models.json above, which never changes). It sits between the

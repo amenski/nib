@@ -10,7 +10,7 @@
     "build": "tsup",
     "start": "tsx src/cli.tsx",
     "resume": "tsx src/cli.tsx --resume",
-    "resume:last": "tsx src/cli.tsx --last",
+    "resume:last": "tsx src/cli.tsx --continue",
     "test": "vitest run",
     "test:watch": "vitest",
     "eval": "tsx scripts/eval.ts",

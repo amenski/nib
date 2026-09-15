@@ -7,6 +7,12 @@
 - **`nib auth`** writes `~/.nib/credentials.yaml` (mode `0600`,
   auto-chmoded if looser — `src/config/credentials.ts`). Masked prompt on a
   TTY, `--api-key`/`-k` for scripts, piped stdin for CI.
+- **"No API keys found" after upgrading from Heirloom** — Nib intentionally
+  does not read `~/.heirloom`. Run `nib auth` again, or copy the old
+  `credentials.yaml` to `~/.nib/credentials.yaml` and keep mode `0600`.
+  Keep the old state directory as the backup; do not symlink it to `~/.nib`
+  because trust records are keyed by real paths. See the v0.5.0 changelog
+  before migrating settings, sessions, or trust stores.
 - **Env-var keys**: `DEEPSEEK_API_KEY`, `OPENAI_API_KEY`,
   `OPENROUTER_API_KEY`, `GROQ_API_KEY`. Ollama needs no key (local).
 - **"No provider key resolvable"** → exit 1. `nib doctor` (or
@@ -15,7 +21,7 @@
 - **Keys in `settings.json` `env.API_KEY`** work but are discouraged —
   settings.json is meant to be shareable (config-spec.md §8).
 - **`NIB_HOME`** relocates the whole install — config, credentials,
-  sessions, checkpoints, and memory all honor it (config-spec.md §15).
+  sessions, checkpoints, and memory all honor it (config-spec.md §17).
 
 ## Terminal requirements
 
@@ -137,12 +143,13 @@ From `src/ui/test-helpers.ts` (UI tests):
 
 ## FAQ
 
-- **Does it phone home?** No. No telemetry, no update pings, nothing
-  (config-spec.md §13).
+- **Does it phone home?** No telemetry. The npm update checker is inert while
+  the package remains private (config-spec.md §15; update-check.md).
 - **Background commands?** `run_bash_background` → `check_job`/`kill_job`
   (max 10 jobs, default 5-min timeout — tool-spec.md §5).
-- **Undo?** Shadow-Git checkpoints: `/undo`, saved at each turn start,
-  restore rewinds files and conversation (session-spec.md §8).
+- **Undo?** Interactive Shadow-Git checkpoints: `/undo`, saved at each turn
+  start and before edits; restore rewinds files and conversation
+  (session-spec.md §8).
 - **Images?** `Ctrl+V` to paste one, or `@path/shot.png` to attach a file.
   The model can also call `view_image` with an https URL or a local path.
   Needs a model that accepts images (PNG/JPEG/GIF/WebP, ≤5 MB).

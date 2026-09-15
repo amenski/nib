@@ -114,7 +114,9 @@ session records mtime at every `read_file`; if the target changed on disk
 since the model last read it → `FILE_MODIFIED - file was changed externally
 since last read` and nothing is written. A file never read this session
 behaves the same way — read-before-write is enforced mechanically, not just
-prompt-discouraged. Every write also triggers a checkpoint save first.
+prompt-discouraged. When an interactive session supplies a checkpoint manager,
+every write also triggers a checkpoint save first. Headless runs do not create
+checkpoints.
 
 ### `edit(path, oldString, newString)`
 The default editing tool. `oldString` must match the file byte-for-byte

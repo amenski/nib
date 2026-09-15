@@ -20,7 +20,7 @@ tiers take precedence over ordinary rule resolution as specified in §7.
 | **Mode** (persona) | Which tools *exist* this turn? | mode-spec.md groups |
 | **Posture** | Do `ask` results actually prompt? | This doc §9, `App.tsx` UI state |
 
-`ask` mode (persona) has no edit tools at all — posture is irrelevant there.
+The `general` persona has no edit tools at all — posture is irrelevant there.
 The axes never interact except that both must pass: a tool must be in the
 persona's groups AND clear the permission check.
 

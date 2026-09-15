@@ -93,7 +93,7 @@ Rationale for what's *not* there:
 ## 4. Tool guide
 
 Included only for groups the active mode grants (mode-spec.md). This is
-where mode-gating saves tokens: `ask` mode carries none of the edit or shell
+where mode-gating saves tokens: `general` mode carries none of the edit or shell
 text. `getToolGuide()` (`src/prompt.ts:158`) returns `""` for the workflow
 group — delegation rules live with the `new_task` implementation.
 

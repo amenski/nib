@@ -198,7 +198,7 @@ cli-spec.md.
 
 | Scope | Location |
 |-------|----------|
-| Global config | `~/.nib/settings.json` (or `$NIB_HOME/settings.json` — partial support, see config-spec.md §15) |
+| Global config | `~/.nib/settings.json` (or `$NIB_HOME/settings.json`; all global state honors `NIB_HOME`) |
 | Global credentials | `~/.nib/credentials.yaml` (0600) |
 | Global modes | `~/.nib/modes/<slug>.yaml` |
 | Project config | `./.nib/settings.json` |

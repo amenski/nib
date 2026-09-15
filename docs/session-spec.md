@@ -66,7 +66,7 @@ these indices. Message content is secret-redacted on write.
 ### `state` — mid-session changes
 
 ```json
-{"type":"state","at":"...","mode":"architect","model":"deepseek-reasoner"}
+{"type":"state","at":"...","mode":"code","model":"deepseek/deepseek-v4-pro"}
 ```
 
 Appended when the user runs `/mode` or switches models. All fields

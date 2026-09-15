@@ -678,7 +678,7 @@ async function main() {
 
   syncModeModel(shared, shared.activeMode);
 
-  // A session resumed at startup (--resume/--last) must seed the live history so
+  // A session resumed at startup (--resume/--continue) must seed the live history so
   // the model actually sees the prior turns on the very first message. Without
   // this, runAgentTurnBridge gets `history: undefined` and the resume is
   // context-blind (the interactive /resume path does this via resumeSession()).

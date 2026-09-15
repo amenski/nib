@@ -47,7 +47,7 @@ export function resolveAdditionalDirs(paths: string[], cwd: string = process.cwd
 const TUI_KEYS = [
   "  Enter            Send the prompt",
   "  Shift+Enter      Insert a newline",
-  "  Shift+Tab        Toggle askAll mode",
+  "  Shift+Tab        Cycle normal / auto-approve / plan posture",
   "  Esc              Interrupt the current model turn",
   "  Ctrl+D twice     Quit",
   "  /                Open the commands menu",
@@ -67,7 +67,7 @@ async function configureYargs(argv?: string[]) {
         .option("continue", { alias: "c", type: "boolean", default: false, describe: "Continue the most recent conversation in the current directory" })
         .option("model", { type: "string", describe: "Model for the current session (provider/model)" })
         .option("mode", { type: "string", describe: "Start in the given persona mode" })
-        .option("debug", { alias: "d", type: "boolean", default: false, describe: "Enable debug mode" })
+        .option("debug", { alias: "d", type: "boolean", default: false, describe: "Write redacted diagnostic request/response logs" })
         .option("add-dir", { type: "string", array: true, default: [], describe: "Add a trusted writable directory (repeatable)" })
         .option("max-turns", { type: "number", describe: "Cap the number of agentic turns (print mode exits non-zero at the limit)" })
         .option("allowed-tools", { alias: "allowedTools", type: "string", array: true, default: [], describe: "Restrict tools to this comma-separated allowlist (repeatable)" })
@@ -106,7 +106,7 @@ async function configureYargs(argv?: string[]) {
     .epilog(
       [
         "Configuration:",
-        "  ~/.nib/settings.json    User-level settings (model, API key, base URL)",
+        "  ~/.nib/settings.json    User-level settings (model, permissions, integrations)",
         "  ./.nib/settings.json    Project-level settings",
         "",
         "Inside the TUI:",

@@ -17,7 +17,7 @@ Anthropic's native prompt caching is available but not currently wired.
 
 ### 4b. Mode-gated tool definitions
 
-Only tools in the active mode's groups are sent (mode-spec.md §3); `ask`
+Only tools in the active mode's groups are sent (mode-spec.md §3); `general`
 mode carries none of the edit/shell text, and the `workflow` group gets no
 tool guide at all (`getToolGuide` returns `""`).
 

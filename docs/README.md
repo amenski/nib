@@ -72,7 +72,7 @@ then follow the reading paths below.
 | [session-spec.md](./session-spec.md) | Session JSONL format, index, resume |
 | [provider-spec.md](./provider-spec.md) | Provider contract, catalog, key resolution |
 | [permission-spec.md](./permission-spec.md) | Rules, normalization, resolution, posture, audit trail |
-| [security-spec.md](./security-spec.md) | Threat model T1–T14, verified-fixed items |
+| [security-spec.md](./security-spec.md) | Threat model T1–T16, verified-fixed items |
 | [security-destructive-matching.md](./security-destructive-matching.md) | Destructive-matching hardening research (closed) |
 | [skill-spec.md](./skill-spec.md) | Agent Skills loading, trigger, trust |
 | [rules-spec.md](./rules-spec.md) | `.nib/rules/` + research notes |
@@ -123,6 +123,8 @@ then follow the reading paths below.
 - **Maintainer:** architecture → subsystems → the spec of whatever
   subsystem you're touching.
 - **User:** README → troubleshooting → config-spec → cli-spec.
+- **Core-system tour:** README → architecture → mode-spec → system-prompt →
+  subsystems/react-loop → permission-spec → tool-spec → session-spec.
 
 ## Known gaps & unverified assumptions (as of 2026-08-13)
 

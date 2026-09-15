@@ -107,7 +107,7 @@ covers (currently G2/G3/G5) and its known breakage.
 
 | # | Task | Verifies |
 |---|------|----------|
-| G1 | "What does src/agent.ts do?" in ask mode | read-only gating, no writes |
+| G1 | "What does src/agent.ts do?" in General mode | read-only gating, no writes |
 | G2 | Fix a planted failing test in `fixtures/calc` | ReAct edit + verify cycle |
 | G3 | Add a `--json` flag to `fixtures/cli` | multi-step feature, edit-tool selection |
 | G4 | Rename a function used across 3 files | apply_patch / cross-file edits |

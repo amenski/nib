@@ -4,12 +4,17 @@
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
 [![Node.js 20+](https://img.shields.io/badge/node-%3E%3D20-green.svg)](https://nodejs.org)
 
-A personal AI coding agent for the terminal — bring your own key, use any model,
-readable codebase.
+A terminal coding agent you can inspect, configure, and own. Nib combines a
+multi-provider agent loop with explicit permissions, resumable sessions,
+checkpoints, skills, and MCP — without a hosted service or telemetry.
 
----
+<p align="center">
+  <img src="assets/prompt-screen.png" alt="Nib running in a terminal with DeepSeek V4 Flash" width="900">
+</p>
 
-## Install
+## Quick start
+
+Requires Node.js 20+ and Git. Nib is currently installed from source:
 
 ```bash
 git clone https://github.com/amenski/nib.git
@@ -18,34 +23,32 @@ npm install
 npm run build && npm link
 ```
 
-Then add an API key:
+Add a provider key, then check the installation:
 
 ```bash
-nib auth                         # guided setup (stores in ~/.nib/credentials.yaml)
-export DEEPSEEK_API_KEY=...      # or set an env var
+nib auth                         # stores keys in ~/.nib/credentials.yaml
+nib doctor                       # shows config and credential sources
 ```
 
-Launch:
+You can use an environment variable instead, such as `DEEPSEEK_API_KEY` or
+`OPENAI_API_KEY`.
+
+Start a session:
 
 ```bash
 nib                              # interactive
 nib "explain src/foo.ts"         # start with a prompt
 nib -c                           # continue the most recent session
 nib -p "..."                     # one-shot, no TUI (for scripts)
-nib doctor                       # verify your setup
 ```
 
-Check your setup any time with `nib doctor`.
+> Upgrading from Heirloom? Nib intentionally does not read `~/.heirloom`.
+> Run `nib auth` again or copy `credentials.yaml` into `~/.nib` with mode
+> `0600`. See the [v0.5.0 migration notes](./CHANGELOG.md#050--2026-09-15)
+> before moving sessions, settings, or trust stores; do not symlink the two
+> state directories.
 
----
-
-<p align="center">
-  <img src="assets/prompt-screen.png" alt="Nib TUI screenshot" width="720">
-</p>
-
----
-
-## Everyday use
+## How Nib works
 
 ```
 nib [general] > explain this codebase            read-only by default
@@ -53,15 +56,36 @@ nib [general] > /mode code                       enable implementation tools
 nib [code]    > Shift+Tab                        cycle normal / auto-approve / plan
 ```
 
-New sessions start in `General`, a fast, read-only chat mode. Switch to `Code`
-when you want Nib to edit files, run commands, or delegate a larger task
-to a sub-agent. `Shift+Tab` is an independent permission posture: it cycles
-`normal → auto-approve → plan` in whichever mode is active.
+New sessions start in `General`, a fast, read-only mode. Switch to `Code` when
+you want Nib to edit files, run commands, or delegate work. Independently,
+`Shift+Tab` cycles the permission posture through `normal → auto-approve →
+plan`. The active mode controls which tools exist; the posture controls how
+Nib may use them.
+
+### Two personas
+
+A persona changes three things together: the role at the top of the system
+prompt, the tool groups offered to the model, and—when configured—the files it
+may edit. These are hard runtime boundaries, not requests for the model to
+behave differently.
+
+| Persona | Capabilities | Best used for |
+|---|---|---|
+| **General** *(default)* | Read-only; DeepSeek V4 Flash at low effort | Questions, exploration, and everyday conversation |
+| **Code** | Read, edit, shell commands, background jobs, and sub-agent delegation | Building, fixing, refactoring, and verification |
+
+Nib deliberately keeps the current built-in surface to General and Code. Code
+handles planning, architecture, debugging, implementation, and delegation
+without making you choose a different persona for each phase. Project and
+global YAML files can still define custom personas with their own role, tool
+groups, file restrictions, model, and reasoning effort. Select a custom
+persona explicitly by slug with `--mode` or `/mode`; the picker lists the two
+current built-ins. See the [mode specification](./docs/mode-spec.md).
 
 | Keys / commands | |
 |---|---|
 | `Enter` | send · `Shift+Enter` newline |
-| `Esc` | interrupt the current turn — nothing partial is saved |
+| `Esc` | interrupt; keep complete exchanges, discard partial streamed text |
 | `Shift+Tab` | cycle the approval posture |
 | `/` | open the command menu |
 | `/help` | full command list |
@@ -73,7 +97,7 @@ to a sub-agent. `Shift+Tab` is an independent permission posture: it cycles
 | `/skills`, `/mcp`, `/tasks` | list skills · inspect MCP servers · inspect/stop sub-agent tasks |
 | `Ctrl+D` twice | quit |
 
-### CLI flags
+### Common CLI flags
 
 | Flag | Meaning |
 |---|---|
@@ -83,11 +107,15 @@ to a sub-agent. `Shift+Tab` is an independent permission posture: it cycles
 | `-c, --continue` | continue the most recent session for this directory |
 | `--model <provider/model>` | override the configured model |
 | `--mode <name>` | start in a given mode |
+| `--add-dir <path>` | add a trusted writable directory (repeatable) |
+| `--max-turns <n>` | cap agentic turns in print mode |
 | `-d, --debug` | opt in to diagnostic request/response JSONL (includes conversation and tool payloads, with secret redaction) |
 
 ```bash
 cat error.log | nib -p "Explain this error"
 ```
+
+Run `nib --help` for the complete command-line reference.
 
 ---
 
@@ -128,65 +156,65 @@ Full schema: [`docs/config-spec.md`](./docs/config-spec.md).
 
 ## Features
 
-### Persona modes
+- **Modes with real tool boundaries.** `general` is read-only; `code` adds
+  editing, commands, debugging, and delegation. Custom modes can define their
+  own instructions and tool groups.
+- **Explicit permissions.** Allow, ask, or deny by tool and pattern. Every
+  decision is inspectable through `/permissions`.
+- **Recoverable edits.** Interactive edits are checkpointed in a shadow Git
+  repo; `/undo` can rewind code, conversation, or both.
+- **Durable sessions.** Conversations are append-only JSONL with automatic
+  compaction and resumable todo state. Continue by directory or resume by ID.
+- **Skills, MCP, and sub-agents.** Load [Agent Skills](https://agentskills.io),
+  connect stdio MCP servers, and delegate bounded work through `new_task`.
+- **Safe file coordination.** Nib tracks when it last read a file and refuses
+  to overwrite changes made outside the agent.
+- **Optional web access.** Keyless Bing RSS search and HTTPS fetch are
+  permission-gated and marked as untrusted input; arbitrary fetch targets are
+  also SSRF-checked. A local SearXNG instance can provide richer results.
+- **Terminal-native visibility.** Streaming output, live themes, token/cost
+  reporting, diagnostics, task status, and opt-in redacted debug logs are all
+  available without leaving the TUI.
 
-`general` is the default read-only conversation mode. `code` adds file editing,
-command execution, debugging, and task delegation through `new_task`. Each
-mode gates which tools the model sees; switch with `/mode general` or
-`/mode code`.
+## Inside the core
 
-### Permission rules
+Nib's core agent runtime is intentionally one inspectable process. Neither the
+TUI nor the headless CLI hides a remote agent service. Providers receive tool
+schemas, but never direct access to tool execution or local files:
 
-Allow, ask, or deny tools by name and pattern. Shortcut: `Shift+Tab` cycles
-`normal → auto-approve → plan`. Every decision is recorded (`/permissions`).
+```text
+TUI / headless CLI → prompt assembly → agent loop ↔ model provider
+                                           │
+                                           ├─ permission engine → tool registry → files, shell, MCP, sub-agents
+                                           │                         │
+                                           │                         └─ edit checkpoints (interactive)
+                                           │
+                                           └─ session log → context editing and compaction
+```
 
-### Checkpoints
+| Core | Responsibility |
+|---|---|
+| [**Provider boundary**](./docs/provider-spec.md) | Adapts each model through one canonical message and streaming contract. |
+| [**Agent loop**](./docs/subsystems/react-loop.md) | Streams replies, batches tool calls, reflects on failures, guards loops, and stops deterministically. |
+| [**Prompt assembly**](./docs/system-prompt.md) | Combines a stable cacheable preamble with live project state, rules, research, skills, and todo context. |
+| [**Personas**](./docs/mode-spec.md) | Change identity and remove unavailable tool groups before a request reaches the model. |
+| [**Permission engine**](./docs/permission-spec.md) | Resolves allow/ask/deny rules before execution and records every decision. |
+| [**Tool registry**](./docs/tool-spec.md) | Keeps tool schemas, mode groups, and handlers behind one dispatch boundary. |
+| [**Sessions and context**](./docs/subsystems/context-management.md) | Preserve the complete append-only transcript while compacting or editing only provider-bound context. |
+| [**Checkpoints**](./docs/session-spec.md) | Snapshot edits in per-session shadow Git repositories so code and conversation can rewind together. |
+| [**TUI**](./docs/cli-spec.md) | Presents streaming output, approvals, plans, jobs, tasks, models, sessions, and diagnostics. |
 
-Every file edit is backed up in a shadow Git repo. `/undo` rewinds code,
-conversation, or both.
-
-### Resumable sessions
-
-Conversations are append-only JSONL files. Long chats stay usable through
-automatic compaction. Resume with `--continue`, `--resume <id>`, or `/resume`.
-
-### Skills & MCP
-
-Install [Agent Skills](https://agentskills.io) or connect MCP servers. Browse
-with `/skills` and `/mcp`.
-
-### Web search
-
-`web_search` works with no API key, backed by Bing's keyless RSS feed, and
-`web_fetch` reads any result in full. Both ask before running and treat what
-comes back as untrusted input.
-
-Because that feed is undocumented, it can change shape without notice. When a
-response no longer parses as RSS, the tool says so explicitly rather than
-reporting "no results" — a broken search never masquerades as an empty web.
-For a stronger index, add a search MCP server with your own key
-([`docs/config-spec.md`](./docs/config-spec.md)); Nib ships none and
-stores no keys.
-
-### Stale-file detection
-
-The agent tracks when it last read each file and refuses to overwrite changes
-you made outside it.
-
-### Streaming & observability
-
-Replies stream as they generate. `/cost` shows session token usage. `/theme`
-switches color schemes with a live preview. `/doctor` runs diagnostics. The
-`-d`/`--debug` flag is opt-in and writes diagnostic JSONL containing request,
-response, conversation, and tool-call payloads after secret redaction; avoid
-enabling it for sensitive sessions unless you need that detail.
+Start with the [architecture overview](./docs/architecture.md), then follow the
+[core-system reading path](./docs/README.md#reading-paths) into the normative
+specs and subsystem deep dives.
 
 ## Supported models
 
-- `deepseek-v4-pro` (primary, best tested)
-- `deepseek-v4-flash`
-- Any DeepSeek, OpenAI, OpenRouter, Groq, or Ollama model
-- Any OpenAI-compatible provider via config
+Nib ships provider presets for DeepSeek, OpenAI, OpenRouter, Groq, and local
+Ollama. The bundled catalog supplies the selectable models for each provider;
+switch with `/model` or `--model <provider/model>`. DeepSeek V4 Pro is the
+primary tested model, while the default `general` mode uses DeepSeek V4 Flash
+at low reasoning effort.
 
 ---
 
@@ -271,8 +299,9 @@ returning garbled text.
 
 ### Does it support Thinking mode?
 
-Yes. Set `thinkingEnabled: true` in settings.json. DeepSeek models support
-reasoning effort control (`/effort`).
+Yes. Thinking is enabled by default; set `thinkingEnabled: false` in
+settings.json to disable it. Models with effort metadata support reasoning
+effort control through `/effort`.
 
 ---
 

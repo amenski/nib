@@ -40,4 +40,4 @@ inert is `private: true`, not the name — do not drop that flag.
 
 This npm-registry query is the **only automatic network contact** Nib
 makes, and it is inert while the package is private. Everything else
-stands by the no-telemetry guarantee (config-spec.md §13).
+stands by the no-telemetry guarantee (config-spec.md §15).

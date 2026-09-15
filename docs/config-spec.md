@@ -498,7 +498,7 @@ this repo is.
 
 | Variable | Purpose |
 |----------|---------|
-| `NIB_HOME` | Override the config home (default `~/.nib`) — **partially honored**, see below |
+| `NIB_HOME` | Override the complete config and state home (default `~/.nib`) |
 | `NIB_REFRESH` | Repaint cadence: `fast \| balanced \| slow` (lower priority than settings.json `refresh`) |
 | `NIB_PROFILE` | `"1"` enables the event-loop stall watchdog (troubleshooting.md) |
 | `NIB_HIGH_CONTRAST` | `"1"` enables high-contrast rendering |

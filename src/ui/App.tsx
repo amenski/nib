@@ -258,6 +258,8 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
     folderRule?: PermissionRule;
     /** Recursive tree-glob rule offered when an external read is approved (default rule covers one level only). */
     externalTreeRule?: PermissionRule;
+    /** True when this tool does not yet have a safe persistent approval scope. */
+    oneTimeOnly?: boolean;
     /** True once the user picked session/always and is choosing file-vs-folder scope. */
     scopeStage?: boolean;
     /** The session/always decision carried into the scope stage. */
@@ -1241,7 +1243,17 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
             const defaultRule = ctx.permissions.buildDefaultRule(toolName, args);
             const folderRule = ctx.permissions.folderScopeRule(toolName, args);
             const externalTreeRule = ctx.permissions.externalTreeRule(toolName, args);
-            setAskPrompt({ resolve, toolName, args, winningRule, defaultRule, folderRule, externalTreeRule, cursor: 0 });
+            setAskPrompt({
+              resolve,
+              toolName,
+              args,
+              winningRule,
+              defaultRule,
+              folderRule,
+              externalTreeRule,
+              oneTimeOnly: toolName === "run_bash_background" || toolName === "apply_patch",
+              cursor: 0,
+            });
           });
         },
         // Mid-turn steering mailbox: the agent loop polls this once per
@@ -1751,6 +1763,8 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
   function handlePermissionDecision(decision: PermissionDecision): void {
     if (!askPrompt) return;
 
+    if (askPrompt.oneTimeOnly && decision !== "once" && decision !== "deny") return;
+
     const rawSubject = askPrompt.args?.command ?? askPrompt.args?.path ?? askPrompt.args?.filePath ?? askPrompt.args?.url;
     const subject = typeof rawSubject === "string" ? rawSubject : "";
     void ctx.sessionStore.appendPermission(ctx.sessionId, {
@@ -1907,7 +1921,9 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
       const lower = value.toLowerCase();
       // Stage two (file-vs-folder scope) has two options; the main prompt has four.
       const scopeChoices: ("file" | "folder")[] = ["file", "folder"];
-      const decisions: PermissionDecision[] = ["once", "session", "always", "deny"];
+      const decisions: PermissionDecision[] = askPrompt.oneTimeOnly
+        ? ["once", "deny"]
+        : ["once", "session", "always", "deny"];
       const optionCount = askPrompt.scopeStage ? scopeChoices.length : decisions.length;
 
       if (key.escape) {
@@ -2100,6 +2116,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
             command: extractToolSubject(askPrompt.toolName, askPrompt.args),
             winningRule: askPrompt.winningRule,
             defaultRule: askPrompt.defaultRule,
+            allowPersistentApproval: !askPrompt.oneTimeOnly,
             explain: askPrompt.explain,
           }}
           cursor={askPrompt.cursor}
@@ -2113,6 +2130,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
             command: extractToolSubject(askPrompt.toolName, askPrompt.args),
             winningRule: askPrompt.winningRule,
             defaultRule: askPrompt.defaultRule,
+            allowPersistentApproval: !askPrompt.oneTimeOnly,
             explain: askPrompt.explain,
           }}
           cursor={askPrompt.cursor}

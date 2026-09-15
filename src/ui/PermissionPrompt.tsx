@@ -8,6 +8,8 @@ import { ansi256, type ThemeContextValue } from "./theme.js";
 export interface PermissionRequest {
   toolName: string;
   command: string;
+  /** False when the tool does not yet have a safe persistent approval scope. */
+  allowPersistentApproval?: boolean;
   description?: string;
   /** The rule the engine matched to produce this ask (if any) — drives risk display. */
   winningRule?: PermissionRule;
@@ -121,11 +123,19 @@ const OPTIONS: { decision: PermissionDecision; label: string }[] = [
   { decision: "deny", label: "No" },
 ];
 
+export function permissionOptions(request: PermissionRequest): { decision: PermissionDecision; label: string }[] {
+  if (request.allowPersistentApproval === false) {
+    return [OPTIONS[0], OPTIONS[3]];
+  }
+  return OPTIONS;
+}
+
 export default function PermissionPrompt({ request, cursor, onChoose, onCancel }: Props) {
   const theme = useTheme();
   const risk = riskLevel(request);
   const warningColor = slotColor(theme, "warning");
   const accentColor = slotColor(theme, "accent");
+  const options = permissionOptions(request);
 
   return (
     <Box flexDirection="column" borderStyle="round" borderColor={warningColor} paddingX={1} marginY={1}>
@@ -146,7 +156,7 @@ export default function PermissionPrompt({ request, cursor, onChoose, onCancel }
         <Text>Do you want to proceed?</Text>
       </Box>
       <Box flexDirection="column" marginTop={1}>
-        {OPTIONS.map((opt, i) => (
+        {options.map((opt, i) => (
           <Text key={opt.decision} color={i === cursor ? accentColor : undefined}>
             {i === cursor ? "> " : "  "}
             {i + 1}. {opt.label}
@@ -154,7 +164,7 @@ export default function PermissionPrompt({ request, cursor, onChoose, onCancel }
         ))}
       </Box>
       <Box marginTop={1}>
-        <Text dimColor>1-4 select · ↑↓ navigate · Esc cancel{explainHint(request.explain)}</Text>
+        <Text dimColor>1-{options.length} select · ↑↓ navigate · Esc cancel{explainHint(request.explain)}</Text>
       </Box>
     </Box>
   );
@@ -172,6 +182,7 @@ export function DestructiveConfirmPrompt({ request, cursor, onChoose, onCancel }
   const theme = useTheme();
   const errorColor = slotColor(theme, "error");
   const accentColor = slotColor(theme, "accent");
+  const options = permissionOptions(request);
 
   return (
     <Box flexDirection="column" borderStyle="double" borderColor={errorColor} paddingX={1} marginY={1}>
@@ -184,14 +195,17 @@ export function DestructiveConfirmPrompt({ request, cursor, onChoose, onCancel }
       {request.defaultRule?.kind === "glob" ? <Text dimColor>Pattern: {request.defaultRule.pattern}</Text> : null}
       {request.description ? <Text dimColor>{request.description}</Text> : null}
       <Box marginTop={1}>
-        <Text dimColor>This command can cause irreversible data loss. Approving "always" whitelists only this exact command, never the whole category.</Text>
+        <Text dimColor>{request.allowPersistentApproval === false
+          ? "This command can cause irreversible data loss. Only one-time approval is available."
+          : "This command can cause irreversible data loss. Approving \"always\" whitelists only this exact command, never the whole category."}
+        </Text>
       </Box>
       <ExplanationBlock explain={request.explain} />
       <Box marginTop={1}>
         <Text>Do you want to proceed?</Text>
       </Box>
       <Box flexDirection="column" marginTop={1}>
-        {OPTIONS.map((opt, i) => (
+        {options.map((opt, i) => (
           <Text key={opt.decision} color={i === cursor ? accentColor : undefined}>
             {i === cursor ? "> " : "  "}
             {i + 1}. {opt.label}
@@ -199,7 +213,7 @@ export function DestructiveConfirmPrompt({ request, cursor, onChoose, onCancel }
         ))}
       </Box>
       <Box marginTop={1}>
-        <Text dimColor>1-4 select · ↑↓ navigate · Esc cancel{explainHint(request.explain)}</Text>
+        <Text dimColor>1-{options.length} select · ↑↓ navigate · Esc cancel{explainHint(request.explain)}</Text>
       </Box>
     </Box>
   );

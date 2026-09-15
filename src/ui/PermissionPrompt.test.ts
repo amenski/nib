@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { riskLevel, type PermissionRequest } from "./PermissionPrompt.js";
+import { permissionOptions, riskLevel, type PermissionRequest } from "./PermissionPrompt.js";
 import type { PermissionRule } from "../permissions/index.js";
 
 function req(toolName: string, winningRule?: PermissionRule): PermissionRequest {
@@ -31,5 +31,13 @@ describe("riskLevel", () => {
   it("a non-destructive winning rule does not force high risk", () => {
     const ordinaryRule: PermissionRule = { tool: "read_file", kind: "glob", pattern: "./**", action: "allow", origin: "config" };
     expect(riskLevel(req("read_file", ordinaryRule)).level).toBe("low");
+  });
+});
+
+describe("permissionOptions", () => {
+  it("offers only once or deny when persistent approval is unavailable", () => {
+    const options = permissionOptions({ toolName: "apply_patch", command: "patch", allowPersistentApproval: false });
+
+    expect(options.map((option) => option.decision)).toEqual(["once", "deny"]);
   });
 });

@@ -2,9 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useInput } from "ink";
 import {
   existsSync,
-  mkdirSync,
   readFileSync,
-  writeFileSync,
   renameSync,
 } from "node:fs";
 import { randomBytes } from "node:crypto";
@@ -12,6 +10,7 @@ import { join } from "node:path";
 import DropdownMenu from "../DropdownMenu/index.js";
 import { BUILTIN_THEMES } from "../../theme.js";
 import { resolveHome } from "../../../config/loader.js";
+import { ensurePrivateDirectory, writePrivateFileSync } from "../../../config/state-permissions.js";
 
 /** Sentinel name for the "follow the system theme" entry. */
 export const AUTO_THEME = "auto";
@@ -70,12 +69,10 @@ export function updateSettings(
 
   mutate(config);
 
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
-  }
+  ensurePrivateDirectory(dir);
 
   const tmpPath = join(dir, `.settings.json.${randomBytes(6).toString("hex")}.tmp`);
-  writeFileSync(tmpPath, JSON.stringify(config, null, 2), "utf-8");
+  writePrivateFileSync(tmpPath, JSON.stringify(config, null, 2));
   renameSync(tmpPath, settingsPath);
 }
 

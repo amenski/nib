@@ -3,9 +3,9 @@
 // freeze were wrong, so this is measurement, not another guess — a 20ms
 // timer that watches its own lateness, backed by a CPU profiler when one is
 // available, so a >=150ms stall can be traced to the actual blocking frame.
-import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { resolveHome } from "../config/loader.js";
+import { ensurePrivateDirectory, writePrivateFileSync } from "../config/state-permissions.js";
 
 export type StallEvent = { at: number; lagMs: number };
 
@@ -98,11 +98,11 @@ export function startStallWatchdog(opts?: {
               err ? reject(err) : resolve(result.profile),
             );
           });
-          mkdirSync(profileDir, { recursive: true });
+          ensurePrivateDirectory(profileDir);
           const stamp = new Date().toISOString().replace(/[:.]/g, "-");
           const base = join(profileDir, `stall-${stamp}`);
-          writeFileSync(`${base}.cpuprofile`, JSON.stringify(profile));
-          writeFileSync(`${base}.stalls.jsonl`, events.map((e) => JSON.stringify(e) + "\n").join(""));
+          writePrivateFileSync(`${base}.cpuprofile`, JSON.stringify(profile));
+          writePrivateFileSync(`${base}.stalls.jsonl`, events.map((e) => JSON.stringify(e) + "\n").join(""));
           profilePath = `${base}.cpuprofile`;
         } catch {
           profilePath = null;

@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync, renameSync, existsSync, mkdirSync, chmodSync } from "node:fs";
+import { readFileSync, renameSync, existsSync, chmodSync } from "node:fs";
 import { dirname } from "node:path";
 import { resolveHome } from "../config/loader.js";
+import { ensurePrivateDirectory, writePrivateFileSync } from "../config/state-permissions.js";
 
 /**
  * Tool-definition pins for MCP servers (security-spec.md T10, mcp-spec.md §6):
@@ -60,9 +61,9 @@ export function saveMcpPins(store: McpPinsStore): void {
   const path = mcpPinsFilePath();
   const dir = dirname(path);
   try {
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    ensurePrivateDirectory(dir);
     const tmp = `${path}.${process.pid}.${Math.random().toString(36).slice(2)}`;
-    writeFileSync(tmp, JSON.stringify(store, null, 2), { mode: 0o600 });
+    writePrivateFileSync(tmp, JSON.stringify(store, null, 2));
     renameSync(tmp, path);
     chmodSync(path, 0o600);
   } catch (err) {

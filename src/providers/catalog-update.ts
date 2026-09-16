@@ -1,6 +1,7 @@
-import { readFileSync, writeFileSync, renameSync, mkdirSync } from "node:fs";
+import { readFileSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { resolveHome } from "../config/loader.js";
+import { ensurePrivateDirectory, writePrivateFileSync } from "../config/state-permissions.js";
 
 /**
  * Cached, updated catalog snapshot written by `nib models update`. Lives
@@ -78,10 +79,10 @@ export function readActiveSnapshot(homeDir?: string): ActiveSnapshot {
  */
 export function writeCachedSnapshot(snapshot: unknown, homeDir?: string): void {
   const home = homeDir ?? resolveHome();
-  mkdirSync(home, { recursive: true });
+  ensurePrivateDirectory(home);
   const finalPath = join(home, CATALOG_CACHE_FILENAME);
   const tmpPath = join(home, `.${CATALOG_CACHE_FILENAME}.tmp-${process.pid}-${Date.now()}`);
-  writeFileSync(tmpPath, `${JSON.stringify(snapshot, null, 2)}\n`);
+  writePrivateFileSync(tmpPath, `${JSON.stringify(snapshot, null, 2)}\n`);
   renameSync(tmpPath, finalPath);
 }
 

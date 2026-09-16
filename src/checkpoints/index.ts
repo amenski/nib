@@ -1,9 +1,10 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { existsSync, mkdirSync, appendFileSync, readdirSync, unlinkSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { existsSync, appendFileSync, readdirSync, unlinkSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
 
 import { resolveHome } from "../config/loader.js";
+import { ensurePrivateStateDirectory, hardenPrivateTree } from "../config/state-permissions.js";
 
 export interface CheckpointEntry {
   hash: string;
@@ -56,6 +57,15 @@ const MAX_CHECKPOINT_ENTRIES = 5000;
 
 const execFileAsync = promisify(execFile);
 
+function hardenCheckpointTree(path: string): void {
+  try {
+    hardenPrivateTree(path);
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    throw new Error(`nib: failed to secure checkpoint state at ${path}: ${reason}`, { cause: err });
+  }
+}
+
 export class CheckpointManager {
   private shadowDir: string;
   private workspaceDir: string;
@@ -75,8 +85,11 @@ export class CheckpointManager {
   private async initialize(): Promise<void> {
     if (this.initialized) return;
 
-    if (!existsSync(this.shadowDir)) {
-      mkdirSync(this.shadowDir, { recursive: true });
+    const checkpointsDir = dirname(this.shadowDir);
+    const stateDir = dirname(checkpointsDir);
+    const existed = existsSync(this.shadowDir);
+    ensurePrivateStateDirectory(stateDir, basename(checkpointsDir), basename(this.shadowDir));
+    if (!existed) {
       await execFileAsync("git", [...GIT_CONFIG_OVERRIDES, "init"], { cwd: this.shadowDir });
 
       const exclude = [
@@ -104,6 +117,8 @@ export class CheckpointManager {
         // info/exclude might not exist after git init; skip silently
       }
     }
+
+    hardenCheckpointTree(this.shadowDir);
 
     this.sweepStaleTempPacks();
 
@@ -166,6 +181,7 @@ export class CheckpointManager {
       ],
       { maxBuffer: 10 * 1024 * 1024 },
     );
+    hardenCheckpointTree(this.shadowDir);
     return stdout.trim();
   }
 

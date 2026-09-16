@@ -1,9 +1,9 @@
 import { createInterface } from "node:readline/promises";
-import { writeFile, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { BUILTIN_PRESETS } from "../providers/presets.js";
 import { readHiddenLine } from "./hidden-input.js";
 import { credsDir, credsFile, readCredentialsFile } from "../config/credentials.js";
+import { ensurePrivateDirectoryAsync, writePrivateFile } from "../config/state-permissions.js";
 
 const WIZARD_PRESETS: { name: string; keyEnv: string }[] = [
   { name: "deepseek",   keyEnv: "DEEPSEEK_API_KEY" },
@@ -22,10 +22,10 @@ export interface CredentialEntry {
 
 async function writeCredentials(creds: Record<string, string>): Promise<void> {
   const dir = credsDir();
-  if (!existsSync(dir)) await mkdir(dir, { recursive: true });
+  await ensurePrivateDirectoryAsync(dir);
 
   const lines = Object.entries(creds).map(([k, v]) => `${k}: ${v}`);
-  await writeFile(credsFile(), lines.join("\n") + "\n", { mode: 0o600 });
+  await writePrivateFile(credsFile(), lines.join("\n") + "\n");
 }
 
 /**

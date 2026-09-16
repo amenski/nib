@@ -1,5 +1,5 @@
 import { join, relative, isAbsolute, resolve, dirname, basename } from "node:path";
-import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync, statSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, statSync, realpathSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import type { PermissionAction, PermissionRule, PermissionSubject } from "./rules.js";
 import { buildSubject, patternMatches, specificity, serializeRulePattern, extractHostname, extractToolSubject } from "./rules.js";
@@ -12,6 +12,7 @@ import { classifyImageSource } from "../image-source.js";
 import { projectDirPath } from "../config/paths.js";
 import { extractApplyPatchPlan } from "./capabilities.js";
 import type { ProfileLevel } from "./profile.js";
+import { ensurePrivateDirectory, writePrivateFileSync } from "../config/state-permissions.js";
 
 export type { PermissionAction, PermissionRule, PatternKind, RuleOrigin } from "./rules.js";
 
@@ -750,12 +751,10 @@ export class PermissionEngine {
 
     config.permissions = { rules: onDiskRules, defaultMode: this.defaultMode };
 
-    if (!existsSync(this.projectConfigDir)) {
-      mkdirSync(this.projectConfigDir, { recursive: true });
-    }
+    ensurePrivateDirectory(this.projectConfigDir);
 
     const tmpPath = join(this.projectConfigDir, `.settings.json.${randomBytes(6).toString("hex")}.tmp`);
-    writeFileSync(tmpPath, JSON.stringify(config, null, 2), "utf-8");
+    writePrivateFileSync(tmpPath, JSON.stringify(config, null, 2));
     renameSync(tmpPath, settingsPath);
     this.onPersist?.(settingsPath);
   }

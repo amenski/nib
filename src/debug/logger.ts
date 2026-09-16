@@ -1,12 +1,13 @@
-import { appendFileSync, mkdirSync, existsSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { projectDirPath } from "../config/paths.js";
+import { appendPrivateFileSync, ensurePrivateDirectory } from "../config/state-permissions.js";
 
 let debugPath: string | null = null;
 
 export function enableDebug(sessionId: string): void {
   const dir = join(projectDirPath(process.cwd()), "debug");
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  ensurePrivateDirectory(dir);
   debugPath = join(dir, `${sessionId}.jsonl`);
 }
 
@@ -21,7 +22,7 @@ export function logRequest(body: Record<string, unknown>): void {
     max_tokens: body.max_tokens,
     temperature: body.temperature,
   });
-  appendFileSync(debugPath, entry + "\n");
+  appendPrivateFileSync(debugPath, entry + "\n");
 }
 
 export function logResponse(usage: unknown, toolCalls: unknown[]): void {
@@ -35,7 +36,7 @@ export function logResponse(usage: unknown, toolCalls: unknown[]): void {
       args: tc.function?.arguments ?? tc.args,
     })),
   });
-  appendFileSync(debugPath, entry + "\n");
+  appendPrivateFileSync(debugPath, entry + "\n");
 }
 
 export interface TimingEntry {
@@ -60,5 +61,5 @@ export interface TimingEntry {
 export function logTiming(entry: TimingEntry): void {
   if (!debugPath) return;
   const record = JSON.stringify({ ts: Date.now(), type: "timing", ...entry });
-  appendFileSync(debugPath, record + "\n");
+  appendPrivateFileSync(debugPath, record + "\n");
 }

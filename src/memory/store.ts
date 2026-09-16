@@ -1,9 +1,14 @@
-import { appendFile, readFile, writeFile, mkdir } from "node:fs/promises";
-import { join } from "node:path";
+import { readFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { existsSync } from "node:fs";
 import { redactSecrets } from "../sessions/redact.js";
 
 import { resolveHome } from "../config/loader.js";
+import {
+  appendPrivateFile,
+  ensurePrivateStateDirectoryAsync,
+  writePrivateFile,
+} from "../config/state-permissions.js";
 
 const MAX_INJECTION_TOKENS = 1024;
 
@@ -24,12 +29,12 @@ export class MemoryStore {
   }
 
   async init(): Promise<void> {
-    await mkdir(this.projectDir, { recursive: true });
-    await mkdir(join(this.memoryDir, "_global"), { recursive: true });
+    await ensurePrivateStateDirectoryAsync(dirname(this.memoryDir), "memory", this.projectSlug);
+    await ensurePrivateStateDirectoryAsync(dirname(this.memoryDir), "memory", "_global");
 
     const indexFile = join(this.memoryDir, "MEMORY.md");
     if (!existsSync(indexFile)) {
-      await writeFile(indexFile, "# Memory Index\n\n");
+      await writePrivateFile(indexFile, "# Memory Index\n\n");
     }
   }
 
@@ -58,7 +63,7 @@ export class MemoryStore {
     } catch {
       // file does not exist yet
     }
-    await writeFile(file, header + body + "\n" + existing);
+    await writePrivateFile(file, header + body + "\n" + existing);
   }
 
   async writeFact(
@@ -68,7 +73,7 @@ export class MemoryStore {
     const file = join(this.projectDir, `${category}.md`);
     const timestamp = new Date().toISOString();
     const entry = `- [${timestamp}] ${fact}\n`;
-    await appendFile(file, entry);
+    await appendPrivateFile(file, entry);
   }
 
   async getInjection(

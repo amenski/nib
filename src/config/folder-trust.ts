@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, renameSync, existsSync, mkdirSync, chmodSync, realpathSync, readdirSync } from "node:fs";
+import { readFileSync, renameSync, existsSync, chmodSync, realpathSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { resolveHome, type LoadResult } from "./loader.js";
 import { PROJECT_DIR_NAME, projectSettingsPath } from "./paths.js";
@@ -6,6 +6,7 @@ import type { HookEntry } from "../hooks/types.js";
 import { hookContentHash, hookTrustKey, loadHookTrust, saveHookTrust, type ContentHashCache } from "../hooks/trust.js";
 import { loadSkillTrust, saveSkillTrust, skillContentHash } from "../skills/trust.js";
 import { loadSettingsTrust, saveSettingsTrust, settingsContentHash } from "./settings-trust.js";
+import { ensurePrivateDirectory, writePrivateFileSync } from "./state-permissions.js";
 
 /**
  * Folder-level trust — a "fast path" bulk-approval convenience layered on top
@@ -82,9 +83,9 @@ export function saveFolderTrust(store: FolderTrustStore): void {
   const path = folderTrustFilePath();
   const dir = dirname(path);
   try {
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    ensurePrivateDirectory(dir);
     const tmp = `${path}.${process.pid}.${Math.random().toString(36).slice(2)}`;
-    writeFileSync(tmp, JSON.stringify(store, null, 2), { mode: 0o600 });
+    writePrivateFileSync(tmp, JSON.stringify(store, null, 2));
     renameSync(tmp, path);
     chmodSync(path, 0o600);
   } catch (err) {

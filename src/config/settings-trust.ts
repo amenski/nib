@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync, renameSync, existsSync, mkdirSync, chmodSync, realpathSync } from "node:fs";
+import { readFileSync, renameSync, existsSync, chmodSync, realpathSync } from "node:fs";
 import { dirname } from "node:path";
 import { resolveHome, type DeepCodeSettings } from "./loader.js";
+import { ensurePrivateDirectory, writePrivateFileSync } from "./state-permissions.js";
 
 /**
  * Trust-on-first-use store for project `.nib/settings.json` files that
@@ -63,9 +64,9 @@ export function saveSettingsTrust(store: SettingsTrustStore): void {
   const path = settingsTrustFilePath();
   const dir = dirname(path);
   try {
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    ensurePrivateDirectory(dir);
     const tmp = `${path}.${process.pid}.${Math.random().toString(36).slice(2)}`;
-    writeFileSync(tmp, JSON.stringify(store, null, 2), { mode: 0o600 });
+    writePrivateFileSync(tmp, JSON.stringify(store, null, 2));
     renameSync(tmp, path);
     chmodSync(path, 0o600);
   } catch (err) {

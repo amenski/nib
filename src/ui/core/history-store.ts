@@ -15,9 +15,13 @@
 // (see FOLLOWUPS §0). Privacy surface is unchanged: sessions/ already stores
 // full conversations in plaintext JSONL.
 
-import { readFileSync, writeFileSync } from "node:fs";
-import { mkdir, appendFile } from "node:fs/promises";
-import { join, dirname } from "node:path";
+import { readFileSync } from "node:fs";
+import {
+  appendPrivateFile,
+  ensurePrivateStateDirectoryAsync,
+  writePrivateFileSync,
+} from "../../config/state-permissions.js";
+import { join } from "node:path";
 import { slugify } from "../../sessions/store.js";
 import { resolveHome } from "../../config/loader.js";
 
@@ -60,7 +64,7 @@ export function loadPromptHistory(cwd: string, baseDir?: string): string[] {
   const capped = entries.slice(-HISTORY_CAP);
   if (lines.length > COMPACT_THRESHOLD) {
     try {
-      writeFileSync(file, capped.map((e) => JSON.stringify(e)).join("\n") + "\n");
+      writePrivateFileSync(file, capped.map((e) => JSON.stringify(e)).join("\n") + "\n");
     } catch {
       // Compaction is best-effort; failing it only means a bigger file.
     }
@@ -76,7 +80,8 @@ export function loadPromptHistory(cwd: string, baseDir?: string): string[] {
  */
 export function appendPromptHistory(cwd: string, entry: string, baseDir?: string): Promise<void> {
   const file = historyFilePath(cwd, baseDir);
-  return mkdir(dirname(file), { recursive: true })
-    .then(() => appendFile(file, JSON.stringify(entry) + "\n"))
+  const base = baseDir ?? resolveHome();
+  return ensurePrivateStateDirectoryAsync(base, "prompt_history")
+    .then(() => appendPrivateFile(file, JSON.stringify(entry) + "\n"))
     .catch(() => {});
 }

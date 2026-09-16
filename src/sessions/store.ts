@@ -1,8 +1,13 @@
-import { appendFile, mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { readFile, readdir, rename, unlink } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
 import type { Message } from "../types.js";
 import { redactSecrets } from "./redact.js";
 import { resolveHome } from "../config/loader.js";
+import {
+  appendPrivateFile,
+  ensurePrivateStateDirectoryAsync,
+  writePrivateFile,
+} from "../config/state-permissions.js";
 
 const KNOWN_VERSION = 1;
 
@@ -260,9 +265,9 @@ export class SessionStore {
   ): Promise<string> {
     const id = generateId();
     const createdAt = new Date().toISOString();
-    await mkdir(this.sessionDir, { recursive: true });
+    await ensurePrivateStateDirectoryAsync(dirname(dirname(this.sessionDir)), "sessions", basename(this.sessionDir));
     const record = { type: "meta" as const, version: 1, id, createdAt, ...meta };
-    await appendFile(this.filePath(id), JSON.stringify(record) + "\n");
+    await appendPrivateFile(this.filePath(id), JSON.stringify(record) + "\n");
     await this.updateIndexEntry(id);
     return id;
   }
@@ -271,12 +276,12 @@ export class SessionStore {
     sessionId: string,
     record: Omit<SessionRecord, "at">,
   ): Promise<void> {
-    await mkdir(this.sessionDir, { recursive: true });
+    await ensurePrivateStateDirectoryAsync(dirname(dirname(this.sessionDir)), "sessions", basename(this.sessionDir));
     const full: SessionRecord = {
       ...record,
       at: new Date().toISOString(),
     } as SessionRecord;
-    await appendFile(this.filePath(sessionId), JSON.stringify(full) + "\n");
+    await appendPrivateFile(this.filePath(sessionId), JSON.stringify(full) + "\n");
     await this.updateIndexEntry(sessionId);
   }
 
@@ -641,9 +646,9 @@ export class SessionStore {
 
   /** Atomically write the index (temp file + rename) so a reader never sees a half-written file. */
   private async writeIndex(index: SessionsIndex): Promise<void> {
-    await mkdir(this.sessionDir, { recursive: true });
+    await ensurePrivateStateDirectoryAsync(dirname(dirname(this.sessionDir)), "sessions", basename(this.sessionDir));
     const tmp = `${this.indexPath}.${process.pid}.${Math.random().toString(16).slice(2)}.tmp`;
-    await writeFile(tmp, JSON.stringify(index, null, 2) + "\n", "utf-8");
+    await writePrivateFile(tmp, JSON.stringify(index, null, 2) + "\n");
     await rename(tmp, this.indexPath);
   }
 

@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync, renameSync, existsSync, mkdirSync, statSync, chmodSync } from "node:fs";
+import { readFileSync, renameSync, existsSync, statSync, chmodSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { resolveHome } from "../config/loader.js";
+import { ensurePrivateDirectory, writePrivateFileSync } from "../config/state-permissions.js";
 
 /**
  * Trust-on-first-use store for project-declared hooks (docs/hooks-spec.md §6).
@@ -61,9 +62,9 @@ export function saveHookTrust(store: TrustStore): void {
   const path = trustFilePath();
   const dir = dirname(path);
   try {
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    ensurePrivateDirectory(dir);
     const tmp = `${path}.${process.pid}.${Math.random().toString(36).slice(2)}`;
-    writeFileSync(tmp, JSON.stringify(store, null, 2), { mode: 0o600 });
+    writePrivateFileSync(tmp, JSON.stringify(store, null, 2));
     renameSync(tmp, path);
     chmodSync(path, 0o600);
   } catch (err) {

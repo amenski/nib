@@ -11,9 +11,11 @@ export type Capability =
   | { type: "fs.write"; path: string }
   | { type: "net.connect"; host: string; port?: number }
   | { type: "process.execute"; command: string }
+  | { type: "process.control"; target: string }
   | { type: "secret.read"; resource: string }
   | { type: "external.mutate"; service: string; target: string }
-  | { type: "persistence.create"; target: string };
+  | { type: "persistence.create"; target: string }
+  | { type: "session.mutate"; target: string };
 
 export interface CapabilityPlan {
   tool: string;
@@ -57,6 +59,116 @@ export function unknownCapabilityPlan(tool: string, reason: string): CapabilityP
     reason,
     allowPersistentApproval: false,
   };
+}
+
+function knownCapabilityPlan(tool: string, capabilities: Capability[]): CapabilityPlan {
+  return {
+    tool,
+    capabilities: Object.freeze(capabilities.map((capability) => Object.freeze(capability))),
+    status: "known",
+    allowPersistentApproval: false,
+  };
+}
+
+function pathFromArgs(args: Record<string, unknown>, workingDir: string): string | undefined {
+  const rawPath = args.path ?? args.filePath;
+  return typeof rawPath === "string" && rawPath ? resolve(workingDir, rawPath) : undefined;
+}
+
+function urlHost(args: Record<string, unknown>): string | undefined {
+  const url = args.url;
+  if (typeof url !== "string") return undefined;
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Produces a conservative data-only declaration for each built-in tool. The
+ * registry coverage test keeps this exhaustive as new tools are added.
+ */
+export function extractCapabilityPlan(
+  tool: string,
+  args: Record<string, unknown>,
+  workingDir: string,
+): CapabilityPlan {
+  if (tool === "apply_patch") return extractApplyPatchPlan(args, workingDir);
+
+  if (["read_file", "list_files"].includes(tool)) {
+    const path = pathFromArgs(args, workingDir);
+    return path
+      ? knownCapabilityPlan(tool, [{ type: "fs.read", path }])
+      : unknownCapabilityPlan(tool, "path is missing");
+  }
+
+  if (tool === "glob") {
+    const cwd = typeof args.cwd === "string" && args.cwd ? args.cwd : ".";
+    return knownCapabilityPlan(tool, [{ type: "fs.read", path: resolve(workingDir, cwd) }]);
+  }
+
+  if (tool === "search") {
+    const dir = typeof args.dir === "string" && args.dir ? args.dir : ".";
+    return knownCapabilityPlan(tool, [{ type: "fs.read", path: resolve(workingDir, dir) }]);
+  }
+
+  if (["edit", "apply_diff", "search_replace", "edit_file", "write_to_file"].includes(tool)) {
+    const rawPath = args.path ?? args.filePath;
+    if (typeof rawPath !== "string") return unknownCapabilityPlan(tool, "path is missing");
+    const target = resolveWorkspaceWriteTarget(rawPath, workingDir);
+    return "error" in target
+      ? unknownCapabilityPlan(tool, target.error)
+      : knownCapabilityPlan(tool, [{ type: "fs.read", path: target.path }, { type: "fs.write", path: target.path }]);
+  }
+
+  if (tool === "run_bash" || tool === "run_bash_background") {
+    const command = args.command;
+    return typeof command === "string" && command.trim()
+      ? knownCapabilityPlan(tool, [{ type: "process.execute", command }])
+      : unknownCapabilityPlan(tool, "command is missing");
+  }
+
+  if (tool === "web_fetch") {
+    const host = urlHost(args);
+    return host
+      ? knownCapabilityPlan(tool, [{ type: "net.connect", host }])
+      : unknownCapabilityPlan(tool, "URL is missing or invalid");
+  }
+
+  if (tool === "web_search") {
+    return knownCapabilityPlan(tool, [{ type: "net.connect", host: "search-provider" }]);
+  }
+
+  if (tool === "view_image") {
+    const host = urlHost(args);
+    if (host) return knownCapabilityPlan(tool, [{ type: "net.connect", host }]);
+    const url = args.url;
+    return typeof url === "string" && url
+      ? knownCapabilityPlan(tool, [{ type: "fs.read", path: resolve(workingDir, url) }])
+      : unknownCapabilityPlan(tool, "image source is missing");
+  }
+
+  if (tool === "check_job" || tool === "kill_job") {
+    const jobId = args.job_id;
+    return typeof jobId === "string" && jobId
+      ? knownCapabilityPlan(tool, [{ type: "process.control", target: jobId }])
+      : unknownCapabilityPlan(tool, "job_id is missing");
+  }
+
+  if (tool === "update_todo_list") {
+    return knownCapabilityPlan(tool, [{ type: "persistence.create", target: "session.todo-list" }]);
+  }
+
+  if (tool === "ask_user_question") {
+    return knownCapabilityPlan(tool, [{ type: "external.mutate", service: "user-interface", target: "question" }]);
+  }
+
+  if (tool === "attempt_completion" || tool === "switch_mode") {
+    return knownCapabilityPlan(tool, [{ type: "session.mutate", target: tool }]);
+  }
+
+  return unknownCapabilityPlan(tool, "tool has no capability extractor");
 }
 
 export function extractApplyPatchPlan(

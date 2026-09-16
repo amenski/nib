@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { permissionOptions, riskLevel, type PermissionRequest } from "./PermissionPrompt.js";
+import { buildPermissionRequest, capabilitySummary, permissionOptions, riskLevel, type PermissionRequest } from "./PermissionPrompt.js";
 import type { PermissionRule } from "../permissions/index.js";
+import { extractCapabilityPlan, unknownCapabilityPlan } from "../permissions/capabilities.js";
 
 function req(toolName: string, winningRule?: PermissionRule): PermissionRequest {
   return { toolName, command: "", winningRule };
@@ -39,5 +40,36 @@ describe("permissionOptions", () => {
     const options = permissionOptions({ toolName: "apply_patch", command: "patch", allowPersistentApproval: false });
 
     expect(options.map((option) => option.decision)).toEqual(["once", "deny"]);
+  });
+});
+
+describe("capabilitySummary", () => {
+  it("shows the concrete filesystem effects from a known plan", () => {
+    const plan = extractCapabilityPlan("edit", { path: "src/example.ts" }, "/workspace");
+
+    expect(capabilitySummary(plan, "/workspace")).toEqual(["Read ./src/example.ts", "Write ./src/example.ts"]);
+  });
+
+  it("renders the supplied canonical plan without rebuilding it from request arguments", () => {
+    const plan = unknownCapabilityPlan("edit", "path is missing");
+    const request = buildPermissionRequest("edit", { path: "ignored-by-the-plan" }, undefined, undefined, plan, "/workspace");
+
+    expect(request.capabilityPlan).toBe(plan);
+    expect(capabilitySummary(request.capabilityPlan, request.workingDir)).toEqual([
+      "Unknown effects — full risk; this tool's capabilities could not be determined.",
+    ]);
+  });
+
+  it("shows process commands and network destinations", () => {
+    expect(capabilitySummary(extractCapabilityPlan("run_bash", { command: "git status" }, "/workspace")))
+      .toEqual(["Execute git status"]);
+    expect(capabilitySummary(extractCapabilityPlan("web_fetch", { url: "https://example.com" }, "/workspace")))
+      .toEqual(["Connect to example.com"]);
+  });
+
+  it("states full risk when the canonical plan is unknown or absent", () => {
+    const expected = "Unknown effects — full risk; this tool's capabilities could not be determined.";
+    expect(capabilitySummary(unknownCapabilityPlan("apply_patch", "patch is missing"))).toEqual([expected]);
+    expect(capabilitySummary()).toEqual([expected]);
   });
 });

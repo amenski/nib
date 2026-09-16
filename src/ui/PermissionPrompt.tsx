@@ -1,6 +1,7 @@
 import React from "react";
 import { Box, Text } from "ink";
 import type { PermissionRule } from "../permissions/index.js";
+import type { Capability, CapabilityPlan } from "../permissions/capabilities.js";
 import { extractToolSubject } from "../permissions/rules.js";
 import { useTheme } from "./contexts.js";
 import { ansi256, type ThemeContextValue } from "./theme.js";
@@ -15,6 +16,10 @@ export interface PermissionRequest {
   winningRule?: PermissionRule;
   /** The rule that will be stored on approval — drives scope display. */
   defaultRule?: PermissionRule;
+  /** Canonical, data-only effect declaration for this tool call. */
+  capabilityPlan?: CapabilityPlan;
+  /** Working directory used to canonicalize paths in the effect declaration. */
+  workingDir?: string;
   /** AI explanation (Ctrl+E) — informational only, never gates the decision. */
   explain?: { status: "loading" | "done" | "error"; text: string };
 }
@@ -33,6 +38,44 @@ export interface RiskInfo {
   /** Semantic theme slot that colors the risk label (high=error, etc.). */
   slot: "error" | "warning" | "success";
   label: string;
+}
+
+/**
+ * Render canonical capability declarations as short, user-facing effects.
+ * This is presentation only: an unknown plan is deliberately called out as
+ * full risk and never changes the permission decision.
+ */
+export function capabilitySummary(plan?: CapabilityPlan, workingDir = process.cwd()): string[] {
+  if (!plan || plan.status === "unknown") {
+    return ["Unknown effects — full risk; this tool's capabilities could not be determined."];
+  }
+
+  if (plan.capabilities.length === 0) return ["No effects declared"];
+
+  const cwd = workingDir.replace(/\/$/, "");
+  const home = process.env.HOME?.replace(/\/$/, "");
+  const displayPath = (path: string): string => {
+    if (path === cwd) return "./";
+    if (path.startsWith(`${cwd}/`)) return `./${path.slice(cwd.length + 1)}`;
+    if (home && path === home) return "~";
+    if (home && path.startsWith(`${home}/`)) return `~/${path.slice(home.length + 1)}`;
+    return path;
+  };
+  const displayCommand = (command: string): string => command.replace(/\s+/g, " ").trim();
+  const format = (capability: Capability): string => {
+    switch (capability.type) {
+      case "fs.read": return `Read ${displayPath(capability.path)}`;
+      case "fs.write": return `Write ${displayPath(capability.path)}`;
+      case "net.connect": return `Connect to ${capability.host}${capability.port ? `:${capability.port}` : ""}`;
+      case "process.execute": return `Execute ${displayCommand(capability.command)}`;
+      case "process.control": return `Control process ${capability.target}`;
+      case "secret.read": return `Read secret ${capability.resource}`;
+      case "external.mutate": return `Mutate ${capability.service} (${capability.target})`;
+      case "persistence.create": return `Create ${capability.target}`;
+      case "session.mutate": return `Change session (${capability.target})`;
+    }
+  };
+  return plan.capabilities.map(format);
 }
 
 const READ_TOOLS = new Set(["read_file", "read", "list_files", "glob", "search", "load_skill"]);
@@ -148,8 +191,8 @@ export default function PermissionPrompt({ request, cursor, onChoose, onCancel }
       {request.defaultRule?.kind === "glob" ? <Text dimColor>Pattern: {request.defaultRule.pattern}</Text> : null}
       {request.description ? <Text dimColor>{request.description}</Text> : null}
       <Box marginTop={1}>
-        <Text dimColor>Risk: </Text>
-        <Text color={slotColor(theme, risk.slot)}>{risk.label}</Text>
+        <Text dimColor>Effects: </Text>
+        <Text color={slotColor(theme, risk.slot)}>{capabilitySummary(request.capabilityPlan, request.workingDir).join("; ")}</Text>
       </Box>
       <ExplanationBlock explain={request.explain} />
       <Box marginTop={1}>
@@ -194,6 +237,10 @@ export function DestructiveConfirmPrompt({ request, cursor, onChoose, onCancel }
       {scopeLine(request) ? <Text color={slotColor(theme, "warning")}>{scopeLine(request)}</Text> : null}
       {request.defaultRule?.kind === "glob" ? <Text dimColor>Pattern: {request.defaultRule.pattern}</Text> : null}
       {request.description ? <Text dimColor>{request.description}</Text> : null}
+      <Box marginTop={1}>
+        <Text dimColor>Effects: </Text>
+        <Text color={errorColor}>{capabilitySummary(request.capabilityPlan, request.workingDir).join("; ")}</Text>
+      </Box>
       <Box marginTop={1}>
         <Text dimColor>{request.allowPersistentApproval === false
           ? "This command can cause irreversible data loss. Only one-time approval is available."
@@ -333,6 +380,15 @@ export function buildPermissionRequest(
   args: Record<string, unknown>,
   winningRule?: PermissionRule,
   defaultRule?: PermissionRule,
+  capabilityPlan?: CapabilityPlan,
+  workingDir?: string,
 ): PermissionRequest {
-  return { toolName, command: extractToolSubject(toolName, args), winningRule, defaultRule };
+  return {
+    toolName,
+    command: extractToolSubject(toolName, args),
+    winningRule,
+    defaultRule,
+    capabilityPlan,
+    workingDir,
+  };
 }

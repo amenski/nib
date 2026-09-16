@@ -49,6 +49,7 @@ import { todoStore } from "../tools/todo.js";
 import type { TodoItem } from "../tools/todo.js";
 import StatusBar from "./StatusBar.js";
 import PermissionPrompt, { DestructiveConfirmPrompt, ScopeChoicePrompt, ExternalScopeChoicePrompt, type PermissionDecision } from "./PermissionPrompt.js";
+import { extractCapabilityPlan } from "../permissions/capabilities.js";
 import { explainToolAction } from "./explain-action.js";
 import { buildWelcomeLines } from "./views/WelcomeScreen.js";
 import PromptInput from "./views/PromptInput.js";
@@ -266,6 +267,9 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
     scopeDecision?: "session" | "always";
     /** Ctrl+E AI explanation state — informational only, never gates the decision. */
     explain?: { status: "loading" | "done" | "error"; text: string };
+    /** Canonical, data-only effect declaration shown by the permission prompt. */
+    capabilityPlan?: ReturnType<typeof extractCapabilityPlan>;
+    workingDir?: string;
     cursor: number;
   } | null>(null);
   // AbortController for an in-flight Ctrl+E explanation stream, so a new
@@ -1257,6 +1261,8 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
               folderRule,
               externalTreeRule,
               oneTimeOnly,
+              capabilityPlan: extractCapabilityPlan(toolName, args, process.cwd()),
+              workingDir: process.cwd(),
               cursor: 0,
             });
           });
@@ -2121,6 +2127,8 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
             command: extractToolSubject(askPrompt.toolName, askPrompt.args),
             winningRule: askPrompt.winningRule,
             defaultRule: askPrompt.defaultRule,
+            capabilityPlan: askPrompt.capabilityPlan,
+            workingDir: askPrompt.workingDir,
             allowPersistentApproval: !askPrompt.oneTimeOnly,
             explain: askPrompt.explain,
           }}
@@ -2135,6 +2143,8 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
             command: extractToolSubject(askPrompt.toolName, askPrompt.args),
             winningRule: askPrompt.winningRule,
             defaultRule: askPrompt.defaultRule,
+            capabilityPlan: askPrompt.capabilityPlan,
+            workingDir: askPrompt.workingDir,
             allowPersistentApproval: !askPrompt.oneTimeOnly,
             explain: askPrompt.explain,
           }}

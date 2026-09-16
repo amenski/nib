@@ -141,6 +141,28 @@ describe("ProfileEvaluator.decide — always denied by construction (§3)", () =
   }
 });
 
+describe("ProfileEvaluator.decide — account credential stores", () => {
+  it("denies home-scoped credential stores but not project-local configuration", () => {
+    const ev = evaluator("workspace-write");
+
+    for (const path of [
+      join(HOME, ".ssh", "id_ed25519"),
+      join(HOME, ".aws", "credentials"),
+      join(HOME, ".config", "gcloud", "credentials.db"),
+      join(HOME, ".azure", "accessTokens.json"),
+      join(HOME, ".kube", "config"),
+      join(HOME, ".docker", "config.json"),
+      join(HOME, ".netrc"),
+      join(HOME, ".nib", "credentials.yaml"),
+    ]) {
+      expect(ev.decide("read_file", { path })).toBe("deny");
+    }
+
+    expect(ev.decide("read_file", { path: "/workspace/.env" })).toBe("allow");
+    expect(ev.decide("read_file", { path: "/workspace/fixtures/credentials.yaml" })).toBe("allow");
+  });
+});
+
 describe("ProfileEvaluator.decide — apply_patch targets", () => {
   it("denies a patch that targets .git", () => {
     const profile = evaluator("workspace-write");

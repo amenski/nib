@@ -3,6 +3,7 @@ import { isAbsolute, join, relative, resolve } from "node:path";
 import type { PermissionEngine, ResolveResult } from "./engine.js";
 import { extractHostname } from "./rules.js";
 import { isPathWithinWriteRoots, resolveWriteRoots } from "../sandbox/write-roots.js";
+import { realpathNearestAncestor } from "../sandbox/write-roots.js";
 import { PROJECT_DIR_NAME, STATE_DIR_NAME } from "../config/paths.js";
 import { extractApplyPatchPlan } from "./capabilities.js";
 
@@ -140,6 +141,14 @@ function isAlwaysDenied(canonical: string): boolean {
   );
 }
 
+function isAccountCredentialStore(canonical: string): boolean {
+  return canonical === "~/.netrc" || canonical === "~/.git-credentials" || canonical === "~/.npmrc" ||
+    canonical === `~/${STATE_DIR_NAME}/credentials.yaml` ||
+    ["~/.ssh", "~/.aws", "~/.gnupg", "~/.azure", "~/.kube", "~/.config/gcloud", "~/.config/gh", "~/Library/Keychains"]
+      .some((root) => canonical === root || canonical.startsWith(`${root}/`)) ||
+    canonical === "~/.docker/config.json";
+}
+
 /** Network entry matching: "*" matches any host; otherwise exact, case-insensitive. */
 function matchesNetworkEntry(entry: string, hostname: string): boolean {
   if (entry === "*") return true;
@@ -231,7 +240,8 @@ export class ProfileEvaluator {
   }
 
   private decideFs(canonical: string, requested: "read" | "write"): ProfileDecision {
-    if (isAlwaysDenied(canonical)) return "deny";
+    const physical = canonicalizePath(realpathNearestAncestor(this.canonicalToAbsolute(canonical)), this.cwd, this.home);
+    if (isAlwaysDenied(canonical) || isAlwaysDenied(physical) || isAccountCredentialStore(physical)) return "deny";
     const rule = this.fsRules.find((r) => r.re.test(canonical));
     if (rule && rule.action === "deny") return "deny";
     // A matched read/write rule can only grant within the level's allowance,

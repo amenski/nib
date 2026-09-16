@@ -1,8 +1,9 @@
 import { readFile, writeFile, mkdir, stat } from "node:fs/promises";
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 import type { ToolOutput, ToolDef } from "../types.js";
 import type { ToolHandler, ToolContext } from "./types.js";
 import { ToolRegistry } from "./registry.js";
+import { isPathWithinWriteRoots, realpathNearestAncestor } from "../sandbox/write-roots.js";
 
 function countOccurrences(str: string, search: string): number {
   let count = 0;
@@ -234,7 +235,17 @@ const applyPatchHandler: ToolHandler = async (args, ctx) => {
     return { content: "Empty patch, nothing to apply." };
   }
 
-  const sections = splitMultiFileDiff(patch);
+  const rawSections = splitMultiFileDiff(patch);
+  const workspaceRoot = realpathNearestAncestor(ctx.workingDir);
+  const sections = new Map<string, string>();
+  for (const [rawPath, diffText] of rawSections) {
+    const filePath = resolve(ctx.workingDir, rawPath);
+    if (!isPathWithinWriteRoots(filePath, [workspaceRoot])) {
+      const message = `Patch target escapes the working directory: ${rawPath}`;
+      return { content: message, error: message };
+    }
+    sections.set(filePath, diffText);
+  }
   const results: string[] = [];
 
   await ctx.checkpoint?.save();

@@ -242,6 +242,23 @@ diff --git a/b.txt b/b.txt
     expect(result.content).toContain("Empty patch");
   });
 
+  it("rejects a patch target that escapes the working directory", async () => {
+    const outside = join(process.cwd(), ".patch-outside-test.txt");
+    writeFileSync(outside, "secret\n", "utf-8");
+    try {
+      const result = await applyPatchHandler({ patch: `--- a/../.patch-outside-test.txt
++++ b/../.patch-outside-test.txt
+@@ -1 +1 @@
+-secret
++changed` }, mockCtx);
+
+      expect(result.error).toContain("escapes the working directory");
+      expect(readFileSync(outside, "utf-8")).toBe("secret\n");
+    } finally {
+      rmSync(outside, { force: true });
+    }
+  });
+
   it("tracks the mtime of every file written in a multi-file patch, avoiding false FILE_MODIFIED on subsequent edits to either file", async () => {
     const path1 = testPath("a.txt");
     const path2 = testPath("b.txt");

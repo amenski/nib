@@ -5,6 +5,7 @@ import {
   globSpecificity,
   matchesTool,
   buildSubject,
+  extractToolSubject,
   extractHostname,
   parseRulePattern,
   serializeRulePattern,
@@ -14,6 +15,14 @@ import {
 function rule(partial: Partial<PermissionRule>): PermissionRule {
   return { tool: "read_file", kind: "any", pattern: "", action: "allow", origin: "config", ...partial };
 }
+
+describe("extractToolSubject", () => {
+  it("lists every apply_patch header target for the approval prompt", () => {
+    expect(extractToolSubject("apply_patch", {
+      patch: "+++ b/src/a.ts\n@@ -1 +1 @@\n-x\n+y\n+++ b/src/b.ts\n@@ -1 +1 @@\n-x\n+y",
+    })).toBe("src/a.ts, src/b.ts");
+  });
+});
 
 describe("matchesTool", () => {
   it("matches exact tool names", () => {

@@ -242,6 +242,14 @@ export function extractToolSubject(toolName: string, args: Record<string, unknow
     const u = args?.url;
     return typeof u === "string" ? u : "";
   }
+  if (toolName === "apply_patch") {
+    const patch = args?.patch;
+    if (typeof patch !== "string") return "";
+    return [...patch.matchAll(/^\+\+\+ b\/(.+)$/gm)]
+      .map((match) => match[1].trim())
+      .filter(Boolean)
+      .join(", ");
+  }
   // search's directory arg is `dir` (defaults to "." — the tool handler's
   // own default, mirrored here so an omitted dir resolves to the workspace
   // rather than to an empty/unmatchable subject). glob's is `cwd` (defaults

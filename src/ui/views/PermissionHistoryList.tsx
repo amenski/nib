@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { Box, Text, useInput } from "ink";
-import type { SessionStore, PermissionAuditRecord } from "../../sessions/store.js";
+import type { SessionStore, PermissionAuditRecord, SessionPermissionMetrics } from "../../sessions/store.js";
 
 interface Props {
   sessionStore: SessionStore;
@@ -76,6 +76,7 @@ function mergeAdjacentPairs(entries: HistoryEntry[]): DisplayEntry[] {
 
 export default function PermissionHistoryList({ sessionStore, sessionId, onClose, width }: Props) {
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
+  const [metrics, setMetrics] = useState<SessionPermissionMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedIdx, setSelectedIdx] = useState(0);
 
@@ -89,6 +90,7 @@ export default function PermissionHistoryList({ sessionStore, sessionId, onClose
       // would otherwise leave the initial selection one past the end.
       setSelectedIdx(Math.max(0, mergeAdjacentPairs(history).length - 1));
     });
+    sessionStore.queryPermissionMetrics(sessionId).then(setMetrics);
     return () => {
       cancelled = true;
     };
@@ -119,6 +121,15 @@ export default function PermissionHistoryList({ sessionStore, sessionId, onClose
         <Text color="cyan" bold>Permission History</Text>
         {displayEntries.length > 0 && <Text dimColor> — {displayEntries.length} decision{displayEntries.length === 1 ? "" : "s"}</Text>}
       </Box>
+
+      {metrics && (
+        <Text dimColor>
+          Prompts {metrics.permissionPrompts} · approvals {metrics.permissionApprovals} · denials {metrics.permissionDenials}
+          {" · classifier read-only/unknown "}{metrics.classifierProvenReadOnly}/{metrics.classifierUnknown}
+          {" · false-allow "}{metrics.falseAllowCount}
+          {metrics.falseAllowRate === null ? "" : ` (${(metrics.falseAllowRate * 100).toFixed(1)}%)`}
+        </Text>
+      )}
 
       {loading ? (
         <Text dimColor>Loading…</Text>

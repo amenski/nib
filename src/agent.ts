@@ -18,6 +18,7 @@ import { editToolResultsForRequest } from "./compaction/context-editing.js";
 import { formatTodoBlock } from "./tools/todo.js";
 import type { TodoItem } from "./tools/todo.js";
 import { logTiming } from "./debug/logger.js";
+import { extractCapabilityPlan } from "./permissions/capabilities.js";
 
 export type ToolExecutor = (call: ToolCall) => Promise<ToolOutput>;
 
@@ -641,8 +642,12 @@ export async function runAgent(
           reason: string,
         ): Promise<void> => {
           if (!options.sessionStore || !options.sessionId) return;
+          const capabilityPlan = extractCapabilityPlan(tc.name, tc.arguments, process.cwd());
           await options.sessionStore.appendPermission(options.sessionId, {
             toolCallId: tc.id, tool: tc.name, subject, decision, winningRule, reason,
+            ...(capabilityPlan.commandClassification
+              ? { commandClassification: capabilityPlan.commandClassification }
+              : {}),
           });
         };
 

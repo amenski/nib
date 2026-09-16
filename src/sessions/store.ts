@@ -8,6 +8,8 @@ import {
   ensurePrivateStateDirectoryAsync,
   writePrivateFile,
 } from "../config/state-permissions.js";
+import type { CommandClassificationResult } from "../permissions/command-classifier.js";
+import { computeSessionPermissionMetrics } from "./metrics.js";
 
 const KNOWN_VERSION = 1;
 
@@ -91,6 +93,26 @@ export interface PermissionAuditRecord {
   reason?: string;
   /** Who produced this row — absent for top-level (parent) writes. */
   source?: AuditSource;
+  /** Advisory command classification, persisted on canonical agent rows only. */
+  commandClassification?: CommandClassificationResult;
+}
+
+export interface ClassifierEvidenceRecord {
+  toolCallId: string;
+  source: "policy" | "handler";
+  /** Short, non-secret explanation of the contradictory evidence. */
+  reason: string;
+}
+
+export interface SessionPermissionMetrics {
+  permissionPrompts: number;
+  permissionApprovals: number;
+  permissionDenials: number;
+  classifierProvenReadOnly: number;
+  classifierUnknown: number;
+  falseAllowCount: number;
+  /** Null means no proven-read-only classifications were recorded. */
+  falseAllowRate: number | null;
 }
 
 export interface TokenUsageRecord {
@@ -105,7 +127,7 @@ export interface TokenUsageRecord {
 }
 
 export interface SessionRecord {
-  type: "meta" | "message" | "state" | "compaction" | "permission" | "token" | "todo";
+  type: "meta" | "message" | "state" | "compaction" | "permission" | "classifier-evidence" | "token" | "todo";
   at: string;
   [key: string]: unknown;
 }
@@ -340,6 +362,30 @@ export class SessionStore {
     return records
       .filter((r) => r.type === "permission")
       .map((r) => r as unknown as PermissionAuditRecord & { at: string });
+  }
+
+  async appendClassifierEvidence(sessionId: string, record: ClassifierEvidenceRecord): Promise<void> {
+    await this.append(sessionId, {
+      type: "classifier-evidence",
+      ...record,
+      reason: redactSecrets(record.reason),
+    });
+  }
+
+  async queryClassifierEvidence(sessionId: string): Promise<(ClassifierEvidenceRecord & { at: string })[]> {
+    const records = await this.readRecords(sessionId);
+    if (!records) return [];
+    return records
+      .filter((r) => r.type === "classifier-evidence")
+      .map((r) => r as unknown as ClassifierEvidenceRecord & { at: string });
+  }
+
+  /** Returns session-local aggregates; no telemetry or external sink is used. */
+  async queryPermissionMetrics(sessionId: string): Promise<SessionPermissionMetrics> {
+    return computeSessionPermissionMetrics(
+      await this.queryPermissionHistory(sessionId),
+      await this.queryClassifierEvidence(sessionId),
+    );
   }
 
   async appendToken(sessionId: string, record: TokenUsageRecord): Promise<void> {

@@ -4,7 +4,7 @@ export {
   defaultCommandRunner,
   defaultModuleImporter,
 } from "./manager.js";
-export type { SegmentProvider, CommandRunner, ModuleImporter } from "./manager.js";
+export type { SegmentProvider, CommandRunner, ModuleImporter, StatusLineSpawnOptions } from "./manager.js";
 export type {
   StatusSegment,
   SessionInfo,

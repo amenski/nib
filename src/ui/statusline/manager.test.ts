@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { StatusLineManager } from "./manager.js";
+import { defaultCommandRunner, StatusLineManager } from "./manager.js";
 import { sanitizeText, MAX_SEGMENT_LENGTH } from "./sanitize.js";
 import type { StatusLineConfig, CommandRunner, ModuleImporter } from "./index.js";
 
@@ -33,6 +33,15 @@ describe("sanitizeText", () => {
 });
 
 describe("StatusLineManager.refresh — command providers", () => {
+  it("preserves the inherited environment when containment is inactive", async () => {
+    const output = await defaultCommandRunner('printf %s "${TMPDIR-}"', {
+      timeoutMs: 500,
+      cwd: process.cwd(),
+      sessionTempDir: "/private/tmp/nib-session-statusline",
+    });
+    expect(output).toBe(process.env.TMPDIR ?? "");
+  });
+
   it("uses the first stdout line as the segment text", async () => {
     const runCommand: CommandRunner = vi.fn(async () => "main\nextra line\n");
     const mgr = new StatusLineManager(
@@ -71,6 +80,31 @@ describe("StatusLineManager.refresh — command providers", () => {
     );
     await mgr.refresh();
     expect(runCommand).toHaveBeenCalledWith("cmd", { timeoutMs: 1500, cwd: process.cwd() });
+  });
+
+  it("forwards the active session containment to command providers", async () => {
+    const runCommand: CommandRunner = vi.fn(async () => "ok");
+    const mgr = new StatusLineManager(
+      cfg({ providers: [{ type: "command", id: "c", command: "cmd", cwd: "." }] }),
+      {
+        runCommand,
+        spawn: {
+          trustedRoot: process.cwd(),
+          sandboxLevel: "workspace-write",
+          writeRoots: ["/private/tmp/nib-session-test"],
+          sessionTempDir: "/private/tmp/nib-session-test",
+        },
+      },
+    );
+    await mgr.refresh();
+    expect(runCommand).toHaveBeenCalledWith("cmd", {
+      timeoutMs: 1500,
+      cwd: process.cwd(),
+      trustedRoot: process.cwd(),
+      sandboxLevel: "workspace-write",
+      writeRoots: ["/private/tmp/nib-session-test"],
+      sessionTempDir: "/private/tmp/nib-session-test",
+    });
   });
 
   it("drops the segment when the command times out / rejects", async () => {

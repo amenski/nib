@@ -949,7 +949,17 @@ async function main() {
   // App subscribes and starts/stops the async refresh loop.
   const statuslineConfig = configResult.config.statusline;
   const statusLineManager = statuslineConfig
-    ? new StatusLineManager(statuslineConfig)
+    ? new StatusLineManager(statuslineConfig, {
+      spawn: {
+        trustedRoot: process.cwd(),
+        sandboxLevel:
+          configResult.config.sandbox?.enabled && configResult.config.permissionProfile?.level !== "unrestricted"
+            ? configResult.config.permissionProfile?.level
+            : undefined,
+        writeRoots: [...(configResult.config.sandbox?.writeRoots ?? []), ...additionalWriteRoots],
+        sessionTempDir: sessionTemp.path,
+      },
+    })
     : undefined;
 
   const restartRef: { current: (() => void) | null } = { current: null };

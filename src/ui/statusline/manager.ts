@@ -1,6 +1,9 @@
 import { execFile } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
+import { buildChildEnvironment, prepareSandboxedShell } from "../../sandbox/launcher.js";
+import { isSandboxedLevel, validateCwdWithinTrustedRoot } from "../../sandbox/seatbelt.js";
+import type { SandboxedShellOptions } from "../../sandbox/launcher.js";
 import type {
   StatusSegment,
   SessionInfo,
@@ -11,24 +14,60 @@ import { sanitizeText } from "./sanitize.js";
 
 export type SegmentProvider = (info: SessionInfo | null) => StatusSegment[];
 
+/** Session containment inherited by command providers. */
+export type StatusLineSpawnOptions = Omit<SandboxedShellOptions, "cwd">;
+
 // ── Injectable runners (real implementations below; overridable in tests so no
 // real processes or module imports run during unit tests). ──
 
 /** Run a command, resolving to raw stdout. Rejects on timeout/failure. */
 export type CommandRunner = (
   command: string,
-  opts: { timeoutMs: number; cwd: string },
+  opts: {
+    timeoutMs: number;
+    cwd: string;
+    trustedRoot?: string;
+    sandboxLevel?: SandboxedShellOptions["sandboxLevel"];
+    writeRoots?: string[];
+    sessionTempDir?: string;
+  },
 ) => Promise<string>;
 
 /** Import a local module and return its default export (expected callable). */
 export type ModuleImporter = (path: string) => Promise<unknown>;
 
-export const defaultCommandRunner: CommandRunner = (command, { timeoutMs, cwd }) =>
+export const defaultCommandRunner: CommandRunner = (command, opts) =>
   new Promise((resolvePromise, reject) => {
+    const { timeoutMs, cwd, trustedRoot, sandboxLevel, writeRoots, sessionTempDir } = opts;
+    const activeSandbox = isSandboxedLevel(sandboxLevel) && trustedRoot
+      ? { level: sandboxLevel, trustedRoot }
+      : undefined;
+    if (activeSandbox) {
+      const validation = validateCwdWithinTrustedRoot(cwd, activeSandbox.trustedRoot, writeRoots);
+      if (!validation.ok) {
+        reject(new Error(validation.error));
+        return;
+      }
+    }
+    const commandSpec = activeSandbox
+      ? prepareSandboxedShell(command, {
+        cwd,
+        trustedRoot: activeSandbox.trustedRoot,
+        sandboxLevel: activeSandbox.level,
+        writeRoots,
+        sessionTempDir,
+      })
+      : { file: process.env.SHELL || "/bin/sh", args: ["-c", command] };
     execFile(
-      process.env.SHELL || "/bin/sh",
-      ["-c", command],
-      { timeout: timeoutMs, cwd, windowsHide: true, maxBuffer: 1024 * 1024 },
+      commandSpec.file,
+      commandSpec.args,
+      {
+        timeout: timeoutMs,
+        cwd,
+        windowsHide: true,
+        maxBuffer: 1024 * 1024,
+        env: activeSandbox && sessionTempDir ? buildChildEnvironment(sessionTempDir) : process.env,
+      },
       (err, stdout) => {
         if (err) reject(err);
         else resolvePromise(stdout);
@@ -53,6 +92,7 @@ export class StatusLineManager {
   private readonly config: StatusLineConfig;
   private readonly runCommand: CommandRunner;
   private readonly importModule: ModuleImporter;
+  private readonly spawnOptions?: StatusLineSpawnOptions;
   private listener: ((segments: StatusSegment[]) => void) | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private refreshing = false;
@@ -60,11 +100,16 @@ export class StatusLineManager {
 
   constructor(
     config: StatusLineConfig,
-    deps?: { runCommand?: CommandRunner; importModule?: ModuleImporter },
+    deps?: {
+      runCommand?: CommandRunner;
+      importModule?: ModuleImporter;
+      spawn?: StatusLineSpawnOptions;
+    },
   ) {
     this.config = config;
     this.runCommand = deps?.runCommand ?? defaultCommandRunner;
     this.importModule = deps?.importModule ?? defaultModuleImporter;
+    this.spawnOptions = deps?.spawn;
   }
 
   // ── Legacy synchronous provider API (kept for back-compat) ──
@@ -155,6 +200,7 @@ export class StatusLineManager {
     return this.runCommand(provider.command, {
       timeoutMs: provider.timeoutMs ?? 1500,
       cwd: provider.cwd ? resolve(process.cwd(), provider.cwd) : process.cwd(),
+      ...this.spawnOptions,
     });
   }
 

@@ -230,12 +230,12 @@ secret-adjacent reads, session rules, audit) stays.
 ## 8. Seatbelt phase (macOS)
 
 The rules-first phase above is the *policy*; the OS sandbox is the
-*mechanism*. Phase (e): `sandbox: { enabled: true }` launches the agent's
-bash child processes under a Seatbelt profile per level — strict-sandbox:
-read-only fs + no network; workspace-write: write only workspace roots +
-network to profile allowlist. Non-macOS platforms run policy-only with a
-startup notice. This mirrors Codex's backend choice and finally closes the
-"bash can touch anything" gap from §7.
+*mechanism*. `sandbox: { enabled: true }` launches the agent's bash child
+processes under a Seatbelt profile per level — strict-sandbox: read-only fs +
+no network; workspace-write: write only workspace roots + no direct network.
+Non-macOS platforms run policy-only with a startup notice. This closes the
+"bash can touch anything" gap from §7 without pretending a shell command has
+a trustworthy hostname-level authority.
 
 **Implementation notes (shipped with (e), 2026-08-13):**
 - `src/sandbox/seatbelt.ts` builds the SBPL profile per level; the
@@ -254,36 +254,20 @@ startup notice. This mirrors Codex's backend choice and finally closes the
   does one internally), network denied by default. workspace-write adds
   `(allow file-write* (subpath "<trusted root>"))` for the session
   workspace root fixed at startup — never the per-call `cwd` (SBPL subpath
-  matching is directory-boundary aware) — the two write carve-outs below,
-  and `(allow network-outbound)`. `unrestricted` gets no prefix at all.
+  matching is directory-boundary aware) — the private session-temp root
+  below. Neither sandboxed profile grants `(allow network-outbound)`.
+  `unrestricted` gets no prefix at all.
   Verified empirically on macOS 2026-08-13: `ls`, `git status`,
   `node -e 'console.log(1)'` run under both sandboxed levels; writes
   outside the write-set and network connects fail with EPERM-equivalent
   denials (non-zero exit).
-- **Write carve-outs (2026-08-15, battery-proven).** workspace-write's
-  write boundary has exactly two deliberate exceptions, both added because
-  a real dev-toolchain battery (every command through the shipped
-  `runBashTimed` under the shipped profile, scratch workspace in `/tmp`)
-  proved the toolchain cannot run without them — the two-layer split is
-  preserved, these are the *level's* defaults, not policy changes:
-  - **Ephemeral temp** — literal `/tmp` (realpath `/private/tmp` on macOS)
-    plus the session `$TMPDIR` (e.g. `/var/folders/…/T`), emitted as
-    realpath'd `(allow file-write* (subpath …))` lines. Battery evidence:
-    `mktemp -d` failed with EPERM on `$TMPDIR`; a raw `echo > /tmp/x` and
-    `env -u TMPDIR mktemp -d` (the `/tmp` fallback) failed too. Compilers,
-    interpreters, `git`, `tar` and package managers stage ephemeral files
-    here; SOTA-aligned (Codex ships the same `:tmpdir` option).
-  - **npm cache** — `~/.npm` (realpath'd). Battery evidence: `npm install
-    is-number` failed with EPERM on `~/.npm/_cacache/tmp/…` (and
-    `~/.npm/_logs`). With the carve-out the same install completes
-    (`node_modules` + `package-lock.json` land in the workspace, cache in
-    `~/.npm`).
-  strict-sandbox gains none of these — read-only stays absolute. The
-  carve-out subpaths are the physical forms, and SBPL matches resolved
-  paths: a symlink planted inside a carve-out dir that points at a secret
-  (`/private/tmp/link → ~/.ssh`) still gets its write denied (verified
-  in the same battery). Control intact: `echo hi > ~/Documents/…` stays
-  denied before and after.
+- **Private session temp.** At session start Nib creates a mode-0700
+  directory under the OS temp directory and passes it to child processes as
+  `TMPDIR`, `TMP`, `TEMP`, and the npm cache location. workspace-write emits
+  that directory, rather than shared `/tmp`, the host `$TMPDIR`, or `~/.npm`,
+  as its only non-workspace write root. Strict-sandbox gains none of this;
+  read-only stays absolute. The directory is removed when the owning session
+  ends.
 - **Trusted-root invariant + cwd containment (item 8.6).** The Seatbelt
   write-set root is the trusted workspace root fixed at startup (the tool
   handler's `ctx.workingDir`, realpath-resolved via nearest-existing-
@@ -296,30 +280,22 @@ startup notice. This mirrors Codex's backend choice and finally closes the
   subdirectory cwd inside the root runs there with the write-set root still
   the trusted root; level absent/`unrestricted` or non-macOS hosts skip
   both the profile and the check.
-- **Network: all-or-nothing, by design.** SBPL `(allow network-outbound
-  (remote ip "*:443"))` matches IPs only — hostnames resolve after the
-  sandbox filter runs, so the profile's `network.allow` hostname list
-  cannot be expressed in SBPL. The two layers split the job honestly: the
-  policy layer (`ProfileEvaluator`) enforces host-level allow/deny (it
-  sees the hostname), the Seatbelt layer gates network on/off per level
-  (strict-sandbox off, workspace-write on). The deny side is airtight at
-  both layers; the workspace-write *allow* side is deliberately coarser at
-  the OS layer (any outbound), with host filtering at the policy layer.
-- **Residuals, stated honestly.** (1) Hostname-level network rules are
-  policy-layer only. (2) The `.git` always-denied set is not expressed in
+- **Network: deny direct egress.** SBPL filters resolved IPs, not hostnames,
+  so its network primitive cannot enforce `network.allow`. Both sandboxed
+  profiles therefore deny direct egress. A temporary broad-egress exception
+  is intentionally not shipped: granting it to a shell grants every child
+  process arbitrary outbound access. A future host-aware broker must mediate
+  all egress before Nib offers a scoped network exception; see
+  [security-network-broker.md](./security-network-broker.md).
+- **Residuals, stated honestly.** (1) The `.git` always-denied set is not expressed in
   SBPL — SBPL has no gitignore globs — so a workspace-write bash child
   could mechanically write `.git/…`; the policy layer denies it. (3) The
   profile's fs `deny` rules (`**/*.env` …) are likewise policy-layer only;
   SBPL expresses the level's defaults, not the rules. (4) macOS-only and
   flag-gated: on other platforms `sandbox.enabled` warns once at startup
-  and runs policy-only. (5) The carve-outs are shared writable space: a
-  workspace-write child can read and write anything under `/private/tmp`,
-  its `$TMPDIR` and `~/.npm` (that is their purpose), subject to normal
-  OS permissions — `/tmp`'s sticky bit still blocks deleting others' files,
-  and symlink escape out of the carve-outs is closed (resolved-path
-  matching, verified). Accepted: ephemeral temp and a package-manager
-  cache are low-value targets compared to the workspace-integrity the
-  write-set protects.
+  and runs policy-only. (5) Nib's session temp is process-private by mode
+  and location, but an untrusted child can still access everything the
+  Seatbelt profile otherwise permits.
 
 ## 9. Migration & back-compat
 

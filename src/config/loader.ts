@@ -276,6 +276,24 @@ export function sandboxSupportedOnPlatform(platform: NodeJS.Platform = process.p
 }
 
 /**
+ * Whether this session has an OS-enforced containment boundary. This is kept
+ * separate from the profile policy: a non-macOS host can evaluate profile
+ * rules, but cannot safely let the interactive auto-approve posture execute
+ * an otherwise ordinary ask without a mechanical boundary.
+ */
+export function hasActiveSandboxContainment(
+  config: Pick<DeepCodeSettings, "permissionProfile" | "sandbox">,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  return Boolean(
+    config.permissionProfile &&
+    config.permissionProfile.level !== "unrestricted" &&
+    config.sandbox?.enabled &&
+    sandboxSupportedOnPlatform(platform),
+  );
+}
+
+/**
  * States the effective containment guarantee for the startup UI. Permission
  * prompts still work without it, but they are consent rather than a boundary
  * around the user's account and filesystem.
@@ -287,7 +305,7 @@ export function containmentWarning(
   if (!config.permissionProfile || config.permissionProfile.level === "unrestricted" || !config.sandbox?.enabled) {
     return "⚠ No active OS containment — approvals run with your account's normal access.";
   }
-  if (!sandboxSupportedOnPlatform(platform)) {
+  if (!hasActiveSandboxContainment(config, platform)) {
     return "⚠ OS containment is configured, but the platform cannot enforce it — approvals run policy-only.";
   }
   return undefined;

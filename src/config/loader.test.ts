@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, statSync, rmSync, 
 import { join } from "node:path";
 import { projectDirPath, projectSettingsPath } from "./paths.js";
 import { tmpdir } from "node:os";
-import { containmentWarning, loadConfig, migrateLegacyPermissions, resolveHome, sandboxSupportedOnPlatform } from "./loader.js";
+import { containmentWarning, hasActiveSandboxContainment, loadConfig, migrateLegacyPermissions, resolveHome, sandboxSupportedOnPlatform } from "./loader.js";
 import { homedir } from "node:os";
 
 describe("validatePermissions (rule shape)", () => {
@@ -82,6 +82,14 @@ describe("validatePermissions (rule shape)", () => {
 });
 
 describe("containmentWarning", () => {
+  it("reports containment active only when the OS can enforce the enabled profile", () => {
+    const protectedConfig = { permissionProfile: { level: "workspace-write" as const }, sandbox: { enabled: true } };
+    expect(hasActiveSandboxContainment(protectedConfig, "darwin")).toBe(true);
+    expect(hasActiveSandboxContainment(protectedConfig, "linux")).toBe(false);
+    expect(hasActiveSandboxContainment({ permissionProfile: { level: "unrestricted" }, sandbox: { enabled: true } }, "darwin")).toBe(false);
+    expect(hasActiveSandboxContainment({ permissionProfile: { level: "workspace-write" }, sandbox: { enabled: false } }, "darwin")).toBe(false);
+  });
+
   it("warns when no OS containment is active", () => {
     expect(containmentWarning({}, "darwin")).toContain("No active OS containment");
   });

@@ -37,7 +37,7 @@ import { MemoryStore } from "./memory/store.js";
 import { SkillLoader, createLoadSkillTool, type SkillDef } from "./skills/index.js";
 import { AgentLoader, type AgentDef } from "./agents/index.js";
 import { CommandLoader, type CommandDef } from "./commands/index.js";
-import { containmentWarning, loadConfig } from "./config/loader.js";
+import { containmentWarning, hasActiveSandboxContainment, loadConfig } from "./config/loader.js";
 import { projectSettingsPath } from "./config/paths.js";
 import { checkSettingsTrust, trustSettings, stripExecutionKeys } from "./config/settings-trust.js";
 import { checkFolderTrust, trustFolder, buildFolderContentSummary, hasGatedContent } from "./config/folder-trust.js";
@@ -932,6 +932,7 @@ async function main() {
 
     const appCtx = {
       mutable: shared,
+      autoApproveAllowed: hasActiveSandboxContainment(configResult.config),
       getProvider,
       sessionId,
       permissions,

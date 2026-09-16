@@ -1240,7 +1240,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           // never a secret-adjacent path guard — both must always surface the
           // real prompt, regardless of posture. "posture" (not true) tells
           // agent.ts to record allow-by-posture instead of ask-approved.
-          if (ctx.mutable.posture === "autoApprove" && !wasUnresolved && !isGuarded && !oneTimeOnly) {
+          if (ctx.autoApproveAllowed && ctx.mutable.posture === "autoApprove" && !wasUnresolved && !isGuarded && !oneTimeOnly) {
             return "posture";
           }
 

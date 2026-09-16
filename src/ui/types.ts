@@ -113,6 +113,11 @@ export interface WorkflowIntegrationConfig {
 export interface AppContext {
   mutable: MutableState;
 
+  /** True only while the current session has an OS-enforced sandbox boundary.
+   * Without it, autoApprove remains selectable but continues to show ordinary
+   * permission prompts. */
+  autoApproveAllowed?: boolean;
+
   getProvider: () => Provider;
   sessionId: string;
   /** Lifecycle hooks dispatcher (docs/hooks-spec.md). Undefined when the

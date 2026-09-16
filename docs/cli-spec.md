@@ -191,8 +191,9 @@ expansion time). Shipped 2026-08-13 (feature-plans.md §5).
 | Ctrl+E | Stream an AI explanation of a pending permission prompt |
 
 Posture semantics (permission-spec.md): `normal` asks per policy;
-`autoApprove` bypasses ordinary rule-derived asks but **never**
-unresolved/guarded tiers; `plan` is read-only and requires a
+`autoApprove` bypasses ordinary rule-derived asks only while OS containment is
+active and **never** bypasses unresolved/guarded tiers. If the sandbox is
+disabled or unavailable, ordinary asks continue to prompt. `plan` is read-only and requires a
 `<proposed_plan>` block before implementing.
 
 **Profile level is NOT on the status line** (decided 2026-08-14): the

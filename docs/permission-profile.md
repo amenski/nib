@@ -204,7 +204,9 @@ secret-adjacent reads, session rules, audit) stays.
   (manual / autoApprove / plan) layered above both. `autoApprove` never
   touches a profile deny (layers 1–2 precede it). `plan` aligns naturally
   with `strict-sandbox` but does not set it — switching levels is explicit
-  config, not a posture side effect.
+  config, not a posture side effect. If the OS sandbox is disabled or
+  unavailable, `autoApprove` does not bypass ordinary asks: policy still
+  evaluates, but consent is not containment.
 - **Guarded tiers.** Survive untouched and apply *after* the profile:
   `curl` egress remains always-prompt even under `unrestricted`, because
   bash's network reach is not profile-expressible (see §7).

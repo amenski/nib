@@ -593,6 +593,49 @@ describe("permission profile overlay — consolidation M.1 (§5)", () => {
     await flush();
     expect(await askPromise).toBe(true);
   });
+
+  it("auto-approve still prompts when OS containment is unavailable", async () => {
+    let askPromise: Promise<boolean> | null = null;
+    const ctx = makeAskCtx(async (_input: string, cb: any) => {
+      askPromise = cb.askUser("run_bash", { command: "echo hi" });
+      return { stopReason: "done", messages: [], newMessages: [] };
+    }, "workspace-write");
+    ctx.mutable.posture = "autoApprove";
+    ctx.autoApproveAllowed = false;
+    const inst = render(<App ctx={ctx} />);
+    mounted.push(inst);
+    inst.stdin.write("run it");
+    await flush();
+    inst.stdin.write("\r");
+    await flush();
+    await flush();
+
+    expect(stripAnsi(inst.lastFrame() ?? "")).toContain("Permission required");
+    expect(askPromise).toBeInstanceOf(Promise);
+    inst.stdin.write("1");
+    await flush();
+    expect(await askPromise).toBe(true);
+  });
+
+  it("auto-approve bypasses an ordinary ask only with OS containment", async () => {
+    let askResult: unknown = "unresolved";
+    const ctx = makeAskCtx(async (_input: string, cb: any) => {
+      askResult = await cb.askUser("run_bash", { command: "echo hi" });
+      return { stopReason: "done", messages: [], newMessages: [] };
+    }, "workspace-write");
+    ctx.mutable.posture = "autoApprove";
+    ctx.autoApproveAllowed = true;
+    const inst = render(<App ctx={ctx} />);
+    mounted.push(inst);
+    inst.stdin.write("run it");
+    await flush();
+    inst.stdin.write("\r");
+    await flush();
+    await flush();
+
+    expect(askResult).toBe("posture");
+    expect(stripAnsi(inst.lastFrame() ?? "")).not.toContain("Permission required");
+  });
 });
 
 describe("background jobs (plan §3)", () => {

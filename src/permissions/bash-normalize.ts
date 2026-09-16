@@ -173,6 +173,28 @@ export interface BashSubjectResult {
   wasUnresolved: boolean;
 }
 
+/**
+ * Prefix for the persisted exact-match representation of a resolved compound
+ * Bash call. The JSON array is deliberately kept in the existing `pattern`
+ * field so settings files need no schema migration; the prefix makes this
+ * representation unambiguous and prevents it being confused with a literal
+ * shell command.
+ */
+export const BASH_COMPOUND_PATTERN_PREFIX = "nib-compound-v1:";
+
+/**
+ * Canonical exact-match subject for an approval. A single resolved segment
+ * keeps the historical literal pattern. Multiple segments use a versioned
+ * JSON array so matching is segment-aware and an edited segment cannot reuse
+ * the approval. Unresolved shell has no canonical approval subject.
+ */
+export function buildBashApprovalPattern(command: string): string | null {
+  const result = buildBashSubject(command);
+  if (result.wasUnresolved || result.segments.length === 0) return null;
+  if (result.segments.length === 1) return result.segments[0];
+  return `${BASH_COMPOUND_PATTERN_PREFIX}${JSON.stringify(result.segments)}`;
+}
+
 export function buildBashSubject(command: string): BashSubjectResult {
   const { text, failedUnwrap } = detectWrapper(command);
   if (failedUnwrap) {

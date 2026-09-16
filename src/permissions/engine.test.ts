@@ -232,6 +232,74 @@ describe("PermissionEngine.resolve", () => {
       expect(result.action).toBe("ask");
       expect(result.wasUnresolved).toBe(true);
     });
+
+    it("matches an exact approval for the same harmless compound, but not an altered segment", () => {
+      const command = "echo one && echo two";
+      const approved = engine.buildDefaultRule("run_bash", { command });
+      expect(approved.pattern).toMatch(/^nib-compound-v1:/);
+
+      engine.approveForSession(approved);
+      expect(engine.resolve("run_bash", { command }).action).toBe("allow");
+      expect(engine.resolve("run_bash", { command: "echo one && echo three" }).action).toBe("ask");
+    });
+
+    it("uses the same segment-aware semantics for foreground and background Bash without sharing scopes", () => {
+      const command = "echo one && echo two";
+      const foreground = new PermissionEngine(undefined, "/workspace");
+      const background = new PermissionEngine(undefined, "/workspace");
+
+      foreground.approveForSession(foreground.buildDefaultRule("run_bash", { command }));
+      background.approveForSession(background.buildDefaultRule("run_bash_background", { command }));
+
+      expect(foreground.resolve("run_bash", { command }).action).toBe("allow");
+      expect(background.resolve("run_bash_background", { command }).action).toBe("allow");
+      expect(foreground.resolve("run_bash_background", { command }).action).toBe("ask");
+    });
+  });
+
+  describe("compound approval persistence safety", () => {
+    it("persists a harmless canonical compound approval and reloads it", () => {
+      const dir = mkdtempSync(join(tmpdir(), "nib-engine-compound-persist-"));
+      try {
+        const command = "echo one && echo two";
+        const scoped = new PermissionEngine(undefined, dir);
+        scoped.approveAlways(scoped.buildDefaultRule("run_bash", { command }));
+
+        const written = JSON.parse(readFileSync(projectSettingsPath(dir), "utf8"));
+        expect(written.permissions.rules).toEqual([
+          { tool: "run_bash", pattern: expect.stringMatching(/^nib-compound-v1:/), action: "allow" },
+        ]);
+        const reloaded = new PermissionEngine(
+          { rules: written.permissions.rules.map((r: { tool: string; pattern: string; action: string }) => ({ ...r, kind: "exact", origin: "config" })) },
+          dir,
+        );
+        expect(reloaded.resolve("run_bash", { command }).action).toBe("allow");
+        expect(reloaded.resolve("run_bash", { command: "echo one && echo three" }).action).toBe("ask");
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("does not persist destructive or unresolved Bash approvals", () => {
+      const dir = mkdtempSync(join(tmpdir(), "nib-engine-compound-unsafe-"));
+      try {
+        const scoped = new PermissionEngine(undefined, dir);
+        const destructive = "git reset --hard HEAD~1";
+        scoped.approveAlways(
+          scoped.buildDefaultRule("run_bash", { command: destructive }),
+          scoped.resolve("run_bash", { command: destructive }).winningRule,
+        );
+        expect(existsSync(projectSettingsPath(dir))).toBe(false);
+        expect(scoped.resolve("run_bash", { command: destructive }).action).toBe("allow");
+
+        const unresolved = "echo $(whoami)";
+        scoped.approveAlways(scoped.buildDefaultRule("run_bash", { command: unresolved }));
+        expect(existsSync(projectSettingsPath(dir))).toBe(false);
+        expect(scoped.resolve("run_bash", { command: unresolved }).action).toBe("ask");
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
   });
 
   describe("run_bash: unresolved-ask fail-closed", () => {

@@ -18,6 +18,8 @@ export interface PermissionRule {
   pattern: string;
   action: PermissionAction;
   origin: RuleOrigin;
+  /** Approval-only hint; never serialized. Unsafe approvals stay session-only. */
+  persistable?: boolean;
 }
 
 export interface PermissionSubject {

@@ -3,7 +3,7 @@ import { existsSync, readFileSync, renameSync, statSync, realpathSync } from "no
 import { randomBytes } from "node:crypto";
 import type { PermissionAction, PermissionRule, PermissionSubject } from "./rules.js";
 import { buildSubject, patternMatches, specificity, serializeRulePattern, extractHostname, extractToolSubject } from "./rules.js";
-import { buildBashSubject } from "./bash-normalize.js";
+import { buildBashApprovalPattern, buildBashSubject } from "./bash-normalize.js";
 import { BUILTIN_DESTRUCTIVE_RULES } from "./destructive.js";
 import { BUILTIN_GUARDED_RULES } from "./guarded.js";
 import { BUILTIN_ALLOW_RULES } from "./builtin-allow.js";
@@ -366,6 +366,26 @@ export class PermissionEngine {
     // wasUnresolved is fail-closed: it can only push the result toward ask,
     // never let it resolve weaker than ask (an actual deny still wins outright).
     const finalAction = wasUnresolved && combined.action === "allow" ? "ask" : combined.action;
+    if (finalAction === "deny" || wasUnresolved) {
+      return { action: finalAction, winningRule: combined.winningRule, wasUnresolved: combined.wasUnresolved || wasUnresolved };
+    }
+
+    // A compound approval is an exact match on the complete normalized
+    // segment list, not an allow rule for any one segment. It may satisfy an
+    // ordinary ask for the same complete call, but never weakens a segment
+    // deny and never applies to a different tool (foreground/background are
+    // intentionally separate permission subjects).
+    const canonical = buildBashApprovalPattern(command);
+    const compoundApproval = canonical && this.highestSpecificity(
+      [...this.configRules, ...this.sessionRules].filter(
+        (rule) => rule.tool === toolName && rule.kind === "exact" &&
+          rule.action === "allow" && rule.pattern === canonical,
+      ),
+    );
+    if (compoundApproval) {
+      return { action: "allow", winningRule: compoundApproval, wasUnresolved: combined.wasUnresolved };
+    }
+
     return { action: finalAction, winningRule: combined.winningRule, wasUnresolved: combined.wasUnresolved || wasUnresolved };
   }
 
@@ -519,7 +539,27 @@ export class PermissionEngine {
   buildDefaultRule(toolName: string, args?: Record<string, unknown>): PermissionRule {
     const a = args ?? {};
     if (toolName === "run_bash" || toolName === "run_bash_background") {
-      return { tool: toolName, kind: "exact", pattern: String(a.command ?? ""), action: "allow", origin: "config" };
+      const command = String(a.command ?? "");
+      const pattern = buildBashApprovalPattern(command);
+      const { segments, wasUnresolved } = buildBashSubject(command);
+      const hasDestructiveSegment = segments.some((segment) =>
+        BUILTIN_DESTRUCTIVE_RULES.some((builtin) =>
+          patternMatches(
+            toolName === "run_bash_background" && builtin.tool === "run_bash"
+              ? { ...builtin, tool: toolName }
+              : builtin,
+            { tool: toolName, text: segment },
+          ),
+        ),
+      );
+      return {
+        tool: toolName,
+        kind: "exact",
+        pattern: pattern ?? command,
+        action: "allow",
+        origin: "config",
+        ...(wasUnresolved || hasDestructiveSegment ? { persistable: false } : {}),
+      };
     }
     if (toolName === "web_fetch" || toolName === "view_image") {
       const raw = String(a.url ?? "");
@@ -717,6 +757,20 @@ export class PermissionEngine {
   approveAlways(rule: PermissionRule, matchedBuiltin?: PermissionRule): void {
     if (this.isInvalidApprovalRule(rule)) return;
     const narrowed = matchedBuiltin ? this.narrowToExact(rule, matchedBuiltin) : rule;
+    // Unsafe Bash approvals may be granted for this process, but never become
+    // a durable project rule. Unresolved shell has no canonical subject and
+    // therefore remains prompt-only; destructive commands retain the legacy
+    // in-memory approval while avoiding persistence.
+    const unresolvedBashApproval =
+      (narrowed.tool === "run_bash" || narrowed.tool === "run_bash_background") &&
+      buildBashSubject(narrowed.pattern).wasUnresolved;
+    const destructiveApproval = matchedBuiltin?.origin === "builtin-destructive";
+    if (narrowed.persistable === false || unresolvedBashApproval || destructiveApproval) {
+      if (destructiveApproval) {
+        this.approveForSession(narrowed, matchedBuiltin);
+      }
+      return;
+    }
     const configRule: PermissionRule = { ...narrowed, origin: "config" };
     this.configRules.push(configRule);
     this.persist();

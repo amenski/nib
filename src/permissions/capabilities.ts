@@ -6,6 +6,7 @@
 import { resolve } from "node:path";
 import { isPathWithinWriteRoots, resolveWriteRoots } from "../sandbox/write-roots.js";
 import type { ProfileLevel } from "./profile.js";
+import { classifyCommand, type CommandClassificationResult } from "./command-classifier.js";
 
 export type Capability =
   | { type: "fs.read"; path: string }
@@ -24,6 +25,8 @@ export interface CapabilityPlan {
   status: "known" | "unknown";
   reason?: string;
   allowPersistentApproval: boolean;
+  /** Advisory only; never changes capability status or permission authority. */
+  commandClassification?: CommandClassificationResult;
 }
 
 export type CapabilityExtractor = (args: Record<string, unknown>, workingDir: string) => CapabilityPlan;
@@ -76,12 +79,13 @@ export function unknownCapabilityPlan(tool: string, reason: string): CapabilityP
   };
 }
 
-function knownCapabilityPlan(tool: string, capabilities: Capability[]): CapabilityPlan {
+function knownCapabilityPlan(tool: string, capabilities: Capability[], commandClassification?: CommandClassificationResult): CapabilityPlan {
   return {
     tool,
     capabilities: Object.freeze(capabilities.map((capability) => Object.freeze(capability))),
     status: "known",
     allowPersistentApproval: false,
+    ...(commandClassification ? { commandClassification: Object.freeze(commandClassification) } : {}),
   };
 }
 
@@ -140,7 +144,7 @@ export function extractCapabilityPlan(
   if (tool === "run_bash" || tool === "run_bash_background") {
     const command = args.command;
     return typeof command === "string" && command.trim()
-      ? knownCapabilityPlan(tool, [{ type: "process.execute", command }])
+      ? knownCapabilityPlan(tool, [{ type: "process.execute", command }], classifyCommand(command))
       : unknownCapabilityPlan(tool, "command is missing");
   }
 

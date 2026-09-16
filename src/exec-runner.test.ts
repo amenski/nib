@@ -756,7 +756,7 @@ describe("runExecMode lifecycle hooks (headless)", () => {
   }
 
   it("blocks the run when a UserPromptSubmit hook exits 2, notifying on stderr", async () => {
-    writeGlobalSettings({ hooks: { UserPromptSubmit: [{ command: "exit 2" }] } });
+    writeGlobalSettings({ sandbox: { enabled: false }, hooks: { UserPromptSubmit: [{ command: "exit 2" }] } });
 
     const { code, stderr } = await run();
 
@@ -766,7 +766,7 @@ describe("runExecMode lifecycle hooks (headless)", () => {
   });
 
   it("appends exit-0 UserPromptSubmit stdout to the prompt as context", async () => {
-    writeGlobalSettings({ hooks: { UserPromptSubmit: [{ command: "echo HOOK-CONTEXT" }] } });
+    writeGlobalSettings({ sandbox: { enabled: false }, hooks: { UserPromptSubmit: [{ command: "echo HOOK-CONTEXT" }] } });
     const seenMessages: Array<Array<{ role: string; content?: string }>> = [];
     providerFactory = () => ({
       name: "fake",

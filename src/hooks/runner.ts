@@ -2,6 +2,8 @@ import { spawn } from "node:child_process";
 import type { NotifyInput } from "../notify.js";
 import { redactSecrets } from "../sessions/redact.js";
 import { wrapUntrusted } from "../tools/untrusted-content.js";
+import { buildChildEnvironment, prepareSandboxedShell } from "../sandbox/launcher.js";
+import type { SandboxLevel } from "../sandbox/seatbelt.js";
 import {
   hookContentHash,
   hookTrustKey,
@@ -57,6 +59,12 @@ export interface HookRunnerOptions {
   timeoutMs?: number;
   /** Override for the process-group killer (tests only). */
   killFn?: typeof process.kill;
+  /** OS-sandbox level inherited from the active session profile. */
+  sandboxLevel?: SandboxLevel;
+  /** Additional workspace-write roots inherited from the active session. */
+  writeRoots?: string[];
+  /** Private session scratch directory inherited by the hook child. */
+  sessionTempDir?: string;
 }
 
 export class HookRunner {
@@ -69,6 +77,9 @@ export class HookRunner {
   private getPermissionMode: () => string;
   private timeoutMs: number;
   private killFn: typeof process.kill = process.kill.bind(process);
+  private sandboxLevel: SandboxLevel | undefined;
+  private writeRoots: string[] | undefined;
+  private sessionTempDir: string | undefined;
   /** Per-session trust decisions, keyed by trust key — an "n" asks only once per session. */
   private sessionTrust = new Map<string, boolean>();
   /** mtime-gated content-hash cache for file commands (trust.ts, fix 1). */
@@ -93,6 +104,9 @@ export class HookRunner {
     this.getPermissionMode = options.getPermissionMode;
     this.timeoutMs = options.timeoutMs ?? HOOK_TIMEOUT_MS;
     this.killFn = options.killFn ?? process.kill.bind(process);
+    this.sandboxLevel = options.sandboxLevel;
+    this.writeRoots = options.writeRoots;
+    this.sessionTempDir = options.sessionTempDir;
   }
 
   get enabled(): boolean {
@@ -223,15 +237,18 @@ export class HookRunner {
     payloadLine: string,
   ): Promise<{ exitCode: number | null; timedOut: boolean; stdout: string; stderr: string; error?: string }> {
     return new Promise((resolve) => {
-      const env: Record<string, string> = {};
-      for (const k of ["PATH", "HOME", "TERM"] as const) {
-        const v = process.env[k];
-        if (v !== undefined) env[k] = v;
-      }
+      const env = buildChildEnvironment(this.sessionTempDir);
 
       let child;
       try {
-        child = spawn("/bin/sh", ["-c", entry.command], {
+        const shell = prepareSandboxedShell(entry.command, {
+          cwd: this.cwd,
+          trustedRoot: this.cwd,
+          sandboxLevel: this.sandboxLevel,
+          writeRoots: this.writeRoots,
+          sessionTempDir: this.sessionTempDir,
+        });
+        child = spawn(shell.file, shell.args, {
           cwd: this.cwd,
           env,
           stdio: ["pipe", "pipe", "pipe"],

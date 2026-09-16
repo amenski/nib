@@ -270,6 +270,12 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
       cwd: options.projectRoot,
       sessionId: () => options.resumeSessionId,
       getPermissionMode: () => "headless",
+      sandboxLevel:
+        effectiveConfig.sandbox?.enabled && effectiveConfig.permissionProfile?.level !== "unrestricted"
+          ? effectiveConfig.permissionProfile?.level
+          : undefined,
+      writeRoots,
+      sessionTempDir: sessionTemp.path,
     });
     hooks.verifyTrust();
     const askUser = async (toolName: string, args: Record<string, unknown>): Promise<boolean> => {

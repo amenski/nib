@@ -404,6 +404,12 @@ async function main() {
     cwd: process.cwd(),
     sessionId: () => sessionId,
     getPermissionMode: () => shared.posture,
+    sandboxLevel:
+      configResult.config.sandbox?.enabled && configResult.config.permissionProfile?.level !== "unrestricted"
+        ? configResult.config.permissionProfile?.level
+        : undefined,
+    writeRoots: [...(configResult.config.sandbox?.writeRoots ?? []), ...additionalWriteRoots],
+    sessionTempDir: sessionTemp.path,
   });
   // Startup trust check (spec §6): headless skips unseen project hooks with a
   // stderr warning; interactive runs defer the ask to first dispatch.

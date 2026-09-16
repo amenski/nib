@@ -243,6 +243,18 @@ describe("HookRunner dispatch", () => {
     }
   });
 
+  it("passes the private session temp directory to hook children", async () => {
+    const sessionTemp = join(TEST_DIR, "session-temp");
+    mkdirSync(sessionTemp, { recursive: true });
+    const runner = makeRunner(makeConfig({
+      PreToolUse: [{ command: "printf '%s\\n%s\\n%s\\n%s\\n' \"$TMPDIR\" \"$TMP\" \"$TEMP\" \"$npm_config_cache\"" }],
+    }), { sessionTempDir: sessionTemp });
+
+    const result = await runner.dispatch("PreToolUse", { tool_name: "run_bash", tool_input: {} });
+
+    expect(result.stdout).toBe(`${sessionTemp}\n${sessionTemp}\n${sessionTemp}\n${sessionTemp}/npm-cache\n`);
+  });
+
   it("spawns with cwd = project root", async () => {
     const runner = makeRunner(makeConfig({
       PreToolUse: [{ command: "pwd" }],

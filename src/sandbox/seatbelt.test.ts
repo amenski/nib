@@ -95,10 +95,10 @@ describe("buildSeatbeltProfile", () => {
     expect(p).not.toContain("(subpath");
   });
 
-  it("workspace-write: strict core plus the workspace write-set and network", () => {
+  it("workspace-write: strict core plus the workspace write-set, without direct egress", () => {
     const p = buildSeatbeltProfile("workspace-write", "/private/tmp/ws");
     expect(p).toContain('(allow file-write* (subpath "/private/tmp/ws"))');
-    expect(p).toContain("(allow network-outbound)");
+    expect(p).not.toContain("network-outbound");
     expect(p).toContain("(deny default)");
   });
 
@@ -346,13 +346,12 @@ describe("seatbelt enforcement (macOS)", () => {
     }
   }, 25_000);
 
-  itOnDarwin("workspace-write: network is allowed (server reached)", async () => {
+  itOnDarwin("workspace-write: network attempts are denied (server never reached)", async () => {
     const { server, port, connections } = await startHttpServer();
     try {
       const result = await runCommand(FETCH_OK(port), process.cwd(), "workspace-write");
-      expect(result.exit).toBe(0);
-      expect(result.stdout).toContain("NETOK 200");
-      expect(connections()).toBeGreaterThan(0);
+      expect(result.exit).not.toBe(0);
+      expect(connections()).toBe(0);
     } finally {
       server.close();
     }

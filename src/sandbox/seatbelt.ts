@@ -11,7 +11,7 @@ import { resolveWriteRoots } from "./write-roots.js";
  * The policy layer (ProfileEvaluator, src/permissions/profile.ts) decides
  * allow/deny per call; the Seatbelt layer makes the level's defaults hold in
  * the OS for bash children: strict-sandbox = read-only fs + no network,
- * workspace-write = write only workspace roots + network on, with two
+ * workspace-write = write only workspace roots + no direct network, with a
  * deliberate, battery-proven carve-outs to the write boundary (ephemeral
  * temp: literal /tmp + the session $TMPDIR; npm cache: ~/.npm — see
  * {@link workspaceWriteCarveouts}). The .git always-denied set is
@@ -19,16 +19,10 @@ import { resolveWriteRoots } from "./write-roots.js";
  * policy layer already enforces it (documented residual,
  * permission-profile.md §8).
  *
- * Two-layer network rationale (all-or-nothing): SBPL's
- * `(allow network-outbound (remote ip "*:443"))` matches IPs only — it
- * cannot express the profile's hostname allowlist (hostnames resolve after
- * the sandbox filter runs). So the Seatbelt layer gates network on/off per
- * level (strict-sandbox off, workspace-write on) and host-level
- * allowlisting stays with the policy layer, which sees the hostname. The
- * deny side is airtight (deny default denies every connect); the allow
- * side is intentionally coarser than the policy — a workspace-write bash
- * child can reach any host, though the policy layer still asks/denies
- * egress via the guarded tier and the profile's network rules.
+ * Seatbelt cannot safely enforce hostname allowlists because it filters
+ * resolved IPs, not hostnames. Therefore workspace-write denies direct
+ * egress by default; a future network broker must provide any scoped
+ * exception rather than granting arbitrary child processes the network.
  *
  * macOS-only. On any other platform `sandboxPrefix` returns null (plain
  * spawn args, policy-only) — the loader emits a one-time startup notice
@@ -100,7 +94,6 @@ export function buildSeatbeltProfile(
     for (const root of roots) {
       lines.push(`(allow file-write* (subpath "${sbplQuote(root)}"))`);
     }
-    lines.push("(allow network-outbound)");
   }
   return lines.join("\n");
 }

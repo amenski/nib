@@ -1,9 +1,9 @@
 import { readFile, writeFile, mkdir, stat } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { dirname } from "node:path";
 import type { ToolOutput, ToolDef } from "../types.js";
 import type { ToolHandler, ToolContext } from "./types.js";
 import { ToolRegistry } from "./registry.js";
-import { isPathWithinWriteRoots, realpathNearestAncestor } from "../sandbox/write-roots.js";
+import { extractApplyPatchPlan } from "../permissions/capabilities.js";
 
 function countOccurrences(str: string, search: string): number {
   let count = 0;
@@ -235,13 +235,19 @@ const applyPatchHandler: ToolHandler = async (args, ctx) => {
     return { content: "Empty patch, nothing to apply." };
   }
 
+  const plan = extractApplyPatchPlan(args, ctx.workingDir);
+  if (plan.status !== "known" || plan.tool !== "apply_patch" || !("targets" in plan)) {
+    const message = plan.reason ?? "Patch targets could not be parsed";
+    return { content: message, error: message };
+  }
+
+  const targetByRawPath = new Map(plan.targets.map((target) => [target.rawPath, target.path]));
   const rawSections = splitMultiFileDiff(patch);
-  const workspaceRoot = realpathNearestAncestor(ctx.workingDir);
   const sections = new Map<string, string>();
   for (const [rawPath, diffText] of rawSections) {
-    const filePath = resolve(ctx.workingDir, rawPath);
-    if (!isPathWithinWriteRoots(filePath, [workspaceRoot])) {
-      const message = `Patch target escapes the working directory: ${rawPath}`;
+    const filePath = targetByRawPath.get(rawPath);
+    if (!filePath) {
+      const message = `Patch target was not authorized: ${rawPath}`;
       return { content: message, error: message };
     }
     sections.set(filePath, diffText);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -12,21 +12,25 @@ import { wrapUntrusted } from "../tools/untrusted-content.js";
 import type { ToolContext } from "../tools/types.js";
 import type { SandboxLevel } from "./seatbelt.js";
 
-// ── hostile-repository fixture (release gate 4) ──
+// ── hostile input fixtures: untrusted code and content (release gate 4) ──
 //
-// A "malicious repository" is one a user may clone or open without reading it:
-// its files can carry instruction-override text, and its `.git/hooks` can carry
-// arbitrary code that runs the moment the user performs an ordinary Git
-// operation. This fixture combines both in one disposable repo and checks the
-// two different things they attack:
+// Three shapes of input a user has not read, each synthesized and disposable:
 //
-//   1. The repository's *content* entering the model's context — read through
-//      the real `read_file` handler, which must mark it as untrusted data and
-//      strip terminal control bytes (security-spec.md T12/T14).
-//   2. The repository's *code* executing on an ordinary `git commit` — the
-//      hook is spawned by git, which is a launch path no other probe in this
-//      release exercises (child-paths.test.ts covers npm, MCP, hooks-runner,
-//      statusline, notify, and Bash; git's own hook spawn is its own thing).
+//   1. A malicious *repository*'s files: instruction-override text that reaches
+//      the model through the real `read_file` handler, which must mark it as
+//      untrusted data and strip terminal control bytes (T12/T14).
+//   2. A malicious repository's *code*: a `.git/hooks/post-commit` that runs on
+//      an ordinary `git commit`. Git's own hook spawn is a launch path no other
+//      probe in this release exercises (child-paths.test.ts covers npm, MCP,
+//      hooks-runner, statusline, notify, and Bash; git spawning its own hook is
+//      a separate path).
+//   3. A malicious *dependency*: a local package whose `postinstall` runs during
+//      `npm install`. A real hostile dependency arrives from a registry, which
+//      these probes may not contact — but `npm install ./local-dir` runs the
+//      same install-script machinery with no network at all, so the mechanism
+//      is measurable rather than assumed. (Measured 2026-09-16: it behaves like
+//      every other package-script surface, and `--ignore-scripts` is not what
+//      contains it.)
 //
 // The permission/settings half of a hostile repo — a committed settings file
 // trying to grant itself permissions, profiles, or a weaker sandbox — is
@@ -35,9 +39,15 @@ import type { SandboxLevel } from "./seatbelt.js";
 // and is deliberately not duplicated here.
 //
 // Probe rule, as everywhere in this release: a failed command proves nothing
-// without an unsandboxed control run through the same path. The control here
-// commits an equally hostile repo with no level and must read the canary, write
-// the hook, and reach the listener.
+// without an unsandboxed control run through the same path. Each control here
+// runs the identical fixture with no level and must read the canary, write the
+// hook, and reach the listener.
+//
+// Canaries live under the real `$HOME` on purpose. The child read boundary is
+// `$HOME`-shaped (the gate-1 residual recorded in
+// `docs/security-architecture-plan.md`), so a canary under `$TMPDIR` would be
+// readable in both directions and would test the recorded residual instead of
+// the mechanism.
 
 const onDarwin = process.platform === "darwin";
 const itOnDarwin = it.skipIf(!onDarwin);
@@ -227,4 +237,119 @@ describe("hostile repository: its hook code on an ordinary git commit (macOS)", 
       f.cleanup();
     }
   }, 90_000);
+});
+
+interface DepFixture {
+  root: string;
+  ws: string;
+  canaryPath: string;
+  reportPath: string;
+  sessionDir: string;
+  cleanup: () => void;
+}
+
+/** A workspace with one local dependency whose postinstall probes and reports. */
+function depFixture(): DepFixture {
+  const root = mkdtempSync(join(homedir(), ".nib-hostile-dep-"));
+  const ws = join(root, "ws");
+  const dep = join(ws, "hostile-dep");
+  const sibling = join(root, "sibling");
+  mkdirSync(dep, { recursive: true });
+  mkdirSync(sibling, { recursive: true });
+  const canaryPath = join(sibling, "canary.txt");
+  writeFileSync(canaryPath, CANARY + "\n");
+  writeFileSync(join(ws, "package.json"), JSON.stringify({ name: "nib-hostile-host", version: "1.0.0", private: true }));
+  writeFileSync(
+    join(dep, "package.json"),
+    JSON.stringify({ name: "hostile-dep", version: "1.0.0", scripts: { postinstall: "node probe.js" } }),
+  );
+  return {
+    root,
+    ws,
+    canaryPath,
+    reportPath: join(ws, "dep-report.json"),
+    sessionDir: join(ws, ".nib-session"),
+    cleanup: () => rmSync(root, { recursive: true, force: true }),
+  };
+}
+
+/** The dependency's own install-time code: the same three probes. */
+function installDepProbe(f: DepFixture, url: string): void {
+  rmSync(f.reportPath, { force: true });
+  writeFileSync(
+    join(f.ws, "hostile-dep", "probe.js"),
+    `const fs=require("fs");` +
+      `const out={read:"DENIED",hook:"DENIED",net:"PENDING"};` +
+      `try{out.read=fs.readFileSync(${JSON.stringify(f.canaryPath)},"utf8").slice(0,24)}catch(e){}` +
+      `try{fs.mkdirSync(${JSON.stringify(join(f.ws, ".git", "hooks"))},{recursive:true});` +
+      `fs.writeFileSync(${JSON.stringify(join(f.ws, ".git", "hooks", "pre-commit"))},"evil");out.hook="WROTE"}catch(e){}` +
+      `fs.writeFileSync(${JSON.stringify(f.reportPath)},JSON.stringify(out));` +
+      `fetch(${JSON.stringify(url)}).then(()=>{out.net="REACHED";` +
+      `fs.writeFileSync(${JSON.stringify(f.reportPath)},JSON.stringify(out))})` +
+      `.catch(()=>{out.net="BLOCKED";` +
+      `fs.writeFileSync(${JSON.stringify(f.reportPath)},JSON.stringify(out))});\n`,
+  );
+}
+
+/** Install the local dependency, running its postinstall script. */
+async function installDep(f: DepFixture, level?: SandboxLevel): Promise<string> {
+  // Fresh node_modules and lockfile each run, so postinstall runs again rather
+  // than being skipped as already-installed.
+  rmSync(join(f.ws, "node_modules"), { recursive: true, force: true });
+  rmSync(join(f.ws, "package-lock.json"), { force: true });
+  mkdirSync(f.sessionDir, { recursive: true });
+  const result = await runBashTimed(
+    `npm install ./hostile-dep --no-audit --no-fund; echo "EXIT $?"`,
+    f.ws,
+    f.ws,
+    90_000,
+    false,
+    level,
+    undefined,
+    f.sessionDir,
+  );
+  return result.content + (result.error ? `\n${result.error}` : "");
+}
+
+async function depReport(f: DepFixture): Promise<HookReport> {
+  await waitFor(() => existsSync(f.reportPath));
+  await waitFor(() => (JSON.parse(readFileSync(f.reportPath, "utf8")) as HookReport).net !== "PENDING");
+  return JSON.parse(readFileSync(f.reportPath, "utf8")) as HookReport;
+}
+
+describe("hostile dependency: an install script on `npm install` (macOS)", () => {
+  itOnDarwin("a local dependency's postinstall cannot read the canary, write .git/hooks, or reach the network", async () => {
+    const listener = await startListener();
+    const f = depFixture();
+    try {
+      // Control: the identical install with no level. This is what separates
+      // "contained" from "the install script never ran" — npm skipping scripts,
+      // a package that failed to resolve, or a postinstall that crashed would
+      // all look like containment from the contained side alone.
+      installDepProbe(f, listener.url);
+      const beforeControl = listener.connections();
+      const controlOut = await installDep(f);
+      expect(controlOut).toContain("EXIT 0");
+      const control = await depReport(f);
+      expect(control.read).toBe(CANARY_SEEN);
+      expect(control.hook).toBe("WROTE");
+      expect(control.net).toBe("REACHED");
+      expect(listener.connections() - beforeControl).toBeGreaterThan(0);
+
+      installDepProbe(f, listener.url);
+      const beforeContained = listener.connections();
+      const containedOut = await installDep(f, "workspace-write");
+      // The install itself must still succeed: containment must not be
+      // achieved by breaking package installation.
+      expect(containedOut).toContain("EXIT 0");
+      const contained = await depReport(f);
+      expect(contained.read).toBe("DENIED");
+      expect(contained.hook).toBe("DENIED");
+      expect(contained.net).toBe("BLOCKED");
+      expect(listener.connections() - beforeContained).toBe(0);
+    } finally {
+      listener.close();
+      f.cleanup();
+    }
+  }, 120_000);
 });

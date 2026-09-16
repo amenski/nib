@@ -1,12 +1,23 @@
 # Nib security architecture plan
 
-**Status:** partially implemented · verified 2026-09-16 · release gates open
+**Status:** implemented (phases 0–4) · verified 2026-09-16 · **one release gate
+open (platform-dependent)**, four residuals recorded
 
 This is the reviewed architecture and release-gate record. Phases 0–4 have
 implementation commits, but their checklist completion does **not** imply that
-the release security objective is met. The real macOS child-process probes in
-the release-gate section below found residual confidentiality and persistence
-gaps. Code and tests take precedence over the target architecture here.
+the release security objective is met — the release probes found real defects
+and the record below is written from measurements, not from the checkboxes.
+
+As of 2026-09-16 the measured probes establish: a contained child cannot read
+`$HOME` secrets, cannot write `.git` metadata, and cannot connect — ten egress
+mechanisms, each with an unsandboxed control proving it otherwise could. One
+gate is **not** closed: the darwin "Seatbelt cannot apply" failure needs a host
+that refuses to apply the profile, which this host does not do. Four residuals
+are recorded rather than hidden: the `$HOME`-shaped read boundary, the
+system-resolver path, the forgeable untrusted delimiter, and the
+registry-delivery gap in the dependency probe. See "Release-gate verdict" and
+"Open gate and recorded residuals". Code and tests take precedence over the
+target architecture here.
 
 ## Final decision
 
@@ -15,8 +26,10 @@ Add a small deterministic command classifier afterward as a prompt-reduction
 feature, never as the security boundary.
 
 The original P0 empty-scope and policy-parity defects were fixed in Phases
-0–1. Do not treat that as proof that arbitrary child processes are confined:
-the release gates below remain open.
+0–1. Do not treat that as proof that arbitrary child processes are confined —
+the gate-1..4 measurements below are that proof, and they are narrower than the
+architecture's ambitions: containment is `$HOME`-scoped, and one gate remains
+open for lack of a host that refuses to apply the profile.
 
 ## Architectural decisions to lock before implementation
 
@@ -666,21 +679,35 @@ shell startup files, or another real project, and no fixture generates load.
   still carry private copies of `wrapUntrusted` whose markers are byte-identical
   today. Consolidating those onto `untrusted-content.ts` and then neutralizing
   marker lines in payloads is a product decision, recorded here for gate 5.
-- `src/sandbox/hostile-repo.test.ts` (new) is a disposable repository that is
-  hostile in both ways a repository can be: its README carries an instruction
-  override plus an OSC 52 escape, and its `.git/hooks/post-commit` carries
-  probing code. Read through the real `read_file` handler, the content arrives
-  inside the untrusted delimiters with ESC/BEL stripped and the injection text
-  present as data. Committed through the real shell in a contained child, git
-  fires the hook — git's own spawn path, which no other probe in this release
-  covers — and the hook cannot read the sibling canary, cannot write
-  `.git/hooks`, and cannot reach the listener, while the unsandboxed control on
-  the identical repository does all three. The commit itself succeeds in both
-  directions (`GIT-EXIT 0`), so containment did not break the workflow. The
-  settings half of a hostile repository (a committed `permissions`, `sandbox`,
-  or `permissionProfile` attempting to self-grant) is already measured in
+- `src/sandbox/hostile-input.test.ts` (new) covers three shapes of input a user
+  has not read. **A hostile repository's content:** its README carries an
+  instruction override plus an OSC 52 escape, and read through the real
+  `read_file` handler it arrives inside the untrusted delimiters with ESC/BEL
+  stripped and the injection text present as data. **A hostile repository's
+  code:** a `.git/hooks/post-commit` that runs on an ordinary `git commit` —
+  git's own spawn path, which no other probe in this release covers — and
+  cannot read the sibling canary, cannot write `.git/hooks`, and cannot reach
+  the listener, while the unsandboxed control on the identical repository does
+  all three; the commit itself succeeds in both directions (`GIT-EXIT 0`), so
+  containment did not break the workflow. **A hostile dependency:** a local
+  package whose `postinstall` runs during `npm install`. A real hostile
+  dependency arrives from a registry, which these probes may not contact, but
+  `npm install ./local-dir` runs the same install-script machinery with no
+  network at all — so the mechanism is measured rather than inferred, and
+  measured it behaves like every other package-script surface: canary read
+  denied, `.git/hooks` write denied, connect denied, with an unsandboxed
+  control doing all three and `EXIT 0` in both directions (containment is
+  achieved by denying effects, not by breaking the install). The settings half
+  of a hostile repository (a committed `permissions`, `sandbox`, or
+  `permissionProfile` attempting to self-grant) is already measured in
   `src/permissions/settings-trust.test.ts` and is referenced rather than
   duplicated.
+
+  One property of these fixtures is deliberate and worth stating: every canary
+  lives under the real `$HOME`. Because the child read boundary is `$HOME`-shaped
+  (the gate-1 residual below), a canary under `$TMPDIR` is readable in *both*
+  directions — measured while building this fixture — so a `$TMPDIR` canary
+  would silently test the recorded residual instead of the mechanism.
 - Availability limits are exercised as arithmetic with small deterministic caps,
   never by resource exhaustion: `appendCapped` — the shared bound behind the
   background job streams (1 MiB) and `run_bash`'s foreground buffers (512 KiB) —
@@ -719,34 +746,115 @@ Remaining work before declaring the gates below passed:
    fixtures. Do not write to the real home or contact external endpoints.~~
    **Done 2026-09-16** — see the two gate-4 sections above: ten egress
    mechanisms each with an unsandboxed control and a destination-side counter,
-   the hostile-repository and injection fixtures, and the capped-stream tests.
-   Two residuals are recorded rather than closed: the system resolver
-   (mDNSResponder) path, and the forgeable delimiter convention.
+   the hostile-input and injection fixtures (including a hostile dependency's
+   install script), and the capped-stream tests. Three residuals are recorded
+   rather than closed: the system resolver (mDNSResponder) path, the forgeable
+   delimiter convention, and the `$HOME`-shaped read boundary that bounds how
+   far a canary can be placed.
 5. Re-run the full suite and focused Seatbelt probes after fixing these gaps.
 
-Original gates (open until demonstrated, not implied by phase checkboxes):
+### Release-gate verdict, 2026-09-16
 
-- No P0 issue remains open.
-- All security fixes have exploit tests in both directions.
-- Registry-wide capability coverage is complete.
-- Normal, auto-approve, plan, and headless modes have explicit tests.
-- macOS sandbox-unavailable behavior is tested. *(Partially — gate 3: the
-  structural half is asserted (no caller re-spawns without the profile), but
-  the darwin "Seatbelt cannot apply" failure itself is a recorded residual,
-  because nesting succeeds on this host.)*
-- Unsupported platforms display honest guarantees and fail closed where needed.
-  *(Demonstrated — gate 3, second half.)*
-- A manual adversarial pass covers prompt injection, malicious repositories,
+Environment: this host is a capable runner — nested Seatbelt applies and
+loopback binds, so the macOS probes ran for real rather than being skipped
+(149 files, 2,203 passed, 2 skipped; `tsc --noEmit` clean; `npm run build` →
+`dist/cli.js` 10.31 MB). A gate is closed only where the evidence below
+demonstrates it.
+
+- **No P0 issue remains open — closed.** P0.1–P0.4 were fixed in Phases 0–1 with
+  their acceptance tests. The release probes (gates 1–4) found *new* defects —
+  the unbounded child read, the `.git` write, the contained-MCP launcher
+  off-by-one — and none of them re-opened a P0.
+- **All security fixes have exploit tests in both directions — closed.** Every
+  gate 1–4 fix ships a hostile case and an unsandboxed control through the same
+  entry point: sibling read, `.git` write, egress (ten mechanisms), hostile
+  repository hook, hostile dependency install script. The controls are what make
+  the denials meaningful — a failed command is not evidence of containment.
+- **Registry-wide capability coverage is complete — closed.**
+  `src/permissions/capabilities.test.ts` pins the guarantee mechanically: the
+  sample-args map's keys must equal the registered tool names, so adding a tool
+  without capability data fails the suite, and every registered tool must
+  extract a `known`, non-empty plan. Foreground and background Bash are asserted
+  to produce identical process capabilities. Scope of the claim: coverage is
+  over *registered tools*, which is what the kernel authorizes.
+- **Normal, auto-approve, plan, and headless modes have explicit tests —
+  closed.** 306 tests across `App.streaming.test.tsx` (normal, auto-approve,
+  plan posture), `exec-runner.test.ts` and `exec-runner.subagent.test.ts`
+  (headless, including subagents), with `permissions/profile.test.ts` and
+  `permissions/capabilities.test.ts` covering the policy layer they share.
+- **macOS sandbox-unavailable behavior is tested — OPEN (platform).** The
+  structural half is asserted: no caller re-spawns without the profile, so an
+  application failure is closed rather than open (see the gate-3 section). The
+  failure itself — a darwin host that refuses to apply a profile — cannot be
+  produced here, because nesting succeeds on this host. See "Open gate" below.
+- **Unsupported platforms display honest guarantees and fail closed where
+  needed — closed** (gate 3, second half): `hasActiveSandboxContainment` is
+  false off darwin and for `unrestricted`, `containmentWarning` names which
+  state applies, and auto-approval is refused in that state, asserted in both
+  directions.
+- **A manual adversarial pass covers prompt injection, malicious repositories,
   malicious dependencies, MCP, network exfiltration, persistence, and resource
-  exhaustion. *(Gates 1–4 now automate prompt injection, malicious repositories,
-  MCP (reads and connects), and network exfiltration both directions. **Not**
-  automated: malicious *dependencies* — an `npm install` of a hostile package is
-  not probed, because a real install contacts the registry. The mechanism it
-  would use is the one measured in the npm lifecycle row of
-  `src/sandbox/egress.test.ts` (a package script is a child of npm, which is a
-  child of the shell, and cannot read, write, or connect), so install-time
-  behaviour is an inference from a measured mechanism rather than a measurement
-  of its own — recorded as a residual for gate 5 rather than claimed.)*
+  exhaustion — closed for all seven, one nuance recorded.** Gates 1–4 now
+  automate every category: prompt injection
+  and malicious repositories in `src/tools/untrusted-content.test.ts` and
+  `src/sandbox/hostile-input.test.ts`, malicious dependencies in that file's
+  `npm install` row, MCP reads in `child-paths.test.ts` and connects in
+  `egress.test.ts`, network exfiltration across ten mechanisms in
+  `egress.test.ts`, persistence (`.git`) in `seatbelt.test.ts`, and resource
+  limits in `jobs.test.ts`. The one category not measured *in its real delivery
+  form* is a registry-served dependency: the probe installs a local package,
+  because contacting a registry is out of scope for these fixtures. The
+  install-script mechanism itself — the part that executes attacker code — is
+  measured directly.)*
+
+### Open gate and recorded residuals
+
+**Open gate — macOS sandbox-unavailable behavior (gate 5).** Blocker, stated
+precisely: the behavior under test is a darwin host that *refuses* to apply a
+Seatbelt profile. This host applies profiles successfully (nested `sandbox-exec`
+works, loopback binds), so the failing case cannot be induced here without
+either a container/VM whose sandbox denies `sandbox_apply` or a host with the
+restriction the original managed runner had. What *is* established without it:
+`sandboxPrefix` never returns a non-profile shape for a sandboxed level on
+darwin, so no caller can silently continue unconfined; if the OS refuses, the
+child fails to start. Recommended option, in preference order: (1) run this
+suite once in a runner that refuses nesting and record the observed exit
+behavior here — the smallest change that turns the structural argument into a
+measured one; (2) if no such runner is available, accept the structural argument
+explicitly and close the gate with this paragraph as its evidence of scope.
+Until one of those is done, this gate is **open**, and the release is not
+declared secure on its account.
+
+**Residual 1 — the child read boundary is `$HOME`-shaped.** Reads under the real
+`$HOME` are denied except for a toolchain allowlist, but the profile's core still
+allows `file-read*` generally, so a secret outside `$HOME` (under `/tmp`, `/opt`,
+`/Volumes`, or another configured write root) remains readable by a contained
+child. Measured while building the hostile-dependency fixture: the same probe
+reads a `$TMPDIR` canary under `workspace-write` (and is denied the same canary
+under `$HOME`) — see the gate-4 fixture note. This
+matches the plan's threat model — account secrets and sibling projects live under
+`$HOME` — but it is a real limit on the claim. Product decision required if a
+broader boundary is wanted: the options are (a) deny `file-read*` outside the
+workspace plus a toolchain allowlist, which is the strongest and will break
+under-specified toolchains; (b) deny a configurable list of sensitive roots
+(`/etc/ssh`, `/opt/secrets`, user-nominated paths) and keep the rest readable;
+(c) keep the current shape and warn when a workspace sits outside `$HOME`, so a
+user knows containment is weaker there. This document takes no side; the gate-1
+section records the residual and this paragraph names the decision.
+
+**Residual 2 — `dns.lookup` performs its network I/O outside the process.**
+`getaddrinfo` resolves through mDNSResponder, so no Seatbelt rule applies to it.
+Direct connects are denied (ten mechanisms measured), but "no name can be
+resolved" is not demonstrated. See the gate-4 section.
+
+**Residual 3 — the untrusted delimiter is a convention, not a parser.** A payload
+containing the end marker can close the block early. Recorded, with the
+consolidation-plus-hardening work named as a product decision, in the gate-4
+section.
+
+**Residual 4 — a registry-served dependency is not probed.** The install-script
+mechanism is measured with a local package; the delivery path through a real
+registry is out of scope for these fixtures. See the adversarial-pass note.
 
 ## Existing protections to preserve
 

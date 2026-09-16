@@ -38,3 +38,20 @@ The broker design must prove all of the following before implementation:
 Until those acceptance criteria are demonstrated with adversarial integration
 tests, a user who needs unrestricted networking must run outside the sandbox
 deliberately; Nib will not present that as a narrowly scoped approval.
+
+**Criterion 1 verified 2026-09-16, for the mechanism half of criterion 5.**
+`src/sandbox/egress.test.ts` measures ten egress mechanisms against local
+fixtures, each with an unsandboxed control and a destination-side connection
+counter (error text cannot distinguish denial from refusal — git's contained
+failure and a refused connection are the same message): Node `fetch`, Python
+sockets, Git over HTTP, an npm lifecycle script, a local stdio MCP server, curl
+through a local proxy, UDP to loopback and to reserved TEST-NET-1, a Unix-domain
+daemon socket under `$HOME`, and a DNS A query via a local c-ares resolver. All
+are denied when contained and all succeed when not. No public endpoint is
+contacted. Foreground and background Bash and timeout-migrated jobs are covered
+by the same launcher as the npm/MCP rows; subagent tool calls route through it
+structurally and are not separately probed. One residual is recorded rather than
+closed in `docs/security-architecture-plan.md` (gate 4): `dns.lookup`, which
+resolves in mDNSResponder outside the contained process, so this document's
+claim is "a direct connect is denied", not "no name can be resolved". Criteria
+2–4 and 6 describe the undelivered broker itself and remain unmet.

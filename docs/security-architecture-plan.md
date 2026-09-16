@@ -590,6 +590,105 @@ open. Reproducing the failure itself needs a host where nesting is refused
 (in this session's shell nesting succeeds, so it cannot be reproduced here) —
 residual for the gate-5 review.
 
+### Direct egress (gate 4) — addressed
+
+Claim verified, from `docs/security-network-broker.md`: sandboxed children
+cannot connect directly, including via DNS, proxies, Unix helpers, or spawned
+descendants. No broker is shipped, so direct egress must be closed.
+
+**Why the original probe proved nothing, and what replaced it.** The release
+probe recorded that Git-to-loopback failed and could not separate Seatbelt
+denial from connection refusal. It cannot be separated by reading the child:
+measured 2026-09-16, git's contained failure reads `Failed to connect to
+127.0.0.1 port N … Couldn't connect to server` — byte-identical to a refused
+connection — and both directions exit non-zero (the control fails on the HTTP
+protocol error). Every row in `src/sandbox/egress.test.ts` (new, macOS-gated,
+one `describe` per mechanism so a failure names it) therefore measures the
+**destination's own counter**: a hermetic local listener counts connections or
+datagrams, and each mechanism runs twice — an unsandboxed control that must
+register, and a contained run that must register nothing.
+
+| Mechanism | Control (no level) | Contained (`workspace-write`) | Evidence |
+|---|---|---|---|
+| Node `fetch` → loopback TCP | `REACHED 200` | `BLOCKED` (EPERM) | listener +1 / +0 |
+| Python `socket.create_connection` | `PYREACHED` | `PYFAIL EPERM` | listener +1 / +0 |
+| Git `ls-remote` over HTTP | connects | "Couldn't connect" | listener +1 / +0 |
+| npm lifecycle script (child of a child) | `REACHED` | `BLOCKED` | listener +1 / +0 |
+| local stdio MCP server's own `fetch` | `REACHED` | `BLOCKED` | listener +1 / +0 |
+| `curl` through a local proxy | `CURL-REACHED` | `CURL-FAILED` | listener +1 / +0 |
+| UDP send to loopback | `UDPSENT` | `bind EPERM` | datagrams +1 / +0 |
+| UDP send to 192.0.2.1 (TEST-NET-1) | `UDPSENT` | `bind EPERM` | n/a — reserved, unrouted |
+| Unix-domain daemon socket under `$HOME` | `UNIXREACHED` | `UNIXFAIL EPERM` | listener +1 / +0 |
+| DNS A query via a local c-ares resolver | `ENODATA` (fixture answered) | `ECONNREFUSED` | datagrams +1 / +0 |
+
+Three details that are load-bearing rather than incidental:
+
+- **UDP is closed at socket creation, not at send.** The contained child fails
+  at `bind` with EPERM before any datagram exists, so "no UDP egress" is a
+  stronger statement than the send path alone would support.
+- **DNS is where the counter is indispensable.** Control and contained both
+  print `DNSFAIL`, differing only in errno; the control's `ENODATA` *is* the
+  arrival proof, because that is the fixture's own empty answer coming back.
+- **No public endpoint exists in any probe.** The proxy target is
+  `http://egress.invalid/` (RFC 2606) and the resolver's name is
+  `egress.fixture.test`, both answered only by the local fixture; the one
+  non-loopback address is TEST-NET-1, reserved and guaranteed unrouted.
+
+Residual recorded, **not** closed: `dns.lookup`/`getaddrinfo` resolves through
+the system resolver (mDNSResponder), which performs its network I/O *outside*
+the contained process, where no Seatbelt rule can apply. Whether a
+resolver-mediated lookup still succeeds under containment is therefore not
+demonstrated — establishing it would need either a public DNS query or a
+reconfigured system resolver, both excluded by the probe rules. The broker
+claim is accordingly recorded as "a direct connect is denied", not "no name can
+be resolved", and the difference is left for the gate-5 review rather than
+papered over.
+
+### Hostile input and availability limits (gate 4, second half) — addressed
+
+Bounded synthetic fixtures throughout; nothing probes real credentials, real
+shell startup files, or another real project, and no fixture generates load.
+
+- `src/tools/untrusted-content.test.ts` (new) covers the T12/T14 primitives with
+  synthetic payloads: CSI/SGR colour escapes, an OSC 52 clipboard write, C0, C1
+  and DEL stripping, LF/TAB preservation, astral-character preservation
+  (iterating by code point rather than UTF-16 unit), and the delimiter
+  convention including `stripUntrustedMarkers` for the UI preview path.
+- **Recorded residual, measured:** the delimiter is a convention, not a parser.
+  A payload containing the end marker closes the block early — one BEGIN paired
+  with two ENDs — so its remaining text is positioned after an apparent close
+  and reads as though it were outside the untrusted region. This is the
+  limitation the module's own docstring names ("a mitigation, not a boundary");
+  the enforced control remains the permission prompt plus the standing base rule
+  that external content is data. It is pinned by a characterization test named
+  as a residual rather than enshrined as correct: hardening it changes the wire
+  format of every producer, and two tools (`web-fetch.ts`, `web-search.ts`)
+  still carry private copies of `wrapUntrusted` whose markers are byte-identical
+  today. Consolidating those onto `untrusted-content.ts` and then neutralizing
+  marker lines in payloads is a product decision, recorded here for gate 5.
+- `src/sandbox/hostile-repo.test.ts` (new) is a disposable repository that is
+  hostile in both ways a repository can be: its README carries an instruction
+  override plus an OSC 52 escape, and its `.git/hooks/post-commit` carries
+  probing code. Read through the real `read_file` handler, the content arrives
+  inside the untrusted delimiters with ESC/BEL stripped and the injection text
+  present as data. Committed through the real shell in a contained child, git
+  fires the hook — git's own spawn path, which no other probe in this release
+  covers — and the hook cannot read the sibling canary, cannot write
+  `.git/hooks`, and cannot reach the listener, while the unsandboxed control on
+  the identical repository does all three. The commit itself succeeds in both
+  directions (`GIT-EXIT 0`), so containment did not break the workflow. The
+  settings half of a hostile repository (a committed `permissions`, `sandbox`,
+  or `permissionProfile` attempting to self-grant) is already measured in
+  `src/permissions/settings-trust.test.ts` and is referenced rather than
+  duplicated.
+- Availability limits are exercised as arithmetic with small deterministic caps,
+  never by resource exhaustion: `appendCapped` — the shared bound behind the
+  background job streams (1 MiB) and `run_bash`'s foreground buffers (512 KiB) —
+  is pinned in `src/tools/jobs.test.ts` with a ten-character cap: the tail is
+  kept, the truncation flag is raised once per crossing, a buffer sitting
+  exactly at the cap is neither trimmed nor flagged, and an empty chunk is a
+  no-op that flags nothing.
+
 Remaining work before declaring the gates below passed:
 
 1. ~~Enforce a narrow child-process read boundary for account secrets,
@@ -615,11 +714,14 @@ Remaining work before declaring the gates below passed:
    forbidden write, and one allowed operation each.~~ **Done 2026-09-16** — see
    the launch-path table above and `src/sandbox/child-paths.test.ts`; the pass
    also found and fixed the contained-MCP launcher defect.
-4. Extend the synthetic detached and package-script probes to Git/DNS egress,
+4. ~~Extend the synthetic detached and package-script probes to Git/DNS egress,
    MCP child reads/connects, prompt injection, and resource limits in isolated
-   fixtures. Do not write to the real home or contact external endpoints.
-   *(Partially done: the MCP child's *reads* are now covered above; egress and
-   hostile-input probes remain open.)*
+   fixtures. Do not write to the real home or contact external endpoints.~~
+   **Done 2026-09-16** — see the two gate-4 sections above: ten egress
+   mechanisms each with an unsandboxed control and a destination-side counter,
+   the hostile-repository and injection fixtures, and the capped-stream tests.
+   Two residuals are recorded rather than closed: the system resolver
+   (mDNSResponder) path, and the forgeable delimiter convention.
 5. Re-run the full suite and focused Seatbelt probes after fixing these gaps.
 
 Original gates (open until demonstrated, not implied by phase checkboxes):
@@ -636,7 +738,15 @@ Original gates (open until demonstrated, not implied by phase checkboxes):
   *(Demonstrated — gate 3, second half.)*
 - A manual adversarial pass covers prompt injection, malicious repositories,
   malicious dependencies, MCP, network exfiltration, persistence, and resource
-  exhaustion.
+  exhaustion. *(Gates 1–4 now automate prompt injection, malicious repositories,
+  MCP (reads and connects), and network exfiltration both directions. **Not**
+  automated: malicious *dependencies* — an `npm install` of a hostile package is
+  not probed, because a real install contacts the registry. The mechanism it
+  would use is the one measured in the npm lifecycle row of
+  `src/sandbox/egress.test.ts` (a package script is a child of npm, which is a
+  child of the shell, and cannot read, write, or connect), so install-time
+  behaviour is an inference from a measured mechanism rather than a measurement
+  of its own — recorded as a residual for gate 5 rather than claimed.)*
 
 ## Existing protections to preserve
 

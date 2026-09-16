@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { tmpdir } from "node:os";
 import { ToolRegistry } from "./registry.js";
-import { registerJobs, jobManager } from "./jobs.js";
+import { registerJobs, jobManager, appendCapped } from "./jobs.js";
 import type { JobStatusReport } from "./jobs.js";
 import type { ToolContext } from "./types.js";
 
@@ -323,5 +323,69 @@ describe("job completion/output events (plan §3)", () => {
     } finally {
       off();
     }
+  });
+});
+
+// ── stream caps (release gate 4: availability limits) ──
+//
+// A child that emits unbounded output would otherwise grow the agent's memory
+// for as long as it runs. `appendCapped` is the bound, shared by the background
+// job streams (MAX_STREAM_CHARS = 1 MiB) and run_bash's foreground buffers
+// (MAX_BASH_OUTPUT_CHARS). It is exercised here with a ten-character cap rather
+// than by generating megabytes: the property under test is the arithmetic of the
+// bound, and a small cap states it exactly, deterministically, and in
+// microseconds. The end-to-end 512 KiB behaviour of run_bash is covered in
+// bash.test.ts; this pins the primitive those paths share.
+describe("appendCapped (stream bound)", () => {
+  it("returns the buffer unchanged for an empty chunk without flagging truncation", () => {
+    // A no-op chunk must never mark the stream truncated: the flag drives the
+    // "(truncated)" note the model sees, and a false note would misdescribe
+    // output that was never cut.
+    const flags: number[] = [];
+    expect(appendCapped("0123456789", "", () => flags.push(1), 10)).toBe("0123456789");
+    expect(flags).toHaveLength(0);
+  });
+
+  it("appends freely up to the cap, and does not flag a buffer sitting exactly at it", () => {
+    const flags: number[] = [];
+    let buf = appendCapped("", "abc", () => flags.push(1), 10);
+    expect(buf).toBe("abc");
+    buf = appendCapped(buf, "def", () => flags.push(1), 10);
+    expect(buf).toBe("abcdef");
+    // Exactly at the cap (10 of 10): the comparison is strict, so nothing is
+    // dropped and nothing is reported as dropped.
+    buf = appendCapped(buf, "ghij", () => flags.push(1), 10);
+    expect(buf).toBe("abcdefghij");
+    expect(flags).toHaveLength(0);
+  });
+
+  it("keeps the most recent characters and flags truncation once when the cap is crossed", () => {
+    const flags: number[] = [];
+    const buf = appendCapped("abcdefghij", "k", () => flags.push(1), 10);
+    expect(buf).toBe("bcdefghijk"); // the tail: newest output survives
+    expect(buf).toHaveLength(10);
+    expect(flags).toHaveLength(1);
+  });
+
+  it("trims a single oversized chunk to its tail, not its head", () => {
+    const flags: number[] = [];
+    const buf = appendCapped("", "0123456789ABCDEF", () => flags.push(1), 10);
+    expect(buf).toBe("6789ABCDEF");
+    expect(flags).toHaveLength(1);
+  });
+
+  it("never exceeds the cap across many appends, flagging each crossing", () => {
+    const flags: number[] = [];
+    let buf = "";
+    for (let i = 0; i < 25; i += 1) {
+      buf = appendCapped(buf, "wxyz", () => flags.push(1), 10);
+      expect(buf.length).toBeLessThanOrEqual(10);
+    }
+    // 100 characters fed in, 10-character window: the buffer holds the last ten
+    // of the 25 four-character chunks (period 4, so the tail is the final two
+    // characters of a chunk followed by two whole chunks), and every append
+    // that crossed the cap flagged once — appends 3 through 25.
+    expect(buf).toBe("yzwxyzwxyz");
+    expect(flags).toHaveLength(23);
   });
 });

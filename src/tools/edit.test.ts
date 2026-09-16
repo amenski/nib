@@ -456,3 +456,34 @@ describe("write_to_file", () => {
     expect(readFileSync(path, "utf-8")).toBe("nested");
   });
 });
+
+describe("write containment", () => {
+  beforeEach(() => {
+    if (!existsSync(TEST_DIR)) mkdirSync(TEST_DIR, { recursive: true });
+  });
+  afterEach(() => {
+    rmSync(TEST_DIR, { recursive: true, force: true });
+  });
+
+  it("rejects outside-workspace targets in every single-file write handler", async () => {
+    const outside = join(process.cwd(), ".edit-outside-test.txt");
+    writeFileSync(outside, "original", "utf-8");
+    const handlers = [
+      () => editHandler({ path: outside, oldString: "original", newString: "changed" }, mockCtx),
+      () => applyDiffHandler({ path: outside, diff: "@@ -1 +1 @@\n-original\n+changed" }, mockCtx),
+      () => searchReplaceHandler({ path: outside, search: "original", replace: "changed" }, mockCtx),
+      () => editFileHandler({ path: outside, search: "original", replace: "changed", expectedCount: 1 }, mockCtx),
+      () => writeToFileHandler({ path: outside, content: "changed" }, mockCtx),
+    ];
+
+    try {
+      for (const handler of handlers) {
+        const result = await handler();
+        expect(result.error).toContain("escapes the working directory");
+        expect(readFileSync(outside, "utf-8")).toBe("original");
+      }
+    } finally {
+      rmSync(outside, { force: true });
+    }
+  });
+});

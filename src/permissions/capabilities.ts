@@ -35,6 +35,20 @@ export interface ApplyPatchCapabilityPlan extends CapabilityPlan {
   targets: readonly PatchTarget[];
 }
 
+export type WorkspaceWriteTarget = { path: string } | { error: string };
+
+export function resolveWorkspaceWriteTarget(rawPath: string, workingDir: string): WorkspaceWriteTarget {
+  if (!rawPath) return { error: "write target is missing" };
+
+  const path = resolve(workingDir, rawPath);
+  const workspaceRoot = realpathNearestAncestor(workingDir);
+  if (!isPathWithinWriteRoots(path, [workspaceRoot])) {
+    return { error: `write target escapes the working directory: ${rawPath}` };
+  }
+
+  return { path };
+}
+
 export function unknownCapabilityPlan(tool: string, reason: string): CapabilityPlan {
   return {
     tool,
@@ -57,14 +71,11 @@ export function extractApplyPatchPlan(
     .filter(Boolean);
   if (rawPaths.length === 0) return unknownCapabilityPlan("apply_patch", "patch has no target headers");
 
-  const workspaceRoot = realpathNearestAncestor(workingDir);
   const targets: PatchTarget[] = [];
   for (const rawPath of rawPaths) {
-    const path = resolve(workingDir, rawPath);
-    if (!isPathWithinWriteRoots(path, [workspaceRoot])) {
-      return unknownCapabilityPlan("apply_patch", `patch target escapes the working directory: ${rawPath}`);
-    }
-    targets.push(Object.freeze({ rawPath, path }));
+    const target = resolveWorkspaceWriteTarget(rawPath, workingDir);
+    if ("error" in target) return unknownCapabilityPlan("apply_patch", `patch ${target.error}`);
+    targets.push(Object.freeze({ rawPath, path: target.path }));
   }
 
   const frozenTargets = Object.freeze(targets);

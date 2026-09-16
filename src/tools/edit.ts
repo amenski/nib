@@ -3,7 +3,7 @@ import { dirname } from "node:path";
 import type { ToolOutput, ToolDef } from "../types.js";
 import type { ToolHandler, ToolContext } from "./types.js";
 import { ToolRegistry } from "./registry.js";
-import { extractApplyPatchPlan } from "../permissions/capabilities.js";
+import { extractApplyPatchPlan, resolveWorkspaceWriteTarget } from "../permissions/capabilities.js";
 
 function countOccurrences(str: string, search: string): number {
   let count = 0;
@@ -57,7 +57,9 @@ async function checkStaleFile(path: string, ctx: ToolContext): Promise<ToolOutpu
 }
 
 const editHandler: ToolHandler = async (args, ctx) => {
-  const path = args.path as string;
+  const target = resolveWorkspaceWriteTarget(args.path as string, ctx.workingDir);
+  if ("error" in target) return { content: target.error, error: target.error };
+  const path = target.path;
   const oldString = args.oldString as string;
   const newString = args.newString as string;
 
@@ -115,7 +117,9 @@ const editDef: ToolDef = {
 };
 
 const applyDiffHandler: ToolHandler = async (args, ctx) => {
-  const path = args.path as string;
+  const target = resolveWorkspaceWriteTarget(args.path as string, ctx.workingDir);
+  if ("error" in target) return { content: target.error, error: target.error };
+  const path = target.path;
   const diff = (args.diff as string).trim();
 
   if (!diff) {
@@ -319,7 +323,9 @@ const applyPatchDef: ToolDef = {
 };
 
 const searchReplaceHandler: ToolHandler = async (args, ctx) => {
-  const path = args.path as string;
+  const target = resolveWorkspaceWriteTarget(args.path as string, ctx.workingDir);
+  if ("error" in target) return { content: target.error, error: target.error };
+  const path = target.path;
   const search = args.search as string;
   const replace = (args.replace as string) ?? "";
 
@@ -371,7 +377,9 @@ const searchReplaceDef: ToolDef = {
 };
 
 const editFileHandler: ToolHandler = async (args, ctx) => {
-  const path = args.path as string;
+  const target = resolveWorkspaceWriteTarget(args.path as string, ctx.workingDir);
+  if ("error" in target) return { content: target.error, error: target.error };
+  const path = target.path;
   const search = args.search as string;
   const replace = (args.replace as string) ?? "";
   const expectedCount = args.expectedCount as number;
@@ -430,7 +438,9 @@ const editFileDef: ToolDef = {
 };
 
 const writeToFileHandler: ToolHandler = async (args, ctx) => {
-  const path = args.path as string;
+  const target = resolveWorkspaceWriteTarget(args.path as string, ctx.workingDir);
+  if ("error" in target) return { content: target.error, error: target.error };
+  const path = target.path;
   const content = args.content as string;
 
   try {

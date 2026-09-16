@@ -177,11 +177,19 @@ Target coding profile (not all properties are implemented):
   statusline providers, and notification scripts.
 - If containment is unavailable, auto-approve fails closed.
 
-Current limitation: the Seatbelt profile has `(allow file-read*)`, so direct
-tool-policy credential denials do not constrain arbitrary child-process reads.
-Its workspace write grant includes `.git`; tool-level guards do not constrain
-an interpreter or package script writing hooks. Resolving this requires a
-mechanical boundary and an explicit Git workflow decision, not a classifier.
+Child-process reads are now bounded (2026-09-16): both sandboxed levels
+subtract `$HOME` from the blanket `(allow file-read*)` grant and re-allow only
+the workspace, the level's authorized roots, and a narrow documented set of
+Git/npm home subpaths. A sandboxed child can no longer read a sibling project
+or a `$HOME` credential. This boundary is `$HOME`-shaped, not a general
+filesystem allowlist — reads outside `$HOME` remain broad, other-user homes
+under `/Users` are not covered, and file existence/metadata outside `$HOME`
+leaks. An attempt to enumerate every read root a macOS toolchain needs was
+abandoned the same day: the profile aborts before `exec`.
+
+Still open: the workspace write grant includes `.git`, so tool-level guards do
+not constrain an interpreter or package script writing hooks. Resolving this
+requires an explicit Git workflow decision, not a classifier.
 
 ### 3. Consent and approval semantics
 
@@ -343,11 +351,51 @@ The complete Vitest run in the elevated macOS test runner passed: 144 files,
 integration file because nested `sandbox_apply` and loopback `listen` were
 denied by that runner; this was not a product-test failure in the elevated run.
 
+### Re-probe, 2026-09-16 (same day, implementing agent)
+
+Correction to the environment note above: nested Seatbelt **does** work in the
+session shell used for this work, and loopback `listen` binds. Both were
+verified directly — a `deny default` profile killed a denied read with
+`SIGABRT` while the `(allow file-read*)` control read the same file, so the
+denials below are causally attributable to the profile rather than to the
+runner. The "managed runner cannot nest Seatbelt" observation is therefore
+environment-specific, not a property of the product tests.
+
+**Child read boundary (gate 1) — addressed.** The profile now subtracts
+`$HOME` from `(allow file-read*)` and re-allows only the workspace, the level's
+authorized roots, and a narrow Git/npm home set. Probed with a disposable
+fake-home fixture containing synthetic canaries only:
+
+| Probe | Before | After |
+|-------|--------|-------|
+| Sibling canary read (Node) | Allowed | **Denied** |
+| Sibling canary read (shell `cat`) | — | **Denied** |
+| Sibling canary via workspace symlink | — | **Denied** |
+| Sibling directory `readdir` | — | **Denied** |
+| Synthetic `$HOME` canary (outside workspace) | — | **Denied** |
+| `$HOME` shell expansion to the canary | — | **Denied** |
+| `~/.ssh`, `~/.aws`, `~/.zshrc` canaries | Allowed | **Denied** |
+| Toolchain battery (25 commands: shell, Git, Node + module resolution, Python, npm, temp, subprocess) | Allowed | Allowed (25/25) |
+
+Control direction: every canary leaks under `(allow default)` and under
+`unrestricted`, so the denials are not fixture artifacts. Permanent regression
+tests live in `src/sandbox/seatbelt.test.ts` ("child read boundary").
+
+Residuals recorded for this gate: the boundary is `$HOME`-shaped, so reads
+outside `$HOME` (`/tmp`, `/private`, other-user homes under `/Users`) stay
+broad; file existence and metadata outside `$HOME` leak. Gate 1 is therefore
+**closed for `$HOME`-resident secrets and siblings**, which is the release
+scenario, but the weaker non-`$HOME` claim is not made.
+
+Full suite after the change: 144 files, 2,098 tests passed, two skipped.
+
 Remaining work before declaring the gates below passed:
 
-1. Enforce a narrow child-process read boundary for account secrets, including
-   symlink and home-directory variations; test denied canaries and allowed
-   ordinary project/toolchain reads. Do not infer this from direct-tool policy.
+1. ~~Enforce a narrow child-process read boundary for account secrets,
+   including symlink and home-directory variations; test denied canaries and
+   allowed ordinary project/toolchain reads.~~ **Done 2026-09-16** — see the
+   re-probe table above and the `child read boundary` tests. The non-`$HOME`
+   residual remains open and is recorded rather than claimed closed.
 2. Decide how approved Git operations will work while untrusted children
    cannot alter `.git` metadata or hooks. Test the negative and positive paths.
 3. Extend the synthetic detached and package-script probes to Git/DNS egress,

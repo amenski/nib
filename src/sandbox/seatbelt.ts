@@ -2,7 +2,7 @@ import { existsSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type { ProfileLevel } from "../permissions/index.js";
-import { resolveWriteRoots } from "./write-roots.js";
+import { realpathNearestAncestor, resolveWriteRoots } from "./write-roots.js";
 
 /**
  * macOS Seatbelt (sandbox-exec) profile generation — the *mechanical* layer
@@ -55,7 +55,44 @@ const READ_ONLY_CORE = [
   "(allow file-map-executable)",
   "(allow sysctl-read)",
   '(allow file-write* (literal "/dev/null"))',
+  // `file-read-metadata` (stat/lstat/getattr) is allowed everywhere, and the
+  // child read boundary below subtracts from `file-read*`/`file-read-data`.
+  // This split is load-bearing, not incidental: path resolution and Node's
+  // module resolution walk *parent* components and lstat them, so denying
+  // metadata for $HOME makes `node node_modules/...` and even `ls -la` die
+  // with EPERM ("lstat '/Users/<user>': operation not permitted") — measured
+  // 2026-09-16. Metadata is not content, and readdir stays denied (it is
+  // file-read-data on the directory), so names/existence leak but contents
+  // and listings do not.
+  "(allow file-read-metadata)",
 ];
+
+/**
+ * The one deliberate hole in the child read boundary: narrow `$HOME`
+ * subpaths a child may still read, because Git and npm cannot run without
+ * them. Git reads its config to resolve identity and includes; npm reads its
+ * cache during install (and `~/.npm` is already a write carve-out under
+ * workspace-write — see {@link workspaceWriteCarveoutRoots}).
+ *
+ * Everything else under `$HOME` is unreadable to a sandboxed child:
+ * credentials, SSH/GPG material, browser data, shell startup files, and —
+ * the case the release gate actually failed on — *sibling project
+ * directories*. Keep this list tiny; each entry is a confidentiality
+ * exception and needs evidence that a real workflow requires it.
+ */
+const HOME_READ_ALLOWS = [".gitconfig", ".config/git", ".npm", ".cache"] as const;
+
+/**
+ * Whether `$HOME` is a safe thing to subtract from `(allow file-read*)`.
+ * A root of `/` (or an unset/garbage home) would make the deny rule swallow
+ * the entire filesystem, including the toolchain and the workspace, so the
+ * boundary is skipped entirely rather than emitted in a form that breaks
+ * every command. Skipping is the honest degradation: no containment is
+ * claimed for that session, matching the "sandbox unavailable" posture.
+ */
+function isUsableHomeDeny(home: string): boolean {
+  return home.startsWith("/") && home !== "/" && home.split("/").length > 2;
+}
 
 /** Escapes a path for embedding in an SBPL double-quoted string. */
 function sbplQuote(path: string): string {
@@ -88,14 +125,60 @@ export function buildSeatbeltProfile(
   trustedRoot: string,
   writeRoots?: string[],
 ): string {
+  // The level's authorized write-set: empty for strict-sandbox, the shared
+  // resolveWriteRoots set for workspace-write. The read boundary re-allows
+  // reads for exactly this set, so the two layers stay in agreement about
+  // which roots are "authorized" and strict-sandbox still ignores configured
+  // writeRoots entirely (test: "emits no allow line even when a writeRoot is
+  // configured").
+  const roots = level === "workspace-write" ? (writeRoots ?? resolveWriteRoots(level, trustedRoot)) : [];
   const lines = ["(version 1)", "(deny default)", ...READ_ONLY_CORE];
-  if (level === "workspace-write") {
-    const roots = writeRoots ?? resolveWriteRoots(level, trustedRoot);
-    for (const root of roots) {
-      lines.push(`(allow file-write* (subpath "${sbplQuote(root)}"))`);
-    }
+  lines.push(...readBoundaryLines(trustedRoot, roots));
+  for (const root of roots) {
+    lines.push(`(allow file-write* (subpath "${sbplQuote(root)}"))`);
   }
   return lines.join("\n");
+}
+
+/**
+ * The child read boundary — SBPL's last-matching-rule-wins makes this an
+ * ordering problem, so the sequence is deliberate:
+ *
+ *   1. `(allow file-read*)`      (in READ_ONLY_CORE) — toolchain + system work
+ *   2. `(deny  file-read* $HOME)` — subtracts the whole home directory
+ *   3. `(allow file-read* ...)`   — re-allows the workspace (which normally
+ *                                   *lives under* $HOME) and the narrow
+ *                                   {@link HOME_READ_ALLOWS} entries
+ *
+ * Emitted only when {@link isUsableHomeDeny} says `$HOME` is a real path.
+ *
+ * Scope note: this is a `$HOME`-shaped boundary, not a general filesystem
+ * allowlist. Reads outside `$HOME` (system paths, temp, other volumes) stay
+ * broad on purpose — enumerating every read root a macOS toolchain needs was
+ * attempted and abandoned on 2026-09-16 because the profile aborts before
+ * exec (the dyld shared cache alone lives on a separate volume). Residual
+ * risks of the home-shaped boundary are recorded in
+ * docs/security-architecture-plan.md: other-user homes under `/Users` are not
+ * covered, and metadata/existence outside $HOME is readable.
+ */
+function readBoundaryLines(trustedRoot: string, authorizedRoots: string[]): string[] {
+  const home = realpathNearestAncestor(homedir());
+  if (!isUsableHomeDeny(home)) return [];
+  const lines = [`(deny file-read* (subpath "${sbplQuote(home)}"))`];
+  const seen = new Set<string>();
+  const allowRead = (path: string) => {
+    const real = realpathNearestAncestor(path);
+    if (seen.has(real)) return;
+    seen.add(real);
+    lines.push(`(allow file-read* (subpath "${sbplQuote(real)}"))`);
+  };
+  // The workspace must stay readable even though it normally sits under
+  // $HOME; so must any root the user explicitly authorized (a second project
+  // added via sandbox.writeRoots), matching the shared write-boundary set.
+  allowRead(trustedRoot);
+  for (const root of authorizedRoots) allowRead(root);
+  for (const name of HOME_READ_ALLOWS) allowRead(join(home, name));
+  return lines;
 }
 
 /**

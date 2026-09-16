@@ -250,10 +250,11 @@ a trustworthy hostname-level authority.
   child is the same already-sandboxed process and keeps it naturally.
 - **Profile semantics.** strict-sandbox: `(version 1)` + `(deny default)` +
   `(allow process*)` + `(allow file-read*)` + `(allow file-map-executable)` +
-  `(allow sysctl-read)` + `(allow file-write* (literal "/dev/null"))` —
-  reads anywhere, writes denied everywhere except the `/dev/null` discard
-  (ubiquitous `2>/dev/null` redirects need it; even the Xcode `git` shim
-  does one internally), network denied by default. workspace-write adds
+  `(allow sysctl-read)` + `(allow file-read-metadata)` +
+  `(allow file-write* (literal "/dev/null"))` — writes denied everywhere
+  except the `/dev/null` discard (ubiquitous `2>/dev/null` redirects need
+  it; even the Xcode `git` shim does one internally), network denied by
+  default. workspace-write adds
   `(allow file-write* (subpath "<trusted root>"))` for the session
   workspace root fixed at startup — never the per-call `cwd` (SBPL subpath
   matching is directory-boundary aware) — the private session-temp root
@@ -263,6 +264,27 @@ a trustworthy hostname-level authority.
   `node -e 'console.log(1)'` run under both sandboxed levels; writes
   outside the write-set and network connects fail with EPERM-equivalent
   denials (non-zero exit).
+- **Child read boundary (2026-09-16, release gate 1).** A bare
+  `(allow file-read*)` let a sandboxed child read a sibling directory's
+  canary and any credential under `$HOME` — confidentiality was not
+  contained. Both sandboxed levels now subtract `$HOME` from the blanket
+  read grant and re-allow only the workspace root, the level's authorized
+  roots, and a narrow, documented set of home subpaths Git and npm need
+  (`~/.gitconfig`, `~/.config/git`, `~/.npm`, `~/.cache`). SBPL is
+  last-matching-rule-wins, so the deny is emitted before the re-allows.
+  `(allow file-read-metadata)` stays global and is load-bearing: path
+  resolution and Node's module resolution `lstat` parent components, so
+  denying home metadata made `node node_modules/...` and `ls -la` die with
+  `EPERM`. Metadata is not content and `readdir` stays denied (it is
+  `file-read-data` on the directory), so names/existence leak but contents
+  and listings do not. Measured: sibling canary, `~/.ssh`, `~/.aws`,
+  shell-startup canary, `$HOME`-expansion, and sibling `readdir` all denied,
+  while a 25-command toolchain battery (shell, Git incl. `git status`/`log`/
+  `cat-file`, Node + module resolution, Python, npm, temp, subprocesses)
+  passes in full. Residuals are recorded in
+  docs/security-architecture-plan.md: the boundary is `$HOME`-shaped, so
+  reads outside `$HOME` stay broad (other-user homes under `/Users`, `/tmp`,
+  and `/private` are not covered).
 - **Private session temp.** At session start Nib creates a mode-0700
   directory under the OS temp directory and passes it to child processes as
   `TMPDIR`, `TMP`, `TEMP`, and the npm cache location. workspace-write emits

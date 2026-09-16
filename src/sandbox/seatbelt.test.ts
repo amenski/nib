@@ -92,7 +92,11 @@ describe("buildSeatbeltProfile", () => {
     expect(p).toContain("(allow file-read*)");
     expect(p).toContain('(allow file-write* (literal "/dev/null"))');
     expect(p).not.toContain("network-outbound");
-    expect(p).not.toContain("(subpath");
+    // "No write-set" is the invariant — not "no subpaths at all". The child
+    // read boundary (readBoundaryLines) deliberately contributes *read*
+    // subpaths at every sandboxed level; it subtracts $HOME from the blanket
+    // read grant and re-allows the workspace. Only writes stay absolute.
+    expect(p).not.toContain("(allow file-write* (subpath");
   });
 
   it("workspace-write: strict core plus the workspace write-set, without direct egress", () => {
@@ -126,15 +130,19 @@ describe("buildSeatbeltProfile", () => {
 
   it("strict-sandbox: emits no allow line even when a writeRoot is configured", () => {
     const p = buildSeatbeltProfile("strict-sandbox", "/ws", ["/extra/global-root"]);
-    expect(p).not.toContain("(subpath");
+    expect(p).not.toContain("(allow file-write* (subpath");
     expect(p).not.toContain("/extra/global-root");
   });
 
-  it("strict-sandbox: gains none of the carve-outs (read-only stays absolute)", () => {
+  it("strict-sandbox: gains none of the write carve-outs (read-only stays absolute)", () => {
     const p = buildSeatbeltProfile("strict-sandbox", "/ws");
-    expect(p).not.toContain("(subpath");
+    // The write carve-outs are temp + ~/.npm. strict-sandbox gets neither as
+    // a *write* set. `~/.npm` does still appear as one of the read-boundary
+    // allows (HOME_READ_ALLOWS), which is level-independent by design — so
+    // assert on the write form specifically rather than on the substring.
+    expect(p).not.toContain("(allow file-write* (subpath");
     expect(p).not.toContain("/private/tmp");
-    expect(p).not.toContain(".npm");
+    expect(p).not.toContain(`(allow file-write* (subpath "${seatbeltWorkspaceRoot(join(homedir(), ".npm"))}"))`);
     expect(p).toContain('(allow file-write* (literal "/dev/null"))');
   });
 
@@ -362,6 +370,161 @@ describe("seatbelt enforcement (macOS)", () => {
     expect(result.exit).toBe(0);
     expect(result.stdout).toContain("On branch");
   }, 25_000);
+});
+
+// ── child read boundary (macOS) — release gate 1 ──
+//
+// The release-gate probe of 2026-09-16 found that `(allow file-read*)` let a
+// sandboxed child read a sibling directory's canary. These tests reproduce
+// that read and pin the fix in both directions: denied under a sandboxed
+// level, readable under `unrestricted`, so a failure can never be a fixture
+// artifact.
+
+describe("child read boundary (macOS)", () => {
+  const CANARY = "SYNTHETIC_CANARY_9f3a1c_not_a_real_secret";
+  const nodeRead = (p: string) =>
+    `node -e 'try{process.stdout.write(require("fs").readFileSync(${JSON.stringify(p)},"utf8"))}catch(e){process.stderr.write("ERR "+e.code);process.exit(3)}'`;
+
+  /**
+   * The boundary is `$HOME`-shaped, so the fixture has to live *under the
+   * real home* for the deny rule to apply at all — a fixture in $TMPDIR sits
+   * outside the boundary and reads happily. Disposable, synthetic, and
+   * removed in `finally`; never a real credential.
+   */
+  function fixture() {
+    const root = mkdtempSync(join(homedir(), ".nib-readgate-"));
+    const ws = join(root, "ws");
+    const sibling = join(root, "sibling");
+    mkdirSync(ws, { recursive: true });
+    mkdirSync(sibling, { recursive: true });
+    const canaryPath = join(sibling, "canary.txt");
+    writeFileSync(canaryPath, CANARY + "\n");
+    writeFileSync(join(ws, "normal.txt"), "normal project file\n");
+    return { root, ws, sibling, canaryPath, cleanup: () => rmSync(root, { recursive: true, force: true }) };
+  }
+
+  itOnDarwin(
+    "workspace-write: sibling canary is denied via Node and shell; unsandboxed control still reads it",
+    async () => {
+      const f = fixture();
+      try {
+        // Direction 1 — control. Without a profile the same read succeeds, so
+        // the denials below are attributable to Seatbelt, not the fixture.
+        const control = await runCommand(`cat ${JSON.stringify(f.canaryPath)}`, f.ws, "unrestricted");
+        expect(control.stdout).toContain(CANARY);
+
+        // Direction 2 — the release-gate read, now denied.
+        const viaNode = await runCommand(nodeRead(f.canaryPath), f.ws, "workspace-write");
+        expect(viaNode.stdout).not.toContain(CANARY);
+        expect(viaNode.exit).not.toBe(0);
+
+        const viaShell = await runCommand(`cat ${JSON.stringify(f.canaryPath)}`, f.ws, "workspace-write");
+        expect(viaShell.stdout).not.toContain(CANARY);
+        expect(viaShell.exit).not.toBe(0);
+
+        // The boundary must not be a blanket denial: ordinary project reads
+        // still work, for both the shell and an interpreter.
+        const inside = await runCommand("cat normal.txt", f.ws, "workspace-write");
+        expect(inside.exit).toBe(0);
+        expect(inside.stdout).toContain("normal project file");
+        const insideNode = await runCommand(nodeRead(join(f.ws, "normal.txt")), f.ws, "workspace-write");
+        expect(insideNode.exit).toBe(0);
+        expect(insideNode.stdout).toContain("normal project file");
+      } finally {
+        f.cleanup();
+      }
+    },
+    40_000,
+  );
+
+  itOnDarwin("strict-sandbox: the same sibling denial holds at the read-only level", async () => {
+    const f = fixture();
+    try {
+      const viaNode = await runCommand(nodeRead(f.canaryPath), f.ws, "strict-sandbox");
+      expect(viaNode.stdout).not.toContain(CANARY);
+      expect(viaNode.exit).not.toBe(0);
+
+      const inside = await runCommand("cat normal.txt", f.ws, "strict-sandbox");
+      expect(inside.exit).toBe(0);
+    } finally {
+      f.cleanup();
+    }
+  }, 30_000);
+
+  itOnDarwin("denial survives a workspace symlink pointing at the canary (physical path)", async () => {
+    const f = fixture();
+    const link = join(f.ws, "escape.txt");
+    try {
+      symlinkSync(f.canaryPath, link);
+      const viaNode = await runCommand(nodeRead(link), f.ws, "workspace-write");
+      expect(viaNode.stdout).not.toContain(CANARY);
+      expect(viaNode.exit).not.toBe(0);
+
+      const viaShell = await runCommand("cat escape.txt", f.ws, "workspace-write");
+      expect(viaShell.stdout).not.toContain(CANARY);
+      expect(viaShell.exit).not.toBe(0);
+    } finally {
+      f.cleanup();
+    }
+  }, 30_000);
+
+  itOnDarwin("a synthetic canary in $HOME itself (outside the workspace) is unreadable", async () => {
+    // Proves the deny covers the home directory itself, not just the
+    // workspace's parent. The trusted root is the fixture workspace, so the
+    // bare home directory is outside it. Synthetic; removed immediately.
+    const f = fixture();
+    const name = `.nib-readgate-home-${process.pid}.txt`;
+    const homeCanary = join(homedir(), name);
+    writeFileSync(homeCanary, CANARY + "\n");
+    try {
+      const control = await runCommand(`cat ${JSON.stringify(homeCanary)}`, f.ws, "unrestricted");
+      expect(control.stdout).toContain(CANARY);
+
+      const denied = await runCommand(`cat ${JSON.stringify(homeCanary)}`, f.ws, "workspace-write");
+      expect(denied.stdout).not.toContain(CANARY);
+      expect(denied.exit).not.toBe(0);
+
+      // `~` / $HOME expansion must not be a way around the boundary either.
+      const viaHomeExpansion = await runCommand(`cat "$HOME/${name}"`, f.ws, "workspace-write");
+      expect(viaHomeExpansion.stdout).not.toContain(CANARY);
+      expect(viaHomeExpansion.exit).not.toBe(0);
+    } finally {
+      rmSync(homeCanary, { force: true });
+      f.cleanup();
+    }
+  }, 30_000);
+
+  itOnDarwin("listing the sibling directory is denied (readdir is not metadata)", async () => {
+    const f = fixture();
+    try {
+      const listing = await runCommand(
+        `node -e 'console.log(require("fs").readdirSync(${JSON.stringify(f.sibling)}).join(","))'`,
+        f.ws,
+        "workspace-write",
+      );
+      expect(listing.exit).not.toBe(0);
+      expect(listing.stdout).not.toContain("canary.txt");
+    } finally {
+      f.cleanup();
+    }
+  }, 30_000);
+
+  itOnDarwin("the toolchain still resolves modules and stats parent dirs (metadata stays allowed)", async () => {
+    // Regression guard for the fix itself: denying `file-read-metadata` for
+    // $HOME made Node's module resolution and even `ls -la` die with EPERM.
+    const f = fixture();
+    try {
+      const ls = await runCommand("ls -la", f.ws, "workspace-write");
+      expect(ls.exit).toBe(0);
+      expect(ls.stdout).toContain("normal.txt");
+
+      const node = await runCommand("node -e 'console.log(1)'", f.ws, "workspace-write");
+      expect(node.exit).toBe(0);
+      expect(node.stdout.trim()).toBe("1");
+    } finally {
+      f.cleanup();
+    }
+  }, 30_000);
 });
 
 // ── tools-layer wiring (macOS only — exercises the real spawn paths) ──

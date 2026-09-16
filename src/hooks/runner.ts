@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import type { NotifyInput } from "../notify.js";
-import { redactSecrets } from "../sessions/redact.js";
+import { redactDeep, redactSecrets } from "../sessions/redact.js";
 import { wrapUntrusted } from "../tools/untrusted-content.js";
 import { buildChildEnvironment, prepareSandboxedShell } from "../sandbox/launcher.js";
 import type { SandboxLevel } from "../sandbox/seatbelt.js";
@@ -360,19 +360,6 @@ function stripDecisionJson(stdout: string): string {
     }
   }
   return lines.join("\n");
-}
-
-/** Recursively redact every string in the payload — values and keys — before
- *  it reaches stdin (spec §3; fix 4 verifies keys too). */
-function redactDeep(v: unknown): unknown {
-  if (typeof v === "string") return redactSecrets(v);
-  if (Array.isArray(v)) return v.map(redactDeep);
-  if (v && typeof v === "object") {
-    const out: Record<string, unknown> = {};
-    for (const [k, val] of Object.entries(v)) out[redactSecrets(k)] = redactDeep(val);
-    return out;
-  }
-  return v;
 }
 
 /**

@@ -28,6 +28,16 @@ function keyLabel(key: string): string {
   return "authorization";
 }
 
+function sensitiveKeyLabel(key: string): string | undefined {
+  const normalized = key.toLowerCase().replace(/[-_]/g, "");
+  if (["apikey", "xapikey"].includes(normalized)) return "api-key";
+  if (["password", "passwd"].includes(normalized)) return "password";
+  if (["token", "accesstoken", "refreshtoken"].includes(normalized)) return "token";
+  if (["secret", "clientsecret"].includes(normalized)) return "secret";
+  if (normalized === "authorization") return "authorization";
+  return undefined;
+}
+
 export function redactSecrets(text: string): string {
   let result = text;
   for (const [pattern, replacement] of SECRET_PATTERNS) {
@@ -36,4 +46,19 @@ export function redactSecrets(text: string): string {
   result = result.replace(KEY_VALUE_SECRET_RE, (_m, key: string) => `[redacted-${keyLabel(key)}]`);
   result = result.replace(BEARER_SECRET_RE, "[redacted-authorization]");
   return result;
+}
+
+/** Recursively redact string values and object keys before persistence. */
+export function redactDeep(value: unknown): unknown {
+  if (typeof value === "string") return redactSecrets(value);
+  if (Array.isArray(value)) return value.map(redactDeep);
+  if (value && typeof value === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(value)) {
+      const label = sensitiveKeyLabel(key);
+      result[redactSecrets(key)] = label ? `[redacted-${label}]` : redactDeep(child);
+    }
+    return result;
+  }
+  return value;
 }

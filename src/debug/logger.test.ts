@@ -48,4 +48,53 @@ describe("debug logger timing", () => {
     expect(entry.model).toBe("deepseek-v4-flash");
     expect(entry.durationsMs).toEqual({ total: 120, toFirstEvent: 80, toFirstText: 90 });
   });
+
+  it("redacts secrets from persisted request messages and tool metadata", async () => {
+    vi.resetModules();
+    const { enableDebug, logRequest } = await import("./logger.js");
+    enableDebug("sess-request-redaction");
+    logRequest({
+      model: "test-model",
+      messages: [
+        { role: "user", content: "Use token: 'request-token-that-is-long-enough'" },
+        { role: "system", content: "Authorization: Bearer request-bearer-token-123456; api_key=d41d8cd98f00b204e9800998ecf8427e; sk-proj1234567890abcdefghij" },
+      ],
+      tools: [{ function: { name: "send" } }],
+      max_tokens: 64,
+    });
+
+    const file = join(projectDirPath(TEST_DIR), "debug", "sess-request-redaction.jsonl");
+    const persisted = readFileSync(file, "utf8");
+    expect(persisted).not.toContain("request-token-that-is-long-enough");
+    expect(persisted).not.toContain("request-bearer-token-123456");
+    expect(persisted).not.toContain("sk-proj1234567890abcdefghij");
+    expect(persisted).toContain("[redacted-token]");
+    expect(persisted).toContain("[redacted-authorization]");
+    expect(persisted).toContain("[redacted-api-key]");
+  });
+
+  it("redacts secrets from persisted tool-call arguments", async () => {
+    vi.resetModules();
+    const { enableDebug, logResponse } = await import("./logger.js");
+    enableDebug("sess-tool-redaction");
+    logResponse(
+      { inputTokens: 3, metadata: { secret: "response-secret-value-123456" } },
+      [
+        {
+          name: "send",
+          function: { arguments: '{"password":"response-password-value-123456"}' },
+        },
+        { name: "fetch", args: "Authorization: Bearer response-bearer-token-123456" },
+      ],
+    );
+
+    const file = join(projectDirPath(TEST_DIR), "debug", "sess-tool-redaction.jsonl");
+    const persisted = readFileSync(file, "utf8");
+    expect(persisted).not.toContain("response-secret-value-123456");
+    expect(persisted).not.toContain("response-password-value-123456");
+    expect(persisted).not.toContain("response-bearer-token-123456");
+    expect(persisted).toContain("[redacted-secret]");
+    expect(persisted).toContain("[redacted-password]");
+    expect(persisted).toContain("[redacted-authorization]");
+  });
 });

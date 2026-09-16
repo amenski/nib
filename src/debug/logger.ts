@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { projectDirPath } from "../config/paths.js";
 import { appendPrivateFileSync, ensurePrivateDirectory } from "../config/state-permissions.js";
+import { redactDeep } from "../sessions/redact.js";
 
 let debugPath: string | null = null;
 
@@ -13,7 +14,7 @@ export function enableDebug(sessionId: string): void {
 
 export function logRequest(body: Record<string, unknown>): void {
   if (!debugPath) return;
-  const entry = JSON.stringify({
+  const entry = JSON.stringify(redactDeep({
     ts: Date.now(),
     type: "request",
     model: body.model,
@@ -21,13 +22,13 @@ export function logRequest(body: Record<string, unknown>): void {
     tools: (body.tools as any[])?.map((t: any) => t.function?.name ?? t.name),
     max_tokens: body.max_tokens,
     temperature: body.temperature,
-  });
+  }));
   appendPrivateFileSync(debugPath, entry + "\n");
 }
 
 export function logResponse(usage: unknown, toolCalls: unknown[]): void {
   if (!debugPath) return;
-  const entry = JSON.stringify({
+  const entry = JSON.stringify(redactDeep({
     ts: Date.now(),
     type: "response",
     usage,
@@ -35,7 +36,7 @@ export function logResponse(usage: unknown, toolCalls: unknown[]): void {
       name: tc.function?.name ?? tc.name,
       args: tc.function?.arguments ?? tc.args,
     })),
-  });
+  }));
   appendPrivateFileSync(debugPath, entry + "\n");
 }
 

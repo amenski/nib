@@ -15,6 +15,7 @@ import { ErrorRecovery } from "./errorrecovery/index.js";
 import { ErrorReflector } from "./selfreflection/index.js";
 import { fireNotify } from "./notify.js";
 import { HookRunner, fireNotificationHooks } from "./hooks/index.js";
+import { connectMCPServers, disconnectAllMCPServers } from "./mcp/connector.js";
 import { Orchestrator } from "./orchestrator/index.js";
 import { ModeLoader } from "./modes/loader.js";
 import { AgentLoader } from "./agents/index.js";
@@ -147,6 +148,25 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
     // roots. Project TOFU stripping can narrow only the config contribution;
     // explicit CLI roots remain session-scoped trusted roots.
     setWriteRoots(writeRoots);
+
+    // Local stdio MCP servers use the same session temp directory and child
+    // containment profile as other subprocess surfaces. Remote HTTP helpers
+    // are not launched here and retain their existing behavior.
+    if (effectiveConfig.mcpServers) {
+      await connectMCPServers(effectiveConfig.mcpServers, {
+        strictMcpConfig: effectiveConfig.strictMcpConfig,
+        spawn: {
+          cwd: options.projectRoot,
+          trustedRoot: options.projectRoot,
+          sandboxLevel:
+            effectiveConfig.sandbox?.enabled && effectiveConfig.permissionProfile?.level !== "unrestricted"
+              ? effectiveConfig.permissionProfile?.level
+              : undefined,
+          writeRoots,
+          sessionTempDir: sessionTemp.path,
+        },
+      });
+    }
 
     // web_search backend config (webSearch.searxngUrl) — resolved from the
     // EFFECTIVE (post-TOFU-strip) config, same as sandbox/permissions above.
@@ -471,6 +491,7 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
       return 1;
     }
   } finally {
+    disconnectAllMCPServers();
     sessionTemp?.cleanup();
     // Die on exit (async-subagents.md §3, Q3): pending sub-runs are marked
     // aborted and never deliver into a dead loop; the process exit is the

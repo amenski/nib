@@ -98,6 +98,27 @@ describe("connectMCPServers strictMcpConfig allowlist", () => {
     expect(statusFor("py")?.status).toBe("connected");
   });
 
+  it("passes session containment options to local stdio clients", async () => {
+    const spawn = {
+      cwd: "/workspace",
+      trustedRoot: "/workspace",
+      sandboxLevel: "workspace-write" as const,
+      writeRoots: ["/workspace/cache"],
+      sessionTempDir: "/private/tmp/nib-session-test",
+    };
+
+    await connectMCPServers(
+      { contained: { command: "node", args: ["server.js"], env: { MCP_MODE: "stdio" } } },
+      { strictMcpConfig: true, spawn },
+    );
+
+    expect(connectMock).toHaveBeenCalledWith("node", ["server.js"], { MCP_MODE: "stdio" }, spawn);
+
+    connectMock.mockClear();
+    await reconnectMCPServer("contained", { command: "node", args: ["server.js"], env: { MCP_MODE: "stdio" } });
+    expect(connectMock).toHaveBeenCalledWith("node", ["server.js"], { MCP_MODE: "stdio" }, spawn);
+  });
+
   it("blocks case-mismatched allowlist entries (Node is not node)", async () => {
     const cased: Record<string, McpServerConfig> = {
       cased: { command: "Node", args: [] },

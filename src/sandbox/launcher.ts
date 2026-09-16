@@ -27,6 +27,33 @@ export function prepareSandboxedShell(command: string, options: SandboxedShellOp
   ) ?? { file: "/bin/sh", args: ["-c", command] };
 }
 
+/**
+ * Builds the executable/argv for a direct child command. This is used by
+ * stdio MCP servers, where inserting a shell would change argv semantics and
+ * create an unnecessary command-injection surface. The same Seatbelt profile
+ * as shell children is retained when containment is active.
+ */
+export function prepareSandboxedCommand(
+  command: string,
+  args: string[],
+  options: SandboxedShellOptions,
+): SandboxSpawn {
+  const shell = sandboxPrefix(
+    "",
+    options.cwd,
+    options.trustedRoot,
+    options.sandboxLevel,
+    options.writeRoots,
+    options.sessionTempDir,
+  );
+  if (!shell) return { file: command, args };
+
+  // sandboxPrefix emits [sandbox-exec, -p, profile, /bin/sh, -c, command].
+  // Keep only the sandbox executable/profile prefix, then run the requested
+  // executable directly so its configured argv is byte-for-byte preserved.
+  return { file: shell.file, args: shell.args.slice(0, 3).concat(command, args) };
+}
+
 /** Minimal child environment plus the private session scratch directory. */
 export function buildChildEnvironment(sessionTempDir?: string): Record<string, string> {
   const env: Record<string, string> = {};

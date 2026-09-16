@@ -295,11 +295,6 @@ async function main() {
   const sessionTemp = createSessionTempDir();
   setSessionTempDir(sessionTemp.path);
 
-  if (configResult.config.mcpServers) {
-    await connectMCPServers(configResult.config.mcpServers, { strictMcpConfig: configResult.config.strictMcpConfig });
-    process.on("exit", () => disconnectAllMCPServers());
-  }
-
   const resolvedApiKey = configEnv?.API_KEY || undefined;
   const resolvedBaseUrl = configEnv?.BASE_URL || undefined;
 
@@ -592,6 +587,25 @@ async function main() {
   // are session-scoped and already resolved from startup cwd. Threaded into
   // ctx so Seatbelt and file-tool containment consult the same set.
   setWriteRoots([...(configResult.config.sandbox?.writeRoots ?? []), ...additionalWriteRoots]);
+
+  // Local stdio MCP servers inherit the session's child-process containment.
+  // HTTP MCP helpers do not pass through this connector and remain unchanged.
+  if (configResult.config.mcpServers) {
+    await connectMCPServers(configResult.config.mcpServers, {
+      strictMcpConfig: configResult.config.strictMcpConfig,
+      spawn: {
+        cwd: process.cwd(),
+        trustedRoot: process.cwd(),
+        sandboxLevel:
+          configResult.config.sandbox?.enabled && configResult.config.permissionProfile?.level !== "unrestricted"
+            ? configResult.config.permissionProfile?.level
+            : undefined,
+        writeRoots: [...(configResult.config.sandbox?.writeRoots ?? []), ...additionalWriteRoots],
+        sessionTempDir: sessionTemp.path,
+      },
+    });
+    process.on("exit", () => disconnectAllMCPServers());
+  }
 
   // web_search backend config (webSearch.searxngUrl): configResult was
   // reassigned above (the TOFU strip on decline) if the project declared any

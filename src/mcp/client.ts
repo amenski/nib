@@ -2,6 +2,8 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
 import type { ToolDef, ToolOutput } from "../types.js";
 import { pkg } from "../version.js";
+import { buildChildEnvironment, prepareSandboxedCommand } from "../sandbox/launcher.js";
+import type { SandboxLevel } from "../sandbox/seatbelt.js";
 
 export interface McpServerConfig {
   name: string;
@@ -10,6 +12,15 @@ export interface McpServerConfig {
 
 const MCP_TIMEOUT_MS = 10_000;
 const PROTOCOL_VERSION = "2024-11-05";
+
+export interface McpSpawnOptions {
+  /** Project root used as the MCP child's cwd and fixed containment root. */
+  cwd: string;
+  trustedRoot: string;
+  sandboxLevel?: SandboxLevel;
+  writeRoots?: string[];
+  sessionTempDir?: string;
+}
 
 interface McpInitializeResult {
   protocolVersion: string;
@@ -177,11 +188,27 @@ export class MCPClient {
   private pending = new Map<number, { resolve: (value: unknown) => void; reject: (err: Error) => void }>();
   private stderrTail = "";
 
-  async connect(command: string, args: string[], env?: Record<string, string>): Promise<void> {
+  async connect(
+    command: string,
+    args: string[],
+    env?: Record<string, string>,
+    spawnOptions?: McpSpawnOptions,
+  ): Promise<void> {
     return new Promise((resolve, reject) => {
-      this.process = spawn(command, args, {
+      const child = spawnOptions
+        ? prepareSandboxedCommand(command, args, spawnOptions)
+        : { file: command, args };
+      this.process = spawn(child.file, child.args, {
         stdio: ["pipe", "pipe", "pipe"],
-        env: { ...process.env, ...env },
+        ...(spawnOptions?.cwd ? { cwd: spawnOptions.cwd } : {}),
+        env: {
+          // A contained MCP child receives only the minimal inherited
+          // environment; explicit per-server config is layered last so its
+          // documented overrides (PATH, credentials, and server settings)
+          // retain their existing precedence.
+          ...(spawnOptions ? buildChildEnvironment(spawnOptions.sessionTempDir) : process.env),
+          ...env,
+        },
       });
 
       this.process.stderr?.on("data", (chunk: Buffer) => {

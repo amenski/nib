@@ -1,4 +1,5 @@
 import { MCPClient } from "./client.js";
+import type { McpSpawnOptions } from "./client.js";
 import { registry } from "../tools/index.js";
 import type { ToolGroup } from "../tools/types.js";
 import type { McpServerConfig } from "../config/loader.js";
@@ -51,6 +52,7 @@ const clientsMap = new Map<string, MCPClient>();
 const pinChangedMap = new Map<string, boolean>();
 let serverConfigsMap = new Map<string, McpServerConfig>();
 let strictMcpConfig = false;
+let sessionSpawnOptions: McpSpawnOptions | undefined;
 
 export function getServerConfigs(): Record<string, McpServerConfig> {
   return Object.fromEntries(serverConfigsMap);
@@ -79,7 +81,7 @@ export function getMCPServerTools(serverName: string): ToolSnapshot[] {
 export async function reconnectMCPServer(
   name: string,
   config: McpServerConfig,
-  options?: { approvePinChange?: boolean },
+  options?: { approvePinChange?: boolean; spawn?: McpSpawnOptions },
 ): Promise<void> {
   statusMap.set(name, "reconnecting");
   errorMap.delete(name);
@@ -107,7 +109,12 @@ export async function reconnectMCPServer(
 
   try {
     const client = new MCPClient();
-    await client.connect(config.command, config.args || [], config.env);
+    const spawnOptions = options?.spawn ?? sessionSpawnOptions;
+    if (spawnOptions) {
+      await client.connect(config.command, config.args || [], config.env, spawnOptions);
+    } else {
+      await client.connect(config.command, config.args || [], config.env);
+    }
     clientsMap.set(name, client);
 
     const tools = await client.listTools();
@@ -186,17 +193,20 @@ export async function reconnectMCPServer(
 
 export async function connectMCPServers(
   servers: Record<string, McpServerConfig>,
-  options?: { strictMcpConfig?: boolean },
+  options?: { strictMcpConfig?: boolean; spawn?: McpSpawnOptions },
 ): Promise<void> {
   // Defaults to true (defense in depth): an MCP server command not in
   // ALLOWED_MCP_COMMANDS is blocked unless the config explicitly opts out
   // with `"strictMcpConfig": false`. Previously defaulted to false, which
   // left the allowlist off for anyone who never set the flag.
   strictMcpConfig = options?.strictMcpConfig ?? true;
+  // Store the session policy because UI reconnects intentionally pass only
+  // approvePinChange; a reconnect must never silently lose containment.
+  sessionSpawnOptions = options?.spawn;
   for (const [name, config] of Object.entries(servers)) {
     serverConfigsMap.set(name, config);
     statusMap.set(name, "starting");
-    await reconnectMCPServer(name, config);
+    await reconnectMCPServer(name, config, { spawn: options?.spawn });
   }
 }
 
@@ -205,4 +215,5 @@ export function disconnectAllMCPServers(): void {
     client.disconnect();
   }
   clientsMap.clear();
+  sessionSpawnOptions = undefined;
 }

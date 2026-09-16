@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildChildEnvironment, prepareSandboxedShell } from "./launcher.js";
+import { buildChildEnvironment, prepareSandboxedCommand, prepareSandboxedShell } from "./launcher.js";
 
 describe("sandbox child launcher", () => {
   it("preserves the direct shell argv when no sandbox level applies", () => {
@@ -7,6 +7,13 @@ describe("sandbox child launcher", () => {
       cwd: process.cwd(),
       trustedRoot: process.cwd(),
     })).toEqual({ file: "/bin/sh", args: ["-c", "echo hi"] });
+  });
+
+  it("preserves direct command argv when no sandbox level applies", () => {
+    expect(prepareSandboxedCommand("node", ["server.js", "--stdio"], {
+      cwd: process.cwd(),
+      trustedRoot: process.cwd(),
+    })).toEqual({ file: "node", args: ["server.js", "--stdio"] });
   });
 
   it("adds only the private session temp paths to the minimal environment", () => {

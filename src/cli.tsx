@@ -375,14 +375,12 @@ async function main() {
       onPersist: (settingsPath) => trustSettings(settingsPath),
     },
   );
-  // The capability-boundary gate (permission-profile.md §3): constructed only
-  // when `permissionProfile` is configured — absent entirely disables layer 1
-  // and authorize() runs the engine alone (today's behavior byte-for-byte).
-  const permissionProfile = configResult.config.permissionProfile
-    ? new ProfileEvaluator(configResult.config.permissionProfile, process.cwd(), {
-        writeRoots: [...(configResult.config.sandbox?.writeRoots ?? []), ...additionalWriteRoots],
-      })
-    : undefined;
+  // The capability-boundary gate (permission-profile.md §3): loadConfig
+  // supplies workspace-write by default; an explicit unrestricted profile is
+  // still represented here so the evaluator can honor that opt-out.
+  const permissionProfile = new ProfileEvaluator(configResult.config.permissionProfile!, process.cwd(), {
+    writeRoots: [...(configResult.config.sandbox?.writeRoots ?? []), ...additionalWriteRoots],
+  });
 
   // Orchestrator mode (9.3) is registered once at startup, but its runtime
   // dependencies only exist inside main(): the provider factory resolves per

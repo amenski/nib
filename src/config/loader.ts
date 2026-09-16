@@ -1185,7 +1185,7 @@ export function loadConfig(projectDir?: string): LoadResult {
     validatePermissionProfile(globalRaw?.permissionProfile, "global config", errors),
     validatePermissionProfile(projectRaw?.permissionProfile, "project config", errors),
   );
-  if (profile) config.permissionProfile = profile;
+  config.permissionProfile = profile ?? { level: "workspace-write" };
 
   // ── sandbox (permission-profile.md §8, phase (e)) ──
   // Mechanical Seatbelt layer for bash children; meaningful only with a
@@ -1226,6 +1226,11 @@ export function loadConfig(projectDir?: string): LoadResult {
       }
     } else {
       errors.push("config.sandbox: must be an object");
+    }
+  } else {
+    config.sandbox = { enabled: true };
+    if (!sandboxSupportedOnPlatform()) {
+      warnings.push("sandbox is macOS-only; running policy-only");
     }
   }
 

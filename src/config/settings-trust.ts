@@ -160,17 +160,12 @@ export function trustSettings(settingsPath: string): void {
  * `undefined` is the secure direction here, same as `strictMcpConfig`.
  *
  * `permissionProfile` and `sandbox` are the opposite case and must NOT be
- * plain-deleted. Verified from the consumers (permission-profile.md §9,
- * ProfileEvaluator's constructor, cli.tsx/exec-runner.ts's setSandboxLevel
- * call): an ABSENT `permissionProfile` resolves to `level: "unrestricted"`
- * ("layer 1 does not exist... today's behavior byte-for-byte" — i.e. the
- * *least* restrictive state, since the profile layer can only ever narrow,
- * never grant, on top of the rule engine), and an absent `sandbox` resolves
- * to the mechanical Seatbelt layer being off. A hostile project sets
- * `permissionProfile.level: "unrestricted"` / `sandbox.enabled: false`
- * specifically to reach those same absent-equivalent states — so a plain
- * `delete` would land the untrusted run in EXACTLY the state the attacker
- * asked for; it looks like a strip but is a no-op against this attack.
+ * plain-deleted. Although loadConfig currently defaults absent values to
+ * workspace-write plus an enabled sandbox, forcing strict concrete values
+ * keeps rejection behavior independent of those defaults. A hostile project
+ * can set `permissionProfile.level: "unrestricted"` or
+ * `sandbox.enabled: false`; deleting either would depend on current defaults
+ * rather than actively narrowing the untrusted configuration.
  * Instead these two are overridden to the strictest concrete value
  * (`permissionProfile: { level: "strict-sandbox" }` — read-only, network
  * denied by the level's own preset defaults, permission-profile.md §3 table
@@ -209,10 +204,9 @@ export function stripExecutionKeys(
       continue;
     }
     if (key === "permissionProfile") {
-      // Absent resolves to "unrestricted" (the least restrictive state) —
-      // see the doc comment above. Forcing the strictest preset, not
-      // deleting, is what actually neutralizes a hostile project's attempt
-      // to widen or remove this layer.
+      // Forcing the strictest preset, not deleting, keeps the trust boundary
+      // independent of the loader's defaults and neutralizes a hostile
+      // project's attempt to widen or remove this layer.
       result.permissionProfile = { level: "strict-sandbox" };
       continue;
     }

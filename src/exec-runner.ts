@@ -245,15 +245,12 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
         onPersist: (settingsPath) => trustSettings(settingsPath),
       },
     );
-    // Same construction the TUI uses (cli.tsx): a configured permissionProfile
-    // adds the layer-1 capability gate — a profile deny fails closed exactly
-    // like a rule deny (no prompt; the headless askUser below is never
-    // reached). Absent → layer 1 does not exist (permission-profile.md §9).
-    const permissionProfile = effectiveConfig.permissionProfile
-      ? new ProfileEvaluator(effectiveConfig.permissionProfile, options.projectRoot, {
-          writeRoots,
-        })
-      : undefined;
+    // Same construction the TUI uses (cli.tsx): loadConfig supplies a
+    // workspace-write profile by default. A profile deny fails closed exactly
+    // like a rule deny (no prompt; the headless askUser below is never reached).
+    const permissionProfile = new ProfileEvaluator(effectiveConfig.permissionProfile!, options.projectRoot, {
+      writeRoots,
+    });
 
     // Lifecycle hooks (hooks-spec.md): headless mode skips untrusted project
     // hooks with a stderr warning at startup (fail closed, like skills).

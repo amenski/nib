@@ -650,11 +650,18 @@ describe("loadConfig permissionProfile", () => {
     expect(errors.some((e) => e.includes("permissionProfile must be an object"))).toBe(true);
   });
 
-  it("leaves the key undefined when absent from both files", () => {
+  it("defaults to workspace-write when absent from both files", () => {
     const { config, errors, warnings } = loadConfig(projectDir);
     expect(errors).toEqual([]);
-    expect(config.permissionProfile).toBeUndefined();
+    expect(config.permissionProfile).toEqual({ level: "workspace-write" });
     expect(warnings.some((w) => w.includes("permissionProfile"))).toBe(false);
+  });
+
+  it("preserves an explicit unrestricted opt-out", () => {
+    writeProjectSettings({ permissionProfile: { level: "unrestricted" } });
+    const { config, errors } = loadConfig(projectDir);
+    expect(errors).toEqual([]);
+    expect(config.permissionProfile).toEqual({ level: "unrestricted" });
   });
 
   describe("project > global merge (append / override by path and domain)", () => {
@@ -702,11 +709,14 @@ describe("loadConfig permissionProfile", () => {
 });
 
 describe("loadConfig sandbox (permission-profile.md §8, phase (e))", () => {
-  it("defaults off — key absent leaves sandbox undefined with no unknown-field warning", () => {
+  it("defaults on when absent, without an unknown-field warning", () => {
     const { config, errors, warnings } = loadConfig(projectDir);
     expect(errors).toEqual([]);
-    expect(config.sandbox).toBeUndefined();
+    expect(config.sandbox).toEqual({ enabled: true });
     expect(warnings.some((w) => w.includes('unknown field "sandbox"'))).toBe(false);
+    if (process.platform !== "darwin") {
+      expect(warnings).toContain("sandbox is macOS-only; running policy-only");
+    }
   });
 
   it("parses sandbox.enabled: true", () => {

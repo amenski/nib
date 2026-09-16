@@ -32,6 +32,13 @@ describe("PermissionEngine.resolve", () => {
     it("asks for run_bash by default", () => {
       expect(engine.resolve("run_bash", { command: "git status" }).action).toBe("ask");
     });
+
+    it("fails closed when apply_patch has an escaped target", () => {
+      const result = engine.resolve("apply_patch", { patch: "+++ b/../outside.txt\n@@ -1 +1 @@\n-x\n+y" });
+
+      expect(result.action).toBe("ask");
+      expect(result.wasUnresolved).toBe(true);
+    });
   });
 
   describe("builtin-allow: free read-only access inside the working tree", () => {

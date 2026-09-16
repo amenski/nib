@@ -10,6 +10,7 @@ import { BUILTIN_ALLOW_RULES } from "./builtin-allow.js";
 import { isPathWithinWriteRoots, resolveWriteRoots } from "../sandbox/write-roots.js";
 import { classifyImageSource } from "../image-source.js";
 import { projectDirPath } from "../config/paths.js";
+import { extractApplyPatchPlan } from "./capabilities.js";
 
 export type { PermissionAction, PermissionRule, PatternKind, RuleOrigin } from "./rules.js";
 
@@ -185,6 +186,8 @@ export class PermissionEngine {
 
     const internal = toolName === "run_bash" || toolName === "run_bash_background"
       ? this.resolveBash(toolName, String(a.command ?? ""))
+      : toolName === "apply_patch"
+        ? this.resolveApplyPatch(a)
       : usesDomainSubject
         ? this.resolveSubject(toolName, buildSubject(toolName, a))
         : this.resolveSubject(toolName, this.relativizeSubject(buildSubject(toolName, a)));
@@ -360,6 +363,21 @@ export class PermissionEngine {
     // never let it resolve weaker than ask (an actual deny still wins outright).
     const finalAction = wasUnresolved && combined.action === "allow" ? "ask" : combined.action;
     return { action: finalAction, winningRule: combined.winningRule, wasUnresolved: combined.wasUnresolved || wasUnresolved };
+  }
+
+  private resolveApplyPatch(args: Record<string, unknown>): InternalResolveResult {
+    const plan = extractApplyPatchPlan(args, this.workingDir);
+    if (plan.status !== "known" || plan.tool !== "apply_patch" || !("targets" in plan)) {
+      return { action: "ask", wasUnresolved: true };
+    }
+
+    let combined: InternalResolveResult | undefined;
+    for (const target of plan.targets) {
+      const path = this.normalizePath(target.path);
+      const result = this.resolveSubject("apply_patch", { tool: "apply_patch", text: path, resolvedPath: path });
+      combined = combined ? this.combineMostRestrictive(combined, result) : result;
+    }
+    return combined ?? { action: "ask", wasUnresolved: true };
   }
 
   private combineMostRestrictive(a: InternalResolveResult, b: InternalResolveResult): InternalResolveResult {

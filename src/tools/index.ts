@@ -1,6 +1,6 @@
 import { ToolRegistry } from "./registry.js";
 import type { ToolCall, ToolOutput } from "../types.js";
-import type { ToolContext } from "./types.js";
+import type { ToolContext, ToolExecOptions } from "./types.js";
 import type { SandboxLevel } from "../sandbox/seatbelt.js";
 import type { ProfileLevel } from "../permissions/profile.js";
 import type { WebSearchConfig } from "../config/loader.js";
@@ -117,6 +117,6 @@ export function setWebSearchConfig(v: WebSearchConfig | undefined): void {
   ctx.webSearch = v;
 }
 
-export async function executeTool(call: ToolCall): Promise<ToolOutput> {
-  return registry.execute(call, ctx);
+export async function executeTool(call: ToolCall, exec?: ToolExecOptions): Promise<ToolOutput> {
+  return registry.execute(call, ctx, exec);
 }

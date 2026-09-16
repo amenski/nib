@@ -533,6 +533,113 @@ describe("runAgent", () => {
     });
   });
 
+  describe("approved-operation grant (release gate 2, trusted half)", () => {
+    function fakeSessionStore() {
+      return { appendPermission: vi.fn(async () => {}), appendToken: vi.fn(async () => {}) };
+    }
+
+    const gitInitTurn = (): TurnScript => [
+      { type: "tool_call_start", id: "call_1", name: "run_bash" },
+      { type: "tool_call_delta", id: "call_1", arguments: '{"command":"git init"}' },
+      { type: "done", finishReason: "tool_calls" },
+    ];
+    const npmTurn = (): TurnScript => [
+      { type: "tool_call_start", id: "call_1", name: "run_bash" },
+      { type: "tool_call_delta", id: "call_1", arguments: '{"command":"npm test"}' },
+      { type: "done", finishReason: "tool_calls" },
+    ];
+
+    it("a plain `true` on a config-writing Git command carries the grant to the tool executor", async () => {
+      const { provider } = makeProvider([gitInitTurn(), textTurn("ok")]);
+      const executeTool = vi.fn(async () => ({ content: "ran" }));
+
+      await runAgent("run", {
+        provider, tools: [], executeTool,
+        permissions: new PermissionEngine(undefined, "/workspace"),
+        askUser: async () => true,
+      });
+
+      expect(executeTool).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "run_bash" }),
+        { approvedGitConfigWrite: true },
+      );
+    });
+
+    it("a plain `true` on an ordinary command carries no grant", async () => {
+      const { provider } = makeProvider([npmTurn(), textTurn("ok")]);
+      const executeTool = vi.fn(async () => ({ content: "ran" }));
+
+      await runAgent("run", {
+        provider, tools: [], executeTool,
+        permissions: new PermissionEngine(undefined, "/workspace"),
+        askUser: async () => true,
+      });
+
+      expect(executeTool).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "run_bash" }),
+        undefined,
+      );
+    });
+
+    it("auto-approve posture never grants it — posture approves a class, not this command", async () => {
+      const { provider } = makeProvider([gitInitTurn(), textTurn("ok")]);
+      const executeTool = vi.fn(async () => ({ content: "ran" }));
+      const sessionStore = fakeSessionStore();
+
+      await runAgent("run", {
+        provider, tools: [], executeTool,
+        permissions: new PermissionEngine(undefined, "/workspace"),
+        askUser: async () => "posture",
+        sessionStore: sessionStore as any, sessionId: "s1",
+      });
+
+      // The call still runs (posture is an approval) — just without the grant.
+      expect(executeTool).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "run_bash" }),
+        undefined,
+      );
+      expect(sessionStore.appendPermission).toHaveBeenCalledWith("s1", expect.objectContaining({
+        decision: "allow-by-posture",
+      }));
+    });
+
+    it("a persisted allow rule never grants it — the allow path has no approval to bind to", async () => {
+      const { provider } = makeProvider([gitInitTurn(), textTurn("ok")]);
+      const executeTool = vi.fn(async () => ({ content: "ran" }));
+      const askUser = vi.fn(async () => true);
+
+      await runAgent("run", {
+        provider, tools: [], executeTool,
+        // The rule a session/always answer would have written.
+        permissions: new PermissionEngine(
+          { rules: [{ tool: "run_bash", kind: "any", pattern: "", action: "allow", origin: "config" }] },
+          "/workspace",
+        ),
+        askUser,
+      });
+
+      expect(askUser).not.toHaveBeenCalled();
+      expect(executeTool).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "run_bash" }),
+        undefined,
+      );
+    });
+
+    it("a denial never grants it, and nothing executes", async () => {
+      const { provider } = makeProvider([gitInitTurn(), textTurn("ok")]);
+      const executeTool = vi.fn(async () => ({ content: "should not run" }));
+
+      const result = await runAgent("run", {
+        provider, tools: [], executeTool,
+        permissions: new PermissionEngine(undefined, "/workspace"),
+        askUser: async () => false,
+      });
+
+      expect(executeTool).not.toHaveBeenCalled();
+      expect(result.messages.some((m) => m.role === "tool" && m.content === "PERMISSION_DENIED: denied by user")).toBe(true);
+    });
+  });
+
   describe("permission profile integration (§10(d), decision L)", () => {
     function fakeSessionStore() {
       return { appendPermission: vi.fn(async () => {}), appendToken: vi.fn(async () => {}) };
@@ -867,9 +974,12 @@ describe("runAgent", () => {
         tool: "run_bash",
         decision: "allow-by-posture",
       }));
-      // Upgraded by posture, not denied — the call still executed.
+      // Upgraded by posture, not denied — the call still executed. (The
+      // trailing `undefined` is the second executor argument, which only an
+      // explicit interactive approval ever populates — see the
+      // approved-operation grant block.)
       expect(askUser).toHaveBeenCalledTimes(1);
-      expect(executeTool).toHaveBeenCalledWith(expect.objectContaining({ name: "run_bash" }));
+      expect(executeTool).toHaveBeenCalledWith(expect.objectContaining({ name: "run_bash" }), undefined);
     });
 
     it("acts on failedStreak (5 consecutive failures) in a parallel batch", async () => {

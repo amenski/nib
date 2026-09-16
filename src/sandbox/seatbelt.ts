@@ -144,6 +144,42 @@ const GIT_INTEGRITY_DENIES = [
 ];
 
 /**
+ * The approved-operation variant (release gate 2, trusted half): the narrow
+ * route back for the five repository-creation/wiring workflows
+ * {@link GIT_INTEGRITY_DENIES} breaks — all of which write `.git/config`.
+ *
+ * Reached only through an explicit one-time user approval of *that specific
+ * command*: `ToolExecOptions.approvedGitConfigWrite`, set in agent.ts's ask
+ * branch when `askUser` returned a plain `true` (never on auto-approve
+ * posture, never on a persisted rule — see the field's doc comment), and
+ * only for commands `isGitConfigOperation` accepts.
+ *
+ * Scope is the workspace root alone, deliberately — not the whole
+ * `resolveWriteRoots` set. Measured consequence: an approved `git config`
+ * still fails when it targets a repository under a configured external
+ * write root, which is the fail-closed direction and is recorded in
+ * docs/security-architecture-plan.md rather than widened away.
+ *
+ * Two allows, in this order, and both after the denies above:
+ *   - `config` (and its `config.lock`) at any depth under the workspace, so
+ *     `init`, `clone`, `remote add`, and `config <name> <value>` can write.
+ *   - the `hooks` *directory node*, which `git init` must create to lay down
+ *     its `.sample` templates. Hook *files* stay denied: the deny above is
+ *     `hooks/[^/]+$` and this allow matches only the directory, so an
+ *     approved `git init` cannot be turned into a hook write.
+ *
+ * `credentials` is not re-allowed, and neither is anything outside the
+ * workspace.
+ */
+function gitConfigTrustedAllows(workspaceRoot: string): string[] {
+  const ws = sbplQuote(regexQuote(workspaceRoot));
+  return [
+    `(allow file-write* (regex "^${ws}/(.*/)?\\.git(/.*)?/config(\\.lock)?$"))`,
+    `(allow file-write* (regex "^${ws}/(.*/)?\\.git(/.*)?/hooks$"))`,
+  ];
+}
+
+/**
  * Whether `$HOME` is a safe thing to subtract from `(allow file-read*)`.
  * A root of `/` (or an unset/garbage home) would make the deny rule swallow
  * the entire filesystem, including the toolchain and the workspace, so the
@@ -158,6 +194,17 @@ function isUsableHomeDeny(home: string): boolean {
 /** Escapes a path for embedding in an SBPL double-quoted string. */
 function sbplQuote(path: string): string {
   return path.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+/**
+ * Escapes a path for use as a literal inside an SBPL `(regex "…")` pattern.
+ * Applied *before* {@link sbplQuote}: the regex engine sees the decoded
+ * string, so metacharacters in a workspace path must already be escaped by
+ * the time the SBPL string is decoded — a workspace under a directory named
+ * `foo+bar` or `a.b` must not match its neighbours.
+ */
+function regexQuote(path: string): string {
+  return path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /**
@@ -185,6 +232,7 @@ export function buildSeatbeltProfile(
   level: SandboxLevel,
   trustedRoot: string,
   writeRoots?: string[],
+  allowGitConfigWrite?: boolean,
 ): string {
   // The level's authorized write-set: empty for strict-sandbox, the shared
   // resolveWriteRoots set for workspace-write. The read boundary re-allows
@@ -201,6 +249,13 @@ export function buildSeatbeltProfile(
   // Git integrity last: last-matching-rule-wins means a deny only bites if it
   // follows the write-root grants above.
   lines.push(...GIT_INTEGRITY_DENIES);
+  // The approved-operation variant must follow those denies to take effect.
+  // workspace-write only: emitting it under strict-sandbox would widen a
+  // read-only level into "may write .git/config", which is a different
+  // level's contract, not this one's.
+  if (allowGitConfigWrite && level === "workspace-write") {
+    lines.push(...gitConfigTrustedAllows(trustedRoot));
+  }
   return lines.join("\n");
 }
 
@@ -341,6 +396,10 @@ export function validateCwdWithinTrustedRoot(
  * via {@link resolveWriteRoots}), threaded through from `ctx.writeRoots`
  * (docs/unified-write-boundary.md) so a shell write into a configured root
  * is allowed by the same set the file tools consult.
+ *
+ * `allowGitConfigWrite` is the approved-operation grant (release gate 2) —
+ * see {@link gitConfigTrustedAllows}. It widens this one spawn's profile;
+ * nothing about it persists.
  */
 export function sandboxPrefix(
   command: string,
@@ -349,6 +408,7 @@ export function sandboxPrefix(
   level: ProfileLevel | undefined,
   writeRoots?: string[],
   sessionTempDir?: string,
+  allowGitConfigWrite?: boolean,
 ): SandboxSpawn | null {
   if (!isSandboxedLevel(level)) return null; // macOS-only; startup notice from the loader
   return {
@@ -359,6 +419,7 @@ export function sandboxPrefix(
         level,
         seatbeltWorkspaceRoot(trustedRoot),
         level === "workspace-write" ? resolveWriteRoots(level, seatbeltWorkspaceRoot(trustedRoot), writeRoots, sessionTempDir) : undefined,
+        allowGitConfigWrite,
       ),
       "/bin/sh",
       "-c",

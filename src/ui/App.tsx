@@ -50,6 +50,7 @@ import type { TodoItem } from "../tools/todo.js";
 import StatusBar from "./StatusBar.js";
 import PermissionPrompt, { DestructiveConfirmPrompt, ScopeChoicePrompt, ExternalScopeChoicePrompt, type PermissionDecision } from "./PermissionPrompt.js";
 import { extractCapabilityPlan } from "../permissions/capabilities.js";
+import { isGitConfigOperation } from "../permissions/git-config-operations.js";
 import { explainToolAction } from "./explain-action.js";
 import { buildWelcomeLines } from "./views/WelcomeScreen.js";
 import PromptInput from "./views/PromptInput.js";
@@ -1237,7 +1238,14 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           // These tools do not yet expose their actual command/file targets to
           // the permission layer, so only an interactive one-time approval is
           // safe until capability extraction exists.
-          const oneTimeOnly = toolName === "run_bash_background" || toolName === "apply_patch";
+          //
+          // Config-writing Git commands join them (release gate 2): approving
+          // one grants the widened Seatbelt variant for that single command
+          // (see ToolExecOptions.approvedGitConfigWrite), so the answer must
+          // never become a persisted rule — offering only once/deny is what
+          // makes agent.ts's plain `true` an unambiguous per-call grant.
+          const oneTimeOnly = toolName === "run_bash_background" || toolName === "apply_patch"
+            || isGitConfigOperation(toolName, args);
 
           // Auto-approve posture bypasses an ordinary rule-derived ask, but
           // never a result the bash normalizer couldn't safely classify, and

@@ -796,9 +796,9 @@ describe("git integrity (macOS)", () => {
     async () => {
       // The deny deliberately breaks `git init` / `git remote add` /
       // `git clone` / `git submodule add`, which all write `.git` config.
-      // That conflict is recorded, not silently allowed: the trusted path for
-      // explicitly approved Git operations is release-gate item 2's open half
-      // (docs/security-architecture-plan.md).
+      // The trusted path for explicitly approved Git operations is the
+      // "approved-operation variant" below: this test is its missing-grant
+      // control, so the two together prove the grant is what unblocks it.
       const f = fixture();
       try {
         const r = await runCommand("mkdir -p fresh && cd fresh && git init -q", f.ws, "workspace-write");
@@ -810,6 +810,218 @@ describe("git integrity (macOS)", () => {
     },
     60_000,
   );
+
+  // ── the approved-operation variant (trusted half, release gate 2) ──
+  //
+  // Reached in production only through agent.ts's ask branch on a plain
+  // `true` from askUser — an explicit approval of that one command. The
+  // tests below drive runBashTimed's grant argument directly, which is the
+  // same bit that path sets.
+
+  itOnDarwin(
+    "approved variant: an approved config-writing command runs, and the same command without the grant does not",
+    async () => {
+      const f = fixture();
+      try {
+        const command = "git remote add origin ./origin-path";
+        // Control: no grant → the deny bites (the documented cost).
+        const denied = await runBashTimed(command, f.ws, f.ws, 30_000, false, "workspace-write");
+        expect(denied.error).toBeDefined();
+        expect(git("remote", f.ws).trim()).toBe("");
+
+        // Same spawn shape, grant set → the approved operation runs.
+        const approved = await runBashTimed(
+          command, f.ws, f.ws, 30_000, false, "workspace-write", undefined, undefined, true,
+        );
+        expect(approved.error).toBeUndefined();
+        // The write really landed in .git/config, not just an exit code.
+        expect(git("config remote.origin.url", f.ws).trim()).toBe("./origin-path");
+      } finally {
+        f.cleanup();
+      }
+    },
+    60_000,
+  );
+
+  itOnDarwin(
+    "approved variant: repository creation works again — git init lays down config and hook templates",
+    async () => {
+      const f = fixture();
+      try {
+        const init = await runBashTimed(
+          "mkdir -p fresh && cd fresh && git init -q",
+          f.ws, f.ws, 30_000, false, "workspace-write", undefined, undefined, true,
+        );
+        expect(init.error).toBeUndefined();
+        const fresh = join(f.ws, "fresh", ".git");
+        expect(existsSync(join(fresh, "config"))).toBe(true);
+        // The hooks *directory* is allowed so init can write into it, which
+        // is only safe because hook files themselves stay denied (below).
+        expect(existsSync(join(fresh, "hooks"))).toBe(true);
+      } finally {
+        f.cleanup();
+      }
+    },
+    60_000,
+  );
+
+  itOnDarwin(
+    "approved variant: hooks and credentials stay denied even with the grant",
+    async () => {
+      const f = fixture();
+      try {
+        const hook = join(f.gitdir, "hooks", "pre-commit");
+        const hookWrite = await runBashTimed(
+          nodeWrite(hook), f.ws, f.ws, 30_000, false, "workspace-write", undefined, undefined, true,
+        );
+        expect(hookWrite.error).toBeDefined();
+        expect(existsSync(hook)).toBe(false);
+
+        const credentials = join(f.gitdir, "credentials");
+        const credWrite = await runBashTimed(
+          nodeWrite(credentials), f.ws, f.ws, 30_000, false, "workspace-write", undefined, undefined, true,
+        );
+        expect(credWrite.error).toBeDefined();
+        expect(existsSync(credentials)).toBe(false);
+
+        // Those two denials only mean something if the grant is genuinely
+        // applied to this same spawn shape — so prove a config write lands.
+        const configWrite = await runBashTimed(
+          "git config nib.probe yes", f.ws, f.ws, 30_000, false, "workspace-write", undefined, undefined, true,
+        );
+        expect(configWrite.error).toBeUndefined();
+        expect(git("config nib.probe", f.ws).trim()).toBe("yes");
+      } finally {
+        f.cleanup();
+      }
+    },
+    90_000,
+  );
+
+  itOnDarwin(
+    "approved variant: the grant is workspace-scoped — a config write in an added root still fails",
+    async () => {
+      const f = fixture();
+      const added = fixture();
+      try {
+        const roots = [f.ws, added.ws];
+        // Control: the added root is writable for ordinary Git work, so a
+        // failure below is attributable to the config deny, not to the cwd.
+        const ordinary = await runBashTimed(
+          `cd '${added.ws}' && echo a >> tracked.txt && git add -A`,
+          f.ws, f.ws, 30_000, false, "workspace-write", roots,
+        );
+        expect(ordinary.error).toBeUndefined();
+
+        const outside = await runBashTimed(
+          `cd '${added.ws}' && git config nib.probe yes`,
+          f.ws, f.ws, 30_000, false, "workspace-write", roots, undefined, true,
+        );
+        expect(outside.error).toBeDefined();
+        expect(git("config --get nib.probe || true", added.ws).trim()).toBe("");
+
+        // …while the same approved command inside the workspace itself works.
+        const inside = await runBashTimed(
+          "git config nib.probe yes",
+          f.ws, f.ws, 30_000, false, "workspace-write", roots, undefined, true,
+        );
+        expect(inside.error).toBeUndefined();
+        expect(git("config nib.probe", f.ws).trim()).toBe("yes");
+      } finally {
+        f.cleanup();
+        added.cleanup();
+      }
+    },
+    90_000,
+  );
+
+  it("the approved-operation variant is emitted only on request, only for workspace-write, and below the denies", () => {
+    const ws = "/private/tmp/ws";
+    const configAllow = `(allow file-write* (regex "^/private/tmp/ws/(.*/)?\\.git(/.*)?/config(\\.lock)?$"))`;
+    const hooksNodeAllow = `(allow file-write* (regex "^/private/tmp/ws/(.*/)?\\.git(/.*)?/hooks$"))`;
+    const denyConfig = `(deny file-write* (regex "^.*/\\.git(/.*)?/config(\\.lock)?$"))`;
+
+    // Absent the grant, neither allow exists at either level — the only
+    // `(allow … (regex …))` line in the untrusted profile is the `.sample`
+    // one inside the deny set.
+    for (const level of ["strict-sandbox", "workspace-write"] as const) {
+      const p = buildSeatbeltProfile(level, ws);
+      expect(p).not.toContain(configAllow);
+      expect(p).not.toContain(hooksNodeAllow);
+    }
+
+    const trusted = buildSeatbeltProfile("workspace-write", ws, undefined, true);
+    expect(trusted).toContain(configAllow);
+    expect(trusted).toContain(hooksNodeAllow);
+    // Exactly the deny set's `.sample` allow plus the two granted ones — no
+    // allow for hook files, and none for credentials.
+    const trustedAllows = trusted.split("\n").filter((l) => l.startsWith("(allow file-write* (regex"));
+    expect(trustedAllows).toEqual([
+      `(allow file-write* (regex "^.*/\\.git(/.*)?/hooks/[^/]+\\.sample$"))`,
+      configAllow,
+      hooksNodeAllow,
+    ]);
+    // Last-matching-rule-wins: these are allows, so they must come after the
+    // denies they carve into.
+    expect(trusted.indexOf(configAllow)).toBeGreaterThan(trusted.indexOf(denyConfig));
+
+    // strict-sandbox is untouched even when the grant is set: widening a
+    // read-only level into ".git/config is writable" is a different level's
+    // contract, so the flag must be inert there.
+    const strict = buildSeatbeltProfile("strict-sandbox", ws, undefined, true);
+    expect(strict).not.toContain(configAllow);
+    expect(strict).not.toContain(hooksNodeAllow);
+    expect(strict).toBe(buildSeatbeltProfile("strict-sandbox", ws));
+  });
+
+  itOnDarwin(
+    "approved variant: a dotted workspace path neither widens to a neighbour nor disables the grant",
+    async () => {
+      // A regex-escape bug here is security-relevant in the widening
+      // direction: with the dot left bare, the grant for `ws.v1` would also
+      // match a sibling named `wssv1`. An over-escape disables the grant
+      // instead. Both are caught by running the real thing.
+      const root = mkdtempSync(join(tmpdir(), "nib-gitgate-esc-"));
+      const ws = join(root, "ws.v1");
+      const neighbour = join(root, "wssv1");
+      mkdirSync(ws);
+      mkdirSync(neighbour);
+      git("init -q", ws);
+      git("init -q", neighbour);
+      try {
+        const granted = await runBashTimed(
+          "git config nib.probe yes", ws, ws, 30_000, false, "workspace-write", [ws], undefined, true,
+        );
+        expect(granted.error).toBeUndefined();
+        expect(git("config nib.probe", ws).trim()).toBe("yes");
+
+        // The neighbour is an ordinary write root here — so a config write in
+        // it fails only because the grant's workspace scope excludes it.
+        const spill = await runBashTimed(
+          `cd '${neighbour}' && git config nib.probe yes`,
+          ws, ws, 30_000, false, "workspace-write", [ws, neighbour], undefined, true,
+        );
+        expect(spill.error).toBeDefined();
+        expect(git("config --get nib.probe || true", neighbour).trim()).toBe("");
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+    60_000,
+  );
+
+  it("regex-escapes the workspace root, so a metacharacter path cannot match a neighbour", () => {
+    // `regexQuote` runs before `sbplQuote`, so a path-sourced `.` is emitted
+    // as a double backslash in the profile *text* — SBPL decodes `\\` to `\`,
+    // which is the single backslash the regex engine needs before the dot
+    // (the same decoded form the constant deny lines write directly). The
+    // end-to-end test above is what actually holds this honest.
+    const p = buildSeatbeltProfile("workspace-write", "/private/tmp/ws.x", undefined, true);
+    expect(p).toContain("^/private/tmp/ws\\\\.x/(.*/)?");
+    expect(p).not.toContain("^/private/tmp/ws.x/(.*/)?");
+    const paren = buildSeatbeltProfile("workspace-write", "/private/tmp/ws(1)+", undefined, true);
+    expect(paren).toContain("^/private/tmp/ws\\\\(1\\\\)\\\\+/(.*/)?");
+  });
 
   it("the integrity denies are emitted at both sandboxed levels, after the write grants", () => {
     for (const level of ["strict-sandbox", "workspace-write"] as const) {

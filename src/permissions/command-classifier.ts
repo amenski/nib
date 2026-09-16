@@ -41,8 +41,11 @@ function readOnly(reason: string): CommandClassificationResult {
  * Tokenize one shell segment only when its syntax is unambiguous. Shell
  * operators, expansion, redirection, comments, and incomplete quoting are
  * rejected instead of attempting to emulate a shell parser.
+ *
+ * Exported for git-config-operations.ts, which needs the same conservative
+ * reading of a segment rather than a second, differently-buggy tokenizer.
  */
-function tokenize(segment: string): string[] | null {
+export function tokenize(segment: string): string[] | null {
   const tokens: string[] = [];
   let token = "";
   let hasToken = false;

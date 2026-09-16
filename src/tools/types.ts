@@ -6,7 +6,38 @@ import type { SandboxLevel } from "../sandbox/seatbelt.js";
 import type { ProfileLevel } from "../permissions/profile.js";
 import type { WebSearchConfig } from "../config/loader.js";
 
-export type ToolHandler = (args: Record<string, unknown>, ctx: ToolContext) => Promise<ToolOutput>;
+export type ToolHandler = (
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+  exec?: ToolExecOptions,
+) => Promise<ToolOutput>;
+
+/**
+ * Per-call execution options passed alongside {@link ToolContext}.
+ *
+ * Deliberately not a field on ToolContext: that object is a per-run module
+ * singleton (src/tools/index.ts) shared by every call in a session, so it
+ * cannot carry anything that must hold for *this* call only. A grant that
+ * must not outlive one approved command belongs here, where it is created
+ * and dropped inside a single execute call.
+ */
+export interface ToolExecOptions {
+  /**
+   * The current call is a config-writing Git command the user explicitly
+   * approved at the prompt for this call alone (permission-profile.md §8,
+   * release gate 2). Set only by agent.ts in the branch reached when
+   * `askUser` returned a plain `true` — never on auto-approve posture
+   * (`"posture"` is a distinct return), and never on a persisted rule (that
+   * path resolves to `action: "allow"` and does not reach the ask branch).
+   * The UI additionally marks these calls `oneTimeOnly`, so no
+   * session/always answer exists to persist in the first place.
+   *
+   * Effects: run_bash's Seatbelt profile gains a workspace-scoped
+   * `.git/config` (and hooks-directory) allow, in addition to the always-on
+   * `.git` denies. Absent — the normal case — the denies stand alone.
+   */
+  approvedGitConfigWrite?: boolean;
+}
 
 export interface AskQuestionOption {
   label: string;

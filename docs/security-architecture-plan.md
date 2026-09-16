@@ -200,18 +200,67 @@ and logs are untouched, so ordinary `add`/`commit`/`stash`/`branch`/`tag`/
 
 Two limitations are recorded rather than claimed closed:
 
-- **Repository creation and wiring is broken by design until the trusted
-  path exists.** `git init`, `git remote add`, `git config <write>`,
-  `git clone`, and `git submodule add` all write `.git` config, so all five
-  fail under the deny. This is the documented cost of gate 2, and it is the
-  conflict release-gate item 2 below still has to resolve; the mechanical
-  deny does not get to break a workflow silently.
+- **Repository creation and wiring needed a trusted path — now implemented
+  (2026-09-16, same day).** `git init`, `git remote add`,
+  `git config <write>`, `git clone`, and `git submodule add` all write `.git`
+  config, so all five fail under the deny. The deny does not get to break a
+  workflow silently, and it no longer does: an explicit one-time approval of
+  one of those commands now runs it under a workspace-scoped variant that
+  re-allows `.git/config` (and the `hooks` directory node, which `git init`
+  needs for its templates). See "The approved-operation variant" below.
 - **A repository whose `.git/hooks` is already a symlink** to a directory
   outside `.git` still resolves hook writes to ordinary workspace paths,
   which no path-based SBPL rule can distinguish. A child can no longer
   *create* that shape (the `hooks$` rule denies the node, so it cannot
   create, rename, or remove anything named `.git/hooks`), but a user who
   set it up deliberately is outside the deny.
+
+#### The approved-operation variant (gate 2, trusted half)
+
+The rule the design obeys: **the classifier decides what the prompt offers;
+the user's explicit approval is the grant.** `isGitConfigOperation`
+(`src/permissions/git-config-operations.ts`) is a pure, conservative
+predicate over the whole command — every segment of a compound command must
+qualify, wrappers/sudo/env-prefixes/command substitution disqualify it, the
+executable must be a bare `git` or one under a standard bin directory (so
+`./git` inside the workspace gets nothing), and no global Git option may
+precede the subcommand. It is not an authorization decision: it only decides
+whether the prompt offers the variant.
+
+The grant flows one way and does not outlive the call: `gateCall`
+(`src/agent.ts`) sets `ToolExecOptions.approvedGitConfigWrite` **only** in the
+branch reached when `askUser` returned a plain `true` — auto-approve posture
+returns `"posture"` and never grants, and a persisted rule resolves to
+`action: "allow"` and never reaches that branch at all. `App.tsx` marks these
+calls `oneTimeOnly` (the same suppression `run_bash_background` and
+`apply_patch` already use), so the prompt offers only once/deny and there is
+no session/always answer to persist in the first place. The value is a
+per-call argument (`ToolExecOptions`), deliberately not a `ToolContext` field:
+that object is a per-run module singleton and could not express "this call
+only". The whole chain is covered by tests in `src/agent.test.ts`
+("approved-operation grant"), `src/permissions/git-config-operations.test.ts`,
+and the "approved variant" cases in `src/sandbox/seatbelt.test.ts`.
+
+Measured both directions (2026-09-16, disposable fixtures, unsandboxed
+controls):
+
+| Case | Without grant | With grant |
+| --- | --- | --- |
+| `git remote add origin ./path` in the workspace | denied | runs; `remote.origin.url` lands in `.git/config` |
+| `mkdir fresh && cd fresh && git init -q` | fails; no `.git/config` | succeeds; config and hook templates exist |
+| `git config nib.probe yes` in the workspace | denied | runs; value readable back |
+| `.git/hooks/pre-commit` and `.git/credentials` by a Node child | denied | **still denied** |
+| `.git/config` under a configured external write root | denied | **still denied** |
+| workspace path containing regex metacharacters (`ws.v1`) | — | grant works in `ws.v1` and does **not** match the sibling `wssv1` |
+
+Scope is the workspace root alone, not the whole `resolveWriteRoots` set —
+the external-write-root row above is the deliberate consequence, and it is
+the fail-closed direction. `strict-sandbox` ignores the flag entirely
+(asserted in the profile-text test): widening a read-only level into "may
+write `.git/config`" would be a different level's contract. The `hooks`
+directory allow exists only so `git init` can lay down `*.sample` templates;
+hook *files* and `credentials` are not re-allowed, which the test asserts by
+enumerating every `(allow file-write* (regex …))` line in the granted profile.
 
 ### 3. Consent and approval semantics
 
@@ -444,7 +493,9 @@ local paths only):
 Every deny case is paired with an unsandboxed control that performs the same
 write successfully, so a passing test cannot be a fixture that was never
 writable. Permanent tests live in `src/sandbox/seatbelt.test.ts` ("git
-integrity").
+integrity"). The trusted half of gate 2 — the narrow route back for the five
+workflows this deny breaks — is "The approved-operation variant" above, with
+its own measured table.
 
 Two corrections were made *because* the probes were two-directional. First,
 the round-1 regex (anchored on a literal `.git/hooks/`) was measured to
@@ -461,29 +512,18 @@ Remaining work before declaring the gates below passed:
    allowed ordinary project/toolchain reads.~~ **Done 2026-09-16** — see the
    re-probe table above and the `child read boundary` tests. The non-`$HOME`
    residual remains open and is recorded rather than claimed closed.
-2. **Half done 2026-09-16.** The mechanical deny is shipped and tested (see
-   the gate-2 table above). Still open: the trusted path for explicitly
-   approved Git operations. The deny breaks `git init`, `git remote add`,
-   `git config <write>`, `git clone`, and `git submodule add` — every
-   repository-creation and wiring workflow — because all five write
-   `.git` config. This is a real conflict with required workflows, recorded
-   rather than allowed or silently broken.
-
-   The product decision is **deny config, and plumb an approved-operation
-   path** so a user-approved `git config`/`init`/`remote` command runs under
-   a profile variant that permits `.git/config` (workspace-scoped, hooks and
-   credentials still denied). It is not implemented here because it is a
-   change to the approval contract, not the sandbox: the once/session/always
-   distinction currently dies at the `askUser` boundary
-   (`Promise<boolean | "posture">`, `src/agent.ts`), and `ToolContext` is a
-   per-run module singleton, so there is no per-call channel from the
-   approval to the bash spawn. Threading one touches `agent.ts`, the UI
-   approval handler, the executor signature, and both bash spawn paths. The
-   mechanism is validated (`git init`/`remote add`/`clone`/`submodule add`
-   all pass under a workspace-scoped config allow; hooks still denied), but
-   the authority chain must not be improvised: the classifier may only
-   decide whether the prompt *offers* the variant, and the user's explicit
-   one-time approval of that specific command must be the grant.
+2. ~~Build the trusted path for explicitly approved Git operations.~~ **Done
+   2026-09-16** — see "The approved-operation variant" above: the five
+   repository-creation/wiring workflows run under a workspace-scoped profile
+   variant granted only by an explicit one-time approval of that exact
+   command, with hooks, credentials, external write roots, and
+   `strict-sandbox` all unaffected (measured both directions). The design
+   point that made this reachable without changing the approval contract:
+   marking these calls `oneTimeOnly` removes the session/always answer, so a
+   plain `true` from `askUser` is unambiguously a per-call approval, and
+   `ToolExecOptions` (per call) rather than `ToolContext` (per run) carries
+   it. The once/session/always distinction still dies at the `askUser`
+   boundary — untouched, and no longer load-bearing for this grant.
 3. Extend the synthetic detached and package-script probes to Git/DNS egress,
    MCP child reads/connects, prompt injection, and resource limits in isolated
    fixtures. Do not write to the real home or contact external endpoints.

@@ -91,6 +91,12 @@ export function resolveTimeoutToBackground(v: boolean | undefined): boolean {
  * `writeRoots` is the configured `sandbox.writeRoots` list (docs/unified-
  * write-boundary.md), threaded from `ctx.writeRoots` so the Seatbelt
  * write-set for this spawn agrees with the file-tool containment check.
+ *
+ * `allowGitConfigWrite` is the approved-operation grant (release gate 2): it
+ * comes from `exec.approvedGitConfigWrite`, which only agent.ts sets, and
+ * only when the user approved *this* call at the prompt. It widens one spawn
+ * — workspace-scoped `.git/config` writes — so an approved `git init` /
+ * `remote add` / `config` works without re-opening the always-denied set.
  */
 export function runBashTimed(
   command: string,
@@ -101,6 +107,7 @@ export function runBashTimed(
   sandboxLevel?: SandboxLevel,
   writeRoots?: string[],
   sessionTempDir?: string,
+  allowGitConfigWrite?: boolean,
 ): Promise<ToolOutput> {
   if (isSandboxedLevel(sandboxLevel)) {
     const checked = validateCwdWithinTrustedRoot(cwd, trustedRoot, writeRoots);
@@ -108,7 +115,7 @@ export function runBashTimed(
   }
   let proc: ChildProcess;
   try {
-    const sandbox = sandboxPrefix(command, cwd, trustedRoot, sandboxLevel, writeRoots, sessionTempDir);
+    const sandbox = sandboxPrefix(command, cwd, trustedRoot, sandboxLevel, writeRoots, sessionTempDir, allowGitConfigWrite);
     const env = sessionTempDir ? { ...process.env, TMPDIR: sessionTempDir, TMP: sessionTempDir, TEMP: sessionTempDir, npm_config_cache: `${sessionTempDir}/npm-cache` } : undefined;
     if (sandbox) {
       proc = spawn(sandbox.file, sandbox.args, {
@@ -214,13 +221,13 @@ export function runBashTimed(
   });
 }
 
-const runBashHandler: ToolHandler = async (args, ctx) => {
+const runBashHandler: ToolHandler = async (args, ctx, exec) => {
   const command = args.command as string;
   // The trusted root is the workspace fixed at startup (item 8.6): the
   // Seatbelt write-set root is ctx.workingDir, never a model-passed cwd.
   const root = ctx.workingDir || process.cwd();
   const cwd = (args.cwd as string) || root;
-  return runBashTimed(command, cwd, root, RUN_BASH_TIMEOUT_MS, resolveTimeoutToBackground(ctx.timeoutToBackground), ctx.sandboxLevel, ctx.writeRoots, ctx.sessionTempDir);
+  return runBashTimed(command, cwd, root, RUN_BASH_TIMEOUT_MS, resolveTimeoutToBackground(ctx.timeoutToBackground), ctx.sandboxLevel, ctx.writeRoots, ctx.sessionTempDir, exec?.approvedGitConfigWrite);
 };
 
 const runBashDef: ToolDef = {

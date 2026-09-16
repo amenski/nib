@@ -19,8 +19,10 @@ import { formatTodoBlock } from "./tools/todo.js";
 import type { TodoItem } from "./tools/todo.js";
 import { logTiming } from "./debug/logger.js";
 import { extractCapabilityPlan } from "./permissions/capabilities.js";
+import { isGitConfigOperation } from "./permissions/git-config-operations.js";
+import type { ToolExecOptions } from "./tools/types.js";
 
-export type ToolExecutor = (call: ToolCall) => Promise<ToolOutput>;
+export type ToolExecutor = (call: ToolCall, exec?: ToolExecOptions) => Promise<ToolOutput>;
 
 import { extractToolSubject } from "./permissions/rules.js";
 
@@ -617,15 +619,19 @@ export async function runAgent(
 
     /**
      * Pre-execution gate for one call: permission resolution + the
-     * PreToolUse/PermissionRequest hooks. Returns true when the call is
-     * denied — the audit row and the PERMISSION_DENIED tool message are
-     * recorded here, so the deny is real (nothing executes afterwards) and
-     * the audit row tells the truth. Returns false when the call may
-     * execute. Runs exactly once per call: the parallel path gates its
-     * reads BEFORE executing them (fix 3), the sequential path gates
-     * immediately before execution.
+     * PreToolUse/PermissionRequest hooks. Returns `denied: true` when the
+     * call is denied — the audit row and the PERMISSION_DENIED tool message
+     * are recorded here, so the deny is real (nothing executes afterwards)
+     * and the audit row tells the truth. Returns `denied: false` when the
+     * call may execute, optionally carrying the per-call execution grant
+     * (`exec`) that only an explicit interactive approval of this call can
+     * produce. Runs exactly once per call: the parallel path gates its reads
+     * BEFORE executing them (fix 3), the sequential path gates immediately
+     * before execution.
      */
-    const gateCall = async (tc: ToolCall): Promise<boolean> => {
+    const gateCall = async (tc: ToolCall): Promise<{ denied: boolean; exec?: ToolExecOptions }> => {
+      // Set only on the explicit-approval path below; see the ask branch.
+      let exec: ToolExecOptions | undefined;
       if (permissions) {
         // The one composed permission surface (permission-profile.md §4,
         // decision L): the profile gate (layer 1) denies terminally before
@@ -663,7 +669,7 @@ export async function runAgent(
             await audit("deny-by-rule", `deny rule matched (${winningRule?.origin ?? "rule"})`);
           }
           appendFreshToolResult(tc.id, tc.name, msg);
-          return true;
+          return { denied: true };
         }
         if (action === "ask") {
           // PermissionRequest hooks fire before the user prompt; a deny is
@@ -671,21 +677,23 @@ export async function runAgent(
           if (await hookBlocks(tc, "PermissionRequest")) {
             await audit("ask-denied", "denied by PermissionRequest hook");
             hookDenied(tc, "PermissionRequest");
-            return true;
+            return { denied: true };
           }
           if (options.askUser) {
             const allowed = await options.askUser(tc.name, tc.arguments);
             if (allowed === "posture") {
               // Auto-approve posture upgraded the ask to allow without
               // showing a prompt — recorded distinctly from an interactive
-              // yes (permission-spec.md §11).
+              // yes (permission-spec.md §11). No `exec` grant: posture is an
+              // approval of a *class* of calls, never of this command, and
+              // the widened profile requires the latter.
               await audit("allow-by-posture", "auto-approve posture upgraded an ordinary ask");
             } else if (!allowed) {
               const msg = "PERMISSION_DENIED: denied by user";
               options.onDiagnostic?.("denied");
               await audit("ask-denied", "denied by user at prompt");
               appendFreshToolResult(tc.id, tc.name, msg);
-              return true;
+              return { denied: true };
             } else {
               // Approved via askUser. The TUI (App.tsx) writes a finer-grained
               // once/session/always row when it actually shows a prompt, but it
@@ -700,6 +708,18 @@ export async function runAgent(
                   ? "approved by user; bash segment was unresolved (fail-closed ask)"
                   : "approved by user at prompt",
               );
+              // The approved-operation grant (permission-profile.md §8,
+              // release gate 2, trusted half). Reached only by a plain
+              // `true`, i.e. the user answered the prompt for *this* call:
+              // auto-approve posture returns "posture" above, and a persisted
+              // session/always rule resolves to `action: "allow"` long before
+              // this branch — so no grant can outlive the approval. App.tsx
+              // marks config-writing Git calls oneTimeOnly, so a persistent
+              // answer is not even offered, and isGitConfigOperation decides
+              // whether this command is one the widened profile can serve.
+              if (isGitConfigOperation(tc.name, tc.arguments)) {
+                exec = { approvedGitConfigWrite: true };
+              }
             }
             // User-approved (or posture-upgraded) asks still pass through
             // PreToolUse — a deny here routes through the permission engine
@@ -707,14 +727,14 @@ export async function runAgent(
             if (await hookBlocks(tc, "PreToolUse")) {
               await audit("deny-by-rule", "deny rule matched (PreToolUse hook)");
               hookDenied(tc, "PreToolUse");
-              return true;
+              return { denied: true };
             }
           } else {
             const msg = "PERMISSION_DENIED: headless — rule resolved to ask";
             options.onDiagnostic?.("denied");
             await audit("headless-deny", "resolved to ask with no interactive prompter (headless)");
             appendFreshToolResult(tc.id, tc.name, msg);
-            return true;
+            return { denied: true };
           }
         } else if (action === "allow") {
           // Rule-derived allow with no prompt at all — still worth an audit
@@ -723,15 +743,15 @@ export async function runAgent(
           if (await hookBlocks(tc, "PreToolUse")) {
             await audit("deny-by-rule", "deny rule matched (PreToolUse hook)");
             hookDenied(tc, "PreToolUse");
-            return true;
+            return { denied: true };
           }
         }
       } else if (await hookBlocks(tc, "PreToolUse")) {
         // No permission engine — the hook is the only gate.
         hookDenied(tc, "PreToolUse");
-        return true;
+        return { denied: true };
       }
-      return false;
+      return { denied: false, exec };
     };
 
     // Shared per-call body for both execution paths — exactly the
@@ -747,9 +767,14 @@ export async function runAgent(
       preResult: ToolOutput | undefined,
       gateDone = false,
     ): Promise<boolean> => {
-      if (!gateDone && (await gateCall(tc))) return false;
+      let exec: ToolExecOptions | undefined;
+      if (!gateDone) {
+        const gate = await gateCall(tc);
+        if (gate.denied) return false;
+        exec = gate.exec;
+      }
 
-      const result = preResult ?? await executeTool(tc);
+      const result = preResult ?? await executeTool(tc, exec);
       executedAny = true;
       // PostToolUse / PostToolUseFailure: hook stdout appends to the result
       // (hooks-spec.md §2) before it reaches the model or the UI preview.
@@ -875,7 +900,7 @@ export async function runAgent(
       // PERMISSION_DENIED message + audit row right here and never execute.
       const preDenied = new Map<string, boolean>();
       for (const tc of parallelReads) {
-        if (await gateCall(tc)) preDenied.set(tc.id, true);
+        if ((await gateCall(tc)).denied) preDenied.set(tc.id, true);
       }
 
       // Execute the allowed reads concurrently; results are collected and

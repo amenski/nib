@@ -328,12 +328,29 @@ a trustworthy hostname-level authority.
   exception. Because these are `file-write*` denies appended after the
   write-root grants, rule order is load-bearing (SBPL is
   last-matching-rule-wins).
-- **Residuals, stated honestly.** (1) Repository creation and wiring —
-  `git init`, `git remote add`, `git config <write>`, `git clone`,
-  `git submodule add` — is **broken by the deny**, because all five write
-  `.git` config. That conflict is recorded in
-  docs/security-architecture-plan.md; the trusted path for explicitly
-  approved Git operations is release-gate item 2's open half. A second
+- **The trusted path for approved Git operations (2026-09-16, same gate).**
+  The five workflows the deny breaks are unblocked by an approval, not by a
+  hole: `isGitConfigOperation` (src/permissions/git-config-operations.ts)
+  decides whether the prompt *offers* a workspace-scoped profile variant
+  that re-allows `.git/config` (plus the `hooks` directory node, which
+  `git init` needs to lay down `*.sample` templates — hook *files* stay
+  denied), and the user's explicit one-time approval of that exact command
+  is the grant. `gateCall` (src/agent.ts) sets
+  `ToolExecOptions.approvedGitConfigWrite` only on the plain-`true` return
+  from `askUser`: auto-approve posture returns `"posture"` and a persisted
+  rule resolves to `action: "allow"`, so neither can produce a grant.
+  `App.tsx` marks these calls `oneTimeOnly`, so no session/always answer is
+  offered and none can be persisted. The grant lives in a per-call
+  `ToolExecOptions`, never in the per-run `ToolContext` singleton, so it
+  cannot outlive the command. Measured: the variant restores `git init`,
+  `git remote add`, `git config <write>`; `.git/hooks`, `.git/credentials`,
+  `.git/config` under an external write root, and `strict-sandbox` are all
+  unaffected.
+- **Residuals, stated honestly.** (1) The approved-operation variant is
+  workspace-scoped, so an approved `git config` for a repository under a
+  configured `sandbox.writeRoots` entry still fails — fail-closed, and the
+  prompt is not offered for off-target scopes (`--global`, `--system`,
+  `--file`) that the variant could not serve. A second
   residual: a repository whose `.git/hooks` is *already* a symlink to a
   directory outside `.git` resolves hook writes to ordinary paths, which no
   path-based rule can distinguish. (3) The

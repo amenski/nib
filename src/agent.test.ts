@@ -478,6 +478,7 @@ describe("runAgent", () => {
         tool: "run_bash",
         subject: "npm test",
         decision: "ask-approved",
+        commandClassification: expect.objectContaining({ classification: "unknown" }),
       }));
     });
 

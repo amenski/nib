@@ -52,6 +52,8 @@ export interface ToolContext {
   /** Effective profile level, threaded to file handlers so their physical
    * containment check uses the same write-set as policy and Seatbelt. */
   writePolicyLevel?: ProfileLevel;
+  /** Private, mode-0700 session scratch directory inherited by child processes. */
+  sessionTempDir?: string;
   /** Additional directories writable under workspace-write, beyond
    *  `workingDir` and the carve-outs. This combines global
    *  `sandbox.writeRoots` with session-scoped `--add-dir` roots. Raw

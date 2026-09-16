@@ -100,6 +100,7 @@ export function runBashTimed(
   timeoutToBackground: boolean,
   sandboxLevel?: SandboxLevel,
   writeRoots?: string[],
+  sessionTempDir?: string,
 ): Promise<ToolOutput> {
   if (isSandboxedLevel(sandboxLevel)) {
     const checked = validateCwdWithinTrustedRoot(cwd, trustedRoot, writeRoots);
@@ -107,12 +108,14 @@ export function runBashTimed(
   }
   let proc: ChildProcess;
   try {
-    const sandbox = sandboxPrefix(command, cwd, trustedRoot, sandboxLevel, writeRoots);
+    const sandbox = sandboxPrefix(command, cwd, trustedRoot, sandboxLevel, writeRoots, sessionTempDir);
+    const env = sessionTempDir ? { ...process.env, TMPDIR: sessionTempDir, TMP: sessionTempDir, TEMP: sessionTempDir, npm_config_cache: `${sessionTempDir}/npm-cache` } : undefined;
     if (sandbox) {
       proc = spawn(sandbox.file, sandbox.args, {
         cwd,
         detached: true,
         stdio: ["ignore", "pipe", "pipe"],
+        env,
       });
     } else {
       proc = spawn(command, {
@@ -120,6 +123,7 @@ export function runBashTimed(
         shell: true,
         detached: true,
         stdio: ["ignore", "pipe", "pipe"],
+        env,
       });
     }
   } catch (err) {
@@ -216,7 +220,7 @@ const runBashHandler: ToolHandler = async (args, ctx) => {
   // Seatbelt write-set root is ctx.workingDir, never a model-passed cwd.
   const root = ctx.workingDir || process.cwd();
   const cwd = (args.cwd as string) || root;
-  return runBashTimed(command, cwd, root, RUN_BASH_TIMEOUT_MS, resolveTimeoutToBackground(ctx.timeoutToBackground), ctx.sandboxLevel, ctx.writeRoots);
+  return runBashTimed(command, cwd, root, RUN_BASH_TIMEOUT_MS, resolveTimeoutToBackground(ctx.timeoutToBackground), ctx.sandboxLevel, ctx.writeRoots, ctx.sessionTempDir);
 };
 
 const runBashDef: ToolDef = {

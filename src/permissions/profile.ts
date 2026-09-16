@@ -190,7 +190,7 @@ export class ProfileEvaluator {
   constructor(
     config?: PermissionProfileConfig,
     cwd?: string,
-    opts?: { searchHost?: string; writeRoots?: string[] },
+    opts?: { searchHost?: string; writeRoots?: string[]; sessionTempDir?: string },
   ) {
     this.level = config?.level ?? "unrestricted";
     this.cwd = cwd ?? process.cwd();
@@ -205,7 +205,7 @@ export class ProfileEvaluator {
     this.networkDeny = (config?.network?.deny ?? []).map((e) => e.toLowerCase());
     this.writeSet =
       this.level === "workspace-write"
-        ? resolveWriteRoots("workspace-write", this.cwd, opts?.writeRoots)
+        ? resolveWriteRoots("workspace-write", this.cwd, opts?.writeRoots, opts?.sessionTempDir)
         : [];
   }
 

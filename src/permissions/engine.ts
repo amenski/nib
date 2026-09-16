@@ -115,7 +115,7 @@ export class PermissionEngine {
     config?: PermissionConfig,
     workingDir?: string,
     hasMcpServersConfigured?: boolean,
-    opts?: { writeRoots?: string[]; enforceWriteBoundary?: boolean; writePolicyLevel?: ProfileLevel; onPersist?: (settingsPath: string) => void },
+    opts?: { writeRoots?: string[]; sessionTempDir?: string; enforceWriteBoundary?: boolean; writePolicyLevel?: ProfileLevel; onPersist?: (settingsPath: string) => void },
   ) {
     this.workingDir = workingDir ?? process.cwd();
     this.configRules = (config?.rules ?? [])
@@ -128,7 +128,7 @@ export class PermissionEngine {
     this.writePolicyLevel = opts?.writePolicyLevel ?? "workspace-write";
     this.onPersist = opts?.onPersist;
     this.writeSet = this.enforceWriteBoundary
-      ? resolveWriteRoots("workspace-write", this.workingDir, opts?.writeRoots)
+      ? resolveWriteRoots("workspace-write", this.workingDir, opts?.writeRoots, opts?.sessionTempDir)
       : [];
   }
 

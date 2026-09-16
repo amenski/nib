@@ -92,6 +92,10 @@ export function setWritePolicyLevel(v: ProfileLevel): void {
   ctx.writePolicyLevel = v;
 }
 
+export function setSessionTempDir(v: string | undefined): void {
+  ctx.sessionTempDir = v;
+}
+
 /**
  * Set the GLOBAL-only `sandbox.writeRoots` config (docs/unified-write-
  * boundary.md) — additional workspace-write directories, threaded into

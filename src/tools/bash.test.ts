@@ -4,6 +4,7 @@ import { jobManager } from "./jobs.js";
 import { ToolRegistry } from "./registry.js";
 import type { ToolContext } from "./types.js";
 import { basename } from "node:path";
+import { createSessionTempDir } from "../sandbox/session-temp.js";
 
 const onDarwin = process.platform === "darwin";
 const itOnDarwin = it.skipIf(!onDarwin);
@@ -37,6 +38,25 @@ describe("runBashTimed (plan §3 timeout→background migration)", () => {
 
     const fail = await runBashTimed("exit 3", process.cwd(), process.cwd(), 5000, true);
     expect(fail.content).toContain("Exit code: 3");
+  });
+
+  it("passes the private session temp directory to child commands", async () => {
+    const sessionTemp = createSessionTempDir();
+    try {
+      const result = await runBashTimed(
+        "printf '%s|%s' \"$TMPDIR\" \"$npm_config_cache\"",
+        process.cwd(),
+        process.cwd(),
+        5000,
+        true,
+        undefined,
+        undefined,
+        sessionTemp.path,
+      );
+      expect(result.content).toContain(`${sessionTemp.path}|${sessionTemp.path}/npm-cache`);
+    } finally {
+      sessionTemp.cleanup();
+    }
   });
 
   it("wraps command output in the untrusted-content delimiters (T12); error framing stays readable", async () => {

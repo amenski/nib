@@ -20,6 +20,13 @@ describe("resolveWriteRoots", () => {
     expect(resolveWriteRoots("strict-sandbox", "/ws", ["/extra"])).toEqual([]);
   });
 
+  it("uses private session temp instead of shared temp and npm roots", () => {
+    const roots = resolveWriteRoots("workspace-write", "/ws", undefined, "/private/tmp/nib-session-private");
+    expect(roots).toContain("/private/tmp/nib-session-private");
+    expect(roots).not.toContain(realpathNearestAncestor("/tmp"));
+    expect(roots).not.toContain(realpathNearestAncestor(join(homedir(), ".npm")));
+  });
+
   it("workspace-write: trustedRoot first (realpath-resolved), then the carve-outs", () => {
     const root = mkdtempSync(join(tmpdir(), "wr-root-"));
     try {

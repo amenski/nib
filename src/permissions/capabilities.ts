@@ -44,6 +44,7 @@ export interface WriteTargetOptions {
   level?: ProfileLevel;
   writeRoots?: string[];
   roots?: string[];
+  sessionTempDir?: string;
 }
 
 export function resolveWorkspaceWriteTarget(
@@ -57,7 +58,7 @@ export function resolveWorkspaceWriteTarget(
   if (options.level === "strict-sandbox") return { error: `write target is denied by the strict sandbox: ${rawPath}` };
   if (options.level === "unrestricted") return { path };
 
-  const roots = options.roots ?? resolveWriteRoots("workspace-write", workingDir, options.writeRoots);
+  const roots = options.roots ?? resolveWriteRoots("workspace-write", workingDir, options.writeRoots, options.sessionTempDir);
   if (!isPathWithinWriteRoots(path, roots)) {
     return { error: `write target escapes the working directory: ${rawPath}` };
   }

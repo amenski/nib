@@ -14,7 +14,8 @@ import { compactionCutoffTokens, estimateTokens, estimateTokensDetailed, estimat
 import { CONTEXT_EDITING_TRIGGER_TOKENS, RECENT_TOOL_RESULTS_TO_KEEP } from "./compaction/context-editing.js";
 import { fireNotify } from "./notify.js";
 import { HookRunner, fireNotificationHooks } from "./hooks/index.js";
-import { executeTool, TOOL_DEFS, registry, setSessionId, setCheckpointManager, setSignal, setSessionStore, setSetMode, setTimeoutToBackground, setSandboxLevel, setWritePolicyLevel, setWriteRoots, setWebSearchConfig } from "./tools/index.js";
+import { executeTool, TOOL_DEFS, registry, setSessionId, setCheckpointManager, setSignal, setSessionStore, setSetMode, setTimeoutToBackground, setSandboxLevel, setSessionTempDir, setWritePolicyLevel, setWriteRoots, setWebSearchConfig } from "./tools/index.js";
+import { createSessionTempDir } from "./sandbox/session-temp.js";
 import { filterToolDefs } from "./tools/filter.js";
 import { jobManager } from "./tools/jobs.js";
 import { todoStore } from "./tools/todo.js";
@@ -291,6 +292,8 @@ async function main() {
   }
 
   const configEnv = configResult.config.env;
+  const sessionTemp = createSessionTempDir();
+  setSessionTempDir(sessionTemp.path);
 
   if (configResult.config.mcpServers) {
     await connectMCPServers(configResult.config.mcpServers, { strictMcpConfig: configResult.config.strictMcpConfig });
@@ -368,6 +371,7 @@ async function main() {
       // including explicit --add-dir roots for this session.
       enforceWriteBoundary: configResult.config.permissionProfile?.level === "workspace-write",
       writePolicyLevel: configResult.config.permissionProfile?.level,
+      sessionTempDir: sessionTemp.path,
       writeRoots: [...(configResult.config.sandbox?.writeRoots ?? []), ...additionalWriteRoots],
       // Re-record the TOFU trust hash after every persisted "always"
       // approval — persist() rewrites this project's settings.json, and
@@ -381,6 +385,7 @@ async function main() {
   // still represented here so the evaluator can honor that opt-out.
   const permissionProfile = new ProfileEvaluator(configResult.config.permissionProfile!, process.cwd(), {
     writeRoots: [...(configResult.config.sandbox?.writeRoots ?? []), ...additionalWriteRoots],
+    sessionTempDir: sessionTemp.path,
   });
 
   // Orchestrator mode (9.3) is registered once at startup, but its runtime

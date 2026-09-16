@@ -196,6 +196,7 @@ export function sandboxPrefix(
   trustedRoot: string,
   level: ProfileLevel | undefined,
   writeRoots?: string[],
+  sessionTempDir?: string,
 ): SandboxSpawn | null {
   if (!isSandboxedLevel(level)) return null; // macOS-only; startup notice from the loader
   return {
@@ -205,7 +206,7 @@ export function sandboxPrefix(
       buildSeatbeltProfile(
         level,
         seatbeltWorkspaceRoot(trustedRoot),
-        level === "workspace-write" ? resolveWriteRoots(level, seatbeltWorkspaceRoot(trustedRoot), writeRoots) : undefined,
+        level === "workspace-write" ? resolveWriteRoots(level, seatbeltWorkspaceRoot(trustedRoot), writeRoots, sessionTempDir) : undefined,
       ),
       "/bin/sh",
       "-c",

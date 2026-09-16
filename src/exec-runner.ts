@@ -2,7 +2,8 @@ import { APICallError, RetryError } from "ai";
 import { buildExecPrompt, type ExecInputStream } from "./exec-input.js";
 import { runAgent } from "./agent.js";
 import { buildRepoMap } from "./prompt.js";
-import { executeTool, registry, setSessionId, setSignal, setTimeoutToBackground, setSandboxLevel, setWritePolicyLevel, setWriteRoots, setWebSearchConfig } from "./tools/index.js";
+import { executeTool, registry, setSessionId, setSignal, setTimeoutToBackground, setSandboxLevel, setSessionTempDir, setWritePolicyLevel, setWriteRoots, setWebSearchConfig } from "./tools/index.js";
+import { createSessionTempDir } from "./sandbox/session-temp.js";
 import { filterToolDefs } from "./tools/filter.js";
 import { todoStore } from "./tools/todo.js";
 import { initPresets, createProvider, getPreset } from "./providers/presets.js";
@@ -61,6 +62,7 @@ function conciseProviderError(err: unknown): string {
 
 export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
   initPresets();
+  let sessionTemp: ReturnType<typeof createSessionTempDir> | undefined;
   let interrupted = false;
 
   // Hoisted so the finally block can kill pending sub-runs on every exit path
@@ -125,6 +127,8 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
 
     const configEnv = effectiveConfig.env;
     const writeRoots = [...(effectiveConfig.sandbox?.writeRoots ?? []), ...(options.additionalWriteRoots ?? [])];
+    sessionTemp = createSessionTempDir();
+    setSessionTempDir(sessionTemp.path);
     const notifyScript = effectiveConfig.notify;
     // commands.timeoutToBackground (plan §3, default ON) — same default
     // resolution the TUI uses; run_bash migration works identically headless.
@@ -236,6 +240,7 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
         // global-only sandbox.writeRoots into the shared write-set.
         enforceWriteBoundary: effectiveConfig.permissionProfile?.level === "workspace-write",
         writePolicyLevel: effectiveConfig.permissionProfile?.level,
+        sessionTempDir: sessionTemp.path,
         writeRoots,
         // Re-record the TOFU trust hash after every persisted "always"
         // approval, same as the TUI (cli.tsx) — headless is still the
@@ -251,6 +256,7 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
     // like a rule deny (no prompt; the headless askUser below is never reached).
     const permissionProfile = new ProfileEvaluator(effectiveConfig.permissionProfile!, options.projectRoot, {
       writeRoots,
+      sessionTempDir: sessionTemp.path,
     });
     setWritePolicyLevel(permissionProfile.level);
 
@@ -459,6 +465,7 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
       return 1;
     }
   } finally {
+    sessionTemp?.cleanup();
     // Die on exit (async-subagents.md §3, Q3): pending sub-runs are marked
     // aborted and never deliver into a dead loop; the process exit is the
     // actual kill.

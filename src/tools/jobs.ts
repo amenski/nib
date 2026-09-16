@@ -153,7 +153,7 @@ export class JobManager {
     command: string,
     cwd: string,
     timeoutMs: number,
-    opts?: { stream?: boolean; sandboxLevel?: SandboxLevel; trustedRoot?: string; writeRoots?: string[] },
+    opts?: { stream?: boolean; sandboxLevel?: SandboxLevel; trustedRoot?: string; writeRoots?: string[]; sessionTempDir?: string },
   ): { ok: true; id: string } | { ok: false; error: string } {
     // Make room first: drop completed jobs past the TTL, then enforce the cap.
     this.cleanup();
@@ -181,12 +181,14 @@ export class JobManager {
     try {
       // sandboxLevel (permission-profile.md §8, phase (e)): background jobs
       // spawn under the same Seatbelt profile as run_bash children.
-      const sandbox = sandboxPrefix(command, cwd, trustedRoot, opts?.sandboxLevel, opts?.writeRoots);
+      const sandbox = sandboxPrefix(command, cwd, trustedRoot, opts?.sandboxLevel, opts?.writeRoots, opts?.sessionTempDir);
+      const env = opts?.sessionTempDir ? { ...process.env, TMPDIR: opts.sessionTempDir, TMP: opts.sessionTempDir, TEMP: opts.sessionTempDir, npm_config_cache: `${opts.sessionTempDir}/npm-cache` } : undefined;
       if (sandbox) {
         proc = spawn(sandbox.file, sandbox.args, {
           cwd,
           detached: true,
           stdio: ["ignore", "pipe", "pipe"],
+          env,
         });
       } else {
         proc = spawn(command, {
@@ -194,6 +196,7 @@ export class JobManager {
           shell: true,
           detached: true,
           stdio: ["ignore", "pipe", "pipe"],
+          env,
         });
       }
     } catch (err) {
@@ -411,7 +414,7 @@ const runBackgroundHandler: ToolHandler = async (args, ctx) => {
 
   // stream: true — only tool-started jobs emit live-output events (plan §3
   // decision E); timeout-migrated jobs are tracked but never stream.
-  const result = jobManager.start(command, cwd, timeoutMs, { stream: true, sandboxLevel: ctx.sandboxLevel, trustedRoot: root, writeRoots: ctx.writeRoots });
+  const result = jobManager.start(command, cwd, timeoutMs, { stream: true, sandboxLevel: ctx.sandboxLevel, trustedRoot: root, writeRoots: ctx.writeRoots, sessionTempDir: ctx.sessionTempDir });
   if (!result.ok) return { content: "", error: result.error };
   return {
     content: [

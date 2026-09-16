@@ -9,6 +9,7 @@ function resolveWriteTarget(rawPath: string, ctx: ToolContext) {
   return resolveWorkspaceWriteTarget(rawPath, ctx.workingDir, {
     level: ctx.writePolicyLevel,
     writeRoots: ctx.writeRoots,
+    sessionTempDir: ctx.sessionTempDir,
   });
 }
 
@@ -249,6 +250,7 @@ const applyPatchHandler: ToolHandler = async (args, ctx) => {
   const plan = extractApplyPatchPlan(args, ctx.workingDir, {
     level: ctx.writePolicyLevel,
     writeRoots: ctx.writeRoots,
+    sessionTempDir: ctx.sessionTempDir,
   });
   if (plan.status !== "known" || plan.tool !== "apply_patch" || !("targets" in plan)) {
     const message = plan.reason ?? "Patch targets could not be parsed";

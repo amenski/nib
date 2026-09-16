@@ -90,6 +90,7 @@ export function resolveWriteRoots(
   level: SandboxLevel,
   trustedRoot: string,
   writeRoots?: string[],
+  sessionTempDir?: string,
 ): string[] {
   if (level === "strict-sandbox") return [];
 
@@ -103,7 +104,7 @@ export function resolveWriteRoots(
   };
 
   add(trustedRoot);
-  for (const p of workspaceWriteCarveoutRoots()) add(p);
+  for (const p of sessionTempDir ? [sessionTempDir] : workspaceWriteCarveoutRoots()) add(p);
   for (const p of writeRoots ?? []) add(p);
 
   return roots;

@@ -49,9 +49,13 @@ export function prepareSandboxedCommand(
   if (!shell) return { file: command, args };
 
   // sandboxPrefix emits [sandbox-exec, -p, profile, /bin/sh, -c, command].
-  // Keep only the sandbox executable/profile prefix, then run the requested
+  // Keep only the first two args (`-p <profile>`) — everything from `/bin/sh`
+  // on is the shell form and must be dropped, or the child runs as
+  // `sh <command> <args>` and an interpreted script is read as a shell script
+  // instead of being executed (measured 2026-09-16: a contained stdio MCP
+  // server died with "cannot execute binary file"). Then run the requested
   // executable directly so its configured argv is byte-for-byte preserved.
-  return { file: shell.file, args: shell.args.slice(0, 3).concat(command, args) };
+  return { file: shell.file, args: shell.args.slice(0, 2).concat(command, args) };
 }
 
 /** Minimal child environment plus the private session scratch directory. */

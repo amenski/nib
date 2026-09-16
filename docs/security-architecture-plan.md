@@ -505,6 +505,91 @@ symlink probe used a dangling relative link, so its apparent denial proved
 nothing; with a valid link the write **succeeded**, which is what led to
 denying the `hooks` directory node.
 
+**Subprocess launch paths (gate 3) — addressed.** The read boundary and the
+`.git` denies live in the shared launcher (`src/sandbox/launcher.ts`), so every
+surface was believed to inherit them. What was missing was enforcement
+evidence: the only assertions for the non-Bash surfaces were at the argv level
+(`expect(cmd).toBe("/usr/bin/sandbox-exec")`), which proves the launcher was
+*called*, not that a child could *run* under the profile it produced. Each
+surface now runs the same probe through its **real production entry point** —
+a synthetic sibling canary read, a `.git/hooks/pre-commit` write, and one
+allowed ordinary operation:
+
+| Launch path (entry point exercised) | Canary read | `.git/hooks` write | Allowed operation |
+|---|---|---|---|
+| Foreground Bash (`runBashTimed`) | Denied | Denied | stdout + workspace report write |
+| Background job (`jobManager.start`) | Denied | Denied | job stdout + report |
+| Timeout-migrated descendant, post-adoption | Denied | Denied | job stdout + report |
+| npm lifecycle script (`npm run`) | Denied | Denied | script ran, report landed |
+| Local stdio MCP (`MCPClient.connect`) | Denied | Denied | JSON-RPC `initialize` + `tools/list` completed |
+| Lifecycle hook (`HookRunner.dispatch`) | Denied | Denied | hook stdout reached model context |
+| Statusline provider command (`defaultCommandRunner`) | Denied | Denied | stdout resolved |
+| Notification script (`fireNotify`) | Denied | Denied | script ran, report landed |
+
+Each row is paired with an **unsandboxed control through the same entry
+point** that reads the canary and writes the hook successfully, so a denial can
+never be a fixture that was never readable. The report file is both the allowed
+operation and the evidence channel: a surface that failed to spawn cannot pass
+by producing nothing, because each test waits for the report. Permanent tests
+live in `src/sandbox/child-paths.test.ts`.
+
+**Finding from this pass (fixed the same day): a contained stdio MCP server
+could not launch at all.** `prepareSandboxedCommand` strips the shell form of
+the argv `sandboxPrefix` emits — `[sandbox-exec, -p, profile, /bin/sh, -c,
+command]` — but kept three elements instead of two, so `/bin/sh` survived and a
+contained MCP server was spawned as `sh <command> <args>`. Measured: `<node>:
+cannot execute binary file`, exit 126, no handshake, `initialize` timing out
+after 10 s. The same off-by-one governed `notify`'s spawn, which is why a
+contained notify script was interpreted by `/bin/sh` rather than executed —
+the opposite of its documented contract (`docs/notify-spec.md`: "a path to an
+executable script", "`shell: false` and an explicit empty argv"). Fixed to
+`slice(0, 2)`; MCP and notify are the only two callers. The regression guard is
+`src/sandbox/launcher.test.ts` (the configured argv survives byte-for-byte with
+no `/bin/sh` inserted), and the MCP row above is the end-to-end proof: it failed
+before the fix and passes after. Note which row is *not* evidence: the notify
+row passed both before and after, because `sh <script.sh>` happens to work for a
+shell script — the launcher assertion is what pins that consumer.
+
+This was a launcher defect, not a containment or policy one, and it is exactly
+the class the gate-3 review exists to find. Residual: a contained notify script
+must be executable, exactly as the unsandboxed path has always required
+(`chmod +x`, per the spec); a non-executable script that previously ran only by
+virtue of the accidental `sh` wrapper now fails.
+
+**Sandbox-unavailable and unsupported-platform behavior (gate 3, second half).**
+Confirmed already asserted end to end; no new tests were needed, so each link
+was checked rather than re-covered:
+
+- `sandboxPrefix` returns `null` **only** when `isSandboxedLevel` is false —
+  an absent or `unrestricted` level, or a non-darwin platform. On darwin with a
+  sandboxed level there is no fallible branch, so the callers'
+  `sandbox ? spawn(sandbox…) : spawn(command, {shell: true})` fallback is
+  unreachable for a sandboxed level: containment is never silently dropped.
+- Both no-prefix shapes are asserted in `src/sandbox/seatbelt.test.ts`
+  ("unrestricted (or absent level) returns no prefix"; "non-macOS: levels below
+  unrestricted are policy-only"). The unsandboxed controls in
+  `child-paths.test.ts` are that same row executed against a real child — the
+  canary is read and the hook is written, which is containment honestly absent
+  rather than claimed.
+- `hasActiveSandboxContainment` is false off darwin, for `unrestricted`, and
+  when the sandbox is disabled (`src/config/loader.test.ts`), and
+  `containmentWarning` names which of the two states applies.
+- Auto-approval is refused in that state: `cli.tsx` passes `autoApproveAllowed:
+  hasActiveSandboxContainment(...)` and `src/ui/App.tsx` gates the auto-approve
+  shortcut on it, asserted in both directions in `App.streaming.test.tsx`. A
+  platform that cannot enforce the profile therefore cannot auto-approve either;
+  the fallback is an ordinary consent prompt, not a silent unconfined run.
+
+Residual recorded, **not** closed: "macOS is supported but Seatbelt cannot
+apply" (the managed-runner `sandbox_apply: Operation not permitted` case) is not
+demonstrated here. On darwin `sandboxPrefix` always emits the prefix, and if
+`sandbox-exec` cannot apply a profile the child fails to start — that is the
+OS's fail-closed behavior, and nib's contribution to it is structural: no caller
+re-spawns without the profile, so an application failure is closed rather than
+open. Reproducing the failure itself needs a host where nesting is refused
+(in this session's shell nesting succeeds, so it cannot be reproduced here) —
+residual for the gate-5 review.
+
 Remaining work before declaring the gates below passed:
 
 1. ~~Enforce a narrow child-process read boundary for account secrets,
@@ -524,10 +609,18 @@ Remaining work before declaring the gates below passed:
    `ToolExecOptions` (per call) rather than `ToolContext` (per run) carries
    it. The once/session/always distinction still dies at the `askUser`
    boundary — untouched, and no longer load-bearing for this grant.
-3. Extend the synthetic detached and package-script probes to Git/DNS egress,
+3. ~~Verify every subprocess launch path — foreground and background Bash,
+   timeout-migrated descendants, stdio MCP, lifecycle hooks, statusline
+   providers, notification scripts, npm/build scripts — with a secret read, a
+   forbidden write, and one allowed operation each.~~ **Done 2026-09-16** — see
+   the launch-path table above and `src/sandbox/child-paths.test.ts`; the pass
+   also found and fixed the contained-MCP launcher defect.
+4. Extend the synthetic detached and package-script probes to Git/DNS egress,
    MCP child reads/connects, prompt injection, and resource limits in isolated
    fixtures. Do not write to the real home or contact external endpoints.
-4. Re-run the full suite and focused Seatbelt probes after fixing these gaps.
+   *(Partially done: the MCP child's *reads* are now covered above; egress and
+   hostile-input probes remain open.)*
+5. Re-run the full suite and focused Seatbelt probes after fixing these gaps.
 
 Original gates (open until demonstrated, not implied by phase checkboxes):
 
@@ -535,8 +628,12 @@ Original gates (open until demonstrated, not implied by phase checkboxes):
 - All security fixes have exploit tests in both directions.
 - Registry-wide capability coverage is complete.
 - Normal, auto-approve, plan, and headless modes have explicit tests.
-- macOS sandbox-unavailable behavior is tested.
+- macOS sandbox-unavailable behavior is tested. *(Partially — gate 3: the
+  structural half is asserted (no caller re-spawns without the profile), but
+  the darwin "Seatbelt cannot apply" failure itself is a recorded residual,
+  because nesting succeeds on this host.)*
 - Unsupported platforms display honest guarantees and fail closed where needed.
+  *(Demonstrated — gate 3, second half.)*
 - A manual adversarial pass covers prompt injection, malicious repositories,
   malicious dependencies, MCP, network exfiltration, persistence, and resource
   exhaustion.

@@ -141,6 +141,19 @@ describe("ProfileEvaluator.decide — always denied by construction (§3)", () =
   }
 });
 
+describe("ProfileEvaluator.decide — apply_patch targets", () => {
+  it("denies a patch that targets .git", () => {
+    const profile = evaluator("workspace-write");
+    const engine = new PermissionEngine(undefined, CWD, false, { enforceWriteBoundary: true });
+    const result = authorize({
+      tool: "apply_patch",
+      arguments: { patch: "+++ b/.git/config\n@@ -1 +1 @@\n-old\n+new" },
+    }, engine, profile);
+
+    expect(result).toMatchObject({ action: "deny", reason: "deny-by-profile" });
+  });
+});
+
 describe("ProfileEvaluator.decide — network allow/deny semantics", () => {
   it("deny beats allow when a domain is in both lists", () => {
     const ev = evaluator("workspace-write", {

@@ -2,7 +2,7 @@ import { APICallError, RetryError } from "ai";
 import { buildExecPrompt, type ExecInputStream } from "./exec-input.js";
 import { runAgent } from "./agent.js";
 import { buildRepoMap } from "./prompt.js";
-import { executeTool, registry, setSessionId, setSignal, setTimeoutToBackground, setSandboxLevel, setWriteRoots, setWebSearchConfig } from "./tools/index.js";
+import { executeTool, registry, setSessionId, setSignal, setTimeoutToBackground, setSandboxLevel, setWritePolicyLevel, setWriteRoots, setWebSearchConfig } from "./tools/index.js";
 import { filterToolDefs } from "./tools/filter.js";
 import { todoStore } from "./tools/todo.js";
 import { initPresets, createProvider, getPreset } from "./providers/presets.js";
@@ -235,6 +235,7 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
         // active whenever the profile level is workspace-write, threading the
         // global-only sandbox.writeRoots into the shared write-set.
         enforceWriteBoundary: effectiveConfig.permissionProfile?.level === "workspace-write",
+        writePolicyLevel: effectiveConfig.permissionProfile?.level,
         writeRoots,
         // Re-record the TOFU trust hash after every persisted "always"
         // approval, same as the TUI (cli.tsx) — headless is still the
@@ -251,6 +252,7 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
     const permissionProfile = new ProfileEvaluator(effectiveConfig.permissionProfile!, options.projectRoot, {
       writeRoots,
     });
+    setWritePolicyLevel(permissionProfile.level);
 
     // Lifecycle hooks (hooks-spec.md): headless mode skips untrusted project
     // hooks with a stderr warning at startup (fail closed, like skills).

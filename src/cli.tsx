@@ -14,7 +14,7 @@ import { compactionCutoffTokens, estimateTokens, estimateTokensDetailed, estimat
 import { CONTEXT_EDITING_TRIGGER_TOKENS, RECENT_TOOL_RESULTS_TO_KEEP } from "./compaction/context-editing.js";
 import { fireNotify } from "./notify.js";
 import { HookRunner, fireNotificationHooks } from "./hooks/index.js";
-import { executeTool, TOOL_DEFS, registry, setSessionId, setCheckpointManager, setSignal, setSessionStore, setSetMode, setTimeoutToBackground, setSandboxLevel, setWriteRoots, setWebSearchConfig } from "./tools/index.js";
+import { executeTool, TOOL_DEFS, registry, setSessionId, setCheckpointManager, setSignal, setSessionStore, setSetMode, setTimeoutToBackground, setSandboxLevel, setWritePolicyLevel, setWriteRoots, setWebSearchConfig } from "./tools/index.js";
 import { filterToolDefs } from "./tools/filter.js";
 import { jobManager } from "./tools/jobs.js";
 import { todoStore } from "./tools/todo.js";
@@ -367,6 +367,7 @@ async function main() {
       // resolveWriteRoots set the Seatbelt layer emits allow-lines from,
       // including explicit --add-dir roots for this session.
       enforceWriteBoundary: configResult.config.permissionProfile?.level === "workspace-write",
+      writePolicyLevel: configResult.config.permissionProfile?.level,
       writeRoots: [...(configResult.config.sandbox?.writeRoots ?? []), ...additionalWriteRoots],
       // Re-record the TOFU trust hash after every persisted "always"
       // approval — persist() rewrites this project's settings.json, and
@@ -574,6 +575,7 @@ async function main() {
       ? configResult.config.permissionProfile.level
       : undefined,
   );
+  setWritePolicyLevel(permissionProfile.level);
   // sandbox.writeRoots (docs/unified-write-boundary.md) plus explicit
   // --add-dir roots. The loader keeps project config global-only; CLI roots
   // are session-scoped and already resolved from startup cwd. Threaded into

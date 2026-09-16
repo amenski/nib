@@ -61,6 +61,19 @@ describe("extractApplyPatchPlan", () => {
     expect(extractApplyPatchPlan({ patch: "+++ b/../outside.txt\n@@ -1 +1 @@\n-x\n+y" }, "/workspace"))
       .toMatchObject({ status: "unknown", allowPersistentApproval: false });
   });
+
+  it("uses the same configured write roots as the policy layer", () => {
+    const plan = extractApplyPatchPlan(
+      { patch: "+++ b//configured-root/example.ts\n@@ -1 +1 @@\n-x\n+y" },
+      "/workspace",
+      { roots: ["/workspace", "/configured-root"] },
+    );
+
+    expect(plan).toMatchObject({
+      status: "known",
+      targets: [{ rawPath: "/configured-root/example.ts", path: "/configured-root/example.ts" }],
+    });
+  });
 });
 
 describe("built-in capability plans", () => {

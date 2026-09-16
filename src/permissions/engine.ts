@@ -11,6 +11,7 @@ import { isPathWithinWriteRoots, resolveWriteRoots } from "../sandbox/write-root
 import { classifyImageSource } from "../image-source.js";
 import { projectDirPath } from "../config/paths.js";
 import { extractApplyPatchPlan } from "./capabilities.js";
+import type { ProfileLevel } from "./profile.js";
 
 export type { PermissionAction, PermissionRule, PatternKind, RuleOrigin } from "./rules.js";
 
@@ -64,6 +65,7 @@ export class PermissionEngine {
    * from. Empty when the boundary is inactive.
    */
   private readonly writeSet: string[];
+  private readonly writePolicyLevel: ProfileLevel;
 
   /**
    * Invoked with the settings path after a successful persist() write, so a
@@ -113,7 +115,7 @@ export class PermissionEngine {
     config?: PermissionConfig,
     workingDir?: string,
     hasMcpServersConfigured?: boolean,
-    opts?: { writeRoots?: string[]; enforceWriteBoundary?: boolean; onPersist?: (settingsPath: string) => void },
+    opts?: { writeRoots?: string[]; enforceWriteBoundary?: boolean; writePolicyLevel?: ProfileLevel; onPersist?: (settingsPath: string) => void },
   ) {
     this.workingDir = workingDir ?? process.cwd();
     this.configRules = (config?.rules ?? [])
@@ -123,6 +125,7 @@ export class PermissionEngine {
     this.projectConfigDir = projectDirPath(this.workingDir);
     this.hasMcpServersConfigured = hasMcpServersConfigured ?? false;
     this.enforceWriteBoundary = opts?.enforceWriteBoundary ?? false;
+    this.writePolicyLevel = opts?.writePolicyLevel ?? "workspace-write";
     this.onPersist = opts?.onPersist;
     this.writeSet = this.enforceWriteBoundary
       ? resolveWriteRoots("workspace-write", this.workingDir, opts?.writeRoots)
@@ -366,7 +369,10 @@ export class PermissionEngine {
   }
 
   private resolveApplyPatch(args: Record<string, unknown>): InternalResolveResult {
-    const plan = extractApplyPatchPlan(args, this.workingDir);
+    const plan = extractApplyPatchPlan(args, this.workingDir, {
+      level: this.writePolicyLevel,
+      roots: this.writeSet.length > 0 ? this.writeSet : undefined,
+    });
     if (plan.status !== "known" || plan.tool !== "apply_patch" || !("targets" in plan)) {
       return { action: "ask", wasUnresolved: true };
     }

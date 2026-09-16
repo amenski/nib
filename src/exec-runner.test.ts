@@ -78,6 +78,7 @@ vi.mock("./tools/index.js", () => ({
   setSignal: () => {},
   setTimeoutToBackground: () => {},
   setSandboxLevel: () => {},
+  setWritePolicyLevel: () => {},
   setWriteRoots: () => {},
   setWebSearchConfig: () => {},
 }));

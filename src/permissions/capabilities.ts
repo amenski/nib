@@ -4,7 +4,8 @@
  * separately so an unimplemented extractor fails closed as `unknown`.
  */
 import { resolve } from "node:path";
-import { isPathWithinWriteRoots, realpathNearestAncestor } from "../sandbox/write-roots.js";
+import { isPathWithinWriteRoots, resolveWriteRoots } from "../sandbox/write-roots.js";
+import type { ProfileLevel } from "./profile.js";
 
 export type Capability =
   | { type: "fs.read"; path: string }
@@ -39,12 +40,25 @@ export interface ApplyPatchCapabilityPlan extends CapabilityPlan {
 
 export type WorkspaceWriteTarget = { path: string } | { error: string };
 
-export function resolveWorkspaceWriteTarget(rawPath: string, workingDir: string): WorkspaceWriteTarget {
+export interface WriteTargetOptions {
+  level?: ProfileLevel;
+  writeRoots?: string[];
+  roots?: string[];
+}
+
+export function resolveWorkspaceWriteTarget(
+  rawPath: string,
+  workingDir: string,
+  options: WriteTargetOptions = {},
+): WorkspaceWriteTarget {
   if (!rawPath) return { error: "write target is missing" };
 
   const path = resolve(workingDir, rawPath);
-  const workspaceRoot = realpathNearestAncestor(workingDir);
-  if (!isPathWithinWriteRoots(path, [workspaceRoot])) {
+  if (options.level === "strict-sandbox") return { error: `write target is denied by the strict sandbox: ${rawPath}` };
+  if (options.level === "unrestricted") return { path };
+
+  const roots = options.roots ?? resolveWriteRoots("workspace-write", workingDir, options.writeRoots);
+  if (!isPathWithinWriteRoots(path, roots)) {
     return { error: `write target escapes the working directory: ${rawPath}` };
   }
 
@@ -174,6 +188,7 @@ export function extractCapabilityPlan(
 export function extractApplyPatchPlan(
   args: Record<string, unknown>,
   workingDir: string,
+  options?: WriteTargetOptions,
 ): ApplyPatchCapabilityPlan | CapabilityPlan {
   const patch = args.patch;
   if (typeof patch !== "string") return unknownCapabilityPlan("apply_patch", "patch is missing");
@@ -185,7 +200,7 @@ export function extractApplyPatchPlan(
 
   const targets: PatchTarget[] = [];
   for (const rawPath of rawPaths) {
-    const target = resolveWorkspaceWriteTarget(rawPath, workingDir);
+    const target = resolveWorkspaceWriteTarget(rawPath, workingDir, options);
     if ("error" in target) return unknownCapabilityPlan("apply_patch", `patch ${target.error}`);
     targets.push(Object.freeze({ rawPath, path: target.path }));
   }

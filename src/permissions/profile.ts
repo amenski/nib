@@ -4,6 +4,7 @@ import type { PermissionEngine, ResolveResult } from "./engine.js";
 import { extractHostname } from "./rules.js";
 import { isPathWithinWriteRoots, resolveWriteRoots } from "../sandbox/write-roots.js";
 import { PROJECT_DIR_NAME, STATE_DIR_NAME } from "../config/paths.js";
+import { extractApplyPatchPlan } from "./capabilities.js";
 
 /**
  * PermissionProfile — the capability-boundary layer (docs/permission-profile.md §3).
@@ -204,6 +205,13 @@ export class ProfileEvaluator {
     input: Record<string, unknown>,
     cwd: string = this.cwd,
   ): ProfileDecision {
+    if (tool === "apply_patch") {
+      const plan = extractApplyPatchPlan(input, cwd, { level: this.level, roots: this.writeSet });
+      if (plan.status !== "known" || plan.tool !== "apply_patch" || !("targets" in plan)) return "deny";
+      return plan.targets.some((target) =>
+        this.decideFs(canonicalizePath(target.path, cwd, this.home), "write") === "deny",
+      ) ? "deny" : "allow";
+    }
     if (READ_TOOLS.has(tool) || WRITE_TOOLS.has(tool)) {
       const raw = input.path ?? input.filePath;
       if (typeof raw !== "string" || raw === "") return "allow"; // no path to gate

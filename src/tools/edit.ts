@@ -5,6 +5,13 @@ import type { ToolHandler, ToolContext } from "./types.js";
 import { ToolRegistry } from "./registry.js";
 import { extractApplyPatchPlan, resolveWorkspaceWriteTarget } from "../permissions/capabilities.js";
 
+function resolveWriteTarget(rawPath: string, ctx: ToolContext) {
+  return resolveWorkspaceWriteTarget(rawPath, ctx.workingDir, {
+    level: ctx.writePolicyLevel,
+    writeRoots: ctx.writeRoots,
+  });
+}
+
 function countOccurrences(str: string, search: string): number {
   let count = 0;
   let pos = 0;
@@ -57,7 +64,7 @@ async function checkStaleFile(path: string, ctx: ToolContext): Promise<ToolOutpu
 }
 
 const editHandler: ToolHandler = async (args, ctx) => {
-  const target = resolveWorkspaceWriteTarget(args.path as string, ctx.workingDir);
+  const target = resolveWriteTarget(args.path as string, ctx);
   if ("error" in target) return { content: target.error, error: target.error };
   const path = target.path;
   const oldString = args.oldString as string;
@@ -117,7 +124,7 @@ const editDef: ToolDef = {
 };
 
 const applyDiffHandler: ToolHandler = async (args, ctx) => {
-  const target = resolveWorkspaceWriteTarget(args.path as string, ctx.workingDir);
+  const target = resolveWriteTarget(args.path as string, ctx);
   if ("error" in target) return { content: target.error, error: target.error };
   const path = target.path;
   const diff = (args.diff as string).trim();
@@ -239,7 +246,10 @@ const applyPatchHandler: ToolHandler = async (args, ctx) => {
     return { content: "Empty patch, nothing to apply." };
   }
 
-  const plan = extractApplyPatchPlan(args, ctx.workingDir);
+  const plan = extractApplyPatchPlan(args, ctx.workingDir, {
+    level: ctx.writePolicyLevel,
+    writeRoots: ctx.writeRoots,
+  });
   if (plan.status !== "known" || plan.tool !== "apply_patch" || !("targets" in plan)) {
     const message = plan.reason ?? "Patch targets could not be parsed";
     return { content: message, error: message };
@@ -323,7 +333,7 @@ const applyPatchDef: ToolDef = {
 };
 
 const searchReplaceHandler: ToolHandler = async (args, ctx) => {
-  const target = resolveWorkspaceWriteTarget(args.path as string, ctx.workingDir);
+  const target = resolveWriteTarget(args.path as string, ctx);
   if ("error" in target) return { content: target.error, error: target.error };
   const path = target.path;
   const search = args.search as string;
@@ -377,7 +387,7 @@ const searchReplaceDef: ToolDef = {
 };
 
 const editFileHandler: ToolHandler = async (args, ctx) => {
-  const target = resolveWorkspaceWriteTarget(args.path as string, ctx.workingDir);
+  const target = resolveWriteTarget(args.path as string, ctx);
   if ("error" in target) return { content: target.error, error: target.error };
   const path = target.path;
   const search = args.search as string;
@@ -438,7 +448,7 @@ const editFileDef: ToolDef = {
 };
 
 const writeToFileHandler: ToolHandler = async (args, ctx) => {
-  const target = resolveWorkspaceWriteTarget(args.path as string, ctx.workingDir);
+  const target = resolveWriteTarget(args.path as string, ctx);
   if ("error" in target) return { content: target.error, error: target.error };
   const path = target.path;
   const content = args.content as string;

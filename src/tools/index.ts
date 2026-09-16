@@ -2,6 +2,7 @@ import { ToolRegistry } from "./registry.js";
 import type { ToolCall, ToolOutput } from "../types.js";
 import type { ToolContext } from "./types.js";
 import type { SandboxLevel } from "../sandbox/seatbelt.js";
+import type { ProfileLevel } from "../permissions/profile.js";
 import type { WebSearchConfig } from "../config/loader.js";
 import type { CheckpointManager } from "../checkpoints/index.js";
 import type { SessionStore } from "../sessions/store.js";
@@ -85,6 +86,10 @@ export function setTimeoutToBackground(v: boolean): void {
  */
 export function setSandboxLevel(v: SandboxLevel | undefined): void {
   ctx.sandboxLevel = v;
+}
+
+export function setWritePolicyLevel(v: ProfileLevel): void {
+  ctx.writePolicyLevel = v;
 }
 
 /**

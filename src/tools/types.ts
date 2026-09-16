@@ -3,6 +3,7 @@ import type { CheckpointManager } from "../checkpoints/index.js";
 import type { SessionStore } from "../sessions/store.js";
 import type { TodoStore } from "./todo.js";
 import type { SandboxLevel } from "../sandbox/seatbelt.js";
+import type { ProfileLevel } from "../permissions/profile.js";
 import type { WebSearchConfig } from "../config/loader.js";
 
 export type ToolHandler = (args: Record<string, unknown>, ctx: ToolContext) => Promise<ToolOutput>;
@@ -48,6 +49,9 @@ export interface ToolContext {
    *  other platforms the loader emits a startup notice and spawns stay
    *  policy-only. */
   sandboxLevel?: SandboxLevel;
+  /** Effective profile level, threaded to file handlers so their physical
+   * containment check uses the same write-set as policy and Seatbelt. */
+  writePolicyLevel?: ProfileLevel;
   /** Additional directories writable under workspace-write, beyond
    *  `workingDir` and the carve-outs. This combines global
    *  `sandbox.writeRoots` with session-scoped `--add-dir` roots. Raw

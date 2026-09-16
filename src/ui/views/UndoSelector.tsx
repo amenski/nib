@@ -126,6 +126,13 @@ export default function UndoSelector({ checkpoints, onRestore, onClose, width, h
             ))}
           </Box>
           <Box marginTop={1}>
+            <Text color="yellow">
+              Undo only affects this checkpoint: it may restore checkpointed workspace files and/or conversation.
+              It cannot undo running processes, network calls, remote mutations, or files excluded from or not
+              captured in the checkpoint (including later untracked data).
+            </Text>
+          </Box>
+          <Box marginTop={1}>
             <Text dimColor>↑↓ navigate · Enter select · Esc back</Text>
           </Box>
         </Box>

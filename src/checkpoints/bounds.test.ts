@@ -23,9 +23,9 @@ vi.mock("node:os", async (importOriginal) => {
 describe("checkpoint resource bounds", () => {
   let workspaceDir: string;
 
-  async function chkptManager() {
+  async function chkptManager(options?: { maxBytes?: number }) {
     const mod = await import("./index.js");
-    return new mod.CheckpointManager("test-session", workspaceDir);
+    return new mod.CheckpointManager("test-session", workspaceDir, undefined, options);
   }
 
   function shadowGitDir(): string {
@@ -90,6 +90,21 @@ describe("checkpoint resource bounds", () => {
     const mgr = await chkptManager();
     const hash = await mgr.save("msg");
     expect(hash).toBeTruthy();
+  });
+
+  it("refuses a changed file over the configured byte limit without touching the workspace", async () => {
+    const original = readFileSync(join(workspaceDir, "app.ts"), "utf-8");
+    writeFileSync(join(workspaceDir, "large.bin"), Buffer.alloc(128 * 1024, 7));
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+
+    const mgr = await chkptManager({ maxBytes: 32 * 1024 });
+    const hash = await mgr.save("too-large");
+
+    expect(hash).toBeNull();
+    expect(readFileSync(join(workspaceDir, "app.ts"), "utf-8")).toBe(original);
+    expect(existsSync(join(workspaceDir, "large.bin"))).toBe(true);
+    expect(await mgr.list()).toEqual([]);
+    expect(stderr.mock.calls.map((c) => String(c[0])).join("")).toContain("shadow repository would exceed");
   });
 
   it("refuses to stage a workspace past the entry cap, writing no objects", async () => {

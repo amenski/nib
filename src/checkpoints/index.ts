@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { existsSync, appendFileSync, readdirSync, unlinkSync } from "node:fs";
+import { existsSync, appendFileSync, lstatSync, readdirSync, unlinkSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 
 import { resolveHome } from "../config/loader.js";
@@ -54,6 +54,14 @@ const GIT_CONFIG_OVERRIDES = [
 // which is why gc.auto=0 above and sweepStaleTempPacks() exist: together they
 // bound the consequence instead.
 const MAX_CHECKPOINT_ENTRIES = 5000;
+/** Default per-session shadow-repository budget. Configurable via retention. */
+export const DEFAULT_MAX_CHECKPOINT_BYTES = 512 * 1024 * 1024;
+/** Headroom for trees, commits, and Git bookkeeping around changed blobs. */
+const CHECKPOINT_OVERHEAD_BYTES = 64 * 1024;
+
+export interface CheckpointOptions {
+  maxBytes?: number;
+}
 
 const execFileAsync = promisify(execFile);
 
@@ -66,16 +74,65 @@ function hardenCheckpointTree(path: string): void {
   }
 }
 
+function directoryByteSize(root: string): number {
+  let total = 0;
+  const pending = [root];
+  while (pending.length > 0) {
+    const current = pending.pop()!;
+    let entries;
+    try {
+      entries = readdirSync(current, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const path = join(current, entry.name);
+      try {
+        const stat = lstatSync(path);
+        if (stat.isDirectory()) pending.push(path);
+        else total += stat.size;
+      } catch {
+        // A concurrently removed file is not evidence that the checkpoint is
+        // over budget; the next save will remeasure the private tree.
+      }
+    }
+  }
+  return total;
+}
+
+function statusPaths(status: string): string[] {
+  const fields = status.split("\0").filter(Boolean);
+  const paths: string[] = [];
+  for (let i = 0; i < fields.length; i++) {
+    const field = fields[i]!;
+    if (field.length < 4) continue;
+    paths.push(field.slice(3));
+    // With porcelain -z, a rename/copy has a second NUL-delimited path.
+    if (field[1] === "R" || field[1] === "C" || field[0] === "R" || field[0] === "C") {
+      if (fields[i + 1] !== undefined) paths.push(fields[++i]!);
+    }
+  }
+  return paths;
+}
+
 export class CheckpointManager {
   private shadowDir: string;
   private workspaceDir: string;
   private initialized = false;
   private warnedUnbounded = false;
+  private warnedByteLimit = false;
   private _lock: Promise<void> = Promise.resolve();
+  private readonly maxBytes: number;
 
-  constructor(sessionId: string, workspaceDir?: string, home: string = resolveHome()) {
+  constructor(
+    sessionId: string,
+    workspaceDir?: string,
+    home: string = resolveHome(),
+    options: CheckpointOptions = {},
+  ) {
     this.workspaceDir = resolve(workspaceDir ?? process.cwd());
     this.shadowDir = join(home, "checkpoints", sessionId);
+    this.maxBytes = options.maxBytes ?? DEFAULT_MAX_CHECKPOINT_BYTES;
   }
 
   get workspace(): string {
@@ -206,6 +263,52 @@ export class CheckpointManager {
     );
   }
 
+  private warnByteLimit(): void {
+    if (this.warnedByteLimit) return;
+    this.warnedByteLimit = true;
+    process.stderr.write(
+      `nib: checkpoints are off for this session — the shadow repository would exceed ` +
+        `${this.maxBytes} bytes. /undo is unavailable for further changes.\n`,
+    );
+  }
+
+  private async changedWorkspaceBytes(status: string): Promise<number> {
+    let total = 0;
+    for (const relative of statusPaths(status)) {
+      const absolute = resolve(this.workspaceDir, relative);
+      if (absolute !== this.workspaceDir && !absolute.startsWith(`${this.workspaceDir}/`)) {
+        return this.maxBytes + CHECKPOINT_OVERHEAD_BYTES;
+      }
+      try {
+        const stat = lstatSync(absolute);
+        if (stat.isFile() || stat.isSymbolicLink()) total += stat.size;
+        else if (stat.isDirectory()) total += directoryByteSize(absolute);
+      } catch {
+        // Deleted paths contribute no bytes.
+      }
+      if (total > this.maxBytes) return total;
+    }
+    return total;
+  }
+
+  private async rollbackShadowChanges(previousHash: string | null, committed = false): Promise<void> {
+    try {
+      if (previousHash) {
+        await this.git(["reset", "--mixed", previousHash]);
+      } else {
+        // `git reset` has no commit to target before the first checkpoint, but
+        // after a too-large first commit HEAD must be deleted explicitly.
+        if (committed) await this.git(["update-ref", "-d", "HEAD"]);
+        await this.git(["reset"]);
+      }
+    } catch {
+      // The shadow repo remains private and the next save will fail closed if
+      // it is still over budget; never touch the user's worktree as recovery.
+    }
+    // Only unreachable objects in this session's shadow repo are collected.
+    await this.gitSilent(["prune", "--expire=now"]);
+  }
+
   async save(message?: string): Promise<string | null> {
     const prev = this._lock;
     let release: () => void;
@@ -226,20 +329,43 @@ export class CheckpointManager {
       // bytes an entry it trips around 250k, so a tree that size returns null
       // from the ENOBUFS throw before the cap is ever compared. Same outcome —
       // nothing is staged — just without the notice.)
-      const status = await this.gitSilent(["status", "--porcelain", "-uall"]);
+      const previousHash = await this.gitSilent(["rev-parse", "HEAD"]);
+      const status = await this.gitSilent(["status", "--porcelain", "-uall", "-z"]);
       if (!status) return null;
 
-      if (status.split("\n").length > MAX_CHECKPOINT_ENTRIES) {
+      if (statusPaths(status).length > MAX_CHECKPOINT_ENTRIES) {
         this.warnUnboundedWorkspace();
+        return null;
+      }
+
+      const currentBytes = directoryByteSize(this.shadowDir);
+      const changedBytes = await this.changedWorkspaceBytes(status);
+      if (
+        currentBytes > this.maxBytes ||
+        changedBytes > this.maxBytes - currentBytes - CHECKPOINT_OVERHEAD_BYTES
+      ) {
+        this.warnByteLimit();
         return null;
       }
 
       await this.git(["add", "-A"]);
 
+      if (directoryByteSize(this.shadowDir) > this.maxBytes) {
+        await this.rollbackShadowChanges(previousHash);
+        this.warnByteLimit();
+        return null;
+      }
+
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       const commitMsg = message ?? `checkpoint ${timestamp}`;
       // Passed verbatim as ONE argv entry — no shell, no escaping, no injection.
       await this.git(["commit", "-m", commitMsg]);
+
+      if (directoryByteSize(this.shadowDir) > this.maxBytes) {
+        await this.rollbackShadowChanges(previousHash, true);
+        this.warnByteLimit();
+        return null;
+      }
 
       return await this.git(["rev-parse", "HEAD"]);
     } catch {

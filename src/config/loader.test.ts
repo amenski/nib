@@ -208,6 +208,54 @@ describe("loadConfig: migration integration, no disk write during load", () => {
   });
 });
 
+describe("loadConfig: retention", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "nib-loader-retention-"));
+    mkdirSync(projectDirPath(dir), { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("parses retention limits", () => {
+    writeFileSync(
+      join(homeDir, "settings.json"),
+      JSON.stringify({ retention: { maxSessions: 5, maxAgeDays: 30, maxCheckpointBytes: 4096 } }),
+      "utf-8",
+    );
+    const { config, errors, warnings } = loadConfig(dir);
+    expect(errors).toEqual([]);
+    expect(warnings).toEqual([]);
+    expect(config.retention).toEqual({ maxSessions: 5, maxAgeDays: 30, maxCheckpointBytes: 4096 });
+  });
+
+  it("rejects zero, fractional, and non-numeric retention limits", () => {
+    writeFileSync(
+      join(homeDir, "settings.json"),
+      JSON.stringify({ retention: { maxSessions: 0, maxAgeDays: 1.5, maxCheckpointBytes: "4096" } }),
+      "utf-8",
+    );
+    const { config, errors } = loadConfig(dir);
+    expect(errors).toHaveLength(3);
+    expect(config.retention).toEqual({});
+  });
+
+  it("ignores project retention so opening a project cannot delete or constrain user state", () => {
+    writeFileSync(
+      projectSettingsPath(dir),
+      JSON.stringify({ retention: { maxSessions: 1, maxAgeDays: 1, maxCheckpointBytes: 1 } }),
+      "utf-8",
+    );
+    const { config, errors, warnings } = loadConfig(dir);
+    expect(errors).toEqual([]);
+    expect(config.retention).toBeUndefined();
+    expect(warnings.some((warning) => warning.includes("retention is global-only"))).toBe(true);
+  });
+});
+
 // Write a project-level .nib/settings.json into a fresh temp dir and load it.
 // NIB_HOME is pointed at an empty dir so no global settings interfere.
 let projectDir: string;

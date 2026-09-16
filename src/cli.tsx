@@ -37,7 +37,7 @@ import { MemoryStore } from "./memory/store.js";
 import { SkillLoader, createLoadSkillTool, type SkillDef } from "./skills/index.js";
 import { AgentLoader, type AgentDef } from "./agents/index.js";
 import { CommandLoader, type CommandDef } from "./commands/index.js";
-import { containmentWarning, hasActiveSandboxContainment, loadConfig } from "./config/loader.js";
+import { containmentWarning, hasActiveSandboxContainment, loadConfig, resolveHome } from "./config/loader.js";
 import { projectSettingsPath } from "./config/paths.js";
 import { checkSettingsTrust, trustSettings, stripExecutionKeys } from "./config/settings-trust.js";
 import { checkFolderTrust, trustFolder, buildFolderContentSummary, hasGatedContent } from "./config/folder-trust.js";
@@ -459,7 +459,7 @@ async function main() {
     _compactor = undefined;
   }
 
-  const sessionStore = new SessionStore();
+  const sessionStore = new SessionStore(resolveHome(), configResult.config.retention);
   let sessionId: string;
   let sessionMessages: Message[] = [];
   let sessionLoaded = false;
@@ -532,6 +532,10 @@ async function main() {
     sessionId = await sessionStore.create(sessionCreateBase);
   }
 
+  // Retention runs after selecting/creating the current session so the active
+  // transcript is never evicted by an age or count limit.
+  await sessionStore.pruneRetention(sessionId);
+
   // --name names a freshly-created session; a resume/continue keeps the session's
   // own (possibly renamed) title untouched. The index title survives the first
   // message's derived-title update (sessions/store.ts updateIndexEntry).
@@ -544,7 +548,9 @@ async function main() {
 
   if (parsed.debug) enableDebug(sessionId);
 
-  let checkpoints = new CheckpointManager(sessionId);
+  let checkpoints = new CheckpointManager(sessionId, undefined, undefined, {
+    maxBytes: configResult.config.retention?.maxCheckpointBytes,
+  });
   const diagnostics = new DiagnosticRunner();
   // Layered failure handling, constructed once per session so the reflector's
   // total-retry budget spans the whole conversation. Both engage only on error

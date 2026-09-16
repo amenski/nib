@@ -58,6 +58,16 @@ export interface WebSearchConfig {
   enrich?: boolean;
 }
 
+/** Persistence retention and checkpoint resource bounds. */
+export interface RetentionConfig {
+  /** Keep at most this many sessions for the current project. */
+  maxSessions?: number;
+  /** Remove sessions older than this many days for the current project. */
+  maxAgeDays?: number;
+  /** Maximum on-disk size of one session's shadow checkpoint repository. */
+  maxCheckpointBytes?: number;
+}
+
 export interface DeepCodeSettings {
   // ── Env (model/api config) ──
   env?: DeepCodeEnv;
@@ -78,6 +88,9 @@ export interface DeepCodeSettings {
 
   // ── Permissions ──
   permissions?: PermissionConfig;
+
+  /** Optional persistence cleanup controls; absent means keep session history. */
+  retention?: RetentionConfig;
 
   // ── Capability profile (permission-profile.md §3) ──
   /** Coarse reachability boundary gated before the rule engine (layer 1). */
@@ -377,6 +390,7 @@ const KNOWN_KEYS = new Set([
   "reasoningEffort",
   "refresh",
   "permissions",
+  "retention",
   "permissionProfile",
   "sandbox",
   "mcpServers",
@@ -1192,6 +1206,41 @@ export function loadConfig(projectDir?: string): LoadResult {
 
     const perms = validatePermissions(permsForValidation, "config", errors);
     if (perms) config.permissions = perms;
+  }
+
+  // ── retention ──
+  // Retention can delete local session history and constrain checkpointing, so
+  // it is a user-trusted, GLOBAL-only control. A project must not be able to
+  // choose a value that deletes the user's records or changes the safety
+  // posture for the project merely by being opened.
+  if (isObject(projectRaw?.retention)) {
+    warnings.push(
+      "retention is global-only and was ignored in project .nib/settings.json — set it in ~/.nib/settings.json instead",
+    );
+  } else if (projectRaw && "retention" in projectRaw) {
+    warnings.push("retention is global-only and was ignored in project .nib/settings.json");
+  }
+  if ("retention" in (globalRaw ?? {})) {
+    if (!isObject(globalRaw?.retention)) {
+      errors.push("global config.retention: must be an object");
+    } else {
+      const r = globalRaw.retention as Record<string, unknown>;
+      const retention: RetentionConfig = {};
+      for (const [key, label] of [
+        ["maxSessions", "global config.retention.maxSessions"],
+        ["maxAgeDays", "global config.retention.maxAgeDays"],
+        ["maxCheckpointBytes", "global config.retention.maxCheckpointBytes"],
+      ] as const) {
+        if (!(key in r)) continue;
+        const value = r[key];
+        if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1) {
+          errors.push(`${label}: must be a positive integer`);
+          continue;
+        }
+        retention[key] = value;
+      }
+      config.retention = retention;
+    }
   }
 
   // ── permissionProfile ──

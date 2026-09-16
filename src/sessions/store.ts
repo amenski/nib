@@ -2,7 +2,7 @@ import { readFile, readdir, rename, unlink } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import type { Message } from "../types.js";
 import { redactSecrets } from "./redact.js";
-import { resolveHome } from "../config/loader.js";
+import { resolveHome, type RetentionConfig } from "../config/loader.js";
 import {
   appendPrivateFile,
   ensurePrivateStateDirectoryAsync,
@@ -242,10 +242,15 @@ function formatCompactionText(summary: CompactionSummary): string {
 export class SessionStore {
   private _cwd: string;
   private readonly sessionDir: string;
+  private readonly retention: Pick<RetentionConfig, "maxSessions" | "maxAgeDays">;
 
-  constructor(home: string = resolveHome()) {
+  constructor(
+    home: string = resolveHome(),
+    retention: Pick<RetentionConfig, "maxSessions" | "maxAgeDays"> = {},
+  ) {
     this._cwd = process.cwd();
     this.sessionDir = join(home, "sessions", slugify(this._cwd));
+    this.retention = retention;
   }
 
   private get slug(): string {
@@ -529,6 +534,79 @@ export class SessionStore {
       // ignore
     }
     return true;
+  }
+
+  /**
+   * Remove old session transcripts for this project, never touching anything
+   * except explicit `*.jsonl` files in the private session directory. The
+   * current session is excluded because callers invoke this after selecting or
+   * creating it. With no retention settings this is a no-op, preserving the
+   * historical keep-everything behavior.
+   */
+  async pruneRetention(excludeSessionId?: string): Promise<number> {
+    const { maxSessions, maxAgeDays } = this.retention;
+    if (maxSessions === undefined && maxAgeDays === undefined) return 0;
+
+    let entries: SessionIndexEntry[] = [];
+    for (const id of await this.diskSessionIds()) {
+      const derived = await this.deriveEntry(id);
+      if (derived) entries.push(derived);
+    }
+
+    const remove = new Set<string>();
+    if (maxAgeDays !== undefined) {
+      const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
+      for (const entry of entries) {
+        if (entry.id === excludeSessionId) continue;
+        const updated = Date.parse(entry.updatedAt || entry.createdAt);
+        if (Number.isFinite(updated) && updated < cutoff) remove.add(entry.id);
+      }
+    }
+
+    if (maxSessions !== undefined && entries.length > maxSessions) {
+      const ordered = [...entries].sort((a, b) =>
+        Date.parse(b.updatedAt || b.createdAt) - Date.parse(a.updatedAt || a.createdAt),
+      );
+      const others = ordered.filter((entry) => entry.id !== excludeSessionId);
+      const keep = new Set(
+        others
+          .slice(0, Math.max(0, maxSessions - (excludeSessionId ? 1 : 0)))
+          .map((entry) => entry.id),
+      );
+      // A resumed session is never evicted merely because it is old. The
+      // remaining count is reduced above so the configured cap still holds.
+      if (excludeSessionId && entries.some((entry) => entry.id === excludeSessionId)) {
+        keep.add(excludeSessionId);
+      }
+      for (const entry of entries) {
+        if (entry.id !== excludeSessionId && !keep.has(entry.id)) remove.add(entry.id);
+      }
+    }
+
+    let removed = 0;
+    for (const id of remove) {
+      try {
+        await unlink(this.filePath(id));
+        removed++;
+      } catch {
+        // A concurrent cleanup or an unreadable file must not abort startup.
+      }
+    }
+
+    if (removed > 0) {
+      try {
+        const index = await this.readIndex();
+        if (index) {
+          await this.writeIndex({
+            ...index,
+            sessions: index.sessions.filter((entry) => !remove.has(entry.id)),
+          });
+        }
+      } catch {
+        // list() rebuilds a stale index from the remaining JSONL files.
+      }
+    }
+    return removed;
   }
 
   async getSummary(sessionId: string): Promise<string | undefined> {

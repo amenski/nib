@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtempSync, writeFileSync, rmSync, existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { execSync } from "node:child_process";
 
@@ -118,22 +118,48 @@ describe("checkpoint secret handling", () => {
     expect(files).not.toContain(".env");
   });
 
-  it("fixture: a secret file OUTSIDE the backstop list IS committed without a workspace .gitignore (T9 residual weakness)", async () => {
-    // The honest residual gap: the info/exclude backstop is a finite list of
-    // known secret names. .npmrc (registry auth tokens) is not on it, so with
-    // no workspace .gitignore it lands in the shadow repo.
-    writeFileSync(
-      join(workspaceDir, ".npmrc"),
-      "//registry.npmjs.org/:_authToken=test-secret-token\n",
-    );
+  it("excludes high-value secret filename/path conventions without a workspace .gitignore", async () => {
+    // The backstop is deliberately filename/path based, not content-aware.
+    // Keep this fixture broad enough to catch omissions while proving that an
+    // ordinary file and a credential-themed document remain checkpointable.
+    const secretFiles: Record<string, string> = {
+      ".npmrc": "//registry.npmjs.org/:_authToken=test-secret-token\n",
+      ".netrc": "machine example.test login user password secret\n",
+      ".git-credentials": "https://user:secret@example.test/repo.git\n",
+      ".pypirc": "[pypi]\npassword = secret\n",
+      ".yarnrc.yml": "npmAuthToken: secret\n",
+      ".envrc": "export API_KEY=secret\n",
+      "terraform.tfstate": "{\"private_key\":\"secret\"}\n",
+      "service-account-prod.json": "{\"private_key\":\"secret\"}\n",
+      "release-signing.jks": "keystore\n",
+      ".vault-token": "secret\n",
+      "docs/credentials-guide.md": "How credentials work\n",
+      "notes.md": "ordinary user content\n",
+    };
+    for (const [relative, content] of Object.entries(secretFiles)) {
+      const path = join(workspaceDir, relative);
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, content);
+    }
+    const nestedSecretFiles: Record<string, string> = {
+      "nested/.docker/config.json": "{\"auths\":{}}\n",
+      "nested/.kube/config": "users:\n- name: admin\n",
+      "nested/.config/gcloud/credentials.db": "private credential\n",
+      "nested/.config/gh/hosts.yml": "oauth_token: secret\n",
+      "nested/.azure/accessTokens.json": "[{\"accessToken\":\"secret\"}]\n",
+      "nested/.gnupg/private-keys-v1.d/key": "private key\n",
+      "nested/.direnv/state": "secret\n",
+      "nested/.terraform.d/credentials.tfrc.json": "{\"token\":\"secret\"}\n",
+    };
+    for (const [relative, content] of Object.entries(nestedSecretFiles)) {
+      const path = join(workspaceDir, relative);
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, content);
+    }
     rmSync(join(workspaceDir, ".gitignore"));
-    execSync("git add -A && git commit -m 'remove gitignore'", {
-      cwd: workspaceDir,
-      stdio: "pipe",
-    });
 
     const mgr = await chkptManager();
-    const hash = await mgr.save("fixture-npmrc");
+    const hash = await mgr.save("fixture-secret-backstop");
     expect(hash).toBeTruthy();
 
     const tree = execSync(
@@ -142,7 +168,29 @@ describe("checkpoint secret handling", () => {
     ).trim();
     const files = tree.split("\n").filter(Boolean);
 
-    expect(files).toContain(".npmrc");
+    for (const relative of [...Object.keys(secretFiles), ...Object.keys(nestedSecretFiles)]) {
+      if (relative === "docs/credentials-guide.md" || relative === "notes.md") continue;
+      expect(files).not.toContain(relative);
+    }
+    expect(files).toContain("docs/credentials-guide.md");
+    expect(files).toContain("notes.md");
+  });
+
+  it("fails closed when a resumed shadow repo has no exclusion file", async () => {
+    const first = await chkptManager();
+    expect(await first.save("initial-checkpoint")).toBeTruthy();
+
+    rmSync(join(shadowGitDir(), "info", "exclude"));
+    writeFileSync(join(workspaceDir, ".npmrc"), "//registry.npmjs.org/:_authToken=secret\n");
+
+    const resumed = await chkptManager();
+    expect(await resumed.save("must-fail-closed")).toBeNull();
+
+    const tree = execSync(
+      `git --git-dir="${shadowGitDir()}" ls-tree -r --name-only HEAD`,
+      { encoding: "utf-8", stdio: "pipe" },
+    ).trim();
+    expect(tree.split("\n").filter(Boolean)).not.toContain(".npmrc");
   });
 
   it("excludes .env from the shadow repo even when the workspace has NO .gitignore at all (D4 backstop)", async () => {

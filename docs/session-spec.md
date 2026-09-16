@@ -291,6 +291,20 @@ The shadow repo is not allowed to grow without limit; two guards enforce that.
   success, so an interrupted one leaves a full-size dead file that nothing
   would ever collect.
 
+### Secret filename backstop
+
+The shadow repository adds a defense-in-depth `.git/info/exclude` backstop
+even when the workspace has no `.gitignore`. It excludes common environment
+files, private-key and keystore extensions, package/repository credential
+files (`.npmrc`, `.netrc`, `.pypirc`, `.git-credentials`), Docker/Kubernetes/
+cloud credential paths, Terraform state and credential files, Vault tokens,
+and service-account JSON. The list is intentionally finite and filename/path
+based: it is not content scanning and cannot identify a secret stored under an
+unfamiliar name or inside an ordinary file. The workspace `.gitignore` remains
+the primary control. Resumed shadow repos are brought up to date with the
+backstop; if it cannot be read or written, checkpointing fails closed. Existing
+shadow history is not rewritten or scrubbed.
+
 Incident 2026-08-17: two sessions whose cwd was `$HOME` (235 GB) hit both gaps
 at once — `git add -A` staged 14 GB, and an interrupted repack stranded
 14.5 GB and 12.4 GB `tmp_pack` files, 26 GB total. Neither had any bound before

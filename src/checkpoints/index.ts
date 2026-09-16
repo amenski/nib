@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { existsSync, appendFileSync, lstatSync, readdirSync, unlinkSync } from "node:fs";
+import { appendFileSync, existsSync, lstatSync, readFileSync, readdirSync, unlinkSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 
 import { resolveHome } from "../config/loader.js";
@@ -43,7 +43,7 @@ const GIT_CONFIG_OVERRIDES = [
 // A workspace presenting more entries than this to a fresh shadow repo is not a
 // project being edited — it is whatever directory happened to be the cwd. This
 // is the only bound on what `add -A` below can stage: the info/exclude list
-// filters by extension, so without a cap the ceiling is whatever the workspace
+// filters by binary/secret filename conventions, so without a cap the ceiling is whatever the workspace
 // contains, not whatever the agent touched. Same incident as above: cwd was
 // $HOME (235 GB), and the extension filter let 14 GB of it through.
 //
@@ -59,6 +59,37 @@ export const DEFAULT_MAX_CHECKPOINT_BYTES = 512 * 1024 * 1024;
 /** Headroom for trees, commits, and Git bookkeeping around changed blobs. */
 const CHECKPOINT_OVERHEAD_BYTES = 64 * 1024;
 
+// Defense-in-depth for workspaces that do not provide their own .gitignore.
+// These are filename/path conventions with a high likelihood of holding
+// credentials or private keys. This is deliberately not content scanning: a
+// secret under an unfamiliar name still requires the workspace .gitignore (or
+// a future content-aware checkpoint policy) to keep it out.
+const CHECKPOINT_SECRET_EXCLUDES = [
+  ".env", ".env.*", ".envrc", ".direnv/**", "**/.direnv/**",
+  "*.pem", "*.key", "id_rsa", "id_rsa.*", "id_dsa*", "id_ecdsa*", "id_ed25519*",
+  "*.p12", "*.pfx", "*.jks", "*.keystore", "*.kdbx",
+  "credentials.yaml", "credentials.json",
+  ".aws/**", ".ssh/**", ".gnupg/**", ".azure/**",
+  "**/.aws/**", "**/.ssh/**", "**/.gnupg/**", "**/.azure/**",
+  ".npmrc", ".yarnrc", ".yarnrc.yml", ".pypirc", ".netrc", ".git-credentials",
+  ".docker/config.json", ".kube/config", ".config/gcloud/**", ".config/gh/**",
+  "**/.docker/config.json", "**/.kube/config", "**/.config/gcloud/**", "**/.config/gh/**",
+  ".terraformrc", ".terraform.d/credentials.tfrc.json",
+  "**/.terraform.d/credentials.tfrc.json",
+  "*.tfstate", "*.tfstate.*", ".vault-token", ".vault-token.*",
+  "service-account.json", "service-account-*.json", "*-service-account.json",
+];
+
+const CHECKPOINT_NON_SECRET_EXCLUDES = [
+  ".git",
+  "node_modules/",
+  "*.bin", "*.exe", "*.dll", "*.so", "*.dylib",
+  "*.zip", "*.tar", "*.gz", "*.7z", "*.rar",
+  "*.png", "*.jpg", "*.jpeg", "*.gif", "*.ico", "*.webp",
+  "*.mp3", "*.mp4", "*.avi", "*.mov",
+  "*.ttf", "*.otf", "*.woff", "*.woff2",
+];
+
 export interface CheckpointOptions {
   maxBytes?: number;
 }
@@ -71,6 +102,28 @@ function hardenCheckpointTree(path: string): void {
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     throw new Error(`nib: failed to secure checkpoint state at ${path}: ${reason}`, { cause: err });
+  }
+}
+
+function ensureCheckpointExcludes(shadowDir: string): void {
+  const path = join(shadowDir, ".git", "info", "exclude");
+  let existing = "";
+  try {
+    existing = readFileSync(path, "utf-8");
+  } catch (err) {
+    throw new Error(`nib: checkpoint secret exclusions unavailable at ${path}`, { cause: err });
+  }
+
+  const present = new Set(existing.split(/\r?\n/));
+  const missing = [...CHECKPOINT_NON_SECRET_EXCLUDES, ...CHECKPOINT_SECRET_EXCLUDES]
+    .filter((pattern) => !present.has(pattern));
+  if (missing.length === 0) return;
+
+  const separator = existing.length > 0 && !existing.endsWith("\n") ? "\n" : "";
+  try {
+    appendFileSync(path, `${separator}${missing.join("\n")}\n`);
+  } catch (err) {
+    throw new Error(`nib: checkpoint secret exclusions could not be secured at ${path}`, { cause: err });
   }
 }
 
@@ -148,32 +201,9 @@ export class CheckpointManager {
     ensurePrivateStateDirectory(stateDir, basename(checkpointsDir), basename(this.shadowDir));
     if (!existed) {
       await execFileAsync("git", [...GIT_CONFIG_OVERRIDES, "init"], { cwd: this.shadowDir });
-
-      const exclude = [
-        ".git",
-        "node_modules/",
-        "*.bin", "*.exe", "*.dll", "*.so", "*.dylib",
-        "*.zip", "*.tar", "*.gz", "*.7z", "*.rar",
-        "*.png", "*.jpg", "*.jpeg", "*.gif", "*.ico", "*.webp",
-        "*.mp3", "*.mp4", "*.avi", "*.mov",
-        "*.ttf", "*.otf", "*.woff", "*.woff2",
-        // Secret-adjacent backstop: excluded regardless of the workspace's own
-        // .gitignore (which the shadow repo otherwise relies on via
-        // --work-tree). Defense-in-depth only — this reduces but does not
-        // eliminate T3 (session transcripts are still plaintext elsewhere).
-        ".env", ".env.*", "*.pem", "*.key", "id_rsa", "id_rsa.*",
-        "id_dsa*", "id_ecdsa*", "id_ed25519*",
-        "credentials.yaml", "credentials.json",
-        ".aws/**", ".ssh/**", "*.p12", "*.pfx",
-        "",
-      ].join("\n");
-
-      try {
-        appendFileSync(join(this.shadowDir, ".git", "info", "exclude"), exclude);
-      } catch {
-        // info/exclude might not exist after git init; skip silently
-      }
     }
+
+    ensureCheckpointExcludes(this.shadowDir);
 
     hardenCheckpointTree(this.shadowDir);
 

@@ -14,10 +14,11 @@ import { realpathNearestAncestor, resolveWriteRoots } from "./write-roots.js";
  * workspace-write = write only workspace roots + no direct network, with a
  * deliberate, battery-proven carve-outs to the write boundary (ephemeral
  * temp: literal /tmp + the session $TMPDIR; npm cache: ~/.npm — see
- * {@link workspaceWriteCarveouts}). The .git always-denied set is
- * deliberately **not** expressed here — SBPL has no gitignore globs, and the
- * policy layer already enforces it (documented residual,
- * permission-profile.md §8).
+ * {@link workspaceWriteCarveouts}). The .git always-denied set is expressed
+ * here as well ({@link GIT_INTEGRITY_DENIES}): the policy layer denies
+ * `.git/**` for the calls it sees, but an interpreter or package script is
+ * not a call it sees, and the release-gate probe measured both writing
+ * `.git/hooks`.
  *
  * Seatbelt cannot safely enforce hostname allowlists because it filters
  * resolved IPs, not hostnames. Therefore workspace-write denies direct
@@ -83,6 +84,66 @@ const READ_ONLY_CORE = [
 const HOME_READ_ALLOWS = [".gitconfig", ".config/git", ".npm", ".cache"] as const;
 
 /**
+ * Git integrity rules — the mechanical half of the `.git` always-denied set.
+ *
+ * permission-profile.md §8 recorded this as a policy-layer-only residual: the
+ * policy denies `.git/**` for the calls it sees, but an interpreter or a
+ * package lifecycle script is not a call it sees. The release-gate probe
+ * confirmed a Node child *and* an npm lifecycle script could each write
+ * `.git/hooks` (2026-09-16). A hook runs on the next Git operation, so that
+ * is a persistence escape, not only a confidentiality one.
+ *
+ * Denied: hook files (arbitrary code execution), `config` (remote
+ * retargeting, and `credential.helper` / `core.hooksPath` injection), and
+ * `credentials` (the store-fill target). Deliberately *not* denied: the
+ * index, objects, refs, HEAD, and logs, so `add` / `commit` / `stash` /
+ * `branch` / `tag` / `checkout` / `worktree` need no exception at all.
+ *
+ * The `(/.*)?` hop between `.git` and the leaf is load-bearing, not
+ * stylistic. A submodule's gitdir lives at `.git/modules/<name>/` with its
+ * own `hooks/` and `config`; a regex anchored on a literal `.git/hooks/` was
+ * measured to miss both, leaving the escape open one level down. Linked
+ * worktrees add no case of their own — `.git/worktrees/<name>/` holds no
+ * hooks or config (the common dir does), so the same rule already covers it.
+ *
+ * Ordering is deliberate throughout: SBPL is last-matching-rule-wins, so
+ * these lines must follow the write-root grants in
+ * {@link buildSeatbeltProfile}, and the `.sample` allow must follow the
+ * hooks deny. The allow exists because `git init` lays down the hook
+ * templates, so denying every file under `hooks/` would break repository
+ * creation for no security gain — a `.sample` file is never executed.
+ *
+ * A regex, not a fixed `<root>/.git` path, is required: nested repositories
+ * and submodules live at arbitrary depth under any write root.
+ *
+ * The `hooks$` rule denies the hooks *directory node* as well as its files,
+ * which is what stops the obvious end run: rename `.git/hooks` aside and
+ * point a fresh `.git/hooks` symlink at a directory the child may write. The
+ * regex matches the resolved path, so a hook written through such a symlink
+ * would land at an ordinary workspace path and be permitted — measured
+ * (2026-09-16). Denying the node closes the vector, because the child can no
+ * longer create, rename, or remove anything named `.git/hooks`.
+ *
+ * Residual, not closed by path rules: a repository whose `.git/hooks` is
+ * *already* a symlink to a directory outside `.git` (a shape a user can
+ * create deliberately) still resolves hook writes to ordinary paths. Git
+ * follows that link, so no path-based rule can distinguish it. Recorded in
+ * docs/security-architecture-plan.md rather than claimed closed.
+ *
+ * Measured 2026-09-16 against this profile: Node, npm-script, and shell
+ * redirects into hooks / config / credentials are all denied, including
+ * through a nested repository and a submodule gitdir, while the ordinary Git
+ * workflow battery still passes in full.
+ */
+const GIT_INTEGRITY_DENIES = [
+  `(deny file-write* (regex "^.*/\\.git(/.*)?/hooks$"))`,
+  `(deny file-write* (regex "^.*/\\.git(/.*)?/hooks/[^/]+$"))`,
+  `(allow file-write* (regex "^.*/\\.git(/.*)?/hooks/[^/]+\\.sample$"))`,
+  `(deny file-write* (regex "^.*/\\.git(/.*)?/config(\\.lock)?$"))`,
+  `(deny file-write* (regex "^.*/\\.git(/.*)?/credentials$"))`,
+];
+
+/**
  * Whether `$HOME` is a safe thing to subtract from `(allow file-read*)`.
  * A root of `/` (or an unset/garbage home) would make the deny rule swallow
  * the entire filesystem, including the toolchain and the workspace, so the
@@ -137,6 +198,9 @@ export function buildSeatbeltProfile(
   for (const root of roots) {
     lines.push(`(allow file-write* (subpath "${sbplQuote(root)}"))`);
   }
+  // Git integrity last: last-matching-rule-wins means a deny only bites if it
+  // follows the write-root grants above.
+  lines.push(...GIT_INTEGRITY_DENIES);
   return lines.join("\n");
 }
 
@@ -167,7 +231,19 @@ function readBoundaryLines(trustedRoot: string, authorizedRoots: string[]): stri
   const lines = [`(deny file-read* (subpath "${sbplQuote(home)}"))`];
   const seen = new Set<string>();
   const allowRead = (path: string) => {
-    const real = realpathNearestAncestor(path);
+    // Resolve the exact path, and skip an entry that does not exist. Using
+    // nearest-existing-ancestor resolution here would be a boundary bypass:
+    // an absent `~/.cache` resolves to `$HOME` and would emit an allow for
+    // the whole home directory *after* the deny above, and last-matching-
+    // rule-wins means that silently re-opens the entire read boundary. A
+    // path that does not exist needs no read grant, so skipping is both
+    // safer and sufficient.
+    let real: string;
+    try {
+      real = realpathSync(path);
+    } catch {
+      return;
+    }
     if (seen.has(real)) return;
     seen.add(real);
     lines.push(`(allow file-read* (subpath "${sbplQuote(real)}"))`);

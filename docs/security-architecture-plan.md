@@ -187,9 +187,31 @@ under `/Users` are not covered, and file existence/metadata outside `$HOME`
 leaks. An attempt to enumerate every read root a macOS toolchain needs was
 abandoned the same day: the profile aborts before `exec`.
 
-Still open: the workspace write grant includes `.git`, so tool-level guards do
-not constrain an interpreter or package script writing hooks. Resolving this
-requires an explicit Git workflow decision, not a classifier.
+The workspace write grant includes `.git`, so tool-level guards do not
+constrain an interpreter or package script writing hooks. That gap is now
+closed mechanically rather than by a classifier: both sandboxed levels emit
+Git integrity rules that deny writes to hook files, the `hooks` directory
+node, `config` (and `config.lock`), and `credentials` under any `.git`
+directory at any depth — a regex, not a fixed `<root>/.git` path, because
+nested repositories and submodule gitdirs live at arbitrary depth. Hook
+templates (`*.sample`) stay writable, and the index, objects, refs, HEAD,
+and logs are untouched, so ordinary `add`/`commit`/`stash`/`branch`/`tag`/
+`checkout`/`worktree` need no exception at all.
+
+Two limitations are recorded rather than claimed closed:
+
+- **Repository creation and wiring is broken by design until the trusted
+  path exists.** `git init`, `git remote add`, `git config <write>`,
+  `git clone`, and `git submodule add` all write `.git` config, so all five
+  fail under the deny. This is the documented cost of gate 2, and it is the
+  conflict release-gate item 2 below still has to resolve; the mechanical
+  deny does not get to break a workflow silently.
+- **A repository whose `.git/hooks` is already a symlink** to a directory
+  outside `.git` still resolves hook writes to ordinary workspace paths,
+  which no path-based SBPL rule can distinguish. A child can no longer
+  *create* that shape (the `hooks$` rule denies the node, so it cannot
+  create, rename, or remove anything named `.git/hooks`), but a user who
+  set it up deliberately is outside the deny.
 
 ### 3. Consent and approval semantics
 
@@ -389,6 +411,49 @@ scenario, but the weaker non-`$HOME` claim is not made.
 
 Full suite after the change: 144 files, 2,098 tests passed, two skipped.
 
+**Correction to the gate-1 implementation (found in review, same day).** The
+read boundary's re-allow list originally resolved each entry through its
+nearest *existing* ancestor. That is a latent bypass: an absent `~/.cache`
+resolves to `$HOME`, which emits `(allow file-read* (subpath "$HOME"))`
+*after* the deny, and last-matching-rule-wins then voids the entire
+boundary. The probe passed only because every entry happened to exist on the
+test machine. The re-allow list now resolves each entry with `realpathSync`
+and skips it when absent — a path that does not exist needs no read grant.
+A platform-independent regression test asserts the profile never contains an
+`(allow file-read* (subpath "<home>"))` line for the real home directory.
+
+**Git integrity (gate 2, deny half) — addressed.** Both sandboxed levels now
+deny writes to hook files, the `hooks` directory node, `config`/`config.lock`,
+and `credentials` under any `.git` directory. Probed with disposable local
+repositories (synthetic content, offline; `protocol.file.allow=always` and
+local paths only):
+
+| Probe | Before | After |
+|-------|--------|-------|
+| `.git/hooks/pre-commit` write (Node) | Allowed | **Denied** |
+| `.git/hooks` write (npm lifecycle script) | Allowed | **Denied** |
+| `.git/hooks/*` write (shell redirect) | — | **Denied** |
+| `.git/config` write (Node) | Allowed | **Denied** |
+| `.git/credentials` write | — | **Denied** |
+| Nested repo `sub/.git/hooks/pre-commit` | — | **Denied** |
+| Submodule gitdir `.git/modules/sub/hooks/pre-commit` | — | **Denied** |
+| Submodule gitdir `.git/modules/sub/config` | — | **Denied** |
+| Child re-points `.git/hooks` at a writable directory, writes through it | — | **Denied** (hooks dir node) |
+| `git status` / `log` / `diff` / `add` / `commit` / `stash` / `branch` / `tag` / `worktree add` | Allowed | Allowed (all) |
+
+Every deny case is paired with an unsandboxed control that performs the same
+write successfully, so a passing test cannot be a fixture that was never
+writable. Permanent tests live in `src/sandbox/seatbelt.test.ts` ("git
+integrity").
+
+Two corrections were made *because* the probes were two-directional. First,
+the round-1 regex (anchored on a literal `.git/hooks/`) was measured to
+**miss** submodule gitdirs at `.git/modules/<name>/`, leaving the escape open
+one level down; the shipped rule allows a `(/.*)?` hop. Second, the first
+symlink probe used a dangling relative link, so its apparent denial proved
+nothing; with a valid link the write **succeeded**, which is what led to
+denying the `hooks` directory node.
+
 Remaining work before declaring the gates below passed:
 
 1. ~~Enforce a narrow child-process read boundary for account secrets,
@@ -396,8 +461,29 @@ Remaining work before declaring the gates below passed:
    allowed ordinary project/toolchain reads.~~ **Done 2026-09-16** — see the
    re-probe table above and the `child read boundary` tests. The non-`$HOME`
    residual remains open and is recorded rather than claimed closed.
-2. Decide how approved Git operations will work while untrusted children
-   cannot alter `.git` metadata or hooks. Test the negative and positive paths.
+2. **Half done 2026-09-16.** The mechanical deny is shipped and tested (see
+   the gate-2 table above). Still open: the trusted path for explicitly
+   approved Git operations. The deny breaks `git init`, `git remote add`,
+   `git config <write>`, `git clone`, and `git submodule add` — every
+   repository-creation and wiring workflow — because all five write
+   `.git` config. This is a real conflict with required workflows, recorded
+   rather than allowed or silently broken.
+
+   The product decision is **deny config, and plumb an approved-operation
+   path** so a user-approved `git config`/`init`/`remote` command runs under
+   a profile variant that permits `.git/config` (workspace-scoped, hooks and
+   credentials still denied). It is not implemented here because it is a
+   change to the approval contract, not the sandbox: the once/session/always
+   distinction currently dies at the `askUser` boundary
+   (`Promise<boolean | "posture">`, `src/agent.ts`), and `ToolContext` is a
+   per-run module singleton, so there is no per-call channel from the
+   approval to the bash spawn. Threading one touches `agent.ts`, the UI
+   approval handler, the executor signature, and both bash spawn paths. The
+   mechanism is validated (`git init`/`remote add`/`clone`/`submodule add`
+   all pass under a workspace-scoped config allow; hooks still denied), but
+   the authority chain must not be improvised: the classifier may only
+   decide whether the prompt *offers* the variant, and the user's explicit
+   one-time approval of that specific command must be the grant.
 3. Extend the synthetic detached and package-script probes to Git/DNS egress,
    MCP child reads/connects, prompt injection, and resource limits in isolated
    fixtures. Do not write to the real home or contact external endpoints.

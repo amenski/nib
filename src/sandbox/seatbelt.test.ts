@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, existsSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, existsSync, lstatSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import {
@@ -144,6 +144,21 @@ describe("buildSeatbeltProfile", () => {
     expect(p).not.toContain("/private/tmp");
     expect(p).not.toContain(`(allow file-write* (subpath "${seatbeltWorkspaceRoot(join(homedir(), ".npm"))}"))`);
     expect(p).toContain('(allow file-write* (literal "/dev/null"))');
+  });
+
+  it("read boundary: never re-allows $HOME itself, so a missing narrow entry cannot widen it", () => {
+    // The re-allow list is resolved with realpathSync and an absent entry is
+    // skipped. Resolving through the nearest *existing* ancestor instead —
+    // which is what a naive shared helper does — maps a missing `~/.cache`
+    // to `$HOME` and emits an allow for the entire home directory AFTER the
+    // deny. SBPL is last-matching-rule-wins, so that silently voids the
+    // whole read boundary. This test fails if that regression returns.
+    const home = realpathSync(homedir());
+    for (const level of ["strict-sandbox", "workspace-write"] as const) {
+      const p = buildSeatbeltProfile(level, "/private/tmp/ws");
+      expect(p).toContain(`(deny file-read* (subpath "${home}"))`);
+      expect(p).not.toContain(`(allow file-read* (subpath "${home}"))`);
+    }
   });
 
   it("escapes quotes/backslashes in the workspace root for SBPL", () => {
@@ -525,6 +540,292 @@ describe("child read boundary (macOS)", () => {
       f.cleanup();
     }
   }, 30_000);
+});
+
+// ── git integrity (macOS) — release gate 2 ──
+//
+// The 2026-09-16 release probe found the workspace write grant includes
+// `.git`, so a sandboxed child could write `.git/hooks` — a persistence
+// escape the policy layer cannot see, because an interpreter or a package
+// lifecycle script is not a tool call and never reaches the rules. These
+// tests reproduce that write from Node and from an npm lifecycle script and
+// pin the deny in both directions.
+
+describe("git integrity (macOS)", () => {
+  const GIT_ENV = {
+    ...process.env,
+    GIT_AUTHOR_NAME: "F",
+    GIT_AUTHOR_EMAIL: "f@example.invalid",
+    GIT_COMMITTER_NAME: "F",
+    GIT_COMMITTER_EMAIL: "f@example.invalid",
+  };
+
+  /** Host-side git, for fixture setup only — never itself sandboxed. */
+  function git(args: string, cwd: string): string {
+    return execFileSync("/bin/sh", ["-c", `git ${args}`], { cwd, encoding: "utf8", env: GIT_ENV });
+  }
+
+  /**
+   * A disposable repository. The fixture lives in $TMPDIR, which is inside
+   * the workspace-write write-set via the temp carve-outs — but `cwd` doubles
+   * as the trusted root in `runCommand`, so the repo is the write root here
+   * and the carve-outs are not what permits the writes under test.
+   */
+  function fixture() {
+    const ws = mkdtempSync(join(tmpdir(), "nib-gitgate-"));
+    git("init -q", ws);
+    writeFileSync(join(ws, "tracked.txt"), "tracked\n");
+    git("add -A && git commit -qm init", ws);
+    return { ws, gitdir: join(ws, ".git"), cleanup: () => rmSync(ws, { recursive: true, force: true }) };
+  }
+
+  /** Writes `p` from a real Node child (the release-gate vector). */
+  const nodeWrite = (p: string) =>
+    `node -e 'const fs=require("fs"),path=require("path"),p=${JSON.stringify(p)};` +
+    `try{fs.mkdirSync(path.dirname(p),{recursive:true});fs.writeFileSync(p,"x")}` +
+    `catch(e){process.stderr.write("ERR "+e.code);process.exit(3)}'`;
+
+  /**
+   * Asserts the deny, then proves the same write lands with no profile — so a
+   * passing test can never be a fixture that was simply never writable.
+   */
+  async function deniedButOtherwiseWritable(ws: string, target: string, command: string) {
+    const control = await runCommand(command, ws, "unrestricted");
+    expect(control.exit).toBe(0);
+    expect(existsSync(target)).toBe(true);
+    rmSync(target, { force: true });
+
+    const denied = await runCommand(command, ws, "workspace-write");
+    expect(denied.exit).not.toBe(0);
+    expect(existsSync(target)).toBe(false);
+  }
+
+  itOnDarwin(
+    "workspace-write: Node cannot write .git/hooks (the release-gate escape)",
+    async () => {
+      const f = fixture();
+      try {
+        await deniedButOtherwiseWritable(
+          f.ws,
+          join(f.gitdir, "hooks", "pre-commit"),
+          nodeWrite(join(f.gitdir, "hooks", "pre-commit")),
+        );
+      } finally {
+        f.cleanup();
+      }
+    },
+    60_000,
+  );
+
+  itOnDarwin(
+    "workspace-write: an npm lifecycle script cannot write .git/hooks either",
+    async () => {
+      const f = fixture();
+      try {
+        // The same escape through a dependency script rather than a direct
+        // interpreter call: the denial must hold for the child's child.
+        mkdirSync(join(f.ws, "scripts"), { recursive: true });
+        writeFileSync(
+          join(f.ws, "package.json"),
+          JSON.stringify({
+            name: "nib-gitgate-fixture",
+            version: "1.0.0",
+            private: true,
+            scripts: { probe: "node scripts/write-hook.js" },
+          }),
+        );
+        writeFileSync(
+          join(f.ws, "scripts", "write-hook.js"),
+          `const fs=require("fs");try{fs.mkdirSync(".git/hooks",{recursive:true});` +
+            `fs.writeFileSync(".git/hooks/post-checkout","x")}catch(e){process.exit(3)}\n`,
+        );
+        const hook = join(f.gitdir, "hooks", "post-checkout");
+        await deniedButOtherwiseWritable(f.ws, hook, "npm run --silent probe");
+      } finally {
+        f.cleanup();
+      }
+    },
+    90_000,
+  );
+
+  itOnDarwin(
+    "workspace-write: hooks, config, and credentials are denied by every write form",
+    async () => {
+      const f = fixture();
+      try {
+        // A shell redirect, a `.git/config` rewrite (remote retargeting and
+        // `credential.helper` / `core.hooksPath` injection), and the
+        // credential store.
+        const redirect = await runCommand("echo x > .git/hooks/post-checkout", f.ws, "workspace-write");
+        expect(redirect.exit).not.toBe(0);
+        expect(existsSync(join(f.gitdir, "hooks", "post-checkout"))).toBe(false);
+
+        await deniedButOtherwiseWritable(
+          f.ws,
+          join(f.gitdir, "config"),
+          nodeWrite(join(f.gitdir, "config")),
+        );
+        await deniedButOtherwiseWritable(
+          f.ws,
+          join(f.gitdir, "credentials"),
+          nodeWrite(join(f.gitdir, "credentials")),
+        );
+      } finally {
+        f.cleanup();
+      }
+    },
+    90_000,
+  );
+
+  itOnDarwin(
+    "workspace-write: the deny reaches a nested repository and a submodule gitdir",
+    async () => {
+      const f = fixture();
+      const subSrc = mkdtempSync(join(tmpdir(), "nib-gitgate-src-"));
+      try {
+        // A nested repo at an arbitrary depth: a fixed `<root>/.git` deny
+        // would miss it, which is why the rule is a regex.
+        mkdirSync(join(f.ws, "nested", ".git", "hooks"), { recursive: true });
+        await deniedButOtherwiseWritable(
+          f.ws,
+          join(f.ws, "nested", ".git", "hooks", "pre-commit"),
+          nodeWrite(join(f.ws, "nested", ".git", "hooks", "pre-commit")),
+        );
+
+        // A real submodule's gitdir lives at `.git/modules/<name>/` with its
+        // OWN hooks and config. A regex anchored on a literal `.git/hooks/`
+        // was measured to miss both — this is the regression guard for that.
+        git("init -q && echo s > f.txt && git add -A && git commit -qm s", subSrc);
+        git(`-c protocol.file.allow=always submodule add -q ${subSrc} sub`, f.ws);
+        const subGitdir = join(f.gitdir, "modules", "sub");
+        expect(existsSync(join(subGitdir, "hooks"))).toBe(true);
+        for (const leaf of ["hooks/pre-commit", "config"]) {
+          await deniedButOtherwiseWritable(
+            f.ws,
+            join(subGitdir, leaf),
+            nodeWrite(join(subGitdir, leaf)),
+          );
+        }
+      } finally {
+        rmSync(subSrc, { recursive: true, force: true });
+        f.cleanup();
+      }
+    },
+    150_000,
+  );
+
+  itOnDarwin(
+    "workspace-write: a child cannot re-point .git/hooks at a directory it can write",
+    async () => {
+      // The end run around a path-based hooks deny: move the hooks directory
+      // aside, put a symlink named `.git/hooks` in its place, and write the
+      // hook through the symlink — which resolves to an ordinary writable
+      // workspace path. Denying the hooks directory *node* is what closes it,
+      // so this asserts on the node, not on the hook file.
+      const REPOINT = "mv .git/hooks hooks-elsewhere && ln -s ../hooks-elsewhere .git/hooks";
+
+      // Control first: with no profile the re-point succeeds, so the denial
+      // below cannot be an artifact of the command itself failing.
+      const control = fixture();
+      try {
+        const r = await runCommand(REPOINT, control.ws, "unrestricted");
+        expect(r.exit, r.stderr).toBe(0);
+        expect(lstatSync(join(control.gitdir, "hooks")).isSymbolicLink()).toBe(true);
+      } finally {
+        control.cleanup();
+      }
+
+      const f = fixture();
+      try {
+        const r = await runCommand(REPOINT, f.ws, "workspace-write");
+        expect(r.exit).not.toBe(0);
+        expect(lstatSync(join(f.gitdir, "hooks")).isSymbolicLink()).toBe(false);
+        expect(lstatSync(join(f.gitdir, "hooks")).isDirectory()).toBe(true);
+        expect(existsSync(join(f.ws, "hooks-elsewhere"))).toBe(false);
+      } finally {
+        f.cleanup();
+      }
+    },
+    60_000,
+  );
+
+  itOnDarwin(
+    "workspace-write: ordinary Git workflows still run with no exception",
+    async () => {
+      const f = fixture();
+      try {
+        for (const [label, cmd] of [
+          ["read", "git status --porcelain >/dev/null && git log --oneline -1 >/dev/null && git diff --stat >/dev/null"],
+          ["add + commit", "echo a >> tracked.txt && git add tracked.txt && git commit -qm c2"],
+          ["stash", "echo b >> tracked.txt && git stash"],
+          ["branch + checkout", "git branch tb && git checkout -qb feat && git checkout -q -"],
+          ["tag", "git tag v1"],
+          ["worktree add", "git worktree add -q wt -b wtbr"],
+        ] as const) {
+          const r = await runCommand(cmd, f.ws, "workspace-write");
+          expect(r.exit, `${label}: ${r.stderr}`).toBe(0);
+        }
+      } finally {
+        f.cleanup();
+      }
+    },
+    150_000,
+  );
+
+  itOnDarwin(
+    "workspace-write: hook templates stay writable, so repository creation is not blocked beyond config",
+    async () => {
+      const f = fixture();
+      try {
+        // The `.sample` allow is real, not vestigial: `git init` lays these
+        // down, and a `.sample` is never executed.
+        const sample = join(f.gitdir, "hooks", "pre-commit.sample");
+        rmSync(sample, { force: true });
+        const r = await runCommand(nodeWrite(sample), f.ws, "workspace-write");
+        expect(r.exit).toBe(0);
+        expect(existsSync(sample)).toBe(true);
+      } finally {
+        f.cleanup();
+      }
+    },
+    60_000,
+  );
+
+  itOnDarwin(
+    "workspace-write: repository creation is the documented cost — .git/config is not writable",
+    async () => {
+      // The deny deliberately breaks `git init` / `git remote add` /
+      // `git clone` / `git submodule add`, which all write `.git` config.
+      // That conflict is recorded, not silently allowed: the trusted path for
+      // explicitly approved Git operations is release-gate item 2's open half
+      // (docs/security-architecture-plan.md).
+      const f = fixture();
+      try {
+        const r = await runCommand("mkdir -p fresh && cd fresh && git init -q", f.ws, "workspace-write");
+        expect(r.exit).not.toBe(0);
+        expect(existsSync(join(f.ws, "fresh", ".git", "config"))).toBe(false);
+      } finally {
+        f.cleanup();
+      }
+    },
+    60_000,
+  );
+
+  it("the integrity denies are emitted at both sandboxed levels, after the write grants", () => {
+    for (const level of ["strict-sandbox", "workspace-write"] as const) {
+      const p = buildSeatbeltProfile(level, "/private/tmp/ws");
+      expect(p).toContain('(deny file-write* (regex "^.*/\\.git(/.*)?/hooks/[^/]+$"))');
+      expect(p).toContain('(allow file-write* (regex "^.*/\\.git(/.*)?/hooks/[^/]+\\.sample$"))');
+      expect(p).toContain('(deny file-write* (regex "^.*/\\.git(/.*)?/hooks$"))');
+      expect(p).toContain('(deny file-write* (regex "^.*/\\.git(/.*)?/config(\\.lock)?$"))');
+      expect(p).toContain('(deny file-write* (regex "^.*/\\.git(/.*)?/credentials$"))');
+      // SBPL is last-matching-rule-wins: a deny emitted before the write-root
+      // grants would be overridden by them and silently do nothing.
+      expect(p.indexOf("(deny file-write* (regex")).toBeGreaterThan(
+        p.lastIndexOf("(allow file-write* (subpath"),
+      );
+    }
+  });
 });
 
 // ── tools-layer wiring (macOS only — exercises the real spawn paths) ──

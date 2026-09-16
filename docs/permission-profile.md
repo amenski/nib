@@ -311,9 +311,32 @@ a trustworthy hostname-level authority.
   process arbitrary outbound access. A future host-aware broker must mediate
   all egress before Nib offers a scoped network exception; see
   [security-network-broker.md](./security-network-broker.md).
-- **Residuals, stated honestly.** (1) The `.git` always-denied set is not expressed in
-  SBPL — SBPL has no gitignore globs — so a workspace-write bash child
-  could mechanically write `.git/…`; the policy layer denies it. (3) The
+- **Git integrity in SBPL (2026-09-16, release gate 2).** The `.git`
+  always-denied set used to be policy-layer only, and the release-gate probe
+  showed why that is not enough: an interpreter or package lifecycle script
+  is not a tool call, so no rule sees it — Node and an npm script both wrote
+  `.git/hooks`. Both sandboxed levels now emit `file-write*` denies for hook
+  files, the `hooks` directory node, `config` (and `config.lock`), and
+  `credentials`, under any `.git` directory at any depth. The regex allows a
+  `(/.*)?` hop between `.git` and the leaf because a submodule's gitdir lives
+  at `.git/modules/<name>`, with its own hooks and config — a rule anchored on
+  a literal `.git/hooks/` was measured to miss it. Denying the `hooks`
+  *node* is what stops a child moving the directory aside and re-pointing
+  `.git/hooks` at a directory it can write. Hook templates (`*.sample`) stay
+  writable, and index/objects/refs/HEAD/logs are untouched, so ordinary
+  `add`/`commit`/`stash`/`branch`/`tag`/`checkout`/`worktree` work with no
+  exception. Because these are `file-write*` denies appended after the
+  write-root grants, rule order is load-bearing (SBPL is
+  last-matching-rule-wins).
+- **Residuals, stated honestly.** (1) Repository creation and wiring —
+  `git init`, `git remote add`, `git config <write>`, `git clone`,
+  `git submodule add` — is **broken by the deny**, because all five write
+  `.git` config. That conflict is recorded in
+  docs/security-architecture-plan.md; the trusted path for explicitly
+  approved Git operations is release-gate item 2's open half. A second
+  residual: a repository whose `.git/hooks` is *already* a symlink to a
+  directory outside `.git` resolves hook writes to ordinary paths, which no
+  path-based rule can distinguish. (3) The
   profile's fs `deny` rules (`**/*.env` …) are likewise policy-layer only;
   SBPL expresses the level's defaults, not the rules. (4) macOS-only and
   flag-gated: on other platforms `sandbox.enabled` warns once at startup

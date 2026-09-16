@@ -13,7 +13,7 @@ import { projectSettingsPath } from "./config/paths.js";
 import { expandFileMentions } from "./ui/core/file-mentions.js";
 import { ErrorRecovery } from "./errorrecovery/index.js";
 import { ErrorReflector } from "./selfreflection/index.js";
-import { fireNotify } from "./notify.js";
+import { fireNotify, type NotifySpawnOptions } from "./notify.js";
 import { HookRunner, fireNotificationHooks } from "./hooks/index.js";
 import { connectMCPServers, disconnectAllMCPServers } from "./mcp/connector.js";
 import { Orchestrator } from "./orchestrator/index.js";
@@ -148,6 +148,17 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
     // roots. Project TOFU stripping can narrow only the config contribution;
     // explicit CLI roots remain session-scoped trusted roots.
     setWriteRoots(writeRoots);
+
+    const notifySpawnOptions: NotifySpawnOptions = {
+      cwd: options.projectRoot,
+      trustedRoot: options.projectRoot,
+      sandboxLevel:
+        effectiveConfig.sandbox?.enabled && effectiveConfig.permissionProfile?.level !== "unrestricted"
+          ? effectiveConfig.permissionProfile?.level
+          : undefined,
+      writeRoots,
+      sessionTempDir: sessionTemp.path,
+    };
 
     // Local stdio MCP servers use the same session temp directory and child
     // containment profile as other subprocess surfaces. Remote HTTP helpers
@@ -460,7 +471,7 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
       fireNotify(
         notifyScript,
         { ...completedNotifyInput, passthroughEnv: configEnv },
-        { debug: options.debug },
+        { debug: options.debug, spawn: notifySpawnOptions },
       );
       // Notification hooks fire alongside the notify script (hooks-spec.md §7);
       // SessionEnd fires immediately after, before teardown.
@@ -484,7 +495,7 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
       fireNotify(
         notifyScript,
         { ...failedNotifyInput, passthroughEnv: configEnv },
-        { debug: options.debug },
+        { debug: options.debug, spawn: notifySpawnOptions },
       );
       fireNotificationHooks(hooks, failedNotifyInput);
       await hooks.dispatch("SessionEnd", {});

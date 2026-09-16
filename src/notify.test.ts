@@ -145,6 +145,48 @@ describe("fireNotify", () => {
     expect(opts.env.PATH ?? opts.env.Path).toBeDefined();
   });
 
+  it("uses the shared contained launcher with a private temp dir and minimal env", () => {
+    const ambientKey = "NIB_NOTIFY_AMBIENT_TEST";
+    const previousAmbient = process.env[ambientKey];
+    process.env[ambientKey] = "must-not-leak";
+
+    try {
+      fireNotify(
+        "/tmp/notify.sh",
+        base({ passthroughEnv: { SLACK_WEBHOOK_URL: "https://h/x" } }),
+        {
+          spawn: {
+            cwd: "/workspace",
+            trustedRoot: "/workspace",
+            sandboxLevel: "workspace-write",
+            writeRoots: ["/workspace/cache"],
+            sessionTempDir: "/private/tmp/nib-session-test",
+          },
+        },
+      );
+
+      const [cmd, args, opts] = spawnSpy.mock.calls[0] as [string, string[], any];
+      expect(opts.cwd).toBe("/workspace");
+      expect(opts.env.TMPDIR).toBe("/private/tmp/nib-session-test");
+      expect(opts.env.npm_config_cache).toBe("/private/tmp/nib-session-test/npm-cache");
+      expect(opts.env.SLACK_WEBHOOK_URL).toBe("https://h/x");
+      expect(opts.env[ambientKey]).toBeUndefined();
+
+      if (process.platform === "darwin") {
+        expect(cmd).toBe("/usr/bin/sandbox-exec");
+        expect(args[0]).toBe("-p");
+        expect(args[1]).toContain("/workspace/cache");
+        expect(args).toContain("/tmp/notify.sh");
+      } else {
+        expect(cmd).toBe("/tmp/notify.sh");
+        expect(args).toEqual([]);
+      }
+    } finally {
+      if (previousAmbient === undefined) delete process.env[ambientKey];
+      else process.env[ambientKey] = previousAmbient;
+    }
+  });
+
   it("never throws when spawn itself throws (fire-and-forget)", () => {
     spawnSpy.mockImplementation(() => {
       throw new Error("ENOENT");

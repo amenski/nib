@@ -1,5 +1,8 @@
 import { spawn } from "node:child_process";
 import { redactSecrets } from "./sessions/redact.js";
+import { buildChildEnvironment, prepareSandboxedCommand, type SandboxedShellOptions } from "./sandbox/launcher.js";
+
+export type NotifySpawnOptions = SandboxedShellOptions;
 
 // ── Notify hook ──
 //
@@ -88,15 +91,27 @@ export function buildNotifyEnv(input: NotifyInput): Record<string, string> {
 export function fireNotify(
   scriptPath: string | undefined,
   input: NotifyInput,
-  opts: { debug?: boolean } = {},
+  opts: { debug?: boolean; spawn?: NotifySpawnOptions } = {},
 ): void {
   if (!scriptPath) return;
 
   const notifyEnv = buildNotifyEnv(input);
+  const spawnOptions = opts.spawn;
 
   try {
-    const child = spawn(scriptPath, [], {
-      env: { ...process.env, ...notifyEnv },
+    // Keep the public helper's legacy behavior for callers that do not have a
+    // session containment context yet. All production call sites pass the
+    // session options below, which switch to the shared launcher and minimal
+    // environment.
+    const command = spawnOptions
+      ? prepareSandboxedCommand(scriptPath, [], spawnOptions)
+      : { file: scriptPath, args: [] };
+    const child = spawn(command.file, command.args, {
+      ...(spawnOptions ? { cwd: spawnOptions.cwd } : {}),
+      env: {
+        ...(spawnOptions ? buildChildEnvironment(spawnOptions.sessionTempDir) : process.env),
+        ...notifyEnv,
+      },
       stdio: "ignore",
       detached: true,
       shell: false,

@@ -12,7 +12,7 @@ import { runAgent } from "./agent.js";
 import { buildRepoMap, captureGitStatus, loadProjectResearch } from "./prompt.js";
 import { compactionCutoffTokens, estimateTokens, estimateTokensDetailed, estimateOverheadTokens } from "./compaction/budget.js";
 import { CONTEXT_EDITING_TRIGGER_TOKENS, RECENT_TOOL_RESULTS_TO_KEEP } from "./compaction/context-editing.js";
-import { fireNotify } from "./notify.js";
+import { fireNotify, type NotifySpawnOptions } from "./notify.js";
 import { HookRunner, fireNotificationHooks } from "./hooks/index.js";
 import { executeTool, TOOL_DEFS, registry, setSessionId, setCheckpointManager, setSignal, setSessionStore, setSetMode, setTimeoutToBackground, setSandboxLevel, setSessionTempDir, setWritePolicyLevel, setWriteRoots, setWebSearchConfig } from "./tools/index.js";
 import { createSessionTempDir } from "./sandbox/session-temp.js";
@@ -588,6 +588,17 @@ async function main() {
   // ctx so Seatbelt and file-tool containment consult the same set.
   setWriteRoots([...(configResult.config.sandbox?.writeRoots ?? []), ...additionalWriteRoots]);
 
+  const notifySpawnOptions: NotifySpawnOptions = {
+    cwd: process.cwd(),
+    trustedRoot: process.cwd(),
+    sandboxLevel:
+      configResult.config.sandbox?.enabled && configResult.config.permissionProfile?.level !== "unrestricted"
+        ? configResult.config.permissionProfile?.level
+        : undefined,
+    writeRoots: [...(configResult.config.sandbox?.writeRoots ?? []), ...additionalWriteRoots],
+    sessionTempDir: sessionTemp.path,
+  };
+
   // Local stdio MCP servers inherit the session's child-process containment.
   // HTTP MCP helpers do not pass through this connector and remain unchanged.
   if (configResult.config.mcpServers) {
@@ -630,7 +641,7 @@ async function main() {
     fireNotify(
       configResult.config.notify,
       jobNotifyInput,
-      { debug: parsed.debug },
+      { debug: parsed.debug, spawn: notifySpawnOptions },
     );
     // Notification hooks fire alongside the notify script — never instead of
     // it (hooks-spec.md §7).
@@ -1028,7 +1039,7 @@ async function main() {
           if (event.kind !== "text") cb.onSubagentProgress?.(event);
           appSubagentSink?.(event);
         });
-        return runAgentTurnBridge(input, cb, shared, permissions, permissionProfile, getProvider, getCompactor(), diagnostics, skills, agents, memoryInjection, memoryStore, sessionStore, sessionId, modeLoader, skillLoader, imageUrls, planMode, checkpoints, configResult.config.notify, configResult.config.env, errorReflector, errorRecovery, repomapInjection, dirtyBaseline, thinkingEnabled, getActiveModelCaps()?.contextWindow, hooks);
+        return runAgentTurnBridge(input, cb, shared, permissions, permissionProfile, getProvider, getCompactor(), diagnostics, skills, agents, memoryInjection, memoryStore, sessionStore, sessionId, modeLoader, skillLoader, imageUrls, planMode, checkpoints, configResult.config.notify, configResult.config.env, notifySpawnOptions, errorReflector, errorRecovery, repomapInjection, dirtyBaseline, thinkingEnabled, getActiveModelCaps()?.contextWindow, hooks);
       },
       // Async sub-agent delivery (async-subagents.md §2): the App registers its
       // session-scoped wake handler here; the orchestrator calls it once per
@@ -1690,7 +1701,7 @@ export async function handleSlashCore(
   }
 }
 
-async function runAgentTurnBridge(input: string, cb: any, shared: any, permissions: PermissionEngine, permissionProfile: ProfileEvaluator | undefined, getProvider: any, compactor: Compactor, diagnostics: DiagnosticRunner, skills: SkillDef[], agents: AgentDef[], memoryInjection: string | null | undefined, memoryStore: MemoryStore, sessionStore: SessionStore, sessionId: string, modeLoader: ModeLoader, skillLoader: SkillLoader, imageUrls?: string[], planMode?: boolean, checkpoints?: CheckpointManager, notifyScript?: string, notifyEnv?: Record<string, string | undefined>, errorReflector?: ErrorReflector, errorRecovery?: ErrorRecovery, repomapInjection?: string, dirtyBaseline?: string, thinkingEnabled?: boolean, contextWindow?: number, hooks?: HookRunner): Promise<any> {
+async function runAgentTurnBridge(input: string, cb: any, shared: any, permissions: PermissionEngine, permissionProfile: ProfileEvaluator | undefined, getProvider: any, compactor: Compactor, diagnostics: DiagnosticRunner, skills: SkillDef[], agents: AgentDef[], memoryInjection: string | null | undefined, memoryStore: MemoryStore, sessionStore: SessionStore, sessionId: string, modeLoader: ModeLoader, skillLoader: SkillLoader, imageUrls?: string[], planMode?: boolean, checkpoints?: CheckpointManager, notifyScript?: string, notifyEnv?: Record<string, string | undefined>, notifySpawnOptions?: NotifySpawnOptions, errorReflector?: ErrorReflector, errorRecovery?: ErrorRecovery, repomapInjection?: string, dirtyBaseline?: string, thinkingEnabled?: boolean, contextWindow?: number, hooks?: HookRunner): Promise<any> {
   if (checkpoints) {
     const convLen = shared.conversationHistory.length;
     await checkpoints.save(`[convLen:${convLen}] ${input.slice(0, 80)}`);
@@ -1788,7 +1799,7 @@ async function runAgentTurnBridge(input: string, cb: any, shared: any, permissio
     fireNotify(
       notifyScript,
       { ...failNotifyInput, passthroughEnv: notifyEnv },
-      { debug: shared.debug },
+      { debug: shared.debug, spawn: notifySpawnOptions },
     );
     // Notification hooks fire alongside the notify script (hooks-spec.md §7).
     fireNotificationHooks(hooks, failNotifyInput);
@@ -1805,7 +1816,7 @@ async function runAgentTurnBridge(input: string, cb: any, shared: any, permissio
   fireNotify(
     notifyScript,
     { ...completedNotifyInput, passthroughEnv: notifyEnv },
-    { debug: shared.debug },
+    { debug: shared.debug, spawn: notifySpawnOptions },
   );
   fireNotificationHooks(hooks, completedNotifyInput);
   return result;

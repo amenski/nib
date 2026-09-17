@@ -5,6 +5,21 @@ import { projectDirPath, projectSettingsPath } from "./paths.js";
 import { tmpdir } from "node:os";
 import { loadConfig } from "./loader.js";
 
+/**
+ * Asserts the loader produced no warning about the setting under test.
+ *
+ * Off darwin `loadConfig` always appends "sandbox is macOS-only; running
+ * policy-only", which this file is not about; it is covered explicitly in the
+ * "loadConfig sandbox" block of loader.test.ts. Pin the exact set per
+ * platform rather than filtering the notice out, so a new warning on either
+ * platform still fails here.
+ */
+function expectNoConfigWarnings(warnings: string[]): void {
+  expect(warnings).toEqual(
+    process.platform === "darwin" ? [] : ["sandbox is macOS-only; running policy-only"],
+  );
+}
+
 // The global ~/.nib/settings.json is developer-specific and can carry
 // keys this branch's loader doesn't know (e.g. SearXNG's webSearch) — point
 // NIB_HOME at an empty dir so no global settings interfere with the
@@ -53,7 +68,7 @@ describe("config.refresh validation", () => {
     writeSettings({ refresh: "slow" });
     const { config, warnings } = loadConfig(dir);
     expect(config.refresh).toBe("slow");
-    expect(warnings).toEqual([]);
+    expectNoConfigWarnings(warnings);
   });
 
   it("does not warn about refresh as an unknown field", () => {

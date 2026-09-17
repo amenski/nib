@@ -6,6 +6,21 @@ import { tmpdir } from "node:os";
 import { containmentWarning, hasActiveSandboxContainment, loadConfig, migrateLegacyPermissions, resolveHome, sandboxSupportedOnPlatform } from "./loader.js";
 import { homedir } from "node:os";
 
+/**
+ * Asserts the loader produced no warning about the setting under test.
+ *
+ * Off darwin `loadConfig` always appends "sandbox is macOS-only; running
+ * policy-only", which none of these tests are about — it has its own coverage
+ * in the "loadConfig sandbox" block, where the platform conditional is
+ * explicit. Pin the exact set per platform rather than filtering the notice
+ * out, so a new warning on *either* platform still fails here.
+ */
+function expectNoConfigWarnings(warnings: string[]): void {
+  expect(warnings).toEqual(
+    process.platform === "darwin" ? [] : ["sandbox is macOS-only; running policy-only"],
+  );
+}
+
 describe("validatePermissions (rule shape)", () => {
   let dir: string;
 
@@ -228,7 +243,7 @@ describe("loadConfig: retention", () => {
     );
     const { config, errors, warnings } = loadConfig(dir);
     expect(errors).toEqual([]);
-    expect(warnings).toEqual([]);
+    expectNoConfigWarnings(warnings);
     expect(config.retention).toEqual({ maxSessions: 5, maxAgeDays: 30, maxCheckpointBytes: 4096 });
   });
 
@@ -287,7 +302,7 @@ describe("loadConfig strictMcpConfig", () => {
     writeProjectSettings({ strictMcpConfig: true });
     const { config, errors, warnings } = loadConfig(projectDir);
     expect(errors).toHaveLength(0);
-    expect(warnings).toHaveLength(0);
+    expectNoConfigWarnings(warnings);
     expect(config.strictMcpConfig).toBe(true);
   });
 
@@ -302,7 +317,7 @@ describe("loadConfig strictMcpConfig", () => {
     writeProjectSettings({});
     const { config, errors, warnings } = loadConfig(projectDir);
     expect(errors).toHaveLength(0);
-    expect(warnings).toHaveLength(0);
+    expectNoConfigWarnings(warnings);
     expect(config.strictMcpConfig).toBeUndefined();
   });
 
@@ -433,7 +448,7 @@ describe("loadConfig enabledSkills", () => {
     writeProjectSettings({ enabledSkills: { foo: false, bar: true } });
     const { config, errors, warnings } = loadConfig(projectDir);
     expect(errors).toHaveLength(0);
-    expect(warnings).toHaveLength(0);
+    expectNoConfigWarnings(warnings);
     expect(config.enabledSkills).toEqual({ foo: false, bar: true });
   });
 
@@ -455,7 +470,7 @@ describe("loadConfig favoriteModels", () => {
     writeProjectSettings({ favoriteModels: ["deepseek/deepseek-v4-pro", "groq/llama"] });
     const { config, errors, warnings } = loadConfig(projectDir);
     expect(errors).toHaveLength(0);
-    expect(warnings).toHaveLength(0);
+    expectNoConfigWarnings(warnings);
     expect(config.favoriteModels).toEqual(["deepseek/deepseek-v4-pro", "groq/llama"]);
   });
 
@@ -477,7 +492,7 @@ describe("loadConfig recentModels", () => {
     writeProjectSettings({ recentModels: [{ id: "deepseek/deepseek-v4-pro", at: 12345 }] });
     const { config, errors, warnings } = loadConfig(projectDir);
     expect(errors).toHaveLength(0);
-    expect(warnings).toHaveLength(0);
+    expectNoConfigWarnings(warnings);
     expect(config.recentModels).toEqual([{ id: "deepseek/deepseek-v4-pro", at: 12345 }]);
   });
 
@@ -499,7 +514,7 @@ describe("loadConfig compaction.auto", () => {
     writeProjectSettings({ compaction: { auto: false, threshold: 0.6 } });
     const { config, errors, warnings } = loadConfig(projectDir);
     expect(errors).toHaveLength(0);
-    expect(warnings).toHaveLength(0);
+    expectNoConfigWarnings(warnings);
     expect(config.compaction).toEqual({ auto: false, threshold: 0.6 });
   });
 
@@ -515,7 +530,7 @@ describe("loadConfig workflow keys", () => {
     writeProjectSettings({ workflow: { gitStatus: false, gitPollInterval: 5000 } });
     const { config, errors, warnings } = loadConfig(projectDir);
     expect(errors).toHaveLength(0);
-    expect(warnings).toHaveLength(0);
+    expectNoConfigWarnings(warnings);
     expect(config.workflow).toEqual({ gitStatus: false, gitPollInterval: 5000 });
   });
 
@@ -537,7 +552,7 @@ describe("loadConfig commands.timeoutToBackground", () => {
     writeProjectSettings({ commands: { timeoutToBackground: false } });
     const { config, errors, warnings } = loadConfig(projectDir);
     expect(errors).toHaveLength(0);
-    expect(warnings).toHaveLength(0);
+    expectNoConfigWarnings(warnings);
     expect(config.commands?.timeoutToBackground).toBe(false);
   });
 
@@ -868,7 +883,7 @@ describe("loadConfig webSearch.searxngUrl", () => {
   it("is undefined when absent (no warning, Bing-only default)", () => {
     writeProjectSettings({});
     const { config, warnings } = loadConfig(projectDir);
-    expect(warnings).toHaveLength(0);
+    expectNoConfigWarnings(warnings);
     expect(config.webSearch?.searxngUrl).toBeUndefined();
   });
 
@@ -876,28 +891,28 @@ describe("loadConfig webSearch.searxngUrl", () => {
     writeProjectSettings({ webSearch: { searxngUrl: "https://searx.example.com" } });
     const { config, warnings, errors } = loadConfig(projectDir);
     expect(errors).toHaveLength(0);
-    expect(warnings).toHaveLength(0);
+    expectNoConfigWarnings(warnings);
     expect(config.webSearch?.searxngUrl).toBe("https://searx.example.com");
   });
 
   it("accepts http:// for localhost", () => {
     writeProjectSettings({ webSearch: { searxngUrl: "http://localhost:8888" } });
     const { config, warnings } = loadConfig(projectDir);
-    expect(warnings).toHaveLength(0);
+    expectNoConfigWarnings(warnings);
     expect(config.webSearch?.searxngUrl).toBe("http://localhost:8888");
   });
 
   it("accepts http:// for 127.0.0.1", () => {
     writeProjectSettings({ webSearch: { searxngUrl: "http://127.0.0.1:8888" } });
     const { config, warnings } = loadConfig(projectDir);
-    expect(warnings).toHaveLength(0);
+    expectNoConfigWarnings(warnings);
     expect(config.webSearch?.searxngUrl).toBe("http://127.0.0.1:8888");
   });
 
   it("accepts http:// for [::1]", () => {
     writeProjectSettings({ webSearch: { searxngUrl: "http://[::1]:8888" } });
     const { config, warnings } = loadConfig(projectDir);
-    expect(warnings).toHaveLength(0);
+    expectNoConfigWarnings(warnings);
     expect(config.webSearch?.searxngUrl).toBe("http://[::1]:8888");
   });
 
@@ -953,7 +968,7 @@ describe("loadConfig webSearch.searxngUrl", () => {
   it("stores the parsed URL with the trailing slash stripped", () => {
     writeProjectSettings({ webSearch: { searxngUrl: "https://searx.example.com/" } });
     const { config, warnings } = loadConfig(projectDir);
-    expect(warnings).toHaveLength(0);
+    expectNoConfigWarnings(warnings);
     expect(config.webSearch?.searxngUrl).toBe("https://searx.example.com");
   });
 
@@ -961,21 +976,21 @@ describe("loadConfig webSearch.searxngUrl", () => {
     writeProjectSettings({ webSearch: { enrich: false } });
     const { config, warnings, errors } = loadConfig(projectDir);
     expect(errors).toHaveLength(0);
-    expect(warnings).toHaveLength(0);
+    expectNoConfigWarnings(warnings);
     expect(config.webSearch?.enrich).toBe(false);
   });
 
   it("accepts webSearch.enrich: true", () => {
     writeProjectSettings({ webSearch: { enrich: true } });
     const { config, warnings } = loadConfig(projectDir);
-    expect(warnings).toHaveLength(0);
+    expectNoConfigWarnings(warnings);
     expect(config.webSearch?.enrich).toBe(true);
   });
 
   it("parses enrich alongside searxngUrl", () => {
     writeProjectSettings({ webSearch: { searxngUrl: "https://searx.example.com", enrich: false } });
     const { config, warnings } = loadConfig(projectDir);
-    expect(warnings).toHaveLength(0);
+    expectNoConfigWarnings(warnings);
     expect(config.webSearch).toEqual({ searxngUrl: "https://searx.example.com", enrich: false });
   });
 

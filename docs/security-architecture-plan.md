@@ -23,6 +23,21 @@ close the block early, and the duplicated wrappers are consolidated. Residual 3
 remains recorded in its reduced form: the delimiter is still a convention, not a
 parser.
 
+**CI observation 2026-09-17:** the commits carrying the T12 change, its docs, and
+the two load-sensitive test fixes are pushed and green on CI
+(`.github/workflows/build.yml` — install, typecheck, test, build on
+`ubuntu-latest` across Node 20.x/22.x/24.x, run 35257701449; the separate
+`Registry guard` workflow passed as well). What CI observes is bounded by
+platform, and the bound is wide here: on Linux it reports **2158 passed / 63
+skipped** (2221) across 147 files, against **2218 passed / 3 skipped** (2221)
+across 150 files on macOS. The extra 60 skips are the macOS-only sandbox suites —
+`child-paths` (8/8 skipped), `egress` (10/10), `sandbox-unavailable` (1/1),
+`seatbelt` (37 of 57) — plus 7 individual tests across `hostile-input`, `jobs`,
+`bash`, `exec-runner`, and `launcher`. **CI therefore does not validate Seatbelt
+enforcement, egress policy, or child-path containment.** Those remain macOS-local
+measurements, not CI-verified, and CI exercised the cumulative tip rather than
+each intermediate commit.
+
 ## Final decision
 
 Build a capability-based authorization kernel and default OS sandbox first.

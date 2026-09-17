@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, statSync, rmSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, statSync, rmSync, symlinkSync, existsSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { projectDirPath, projectSettingsPath } from "./paths.js";
 import { tmpdir } from "node:os";
-import { containmentWarning, hasActiveSandboxContainment, loadConfig, migrateLegacyPermissions, resolveHome, sandboxSupportedOnPlatform } from "./loader.js";
+import { containmentWarning, hasActiveSandboxContainment, loadConfig, migrateLegacyPermissions, resolveHome, sandboxSupportedOnPlatform, workspaceOutsideHomeWarning } from "./loader.js";
 import { homedir } from "node:os";
 
 /**
@@ -115,6 +115,78 @@ describe("containmentWarning", () => {
 
   it("warns when the platform cannot enforce the configured sandbox", () => {
     expect(containmentWarning({ permissionProfile: { level: "strict-sandbox" }, sandbox: { enabled: true } }, "linux")).toContain("platform cannot enforce");
+  });
+});
+
+describe("workspaceOutsideHomeWarning", () => {
+  const contained = { permissionProfile: { level: "workspace-write" as const }, sandbox: { enabled: true } };
+  let homeDir: string;
+  let outsideDir: string;
+
+  beforeEach(() => {
+    // A synthetic home plus a tree beside it, and the home passed explicitly:
+    // the assertions then depend on neither the developer's real $HOME nor the
+    // host platform (tmpdir() is outside $HOME on macOS *and* Linux, so a
+    // real-home version of these tests would pass for the wrong reason).
+    homeDir = mkdtempSync(join(tmpdir(), "nib-home-warn-home-"));
+    outsideDir = mkdtempSync(join(tmpdir(), "nib-home-warn-out-"));
+  });
+
+  afterEach(() => {
+    rmSync(homeDir, { recursive: true, force: true });
+    rmSync(outsideDir, { recursive: true, force: true });
+  });
+
+  it("warns when the workspace root is outside the home directory", () => {
+    expect(workspaceOutsideHomeWarning(contained, outsideDir, "darwin", homeDir)).toContain("outside your home directory");
+  });
+
+  it("stays silent when the workspace root is inside the home directory", () => {
+    // Deliberately not created: resolution goes through the nearest existing
+    // ancestor (write-roots.test.ts's convention), so an unbuilt path resolves.
+    expect(workspaceOutsideHomeWarning(contained, join(homeDir, "dev", "proj"), "darwin", homeDir)).toBeUndefined();
+  });
+
+  it("stays silent for the home directory itself", () => {
+    expect(workspaceOutsideHomeWarning(contained, homeDir, "darwin", homeDir)).toBeUndefined();
+  });
+
+  it("warns when the workspace is an ancestor of the home directory", () => {
+    // The home deny cannot help here — the workspace re-allow is emitted after
+    // it, so the whole home tree is re-opened. Reporting "outside home" is the
+    // right outcome even though the copy is not specialized for this shape.
+    expect(workspaceOutsideHomeWarning(contained, dirname(homeDir), "darwin", homeDir)).toContain("outside");
+  });
+
+  it("resolves symlinks first, so a link pointing into home is not reported", () => {
+    // Without realpath discipline a lexical prefix check would call this
+    // "outside home": the link itself lives beside the home tree.
+    const link = join(outsideDir, "into-home");
+    symlinkSync(homeDir, link, "dir");
+    expect(workspaceOutsideHomeWarning(contained, join(link, "dev"), "darwin", homeDir)).toBeUndefined();
+  });
+
+  it("never fires where containmentWarning already speaks", () => {
+    // The two notices partition the space: with no boundary there is nothing
+    // for this one to disclose, and off darwin there is no OS boundary at all.
+    expect(workspaceOutsideHomeWarning({}, outsideDir, "darwin", homeDir)).toBeUndefined();
+    expect(workspaceOutsideHomeWarning({ permissionProfile: { level: "unrestricted" }, sandbox: { enabled: true } }, outsideDir, "darwin", homeDir)).toBeUndefined();
+    expect(workspaceOutsideHomeWarning({ permissionProfile: { level: "workspace-write" }, sandbox: { enabled: false } }, outsideDir, "darwin", homeDir)).toBeUndefined();
+    expect(workspaceOutsideHomeWarning(contained, outsideDir, "linux", homeDir)).toBeUndefined();
+  });
+
+  it("compares against the real home, not NIB_HOME", () => {
+    // NIB_HOME points at the state directory (~/.nib) and is unrelated to the
+    // boundary the Seatbelt profile subtracts; using it would report every
+    // ordinary in-home workspace as outside home.
+    const prev = process.env.NIB_HOME;
+    process.env.NIB_HOME = outsideDir;
+    try {
+      expect(workspaceOutsideHomeWarning(contained, join(homedir(), "dev", "proj"), "darwin")).toBeUndefined();
+    } finally {
+      if (prev === undefined) delete process.env.NIB_HOME;
+      else process.env.NIB_HOME = prev;
+    }
   });
 });
 

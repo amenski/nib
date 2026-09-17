@@ -87,7 +87,7 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
   }
 
   try {
-    const { loadConfig } = await import("./config/loader.js");
+    const { loadConfig, workspaceOutsideHomeWarning } = await import("./config/loader.js");
     const configResult = loadConfig(options.projectRoot);
     // Fail fast on config errors, same message shape as the TUI (cli.tsx) —
     // e.g. an invalid matcher regex is fatal in headless mode too; it must
@@ -148,6 +148,14 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
     // roots. Project TOFU stripping can narrow only the config contribution;
     // explicit CLI roots remain session-scoped trusted roots.
     setWriteRoots(writeRoots);
+
+    // Read-boundary disclosure (see workspaceOutsideHomeWarning): the TUI
+    // shows this in its scrollback, so headless prints it too — this is the
+    // path where approvals run with nobody watching. Emitted as-is rather than
+    // under this file's `[warn]` prefix, because the copy carries its own
+    // marker like containmentWarning does.
+    const outsideHome = workspaceOutsideHomeWarning(effectiveConfig, options.projectRoot);
+    if (outsideHome) writeErr(outsideHome);
 
     const notifySpawnOptions: NotifySpawnOptions = {
       cwd: options.projectRoot,

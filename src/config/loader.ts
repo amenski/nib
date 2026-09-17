@@ -5,6 +5,7 @@ import type { PermissionConfig, PermissionRule, PatternKind, PermissionAction, P
 import { compileGlob } from "../permissions/index.js";
 import type { HooksConfig } from "../hooks/types.js";
 import { parseHooksConfig } from "../hooks/config.js";
+import { isPathWithinWriteRoots, realpathNearestAncestor } from "../sandbox/write-roots.js";
 import { STATE_DIR_NAME, projectSettingsPath } from "./paths.js";
 
 // ── Deep Code settings.json schema ──
@@ -322,6 +323,35 @@ export function containmentWarning(
     return "⚠ OS containment is configured, but the platform cannot enforce it — approvals run policy-only.";
   }
   return undefined;
+}
+
+/**
+ * Discloses the recorded read-boundary residual: the child read boundary is
+ * `$HOME`-shaped (seatbelt.ts denies `file-read*` on the real home and
+ * re-allows the workspace plus an allowlist), so when the trusted workspace
+ * root sits outside that home nothing denies reads of the files beside it —
+ * they stay readable by a contained child, unlike siblings of an in-home
+ * workspace. Reports the boundary; it does not narrow it.
+ *
+ * Gated on `hasActiveSandboxContainment`, so this partitions the space with
+ * {@link containmentWarning}: that function answers when there is no boundary,
+ * this one only speaks when there is. The two can never both fire, and neither
+ * fires off darwin.
+ *
+ * `home` defaults to the real home the Seatbelt deny actually subtracts
+ * (seatbelt.ts's `realpathNearestAncestor(homedir())`) — never `resolveHome()`
+ * or `NIB_HOME`, which point at the state directory and are unrelated to the
+ * read boundary.
+ */
+export function workspaceOutsideHomeWarning(
+  config: Pick<DeepCodeSettings, "permissionProfile" | "sandbox">,
+  trustedRoot: string,
+  platform: NodeJS.Platform = process.platform,
+  home: string = homedir(),
+): string | undefined {
+  if (!hasActiveSandboxContainment(config, platform)) return undefined;
+  if (isPathWithinWriteRoots(trustedRoot, [realpathNearestAncestor(home)])) return undefined;
+  return "⚠ Workspace is outside your home directory — the sandbox's child read boundary is $HOME, so files beside this workspace stay readable.";
 }
 
 /**

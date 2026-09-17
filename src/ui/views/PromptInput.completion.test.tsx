@@ -51,7 +51,24 @@ describe("PromptInput Tab completion via ctx.completer", () => {
     stdin.write(TAB);
     await flush();
     expect(completerMock).toHaveBeenCalledWith("");
-    expect(stripAnsi(lastFrame() ?? "")).toContain("/skills");
+
+    // The menu renders from state the key handler sets, so the frame can still be
+    // one tick behind when `flush()` returns. This was seen to fail exactly once —
+    // completer already called, frame stale — with three suites sharing one
+    // checkout, and has not been reproduced since: 12 runs under 12 CPU burners,
+    // three concurrent suites in isolated clones, and 24 concurrent single-file
+    // runs were all clean. So it is a hardening, not a verified fix. The shape
+    // matches App.streaming's picker test, whose fixed sleep did reproduce, and
+    // polling still asserts exactly what the sleep was reaching for: "/skills" has
+    // no other source in this test, so it can only come from the completer's hits.
+    // The deadline keeps a genuinely broken menu loud rather than hung.
+    const deadline = Date.now() + 5000;
+    let frame = stripAnsi(lastFrame() ?? "");
+    while (!frame.includes("/skills") && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 25));
+      frame = stripAnsi(lastFrame() ?? "");
+    }
+    expect(frame).toContain("/skills");
   });
 
   it("mid-word Tab replaces the typed stem with the completion", async () => {

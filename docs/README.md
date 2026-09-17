@@ -73,7 +73,8 @@ then follow the reading paths below.
 | [provider-spec.md](./provider-spec.md) | Provider contract, catalog, key resolution |
 | [permission-spec.md](./permission-spec.md) | Rules, normalization, resolution, posture, audit trail |
 | [security-spec.md](./security-spec.md) | Threat model T1–T16, verified-fixed items |
-| [security-architecture-plan.md](./security-architecture-plan.md) | Implemented security phases and open macOS adversarial release gates |
+| [security-architecture-plan.md](./security-architecture-plan.md) | Implemented security phases, measured release gates, and recorded residuals |
+| [permission-ux-redesign.md](./permission-ux-redesign.md) | Proposed replacement for advisory Bash classification and repeated prompts |
 | [security-destructive-matching.md](./security-destructive-matching.md) | Destructive-matching hardening research (closed) |
 | [skill-spec.md](./skill-spec.md) | Agent Skills loading, trigger, trust |
 | [rules-spec.md](./rules-spec.md) | `.nib/rules/` + research notes |

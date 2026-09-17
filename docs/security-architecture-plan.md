@@ -1,7 +1,7 @@
 # Nib security architecture plan
 
-**Status:** implemented (phases 0–4) · verified 2026-09-16 · **one release gate
-open (platform-dependent)**, four residuals recorded
+**Status:** implemented (phases 0–4) · verified 2026-09-16 · listed release
+gates measured on their stated scope, four residuals recorded
 
 This is the reviewed architecture and release-gate record. Phases 0–4 have
 implementation commits, but their checklist completion does **not** imply that
@@ -10,13 +10,13 @@ and the record below is written from measurements, not from the checkboxes.
 
 As of 2026-09-16 the measured probes establish: a contained child cannot read
 `$HOME` secrets, cannot write `.git` metadata, and cannot connect — ten egress
-mechanisms, each with an unsandboxed control proving it otherwise could. One
-gate is **not** closed: the darwin "Seatbelt cannot apply" failure needs a host
-that refuses to apply the profile, which this host does not do. Four residuals
+mechanisms, each with an unsandboxed control proving it otherwise could. The
+macOS "Seatbelt cannot apply" case was also measured in the managed runner,
+which refuses nested profiles; see the release-gate verdict. Four residuals
 are recorded rather than hidden: the `$HOME`-shaped read boundary, the
 system-resolver path, the forgeable untrusted delimiter, and the
 registry-delivery gap in the dependency probe. See "Release-gate verdict" and
-"Open gate and recorded residuals". Code and tests take precedence over the
+"Recorded residuals". Code and tests take precedence over the
 target architecture here.
 
 ## Final decision
@@ -28,8 +28,7 @@ feature, never as the security boundary.
 The original P0 empty-scope and policy-parity defects were fixed in Phases
 0–1. Do not treat that as proof that arbitrary child processes are confined —
 the gate-1..4 measurements below are that proof, and they are narrower than the
-architecture's ambitions: containment is `$HOME`-scoped, and one gate remains
-open for lack of a host that refuses to apply the profile.
+architecture's ambitions: read containment is `$HOME`-scoped.
 
 ## Architectural decisions to lock before implementation
 
@@ -545,6 +544,8 @@ never be a fixture that was never readable. The report file is both the allowed
 operation and the evidence channel: a surface that failed to spawn cannot pass
 by producing nothing, because each test waits for the report. Permanent tests
 live in `src/sandbox/child-paths.test.ts`.
+Contained rows now pass a private session scratch directory, matching
+production's write-root profile rather than the no-session-temp fallback.
 
 **Finding from this pass (fixed the same day): a contained stdio MCP server
 could not launch at all.** `prepareSandboxedCommand` strips the shell form of
@@ -782,11 +783,16 @@ demonstrates it.
   plan posture), `exec-runner.test.ts` and `exec-runner.subagent.test.ts`
   (headless, including subagents), with `permissions/profile.test.ts` and
   `permissions/capabilities.test.ts` covering the policy layer they share.
-- **macOS sandbox-unavailable behavior is tested — OPEN (platform).** The
-  structural half is asserted: no caller re-spawns without the profile, so an
-  application failure is closed rather than open (see the gate-3 section). The
-  failure itself — a darwin host that refuses to apply a profile — cannot be
-  produced here, because nesting succeeds on this host. See "Open gate" below.
+- **macOS sandbox-unavailable behavior is tested — closed for fail-closed
+  execution.** The managed runner refuses nested Seatbelt. In
+  `src/sandbox/sandbox-unavailable.test.ts`, an unsandboxed control creates a
+  marker; the same command under `/usr/bin/sandbox-exec` exits 71 with
+  `sandbox_apply: Operation not permitted` and creates none. The real
+  `runBashTimed` path also creates no marker and returns the error. The
+  focused test passed in that runner and skips on a runner that permits
+  nesting. This proves no fallback execution in the tested Bash path; it does
+  not provide a distinct application-failure signal for the proposed session
+  grant, which remains future work in `docs/permission-ux-redesign.md`.
 - **Unsupported platforms display honest guarantees and fail closed where
   needed — closed** (gate 3, second half): `hasActiveSandboxContainment` is
   false off darwin and for `unrestricted`, `containmentWarning` names which
@@ -807,23 +813,16 @@ demonstrates it.
   install-script mechanism itself — the part that executes attacker code — is
   measured directly.)*
 
-### Open gate and recorded residuals
+### Recorded residuals
 
-**Open gate — macOS sandbox-unavailable behavior (gate 5).** Blocker, stated
-precisely: the behavior under test is a darwin host that *refuses* to apply a
-Seatbelt profile. This host applies profiles successfully (nested `sandbox-exec`
-works, loopback binds), so the failing case cannot be induced here without
-either a container/VM whose sandbox denies `sandbox_apply` or a host with the
-restriction the original managed runner had. What *is* established without it:
-`sandboxPrefix` never returns a non-profile shape for a sandboxed level on
-darwin, so no caller can silently continue unconfined; if the OS refuses, the
-child fails to start. Recommended option, in preference order: (1) run this
-suite once in a runner that refuses nesting and record the observed exit
-behavior here — the smallest change that turns the structural argument into a
-measured one; (2) if no such runner is available, accept the structural argument
-explicitly and close the gate with this paragraph as its evidence of scope.
-Until one of those is done, this gate is **open**, and the release is not
-declared secure on its account.
+**Seatbelt failure evidence (gate 5).** The managed runner supplies the
+previously missing refusing environment: control exit 0 and marker present;
+direct contained exit 71 and marker absent; `runBashTimed` marker absent with
+the application error returned. The capable runner instead runs all real
+Seatbelt integration tests. The current error is generic command failure
+output, not a dedicated signal that a future session grant could safely use
+for revocation. That new UX requires an in-sandbox readiness handshake and
+its own verification before it ships.
 
 **Residual 1 — the child read boundary is `$HOME`-shaped.** Reads under the real
 `$HOME` are denied except for a toolchain allowlist, but the profile's core still
@@ -839,8 +838,10 @@ workspace plus a toolchain allowlist, which is the strongest and will break
 under-specified toolchains; (b) deny a configurable list of sensitive roots
 (`/etc/ssh`, `/opt/secrets`, user-nominated paths) and keep the rest readable;
 (c) keep the current shape and warn when a workspace sits outside `$HOME`, so a
-user knows containment is weaker there. This document takes no side; the gate-1
-section records the residual and this paragraph names the decision.
+user knows containment is weaker there. Option (c) is the chosen scope for
+this release and the proposed Bash session grant; the outside-home warning is
+still to be implemented. `src/sandbox/seatbelt.test.ts` now pins the residual
+with a synthetic canary whose contained read succeeds.
 
 **Residual 2 — `dns.lookup` performs its network I/O outside the process.**
 `getaddrinfo` resolves through mDNSResponder, so no Seatbelt rule applies to it.
@@ -848,9 +849,10 @@ Direct connects are denied (ten mechanisms measured), but "no name can be
 resolved" is not demonstrated. See the gate-4 section.
 
 **Residual 3 — the untrusted delimiter is a convention, not a parser.** A payload
-containing the end marker can close the block early. Recorded, with the
-consolidation-plus-hardening work named as a product decision, in the gate-4
-section.
+containing the end marker can close the block early. The decision is to
+consolidate and harden the wrappers and sanitizers before enabling a broad
+Bash session grant; see `docs/permission-ux-redesign.md`. This residual remains
+in the current release until that work is implemented.
 
 **Residual 4 — a registry-served dependency is not probed.** The install-script
 mechanism is measured with a local package; the delivery path through a real

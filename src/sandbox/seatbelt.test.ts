@@ -509,6 +509,51 @@ describe("child read boundary (macOS)", () => {
     }
   }, 30_000);
 
+  itOnDarwin("a canary outside $HOME is still readable when contained (recorded residual)", async () => {
+    // This test pins the *limit* of the boundary, not a protection. The deny
+    // rule subtracts $HOME; it does not enumerate the filesystem, so a path
+    // outside $HOME — here $TMPDIR — stays readable by a sandboxed child even
+    // though it is outside the workspace and outside every write root. That
+    // is residual 1 in docs/security-architecture-plan.md and the reason
+    // permission-ux-redesign.md discloses a "$HOME-shaped" read boundary
+    // instead of claiming general read isolation.
+    //
+    // It is asserted rather than merely observed so that tightening the
+    // boundary in future cannot pass silently: a change here must come with a
+    // doc change, and a regression in the other direction (a child that can
+    // no longer read its own scratch space) fails loudly too. Synthetic and
+    // disposable, like the fixtures above.
+    const f = fixture();
+    const outsideDir = mkdtempSync(join(tmpdir(), "nib-readgate-outside-"));
+    const outsideCanary = join(outsideDir, "canary.txt");
+    writeFileSync(outsideCanary, CANARY + "\n");
+    try {
+      // Control: the same read with no profile. Both directions must read it;
+      // the point of the row is that containment does not change the answer.
+      const control = await runCommand(`cat ${JSON.stringify(outsideCanary)}`, f.ws, "unrestricted");
+      expect(control.stdout).toContain(CANARY);
+
+      const contained = await runCommand(`cat ${JSON.stringify(outsideCanary)}`, f.ws, "workspace-write");
+      expect(contained.exit).toBe(0);
+      expect(contained.stdout).toContain(CANARY);
+
+      const containedNode = await runCommand(nodeRead(outsideCanary), f.ws, "workspace-write");
+      expect(containedNode.exit).toBe(0);
+      expect(containedNode.stdout).toContain(CANARY);
+
+      // Pair the success with a denial in the same launch configuration. A
+      // "read succeeds" assertion is satisfied by a profile that never
+      // applied, so without this leg the test could pass for the wrong
+      // reason; the $HOME sibling canary must still be denied here.
+      const denied = await runCommand(`cat ${JSON.stringify(f.canaryPath)}`, f.ws, "workspace-write");
+      expect(denied.stdout).not.toContain(CANARY);
+      expect(denied.exit).not.toBe(0);
+    } finally {
+      rmSync(outsideDir, { recursive: true, force: true });
+      f.cleanup();
+    }
+  }, 30_000);
+
   itOnDarwin("listing the sibling directory is denied (readdir is not metadata)", async () => {
     const f = fixture();
     try {

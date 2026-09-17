@@ -11,10 +11,15 @@ import { realpathNearestAncestor, resolveWriteRoots } from "./write-roots.js";
  * The policy layer (ProfileEvaluator, src/permissions/profile.ts) decides
  * allow/deny per call; the Seatbelt layer makes the level's defaults hold in
  * the OS for bash children: strict-sandbox = read-only fs + no network,
- * workspace-write = write only workspace roots + no direct network, with a
- * deliberate, battery-proven carve-outs to the write boundary (ephemeral
- * temp: literal /tmp + the session $TMPDIR; npm cache: ~/.npm — see
- * {@link workspaceWriteCarveouts}). The .git always-denied set is expressed
+ * workspace-write = write only workspace roots + no direct network, with
+ * deliberate, battery-proven carve-outs to the write boundary. Which
+ * carve-outs are emitted depends on the caller: a launch that supplies a
+ * session temp dir (what every production launch does — see
+ * src/exec-runner.ts) gets the workspace root plus that private directory
+ * and nothing else, while the fallback in write-roots.ts's
+ * `workspaceWriteCarveoutRoots` additionally emits literal /tmp, the host
+ * $TMPDIR, and ~/.npm. Measured 2026-09-16 by diffing the generated
+ * profiles of the two forms. The .git always-denied set is expressed
  * here as well ({@link GIT_INTEGRITY_DENIES}): the policy layer denies
  * `.git/**` for the calls it sees, but an interpreter or package script is
  * not a call it sees, and the release-gate probe measured both writing
@@ -72,8 +77,10 @@ const READ_ONLY_CORE = [
  * The one deliberate hole in the child read boundary: narrow `$HOME`
  * subpaths a child may still read, because Git and npm cannot run without
  * them. Git reads its config to resolve identity and includes; npm reads its
- * cache during install (and `~/.npm` is already a write carve-out under
- * workspace-write — see {@link workspaceWriteCarveoutRoots}).
+ * cache during install (npm also *writes* that cache, but only in a launch
+ * that passes no session temp dir — production redirects the cache into the
+ * session directory instead, so `~/.npm` is a read re-allow and not a
+ * production write root).
  *
  * Everything else under `$HOME` is unreadable to a sandboxed child:
  * credentials, SSH/GPG material, browser data, shell startup files, and —

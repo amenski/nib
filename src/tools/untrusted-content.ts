@@ -10,10 +10,13 @@
  *    cannot drive the user's terminal (security-spec.md T14).
  *
  * These were originally private to web-fetch.ts. They moved here when
- * web_search adopted them, so the delimiter string exists in exactly one
- * place: two tools each carrying their own copy of a security boundary is how
- * the copies drift apart, and a delimiter only works as a convention if every
- * producer emits byte-identical markers.
+ * web_search adopted them, and the copies that had accumulated in web-fetch.ts
+ * and web-search.ts were deleted in the change that made the markers
+ * nonce-matched (2026-09-17). Those two are the producers that ingest
+ * attacker-controlled content directly, so a delimiter redefined anywhere but
+ * here was a delimiter the highest-risk paths could drift on. Every producer now
+ * imports this module, and the marker *shape* is identical across all of them;
+ * the id inside it varies per call by design.
  */
 
 import { randomBytes } from "node:crypto";
@@ -48,11 +51,23 @@ const endMarker = (id: string): string => `--- END WEB CONTENT [${id}] ---`;
  * Both delimiters carry the same id, minted here per call. A payload that
  * quotes a bare `--- END WEB CONTENT ---` therefore matches nothing, and one
  * that forges a self-consistent pair carries an id differing from its enclosing
- * block — the signal the base rule points the model at. 48 bits is enough
- * because the attacker never observes a nonce before emitting its payload, so
- * its guesses are blind. This narrows the spoofing route; it does not close the
- * class, because the block is still a convention the model is asked to respect
- * rather than something a parser enforces on its behalf.
+ * block — the signal the base rule points the model at.
+ *
+ * 48 bits is enough, and the reasoning is worth stating because the constant
+ * looks small for a security primitive. The attacker never observes a nonce
+ * before emitting its payload, so every guess is blind, and the best a payload
+ * can do is flood candidates: a 1 MiB payload holds roughly 25k marker lines,
+ * putting its chance of hitting the enclosing id near 2.5e4 / 2^48, about
+ * 1e-10 per block. The birthday route — two blocks in one session drawing the
+ * same id — needs on the order of 1e4 blocks before it reaches 1e-7, and a
+ * collision is not exploitable by itself. Both sit far below the risk this
+ * mechanism does *not* address, which is the model simply disobeying the rule.
+ * Widening the id to 64 bits would divide both numbers by 2^16 and change
+ * nothing about the tradeoff — they are already orders of magnitude below the
+ * unaddressed risk — while churning the wire format, so 48 stands. Note what
+ * this does and does not buy: it narrows the spoofing route, it does not close
+ * the class, because the block is still a convention the model is asked to
+ * respect rather than something a parser enforces on its behalf.
  *
  * Only wrap actual external content. Tool-generated status text (rate-limited,
  * timeout, failure messages, status lines) is the tool's own voice and must

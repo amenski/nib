@@ -194,8 +194,19 @@ describe("async sub-agent result wake (async-subagents.md §2)", () => {
     mounted.push(inst);
     await flush();
 
-    // User is mid-typing…
+    // User is mid-typing… PromptInput reports its draft to App in a passive
+    // effect on the buffer text, so the rendered frame can show the typed text a
+    // tick before App's `draftTextRef` gate sees it. Wait for the draft to be on
+    // screen and then let one macrotask pass (the flush below) so the effect has
+    // landed: with a fixed sleep alone, a loaded machine delivered the result
+    // first, the gate read "idle", and a turn started — measured, 4 of 4 runs
+    // under six concurrent suites. The deadline keeps a broken input wire loud
+    // rather than hung.
     inst.stdin.write("hello");
+    const draftDeadline = Date.now() + 5000;
+    while (!stripAnsi(inst.lastFrame() ?? "").includes("hello") && Date.now() < draftDeadline) {
+      await new Promise((r) => setTimeout(r, 25));
+    }
     await flush();
     h.deliver("task-1", RESULT);
     await flush();

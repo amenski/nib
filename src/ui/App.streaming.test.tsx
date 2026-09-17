@@ -170,15 +170,37 @@ describe("mode picker shortcut (ctrl+o)", () => {
     // ctrl+o (byte 0x0f) opens the picker.
     inst.stdin.write("\x0f");
     await flush();
-    await flush();
+
+    // Wait for the picker AND its item list, which are two separate async steps:
+    // opening is a state update, but the items come from `modeLoader.listAll()`
+    // in ModeList's mount effect (a readdir plus a load per slug). A fixed sleep
+    // therefore races the load, and on a loaded machine it fails as
+    // `toContain("code")` with the title already reading "Modes" and the empty
+    // state still on screen — measured, 3 of 6 concurrent runs.
+    //
+    // Poll the rendered frame so a slow loader can only delay the assertions,
+    // never let them run before the list exists. The readiness signal is
+    // "Modes" plus one expected item rather than the component's
+    // "No modes available." placeholder: keying off that copy would make the
+    // guard silently stop guarding the day the copy changes. While the picker
+    // is open the status bar (which already reads "mode:code" at this point) is
+    // not rendered, so "code" can only have come from the loaded list. The
+    // deadline turns a genuinely broken loader into a loud failure, not a hang.
+    const deadline = Date.now() + 5000;
     let frame = stripAnsi(inst.lastFrame() ?? "");
+    const loaded = (f: string) => f.includes("Modes") && f.includes("code");
+    while (!loaded(frame) && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 25));
+      frame = stripAnsi(inst.lastFrame() ?? "");
+    }
     expect(frame).toContain("Modes");
-    expect(frame).toContain("code");
     expect(frame).toContain("general");
     expect(frame).not.toContain("architect");
 
     // Enter selects the first listed mode (listAll is alphabetical → code),
-    // which routes through /mode <slug>.
+    // which routes through /mode <slug>. The wait above is what makes this
+    // deterministic: Enter is a no-op when `modes[safeIndex]` is undefined, so
+    // arriving before the list loads would leave `captured` empty.
     inst.stdin.write("\r");
     await flush();
     await flush();

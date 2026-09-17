@@ -839,9 +839,18 @@ under-specified toolchains; (b) deny a configurable list of sensitive roots
 (`/etc/ssh`, `/opt/secrets`, user-nominated paths) and keep the rest readable;
 (c) keep the current shape and warn when a workspace sits outside `$HOME`, so a
 user knows containment is weaker there. Option (c) is the chosen scope for
-this release and the proposed Bash session grant; the outside-home warning is
-still to be implemented. `src/sandbox/seatbelt.test.ts` now pins the residual
-with a synthetic canary whose contained read succeeds.
+this release and the proposed Bash session grant, and the warning is
+implemented (measured 2026-09-17): `workspaceOutsideHomeWarning`
+(`src/config/loader.ts`) reports the residual at startup in both the interactive
+scrollback (`cli.tsx`) and headless stderr (`exec-runner.ts`), comparing the
+realpath-resolved trusted root against the same real home the Seatbelt deny
+subtracts (`seatbelt.ts`'s `realpathNearestAncestor(homedir())` — not
+`NIB_HOME`). It is gated on `hasActiveSandboxContainment`, so it speaks only
+where a boundary actually exists: off darwin, and wherever `containmentWarning`
+already reports no boundary, it stays silent. Added roots (`--add-dir`,
+`sandbox.writeRoots`) do not affect it, and it discloses the boundary without
+narrowing it. `src/sandbox/seatbelt.test.ts` pins the residual with a synthetic
+canary whose contained read succeeds.
 
 **Residual 2 — `dns.lookup` performs its network I/O outside the process.**
 `getaddrinfo` resolves through mDNSResponder, so no Seatbelt rule applies to it.

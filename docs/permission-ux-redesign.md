@@ -106,6 +106,11 @@ does not protect sibling files near that workspace. Broader read isolation
 would be a separate compatibility project, not an implied property of this
 grant.
 
+The warning is implemented: `workspaceOutsideHomeWarning`
+(`src/config/loader.ts`) surfaces it in both the interactive scrollback and
+headless stderr, and stays silent whenever there is no active boundary to
+disclose.
+
 This is a deliberate broad session consent. If that scope is unacceptable,
 keep per-command prompts for arbitrary code. A command classifier cannot
 provide the missing isolation.

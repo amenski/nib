@@ -70,6 +70,7 @@ interface ProbeResult {
 interface ProbeFixture {
   root: string;
   ws: string;
+  scratch: string;
   canaryPath: string;
   hookPath: string;
   cleanup: () => void;
@@ -90,14 +91,17 @@ function fixture(): ProbeFixture {
   const root = mkdtempSync(join(homedir(), ".nib-childpaths-"));
   const ws = join(root, "ws");
   const sibling = join(root, "sibling");
+  const scratch = join(root, "scratch");
   mkdirSync(ws, { recursive: true });
   mkdirSync(sibling, { recursive: true });
+  mkdirSync(scratch, { recursive: true, mode: 0o700 });
   const canaryPath = join(sibling, "canary.txt");
   writeFileSync(canaryPath, CANARY + "\n");
   writeFileSync(join(ws, "normal.txt"), "normal project file\n");
   return {
     root,
     ws,
+    scratch,
     canaryPath,
     hookPath: join(ws, ".git", "hooks", "pre-commit"),
     cleanup: () => rmSync(root, { recursive: true, force: true }),
@@ -178,7 +182,7 @@ describe("child launch paths (macOS) — release gate 3", () => {
         const controlResult = await readReport(controlReport);
 
         const report = reportPath(f, "fg");
-        const contained = await runBashTimed(probeCommand(f, report), f.ws, f.ws, 30_000, false, "workspace-write");
+        const contained = await runBashTimed(probeCommand(f, report), f.ws, f.ws, 30_000, false, "workspace-write", [], f.scratch);
         // The allowed ordinary operation: the workspace write and stdout.
         expect(contained.content).toContain("PROBE-OK");
         expectContained(controlResult, await readReport(report));
@@ -203,6 +207,7 @@ describe("child launch paths (macOS) — release gate 3", () => {
           const started = jobManager.start(probeCommand(f, report), f.ws, 30_000, {
             sandboxLevel: level,
             trustedRoot: f.ws,
+            ...(level ? { sessionTempDir: f.scratch } : {}),
           });
           expect(started.ok).toBe(true);
           const id = (started as { ok: true; id: string }).id;
@@ -244,6 +249,8 @@ describe("child launch paths (macOS) — release gate 3", () => {
           300,
           true,
           "workspace-write",
+          [],
+          f.scratch,
         );
         expect(result.content).toContain("moved to background");
         const jobId = result.content.match(/job ([0-9a-f-]{36})/)?.[1];
@@ -280,7 +287,7 @@ describe("child launch paths (macOS) — release gate 3", () => {
         // A package script rather than a direct interpreter call: npm is a
         // child of the shell and the script is a child of npm, so this is the
         // path a malicious dependency would actually take. npm also needs its
-        // cache (~/.npm is a workspace-write carve-out); the control proves
+        // cache (redirected to private session scratch); the control proves
         // npm itself works uninhibited here.
         const writeFixture = (name: string) => {
           writeFileSync(
@@ -301,7 +308,7 @@ describe("child launch paths (macOS) — release gate 3", () => {
         const controlResult = await readReport(reportPath(f, "npm-control"));
 
         writeFixture("npm");
-        const contained = await runBashTimed("npm run --silent probe", f.ws, f.ws, 30_000, false, "workspace-write");
+        const contained = await runBashTimed("npm run --silent probe", f.ws, f.ws, 30_000, false, "workspace-write", [], f.scratch);
         expect(contained.content).toContain("PROBE-OK");
         expectContained(controlResult, await readReport(reportPath(f, "npm")));
       } finally {
@@ -358,7 +365,7 @@ process.stdin.on("data", (chunk) => {
             await client.connect(process.execPath, [writeServer(name)], undefined, {
               cwd: f.ws,
               trustedRoot: f.ws,
-              ...(sandboxLevel ? { sandboxLevel } : {}),
+              ...(sandboxLevel ? { sandboxLevel, sessionTempDir: f.scratch } : {}),
             });
             // The allowed ordinary operation: a real request/response cycle.
             expect(await client.listTools()).toEqual([]);
@@ -400,6 +407,7 @@ process.stdin.on("data", (chunk) => {
           getPermissionMode: () => "normal",
           timeoutMs: 30_000,
           sandboxLevel: "workspace-write",
+          sessionTempDir: f.scratch,
         });
         const result = await runner.dispatch("PostToolUse", { tool_name: "run_bash", tool_input: {} });
         // PostToolUse stdout is context: it must still arrive (wrapped in the
@@ -457,6 +465,7 @@ process.stdin.on("data", (chunk) => {
           cwd: f.ws,
           trustedRoot: f.ws,
           sandboxLevel: "workspace-write",
+          sessionTempDir: f.scratch,
         });
         expect(contained).toContain("PROBE-OK");
         expectContained(await readReport(controlReport), await readReport(report));
@@ -487,7 +496,7 @@ process.stdin.on("data", (chunk) => {
         const control = await readReport(reportPath(f, "notify-control"));
 
         fireNotify(writeScript("notify"), input, {
-          spawn: { cwd: f.ws, trustedRoot: f.ws, sandboxLevel: "workspace-write" },
+          spawn: { cwd: f.ws, trustedRoot: f.ws, sandboxLevel: "workspace-write", sessionTempDir: f.scratch },
         });
         const contained = await readReport(reportPath(f, "notify"));
         expectContained(control, contained);

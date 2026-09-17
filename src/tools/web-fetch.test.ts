@@ -8,6 +8,7 @@ vi.mock("node:dns/promises", () => ({
 // Imported after the mock so the mocked module is what web-fetch.ts resolves.
 const { ToolRegistry } = await import("./registry.js");
 const { registerWebFetch } = await import("./web-fetch.js");
+const { parseUntrustedMarker } = await import("./untrusted-content.js");
 import type { ToolContext } from "./types.js";
 
 function makeCtx(): ToolContext {
@@ -229,8 +230,9 @@ describe("web_fetch", () => {
       { id: "1", name: "web_fetch", arguments: { url: "https://example.com/wrap-check" } },
       makeCtx(),
     );
-    expect(result.content.startsWith("--- BEGIN WEB CONTENT")).toBe(true);
-    expect(result.content.trim().endsWith("--- END WEB CONTENT ---")).toBe(true);
+    const lines = result.content.trim().split("\n");
+    expect(parseUntrustedMarker(lines[0]!)?.role).toBe("begin");
+    expect(parseUntrustedMarker(lines[lines.length - 1]!)?.role).toBe("end");
   });
 
   it("strips control characters from fetched text", async () => {

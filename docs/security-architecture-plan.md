@@ -17,7 +17,11 @@ are recorded rather than hidden: the `$HOME`-shaped read boundary, the
 system-resolver path, the forgeable untrusted delimiter, and the
 registry-delivery gap in the dependency probe. See "Release-gate verdict" and
 "Recorded residuals". Code and tests take precedence over the
-target architecture here.
+target architecture here. **Update 2026-09-17:** residual 3's falsified clause is
+fixed — the untrusted delimiter is now nonce-matched, so a payload can no longer
+close the block early, and the duplicated wrappers are consolidated. Residual 3
+remains recorded in its reduced form: the delimiter is still a convention, not a
+parser.
 
 ## Final decision
 
@@ -668,18 +672,24 @@ shell startup files, or another real project, and no fixture generates load.
   and DEL stripping, LF/TAB preservation, astral-character preservation
   (iterating by code point rather than UTF-16 unit), and the delimiter
   convention including `stripUntrustedMarkers` for the UI preview path.
-- **Recorded residual, measured:** the delimiter is a convention, not a parser.
-  A payload containing the end marker closes the block early — one BEGIN paired
-  with two ENDs — so its remaining text is positioned after an apparent close
-  and reads as though it were outside the untrusted region. This is the
-  limitation the module's own docstring names ("a mitigation, not a boundary");
-  the enforced control remains the permission prompt plus the standing base rule
-  that external content is data. It is pinned by a characterization test named
-  as a residual rather than enshrined as correct: hardening it changes the wire
-  format of every producer, and two tools (`web-fetch.ts`, `web-search.ts`)
-  still carry private copies of `wrapUntrusted` whose markers are byte-identical
-  today. Consolidating those onto `untrusted-content.ts` and then neutralizing
-  marker lines in payloads is a product decision, recorded here for gate 5.
+- **Recorded residual, measured (2026-09-16):** the delimiter was a convention,
+  not a parser. A payload containing the end marker closed the block early — one
+  BEGIN paired with two ENDs — so its remaining text was positioned after an
+  apparent close and read as though it were outside the untrusted region. The
+  enforced control remains the permission prompt plus the standing base rule
+  that external content is data. It was pinned by a characterization test named
+  as a residual rather than enshrined as correct. **Addressed 2026-09-17** — the
+  product decision this bullet recorded for gate 5: the two private copies of
+  `wrapUntrusted` (`web-fetch.ts`, `web-search.ts`) are consolidated onto
+  `untrusted-content.ts`, and the wire format now carries a per-call 12-hex id in
+  both markers, so an end marker a payload emits no longer matches the enclosing
+  block and cannot close it. The characterization test is replaced by a
+  regression (`src/tools/untrusted-content.test.ts`), and
+  `src/sandbox/hostile-input.test.ts` proves it end-to-end on real `run_bash`
+  output. **What this does not buy:** the block is still a convention the model is
+  asked to respect — the id rule lives in `getBaseRules()`, and model compliance
+  is not a security boundary. Residual 3 is restated, not deleted, under
+  "Recorded residuals" below.
 - `src/sandbox/hostile-input.test.ts` (new) covers three shapes of input a user
   has not read. **A hostile repository's content:** its README carries an
   instruction override plus an OSC 52 escape, and read through the real
@@ -749,9 +759,10 @@ Remaining work before declaring the gates below passed:
    mechanisms each with an unsandboxed control and a destination-side counter,
    the hostile-input and injection fixtures (including a hostile dependency's
    install script), and the capped-stream tests. Three residuals are recorded
-   rather than closed: the system resolver (mDNSResponder) path, the forgeable
-   delimiter convention, and the `$HOME`-shaped read boundary that bounds how
-   far a canary can be placed.
+   rather than closed: the system resolver (mDNSResponder) path, the delimiter
+   convention (narrowed 2026-09-17 — no longer forgeable with an end marker of a
+   payload's own, but still a convention the model must respect), and the
+   `$HOME`-shaped read boundary that bounds how far a canary can be placed.
 5. Re-run the full suite and focused Seatbelt probes after fixing these gaps.
 
 ### Release-gate verdict, 2026-09-16
@@ -857,11 +868,22 @@ canary whose contained read succeeds.
 Direct connects are denied (ten mechanisms measured), but "no name can be
 resolved" is not demonstrated. See the gate-4 section.
 
-**Residual 3 — the untrusted delimiter is a convention, not a parser.** A payload
-containing the end marker can close the block early. The decision is to
-consolidate and harden the wrappers and sanitizers before enabling a broad
-Bash session grant; see `docs/permission-ux-redesign.md`. This residual remains
-in the current release until that work is implemented.
+**Residual 3 — the untrusted delimiter is a convention, not a parser.**
+*(Narrowed 2026-09-17; still recorded.)* The falsified half of this residual —
+"a payload containing the end marker can close the block early" — is fixed. Both
+markers now carry the same per-call 12-hex id, so an `END` a payload emits, with
+a made-up id or with none at all, does not match the enclosing block and is not
+its terminator; the duplicated wrappers in `web-fetch.ts`/`web-search.ts` are
+consolidated onto `untrusted-content.ts`; and `getBaseRules()` states that a
+delimiter whose id differs from the enclosing block, or a second BEGIN inside
+one, is attacker-supplied text. What remains is the half that gives the residual
+its name: the boundary is a convention the model is *asked* to respect, not a
+parser that enforces it on the model's behalf, and the id rule is only as good as
+the model's compliance with one sentence in the system prompt. It is therefore
+still recorded rather than closed — model compliance is not a security boundary,
+and the OS sandbox remains the limit on what a command can do. See
+`docs/permission-ux-redesign.md` for the prerequisite this discharged, and for
+the `web-fetch-guard.ts` sanitizer duplication it still records as outstanding.
 
 **Residual 4 — a registry-served dependency is not probed.** The install-script
 mechanism is measured with a local package; the delivery path through a real

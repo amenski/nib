@@ -49,10 +49,17 @@ jobs:
         run: |
           version="$(node -p "require('./package.json').version")"
           if npm view "@amenski/nib@$version" version --json >/dev/null 2>&1; then
-            local_integrity="$(node -e "const { createHash } = require('node:crypto'); const { readFileSync } = require('node:fs'); process.stdout.write('sha512-' + createHash('sha512').update(readFileSync(process.argv[1])).digest('base64'))" "$TARBALL")"
+            registry_tarball="$(mktemp)"
+            curl --fail --silent --show-error --location "$(npm view "@amenski/nib@$version" dist.tarball)" --output "$registry_tarball"
             registry_integrity="$(npm view "@amenski/nib@$version" dist.integrity)"
-            test "$local_integrity" = "$registry_integrity"
-            echo "@amenski/nib@$version matches the manual bootstrap tarball; not republishing."
+            download_integrity="$(node -e "const { createHash } = require('node:crypto'); const { readFileSync } = require('node:fs'); process.stdout.write('sha512-' + createHash('sha512').update(readFileSync(process.argv[1])).digest('base64'))" "$registry_tarball")"
+            test "$download_integrity" = "$registry_integrity"
+            local_files="$(mktemp -d)"
+            registry_files="$(mktemp -d)"
+            tar -xzf "$TARBALL" -C "$local_files"
+            tar -xzf "$registry_tarball" -C "$registry_files"
+            diff -qr "$local_files" "$registry_files"
+            echo "@amenski/nib@$version matches the manual bootstrap package contents; not republishing."
           else
             npm publish "$TARBALL" --provenance
           fi

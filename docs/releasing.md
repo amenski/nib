@@ -24,10 +24,12 @@ npm publish "$tarball" --access public
 Configure npm Trusted Publishing for `amenski/nib` and the
 `publish-npm.yml` workflow (allow direct `npm publish`) after the package
 exists. Do not add an npm token to this repository or to GitHub Actions. When
-the corresponding GitHub Release is published, the workflow computes the local
-tarball's sha512 integrity and compares it exactly to npm's `dist.integrity`;
-it skips only on a match. Later releases publish the smoke-tested tarball by
-OIDC from the workflow.
+the corresponding GitHub Release is published, the workflow verifies the
+registry tarball against npm's `dist.integrity` and compares its extracted
+contents to the smoke-tested local tarball; it skips only on a match. This
+content comparison accommodates tarball metadata differences between macOS
+bootstrap and Linux CI. Later releases publish the smoke-tested tarball by OIDC
+from the workflow.
 
 ## Homebrew tap
 

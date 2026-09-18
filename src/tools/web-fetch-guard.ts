@@ -1,7 +1,12 @@
 /**
- * Pure SSRF/text-safety helpers for web_fetch, kept dependency-free (no DNS,
- * no network) so they can be unit-tested in isolation. web-fetch.ts owns the
- * actual DNS resolution and calls isBlockedAddress per resolved IP.
+ * Pure SSRF helpers for web_fetch, kept dependency-free (no imports at all, no
+ * DNS, no network) so they can be unit-tested in isolation. web-fetch.ts owns
+ * the actual DNS resolution and calls isBlockedAddress per resolved IP.
+ *
+ * The control-character sanitizer that used to sit here now lives only in
+ * untrusted-content.ts — the shared module its consumers already import, and the
+ * home security-spec.md T14 names for it. It is a pure string transform, so a
+ * second copy narrowed nothing; this module keeps zero imports either way.
  */
 
 function ipv4ToInt(a: number, b: number, c: number, d: number): number {
@@ -123,26 +128,4 @@ export function isBlockedAddress(address: string): boolean {
 /** Hostname literals that must always be refused regardless of DNS resolution. */
 export function isBlockedHostnameLiteral(hostname: string): boolean {
   return hostname.toLowerCase() === "localhost";
-}
-
-const TAB = 0x09;
-const LF = 0x0a;
-const DEL = 0x7f;
-
-/**
- * Strips C0 (0x00-0x1F) and C1 (0x80-0x9F) control characters from `text`,
- * except \n and \t, so terminal-injection sequences (ANSI/CSI color codes,
- * OSC clipboard writes, etc.) fetched from a web page can never reach the
- * terminal raw. DEL (0x7F) is also stripped.
- */
-export function sanitizeControlChars(text: string): string {
-  let out = "";
-  for (const ch of text) {
-    const code = ch.codePointAt(0)!;
-    const isC0 = code <= 0x1f;
-    const isC1 = code >= 0x80 && code <= 0x9f;
-    if ((isC0 || code === DEL || isC1) && code !== LF && code !== TAB) continue;
-    out += ch;
-  }
-  return out;
 }

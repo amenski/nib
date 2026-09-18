@@ -4,11 +4,10 @@ import { ToolRegistry } from "./registry.js";
 import { pkg } from "../version.js";
 import { searchSearxng, SearxngConfigError } from "./web-search-searxng.js";
 import { fetchAndProcess } from "./web-fetch.js";
-// As in web-fetch.ts: the sanitizer stays on web-fetch-guard.js (kept
-// dependency-free as the SSRF guard), while `wrapUntrusted` comes from the
-// shared module so every producer emits the same nonce-matched markers (T12).
-import { sanitizeControlChars } from "./web-fetch-guard.js";
-import { wrapUntrusted } from "./untrusted-content.js";
+// As in web-fetch.ts: both the sanitizer and the markers come from the shared
+// module, so every producer emits the same nonce-matched markers (T12) and
+// applies the same terminal-control stripping (T14).
+import { sanitizeControlChars, wrapUntrusted } from "./untrusted-content.js";
 
 const USER_AGENT = `nib/${pkg.version} (+cli)`;
 const TIMEOUT_MS = 10_000;

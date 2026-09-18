@@ -17,6 +17,10 @@
  * here was a delimiter the highest-risk paths could drift on. Every producer now
  * imports this module, and the marker *shape* is identical across all of them;
  * the id inside it varies per call by design.
+ *
+ * The last stray copy — `sanitizeControlChars` in web-fetch-guard.ts, which
+ * security-spec.md T14 already described as living here — went the same day, so
+ * both concerns now have exactly one definition and web-fetch-guard.ts has none.
  */
 
 import { randomBytes } from "node:crypto";

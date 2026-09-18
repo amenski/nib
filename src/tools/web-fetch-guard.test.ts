@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isBlockedAddress, isBlockedHostnameLiteral, sanitizeControlChars } from "./web-fetch-guard.js";
+import { isBlockedAddress, isBlockedHostnameLiteral } from "./web-fetch-guard.js";
 
 describe("isBlockedAddress: IPv4", () => {
   it("blocks loopback 127.0.0.0/8", () => {
@@ -76,43 +76,5 @@ describe("isBlockedHostnameLiteral", () => {
 
   it("allows ordinary hostnames", () => {
     expect(isBlockedHostnameLiteral("example.com")).toBe(false);
-  });
-});
-
-describe("sanitizeControlChars", () => {
-  it("preserves newlines and tabs", () => {
-    expect(sanitizeControlChars("a\nb\tc")).toBe("a\nb\tc");
-  });
-
-  it("strips the ESC and BEL control bytes from an OSC 52 clipboard-write sequence", () => {
-    const osc52 = "\x1b]52;c;aGVsbG8=\x07";
-    const input = `before${osc52}after`;
-    const result = sanitizeControlChars(input);
-    expect(result).not.toContain("\x1b");
-    expect(result).not.toContain("\x07");
-    // The escape's printable payload is left as inert text once its control
-    // bytes are gone — it can no longer be interpreted as a terminal command.
-    expect(result).toBe("before]52;c;aGVsbG8=after");
-  });
-
-  it("strips the ESC control byte from a CSI color escape sequence", () => {
-    const csiRed = "\x1b[31m";
-    const input = `${csiRed}red text\x1b[0m`;
-    const result = sanitizeControlChars(input);
-    expect(result).not.toContain("\x1b");
-    expect(result).toBe("[31mred text[0m");
-  });
-
-  it("strips C1 control characters", () => {
-    const input = "a\x85b"; // NEL, a C1 control char
-    expect(sanitizeControlChars(input)).toBe("ab");
-  });
-
-  it("strips DEL", () => {
-    expect(sanitizeControlChars("a\x7fb")).toBe("ab");
-  });
-
-  it("leaves ordinary text untouched", () => {
-    expect(sanitizeControlChars("Hello, world! 123")).toBe("Hello, world! 123");
   });
 });

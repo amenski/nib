@@ -265,7 +265,14 @@ no session-wide auto-approve flag. Three values: `normal`, `autoApprove`,
   rule-derived `ask` result without prompting — **but never**:
   - a `deny` result (never bypassed, in any posture),
   - a result with `wasUnresolved: true`,
-  - a result with `isGuarded: true`.
+  - a result with `isGuarded: true`,
+  - any `run_bash` ask. Bash is excluded so that the auto-approve posture and
+    the sandboxed-Bash session consent are one mechanism rather than two ways to
+    stop being asked: a Bash ask now surfaces a prompt, which is where the
+    session option is offered and where the profile's actual write set is
+    stated. Configs that relied on `autoApprove` covering Bash ask more often —
+    once per session per envelope, and always for guarded, denied, `.git/config`
+    and background calls.
 
   This last exclusion is what prevents a secret-path read or network-egress
   command from being silently waved through in auto-approve posture.
@@ -293,6 +300,29 @@ explicit warning banner) — with the same four options; the load-bearing
 safety property is the engine forcing `kind: "exact"` on approval, not the
 prompt's interaction style. Ctrl+E streams an AI explanation of the pending
 action.
+
+### The sandboxed-Bash session grant
+
+An **eligible** ask — foreground `run_bash`, under an active sandbox level on a
+platform where the profile is applied, not guarded, not a config-authored rule,
+not the widened `.git/config` variant (docs/permission-ux-redesign.md) — replaces
+`s/Yes, for this session/Yes, sandboxed Bash in this workspace for this session/`
+and drops `Yes, always allow`:
+
+```
+  [run_bash] timeout 60 python3 mcp_probe.py --check
+  Execute timeout 60 python3 mcp_probe.py --check
+  1. Yes, just once
+  2. Yes, sandboxed Bash in this workspace for this session
+  3. No
+```
+
+The session answer is a different decision, not a persisted rule (`askUser`
+resolves `"envelope-grant"` and no UI row is written; the agent writes the
+canonical row). The prompt carries the envelope the launch would run under, and
+the consent copy is generated from the profile's own write set, so the prompt and
+the profile cannot disagree. See §11 for the resulting vocabulary and
+`src/ui/PermissionPrompt.tsx` `grantConsentLines` for the disclosure text.
 
 ## 11. Audit trail
 
@@ -325,6 +355,10 @@ Each agent-side path emits a distinct `decision`, plus a human-readable
 | `unresolved-ask` | `ask` approved but a bash segment was `wasUnresolved` | `approved by user; bash segment was unresolved (fail-closed ask)` |
 | `headless-deny` | `resolve()` returned `ask` with no `askUser` supplied | `resolved to ask with no interactive prompter (headless)` |
 | `allow-by-posture` | `resolve()` returned `ask`, `askUser` → `"posture"` (auto-approve posture upgraded it, no prompt shown) | `auto-approve posture upgraded an ordinary ask` |
+| `allow-by-envelope-grant` | `askUser` → `"envelope-grant"` (the session consent, `envelopeGrant: "granted"`), or an eligible ask covered by the session grant with no prompt at all (`envelopeGrant: "reuse"`) | `session grant granted for the current sandbox envelope` / `session grant reused (approved <ts>)` |
+| `grant-invalidated` | the session grant was dropped: the envelope it was approved against no longer matches this launch's profile (before the re-ask), or the spawn-time profile hash check refused the launch | `session grant invalidated: the envelope … no longer matches` / `the sandbox envelope changed after the grant was approved` |
+| `grant-revoked` | the user revoked the session grant in `/permissions`; written only by that panel | `revoked by the user in /permissions; eligible foreground Bash asks prompt again` |
+| `sandbox-failure` | a contained launch's child never confirmed its profile: the command did not run, and no unsandboxed retry exists | `the macOS sandbox profile was not confirmed inside the child` |
 
 `winningRule` is attached whenever the resolution had one (absent only for a
 `defaultMode` fallthrough with no matching rule).
@@ -350,6 +384,15 @@ best approximation and the finer detail is left to `App.tsx`:
   interactive yes. Headless `askUser` implementations (e.g.
   `exec-runner.ts`) never resolve `"posture"` — there is no posture to
   consult.
+- **The session-consent answer.** `askUser` resolving `"envelope-grant"`
+  likewise writes no UI row — unlike `once`/`session`/`always`, there is no
+  persisted rule to record — so a consent produces the agent's single
+  `allow-by-envelope-grant` row. The panel counts that row as a **prompt** (the
+  user was interrupted for it) while a `"reuse"` row counts as an **approval**
+  with no prompt, which is what makes the before/after prompt count in
+  docs/permission-ux-redesign.md comparable. A settings change that rewrites the
+  profile invalidates the grant and prompts again, so it is never a permanent
+  waiver.
 
 ### Token-usage trail
 

@@ -1,7 +1,9 @@
 # Nib security architecture plan
 
 **Status:** implemented (phases 0–4) · verified 2026-09-16 · listed release
-gates measured on their stated scope, four residuals recorded
+gates measured on their stated scope, four residuals recorded · sandboxed-Bash
+session grant added 2026-09-18 (measured, two live checks outstanding — see the
+observation below)
 
 This is the reviewed architecture and release-gate record. Phases 0–4 have
 implementation commits, but their checklist completion does **not** imply that
@@ -38,6 +40,43 @@ enforcement, egress policy, or child-path containment.** Those remain macOS-loca
 measurements, not CI-verified, and CI exercised the cumulative tip rather than
 each intermediate commit.
 
+**Observation 2026-09-18 — the session grant and the readiness handshake.** The
+release gate's own "a future session grant could safely use for revocation"
+requirement is now built and measured, and the two grants that could stop a prompt
+on Bash are disjoint (see "Two grants, disjoint by construction"). What was
+observed, and on which machine:
+
+- **Local macOS (this machine, capable runner):** `npx tsc --noEmit` clean;
+  `npm test` **2252 passed / 3 skipped** (2255) across 154 files, against 2249/3
+  at the start of this unit — the delta is the five new acceptance cases minus
+  two removed classifier-metric cases.
+- **Containment failure is distinguished from command failure**: an injected
+  child that never signals readiness produces one launch, no command body, a
+  specific `SANDBOX_NOT_APPLIED` error, a `sandbox-failure` audit row, a revoked
+  grant, and a re-prompt on the next call. No code path retries unsandboxed.
+- **The grant grants no capability**: a covered launch and a prompted launch
+  produce byte-identical `file` and `args` (`src/agent.grant.test.ts`), and the
+  envelope hash check refuses a launch whose profile is not the one approved.
+- **Nothing else inherits it**: denies, guarded asks, config-authored asks, the
+  `.git/config` variant, background Bash, a run with no interactive prompter, and
+  subagent runs (the orchestrator is never passed an envelope) are all unaffected,
+  each pinned by its own case.
+- **Prompt measurement:** 10 prompts before / 4 after on the fixed 11-command
+  trace (90 → 30 per 100 `run_bash` calls), with the same ten calls running and
+  the same single denial in both. `--before` was run both on this branch with the
+  envelope withheld and against a `git archive HEAD` export; every count and
+  every per-command decision agreed, so the baseline is the committed behavior
+  and not a mode of this branch. Full results in
+  docs/permission-ux-redesign.md.
+- **Not verified, and not claimed:** no CI run exists for any of this (nothing
+  is pushed); the failure recognizer has never seen a *real* Seatbelt refusal on
+  this machine — `sandbox-exec` is invoked by absolute path, so the refusing case
+  cannot be produced here, and the injected seam proves the code path only; and
+  no human has yet driven the interactive prompt on a TTY. The first is a push
+  decision, the second needs the Seatbelt-refusing runner already used for gate 5,
+  and the third is a one-minute manual step. Until at least the third happens, the
+  consent copy is verified as text and as a decision, not as a rendered prompt.
+
 ## Final decision
 
 Build a capability-based authorization kernel and default OS sandbox first.
@@ -63,6 +102,19 @@ claim testable:
 3. **Unknown means no persistent grant.** It may be approved once with an honest
    full-risk prompt, but cannot create a session, permanent, or auto-approve
    permission.
+   *Amended 2026-09-18 (docs/permission-ux-redesign.md).* One session-scoped
+   exception exists, and it is deliberately not a property of the command text:
+   an interactive user may grant sandboxed Bash for the session, which covers
+   later foreground `run_bash` calls **under the same effective sandbox
+   envelope**. What is granted is the *envelope*, not the command: the grant is
+   keyed by the sha256 of the exact Seatbelt profile bytes, holds no capability
+   the profile did not already hold, lives in memory for that interactive session
+   only, and is dropped the moment those bytes change. It cannot cover a deny, a
+   guarded ask, a config-authored ask, the `.git/config` variant, background
+   Bash, a run without an interactive prompter, or a subagent. The narrowing this
+   buys over "always allow Bash" is the whole reason it is acceptable: the
+   prompt states the resolved write set, and revocation is a keystroke in
+   `/permissions`.
 4. **The first sandbox promise is filesystem containment plus no direct egress.**
    Seatbelt cannot safely implement hostname allowlists for arbitrary binaries.
    A host-aware network broker is a later, separately designed component; until
@@ -71,6 +123,14 @@ claim testable:
 5. **The classifier has no authority to widen access.** It can reduce prompts
    only after the kernel and sandbox already bound the operation. A false
    classifier result therefore changes UX, not machine authority.
+   *Status 2026-09-18.* The classifier never did reduce prompts —
+   `PermissionEngine.resolveBash()` never consumed its result, and the redesign
+   removed the counters that implied otherwise (`classifierProvenReadOnly`,
+   `classifierUnknown`, `falseAllowCount`, `falseAllowRate`; the label survives
+   as advisory audit metadata). The prompt reduction this release ships comes
+   from containment plus an explicit, envelope-bound consent — not from the
+   classifier guessing that a command is safe. Decision 5 stands unchanged: no
+   classifier output can widen machine authority.
 
 ### Explicit non-goals for the first security release
 
@@ -272,6 +332,17 @@ only". The whole chain is covered by tests in `src/agent.test.ts`
 ("approved-operation grant"), `src/permissions/git-config-operations.test.ts`,
 and the "approved variant" cases in `src/sandbox/seatbelt.test.ts`.
 
+**Two grants, disjoint by construction (2026-09-18).** The session grant
+(`src/permissions/session-grant.ts`, docs/permission-ux-redesign.md) is a
+different thing: broader in time (a whole session) and narrower in authority (it
+grants only the profile that would run anyway). It deliberately **cannot** cover
+this variant — `isEligibleForGrant` excludes `isGitConfigOperation` — so a
+`.git/config`-writing command is always its own approval under its own widened
+profile, and `allowGitConfigWrite: true` produces different profile bytes and
+therefore a different envelope hash. The gate reads that exclusion from one
+place; `src/agent.grant.test.ts` pins it in both directions (the option is never
+offered, and approving it still runs under the widened profile).
+
 Measured both directions (2026-09-16, disposable fixtures, unsandboxed
 controls):
 
@@ -413,6 +484,12 @@ Verify:
 2. [DONE] Fix exact compound-command approval semantics.
 3. [DONE] Replace generic risk copy with capability summaries.
 4. [DONE] Measure prompt count and classifier false-allow rate separately.
+   *Superseded 2026-09-18:* the false-allow rate was removed with the classifier
+   counters it fed, after the prompt counts were measured both before and after
+   the session grant (`scripts/permission-grant-baseline.ts`; results in
+   docs/permission-ux-redesign.md). Prompts are now counted per tool and per
+   envelope, with grant consents counted as prompts and grant reuses counted as
+   approvals with none.
 
 Verify:
 
@@ -849,6 +926,29 @@ Seatbelt integration tests. The current error is generic command failure
 output, not a dedicated signal that a future session grant could safely use
 for revocation. That new UX requires an in-sandbox readiness handshake and
 its own verification before it ships.
+
+**Closed 2026-09-18 — the handshake exists, the remaining verification is
+named.** `src/sandbox/launcher.ts` now spawns every contained child through a
+fixed frame whose text is authored and never interpolated with the command
+(`printf '\001' >&3; exec 3>&-; exec "$@"`, target as argv elements), and a
+missing byte on fd 3 is a **containment failure**, not a command failure: the
+command body never runs, the tool result carries a specific error, any session
+grant is revoked, and there is no unsandboxed retry. The error text is the
+distinguishing evidence only in the sense that it names the cause; the absent
+readiness byte is what decides. `exec 3>&-` before `exec` is what makes the pipe
+unforgeable and unretainable by the command. Proven by
+`src/sandbox/readiness.test.ts` (byte on fd 3 only, argv exact, error /
+exit-before-byte / timeout → not ready, promise never rejects) and by
+`src/agent.grant.test.ts` (a refusing child → one launch, `SANDBOX_NOT_APPLIED`,
+`sandbox-failure` row, grant revoked, next call re-prompts).
+
+The residual that remains is about the *floor this runs on*, not about the
+signal: on a capable runner the failure cannot be produced for real (`sandbox-exec`
+is invoked by absolute path, so a PATH shim cannot inject it), and on a
+Seatbelt-refusing runner the ready-path behaviour is unobservable. The
+injected-seam cases above prove the code path; the capability matrix is still
+verified by two different machines, never by one. Treat a single-machine run as
+evidence about that machine only.
 
 **Residual 1 — the child read boundary is `$HOME`-shaped.** Reads under the real
 `$HOME` are denied except for a toolchain allowlist, but the profile's core still

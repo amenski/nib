@@ -610,6 +610,9 @@ describe("permission profile overlay — consolidation M.1 (§5)", () => {
     await flush();
 
     expect(stripAnsi(inst.lastFrame() ?? "")).toContain("Permission required");
+    // And the session grant is not on offer for a background job — it is a
+    // foreground-Bash consent only.
+    expect(stripAnsi(inst.lastFrame() ?? "")).not.toContain("sandboxed Bash");
     expect(askPromise).toBeInstanceOf(Promise);
     inst.stdin.write("1");
     await flush();
@@ -633,13 +636,19 @@ describe("permission profile overlay — consolidation M.1 (§5)", () => {
     await flush();
 
     expect(stripAnsi(inst.lastFrame() ?? "")).toContain("Permission required");
+    // No containment, so no envelope was handed over and no grant is offered.
+    expect(stripAnsi(inst.lastFrame() ?? "")).not.toContain("sandboxed Bash");
     expect(askPromise).toBeInstanceOf(Promise);
     inst.stdin.write("1");
     await flush();
     expect(await askPromise).toBe(true);
   });
 
-  it("auto-approve bypasses an ordinary ask only with OS containment", async () => {
+  // The consolidation (docs/permission-ux-redesign.md): with a real containment
+  // consent available for Bash, auto-approve no longer covers a Bash ask
+  // silently — the prompt is where the session grant comes from, and answering
+  // it is the only way this command stops asking.
+  it("auto-approve no longer bypasses a Bash ask", async () => {
     let askResult: unknown = "unresolved";
     const ctx = makeAskCtx(async (_input: string, cb: any) => {
       askResult = await cb.askUser("run_bash", { command: "echo hi" });
@@ -650,6 +659,69 @@ describe("permission profile overlay — consolidation M.1 (§5)", () => {
     const inst = render(<App ctx={ctx} />);
     mounted.push(inst);
     inst.stdin.write("run it");
+    await flush();
+    inst.stdin.write("\r");
+    await flush();
+    await flush();
+
+    expect(stripAnsi(inst.lastFrame() ?? "")).toContain("Permission required");
+    inst.stdin.write("1");
+    await flush();
+    expect(askResult).toBe(true);
+  });
+
+  // The consent path end to end through the UI: the gate hands over an
+  // envelope, the prompt offers exactly three options with the consent text,
+  // and the grant option resolves as "envelope-grant" — the value agent.ts
+  // stores the grant on. macOS-only, since the envelope is only ever built when
+  // Seatbelt containment exists.
+  it.skipIf(process.platform !== "darwin")("offers the session grant on an eligible Bash ask and resolves the choice", async () => {
+    let askResult: unknown = "unresolved";
+    const ctx = makeAskCtx(async (_input: string, cb: any) => {
+      askResult = await cb.askUser("run_bash", { command: "echo hi" }, {
+        profileHash: "0".repeat(64),
+        level: "workspace-write",
+        trustedRoot: "/workspace",
+        writeRoots: ["/workspace", "/tmp/nib-scratch"],
+        sessionTempDir: "/tmp/nib-scratch",
+      });
+      return { stopReason: "done", messages: [], newMessages: [] };
+    }, "workspace-write");
+    const inst = render(<App ctx={ctx} />);
+    mounted.push(inst);
+    inst.stdin.write("run it");
+    await flush();
+    inst.stdin.write("\r");
+    await flush();
+    await flush();
+
+    const frame = stripAnsi(inst.lastFrame() ?? "");
+    // Three options, the grant among them, and the limits stated beside it.
+    expect(frame).toContain("1. Yes, just once");
+    expect(frame).toContain("2. Yes, sandboxed Bash in this workspace for this session");
+    expect(frame).toContain("3. No");
+    expect(frame).not.toContain("Yes, always allow");
+    expect(frame).toContain("Writable: /workspace, /tmp/nib-scratch");
+    expect(frame).toContain("Revoke this in /permissions");
+
+    inst.stdin.write("2");
+    await flush();
+    expect(askResult).toBe("envelope-grant");
+  });
+
+  // The positive control for the rule above: posture still bypasses an ordinary
+  // ask on every other tool, so the Bash exclusion did not disable the posture.
+  it("auto-approve still bypasses an ordinary non-Bash ask with OS containment", async () => {
+    let askResult: unknown = "unresolved";
+    const ctx = makeAskCtx(async (_input: string, cb: any) => {
+      askResult = await cb.askUser("read_file", { path: "/workspace/src/a.ts" });
+      return { stopReason: "done", messages: [], newMessages: [] };
+    }, "workspace-write");
+    ctx.mutable.posture = "autoApprove";
+    ctx.autoApproveAllowed = true;
+    const inst = render(<App ctx={ctx} />);
+    mounted.push(inst);
+    inst.stdin.write("read it");
     await flush();
     inst.stdin.write("\r");
     await flush();

@@ -2,6 +2,7 @@ import React from "react";
 import { Box, Text } from "ink";
 import type { PermissionRule } from "../permissions/index.js";
 import type { Capability, CapabilityPlan } from "../permissions/capabilities.js";
+import type { BashEnvelope } from "../permissions/session-grant.js";
 import { extractToolSubject } from "../permissions/rules.js";
 import { useTheme } from "./contexts.js";
 import { ansi256, type ThemeContextValue } from "./theme.js";
@@ -20,11 +21,19 @@ export interface PermissionRequest {
   capabilityPlan?: CapabilityPlan;
   /** Working directory used to canonicalize paths in the effect declaration. */
   workingDir?: string;
+  /**
+   * The containment this call would run under, present only on an eligible
+   * foreground Bash ask (docs/permission-ux-redesign.md). When set, the options
+   * offer the session grant for exactly this envelope instead of "always", and
+   * the consent text is shown — the user is being asked to approve a *profile*,
+   * so the profile's limits are what the prompt must state.
+   */
+  envelope?: BashEnvelope;
   /** AI explanation (Ctrl+E) — informational only, never gates the decision. */
   explain?: { status: "loading" | "done" | "error"; text: string };
 }
 
-export type PermissionDecision = "once" | "session" | "always" | "deny";
+export type PermissionDecision = "once" | "session" | "always" | "deny" | "envelope-grant";
 
 interface Props {
   request: PermissionRequest;
@@ -166,11 +175,86 @@ const OPTIONS: { decision: PermissionDecision; label: string }[] = [
   { decision: "deny", label: "No" },
 ];
 
+/**
+ * The session grant offered in place of "always" on an eligible foreground Bash
+ * ask. It is consent for one containment envelope, not for a command pattern —
+ * so there is nothing to store as a rule, and the option list is exactly three
+ * (docs/permission-ux-redesign.md).
+ */
+const ENVELOPE_GRANT_OPTION: { decision: PermissionDecision; label: string } = {
+  decision: "envelope-grant",
+  label: "Yes, sandboxed Bash in this workspace for this session",
+};
+
 export function permissionOptions(request: PermissionRequest): { decision: PermissionDecision; label: string }[] {
+  if (request.envelope) {
+    return [OPTIONS[0], ENVELOPE_GRANT_OPTION, OPTIONS[3]];
+  }
   if (request.allowPersistentApproval === false) {
     return [OPTIONS[0], OPTIONS[3]];
   }
   return OPTIONS;
+}
+
+/** Home directory, or null — `process.env.HOME` is absent in some environments. */
+function homeDir(): string | null {
+  const home = process.env.HOME?.replace(/\/$/, "");
+  return home && home.length > 0 ? home : null;
+}
+
+/**
+ * The consent text for the session grant, one line per statement
+ * (docs/permission-ux-redesign.md). It states the write-set the profile
+ * *grants* — `envelope.writeRoots` is that set, not the one that was requested
+ * — so the limits the user approves are the limits that apply. Pure, so the
+ * copy can be tested without rendering.
+ */
+export function grantConsentLines(envelope: BashEnvelope): string[] {
+  const roots = envelope.writeRoots;
+  const home = homeDir();
+
+  const lines: string[] = [
+    "Eligible foreground Bash commands will run without asking, under this macOS sandbox profile:",
+    roots.length > 0
+      ? `Writable: ${roots.join(", ")} — not the machine's shared temporary directories, and not the package-manager cache.`
+      : "Writable: nothing — this profile grants no write access at all.",
+    "It can run project scripts and start child processes.",
+    "Direct network connections from those children are denied; macOS name resolution may still occur outside the child.",
+    "Reads are only partly contained: files outside your home directory can still be readable, and files inside the project — including .env — can be read by a script even though the file tools guard them.",
+  ];
+
+  // Decision 8: the outside-$HOME warning is repeated here, because consent is
+  // the moment the authority is actually granted.
+  if (home) {
+    const outside = roots.filter((root) => root !== home && !root.startsWith(`${home}/`));
+    if (outside.length > 0) {
+      lines.push(
+        `⚠ Outside your home directory: ${outside.join(", ")} — write access there is not bounded by your home directory.`,
+      );
+    }
+  }
+
+  lines.push(
+    "Denied and guarded commands still ask.",
+    "Revoke this in /permissions. Revoking does not undo changes already made, and does not stop a command that is already running.",
+  );
+
+  return lines;
+}
+
+/** Renders {@link grantConsentLines} beside the grant option. */
+function GrantConsent({ envelope }: { envelope: BashEnvelope }) {
+  const theme = useTheme();
+  const warningColor = slotColor(theme, "warning");
+  return (
+    <Box flexDirection="column" marginTop={1}>
+      {grantConsentLines(envelope).map((line) => (
+        <Text key={line} color={line.startsWith("⚠") ? warningColor : undefined} dimColor={!line.startsWith("⚠")}>
+          {line}
+        </Text>
+      ))}
+    </Box>
+  );
 }
 
 export default function PermissionPrompt({ request, cursor, onChoose, onCancel }: Props) {
@@ -194,6 +278,7 @@ export default function PermissionPrompt({ request, cursor, onChoose, onCancel }
         <Text dimColor>Effects: </Text>
         <Text color={slotColor(theme, risk.slot)}>{capabilitySummary(request.capabilityPlan, request.workingDir).join("; ")}</Text>
       </Box>
+      {request.envelope ? <GrantConsent envelope={request.envelope} /> : null}
       <ExplanationBlock explain={request.explain} />
       <Box marginTop={1}>
         <Text>Do you want to proceed?</Text>

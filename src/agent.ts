@@ -20,6 +20,12 @@ import type { TodoItem } from "./tools/todo.js";
 import { logTiming } from "./debug/logger.js";
 import { extractCapabilityPlan } from "./permissions/capabilities.js";
 import { isGitConfigOperation } from "./permissions/git-config-operations.js";
+import {
+  bashEnvelopeGrants,
+  isEligibleForGrant,
+  type BashEnvelope,
+} from "./permissions/session-grant.js";
+import type { SandboxFailureReason } from "./sandbox/launcher.js";
 import type { ToolExecOptions } from "./tools/types.js";
 
 export type ToolExecutor = (call: ToolCall, exec?: ToolExecOptions) => Promise<ToolOutput>;
@@ -171,9 +177,27 @@ export interface AgentOptions {
    * Interactive approval bridge for ask-tier calls. Resolves true (approved)
    * or false (denied); resolves "posture" when an auto-approve posture
    * upgraded the ask to allow without showing a prompt — recorded as
-   * allow-by-posture in the audit trail (permission-spec.md §11).
+   * allow-by-posture in the audit trail (permission-spec.md §11); resolves
+   * "envelope-grant" when the user chose the session-wide sandboxed-Bash grant
+   * that `envelope` describes (docs/permission-ux-redesign.md). `envelope` is
+   * passed only on an ask the grant may satisfy — a prompter that never offers
+   * the option simply ignores it.
    */
-  askUser?: (toolName: string, args: Record<string, unknown>) => Promise<boolean | "posture">;
+  askUser?: (
+    toolName: string,
+    args: Record<string, unknown>,
+    envelope?: BashEnvelope,
+  ) => Promise<boolean | "posture" | "envelope-grant">;
+  /**
+   * The containment this run's foreground Bash calls would execute under —
+   * present exactly when this session has an active sandbox envelope
+   * (`hasActiveSandboxContainment`), absent otherwise. Passing it is what makes
+   * a run eligible to reuse or create a session grant, so it is set by the
+   * interactive root run only: subagent runs and headless exec runs are never
+   * handed one, and the grant therefore cannot be inherited by delegated or
+   * autonomous work.
+   */
+  bashEnvelope?: BashEnvelope;
   /** Live reader for the update_todo_list store; injected into the volatile
    *  prefix each sub-turn so the model always sees current plan state. */
   getTodos?: () => TodoItem[];
@@ -637,7 +661,7 @@ export async function runAgent(
         // decision L): the profile gate (layer 1) denies terminally before
         // rule resolution — no profile (feature off) passes straight through
         // to the unchanged engine, so today's behavior is byte-for-byte.
-        const { action, winningRule, wasUnresolved, reason } = authorize(
+        const { action, winningRule, wasUnresolved, reason, isGuarded } = authorize(
           { tool: tc.name, arguments: tc.arguments },
           permissions,
           permissionProfile,
@@ -646,16 +670,54 @@ export async function runAgent(
         const audit = async (
           decision: PermissionDecision,
           reason: string,
+          envelopeGrant?: "reuse" | "granted",
         ): Promise<void> => {
           if (!options.sessionStore || !options.sessionId) return;
           const capabilityPlan = extractCapabilityPlan(tc.name, tc.arguments, process.cwd());
           await options.sessionStore.appendPermission(options.sessionId, {
             toolCallId: tc.id, tool: tc.name, subject, decision, winningRule, reason,
+            ...(envelopeGrant !== undefined ? { envelopeGrant } : {}),
             ...(capabilityPlan.commandClassification
               ? { commandClassification: capabilityPlan.commandClassification }
               : {}),
           });
         };
+
+        /**
+         * A sandboxed launch whose containment promise did not hold: the child
+         * never confirmed this machine applied its profile, or it would run
+         * under a different profile than the session grant was approved for.
+         * The command did not run either way, so any grant covering it is
+         * revoked — an approval standing against a profile Seatbelt refuses, or
+         * that no longer describes the launch, is worse than no approval. The
+         * Bash handler returns its own specific refusal; this only records why
+         * the grant is gone. Forward-only: nothing already running is stopped
+         * and no effect is undone.
+         */
+        const onSandboxFailure = (why: SandboxFailureReason): void => {
+          const sessionId = options.sessionId;
+          const revoked = sessionId !== undefined && bashEnvelopeGrants.revoke(sessionId, "run_bash");
+          const cause =
+            why === "containment-not-applied"
+              ? "the macOS sandbox profile was not confirmed inside the child"
+              : "the sandbox envelope changed after the grant was approved";
+          // The handler does not wait on this write: a failure to record the
+          // failure must not become a second failure path.
+          void audit(
+            why === "containment-not-applied" ? "sandbox-failure" : "grant-invalidated",
+            revoked ? `${cause}; the session grant was revoked` : cause,
+          ).catch((err: unknown) => {
+            options.onDiagnostic?.(`audit write failed: ${String(err)}`);
+          });
+        };
+
+        // A containment failure is a property of the launch, not of the
+        // approval path, so the channel is open for every sandboxed Bash call —
+        // including one a rule allowed without a prompt. Grant coverage is
+        // decided separately, below.
+        if (tc.name === "run_bash" && options.bashEnvelope !== undefined) {
+          exec = { onSandboxFailure };
+        }
 
         if (action === "deny") {
           const msg = `Permission denied for ${tc.name}`;
@@ -680,7 +742,45 @@ export async function runAgent(
             return { denied: true };
           }
           if (options.askUser) {
-            const allowed = await options.askUser(tc.name, tc.arguments);
+            // The session grant (docs/permission-ux-redesign.md). Eligibility is
+            // decided before the prompt, and by the one shared definition: an
+            // ineligible ask is asked exactly as it is today and the prompter is
+            // not even offered the session option. A run with no session
+            // identity can neither reuse nor create a grant.
+            const envelope =
+              options.sessionId !== undefined &&
+              isEligibleForGrant({
+                toolName: tc.name,
+                args: tc.arguments,
+                isGuarded,
+                winningRuleOrigin: winningRule?.origin,
+                envelope: options.bashEnvelope,
+              })
+                ? options.bashEnvelope
+                : undefined;
+            // An envelope already approved for this session needs no prompt at
+            // all — that is the point of the grant, and everything above (deny,
+            // guarded, hooks, profile) has already run.
+            const reused =
+              envelope !== undefined
+                ? bashEnvelopeGrants.lookup(options.sessionId!, "run_bash", envelope.profileHash)
+                : null;
+            if (reused === null && envelope !== undefined) {
+              // A grant exists for this session but was approved against
+              // different profile bytes — a write root, the level, or the
+              // scratch directory changed. It is dropped *before* the prompt, so
+              // it does not survive a "no": leaving it would let the envelope
+              // change back and silently re-arm an approval the user is being
+              // asked to renew right now.
+              if (bashEnvelopeGrants.invalidateOther(options.sessionId!, "run_bash", envelope.profileHash)) {
+                await audit(
+                  "grant-invalidated",
+                  "session grant invalidated: the envelope it was approved against no longer matches this launch's sandbox profile",
+                );
+              }
+            }
+            const allowed =
+              reused !== null ? true : await options.askUser(tc.name, tc.arguments, envelope);
             if (allowed === "posture") {
               // Auto-approve posture upgraded the ask to allow without
               // showing a prompt — recorded distinctly from an interactive
@@ -694,6 +794,42 @@ export async function runAgent(
               await audit("ask-denied", "denied by user at prompt");
               appendFreshToolResult(tc.id, tc.name, msg);
               return { denied: true };
+            } else if (envelope !== undefined && (reused !== null || allowed === "envelope-grant")) {
+              // The call runs under the session's approved envelope. A reuse
+              // shows no prompt at all; a fresh grant is the consent the user
+              // just gave. Both are one audit row, because both are the same
+              // decision — the difference is which one happened, recorded in
+              // `envelopeGrant` so reuse and consent stay separately countable.
+              if (reused !== null) {
+                await audit(
+                  "allow-by-envelope-grant",
+                  `session grant reused (approved ${new Date(reused.grantedAt).toISOString()})`,
+                  "reuse",
+                );
+              } else {
+                // Consent for this envelope. Any grant approved against a
+                // different one was dropped above, before the prompt, so this
+                // writes into a slot the user has just been asked about.
+                bashEnvelopeGrants.grant({
+                  sessionId: options.sessionId!,
+                  tool: "run_bash",
+                  profileHash: envelope.profileHash,
+                  level: envelope.level,
+                  trustedRoot: envelope.trustedRoot,
+                  writeRoots: envelope.writeRoots,
+                  sessionTempDir: envelope.sessionTempDir,
+                });
+                await audit(
+                  "allow-by-envelope-grant",
+                  "session grant granted for the current sandbox envelope",
+                  "granted",
+                );
+              }
+              // The Bash handler refuses to launch unless the profile it would
+              // run under still hashes to this, so the child launch uses the
+              // envelope the user approved rather than whatever the session
+              // looks like now.
+              exec = { ...exec, envelopeHash: envelope.profileHash };
             } else {
               // Approved via askUser. The TUI (App.tsx) writes a finer-grained
               // once/session/always row when it actually shows a prompt, but it
@@ -718,7 +854,7 @@ export async function runAgent(
               // answer is not even offered, and isGitConfigOperation decides
               // whether this command is one the widened profile can serve.
               if (isGitConfigOperation(tc.name, tc.arguments)) {
-                exec = { approvedGitConfigWrite: true };
+                exec = { ...exec, approvedGitConfigWrite: true };
               }
             }
             // User-approved (or posture-upgraded) asks still pass through

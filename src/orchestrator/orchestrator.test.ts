@@ -285,9 +285,12 @@ describe("Orchestrator", () => {
     expect(out.error).toBeUndefined();
 
     // The sub-agent's ask-tier run_bash surfaced to the CURRENT bridge, not the
-    // stale one captured at registration.
+    // stale one captured at registration. The third argument is the sandbox
+    // envelope a session grant could cover: `undefined` here is the structural
+    // subagent exclusion — an orchestrator sub-run is never handed one, so it
+    // can neither reuse nor create a grant (docs/permission-ux-redesign.md).
     await deliveries.delivered();
-    expect(currentAsk).toHaveBeenCalledWith("run_bash", { command: "npm test" });
+    expect(currentAsk).toHaveBeenCalledWith("run_bash", { command: "npm test" }, undefined);
     expect(staleAsk).not.toHaveBeenCalled();
   });
 

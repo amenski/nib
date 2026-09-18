@@ -7,6 +7,7 @@ import { Compactor } from "../compaction/compactor.js";
 import { ModeLoader } from "../modes/loader.js";
 import { AgentLoader } from "../agents/index.js";
 import type { PermissionEngine, ProfileEvaluator } from "../permissions/index.js";
+import type { BashEnvelope } from "../permissions/session-grant.js";
 import type { HookRunner } from "../hooks/index.js";
 import { subagentAuditStore } from "../sessions/store.js";
 import { TodoStore } from "../tools/todo.js";
@@ -57,7 +58,7 @@ export interface OrchestratorOptions {
    * PERMISSION_DENIED on every ask-tier action it attempts, since agent.ts's
    * headless branch (no askUser) denies rather than asks.
    */
-  askUser?: (toolName: string, args: Record<string, unknown>) => Promise<boolean | "posture">;
+  askUser?: (toolName: string, args: Record<string, unknown>, envelope?: BashEnvelope) => Promise<boolean | "posture" | "envelope-grant">;
   /**
    * Surfaces a sub-agent's tool activity to the parent UI while it runs.
    * Without this the parent renders nothing between the `new_task` header and
@@ -98,7 +99,7 @@ export class Orchestrator {
     getSignal?: () => AbortSignal | undefined;
     hooks?: HookRunner;
   };
-  private askUser?: (toolName: string, args: Record<string, unknown>) => Promise<boolean | "posture">;
+  private askUser?: (toolName: string, args: Record<string, unknown>, envelope?: BashEnvelope) => Promise<boolean | "posture" | "envelope-grant">;
   private onSubagentProgress?: (event: SubagentProgress) => void;
   private onTaskResult?: (taskId: string, message: string) => void;
 
@@ -128,7 +129,7 @@ export class Orchestrator {
    * must be told about the current turn's bridge rather than holding a stale
    * closure. Headless mode leaves this unset, which auto-denies.
    */
-  setAskUser(askUser: ((toolName: string, args: Record<string, unknown>) => Promise<boolean | "posture">) | undefined): void {
+  setAskUser(askUser: ((toolName: string, args: Record<string, unknown>, envelope?: BashEnvelope) => Promise<boolean | "posture" | "envelope-grant">) | undefined): void {
     this.askUser = askUser;
   }
 

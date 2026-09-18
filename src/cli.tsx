@@ -16,6 +16,8 @@ import { fireNotify, type NotifySpawnOptions } from "./notify.js";
 import { HookRunner, fireNotificationHooks } from "./hooks/index.js";
 import { executeTool, TOOL_DEFS, registry, setSessionId, setCheckpointManager, setSignal, setSessionStore, setSetMode, setTimeoutToBackground, setSandboxLevel, setSessionTempDir, setWritePolicyLevel, setWriteRoots, setWebSearchConfig } from "./tools/index.js";
 import { createSessionTempDir } from "./sandbox/session-temp.js";
+import { buildSandboxProfile, isSandboxedLevel, profileWriteSet, sandboxEnvelopeHash } from "./sandbox/seatbelt.js";
+import type { BashEnvelope } from "./permissions/session-grant.js";
 import { filterToolDefs } from "./tools/filter.js";
 import { jobManager } from "./tools/jobs.js";
 import { todoStore } from "./tools/todo.js";
@@ -580,19 +582,46 @@ async function main() {
   // sandbox (permission-profile.md §8, phase (e)): when the flag is on and
   // the profile level demands it, bash children spawn under a Seatbelt
   // profile. macOS-only — the loader warned at startup if this is a no-op.
-  setSandboxLevel(
+  const bashSandboxLevel =
     configResult.config.sandbox?.enabled &&
     configResult.config.permissionProfile &&
     configResult.config.permissionProfile.level !== "unrestricted"
       ? configResult.config.permissionProfile.level
-      : undefined,
-  );
+      : undefined;
+  setSandboxLevel(bashSandboxLevel);
   setWritePolicyLevel(permissionProfile.level);
   // sandbox.writeRoots (docs/unified-write-boundary.md) plus explicit
   // --add-dir roots. The loader keeps project config global-only; CLI roots
   // are session-scoped and already resolved from startup cwd. Threaded into
   // ctx so Seatbelt and file-tool containment consult the same set.
-  setWriteRoots([...(configResult.config.sandbox?.writeRoots ?? []), ...additionalWriteRoots]);
+  const writeRoots = [...(configResult.config.sandbox?.writeRoots ?? []), ...additionalWriteRoots];
+  setWriteRoots(writeRoots);
+
+  // The session grant's envelope (docs/permission-ux-redesign.md): the profile
+  // this session's foreground Bash launches run under, identified by the hash
+  // of the exact profile text — not by an enumerated field list, which could
+  // disagree with what Seatbelt is handed. Built from the same values that feed
+  // setSandboxLevel/setWriteRoots and the Bash handler's own context
+  // (ctx.workingDir is this process's startup cwd), so the gate's envelope and
+  // the spawn's profile cannot describe different things. Absent when the
+  // session has no OS boundary to bind consent to — non-macOS, no level, or
+  // `unrestricted` — and in that case no grant is ever offered or reused.
+  const bashEnvelope: BashEnvelope | undefined =
+    hasActiveSandboxContainment(configResult.config) &&
+    isSandboxedLevel(bashSandboxLevel)
+      ? {
+          profileHash: sandboxEnvelopeHash(
+            buildSandboxProfile(bashSandboxLevel, process.cwd(), writeRoots, sessionTemp.path),
+          ),
+          level: bashSandboxLevel,
+          trustedRoot: process.cwd(),
+          // The write-set the profile grants, from the same function the profile
+          // itself is built from — so the consent text and the panel quote the
+          // limits that apply, not the roots that were requested.
+          writeRoots: profileWriteSet(bashSandboxLevel, process.cwd(), writeRoots, sessionTemp.path),
+          sessionTempDir: sessionTemp.path,
+        }
+      : undefined;
 
   const notifySpawnOptions: NotifySpawnOptions = {
     cwd: process.cwd(),
@@ -958,11 +987,11 @@ async function main() {
     ? new StatusLineManager(statuslineConfig, {
       spawn: {
         trustedRoot: process.cwd(),
-        sandboxLevel:
-          configResult.config.sandbox?.enabled && configResult.config.permissionProfile?.level !== "unrestricted"
-            ? configResult.config.permissionProfile?.level
-            : undefined,
-        writeRoots: [...(configResult.config.sandbox?.writeRoots ?? []), ...additionalWriteRoots],
+        // The same resolved level and roots the Bash envelope above is built
+        // from, so the statusline cannot run under a different profile than the
+        // one the session grant was approved against.
+        sandboxLevel: bashSandboxLevel,
+        writeRoots: [...writeRoots],
         sessionTempDir: sessionTemp.path,
       },
     })
@@ -1055,7 +1084,7 @@ async function main() {
           if (event.kind !== "text") cb.onSubagentProgress?.(event);
           appSubagentSink?.(event);
         });
-        return runAgentTurnBridge(input, cb, shared, permissions, permissionProfile, getProvider, getCompactor(), diagnostics, skills, agents, memoryInjection, memoryStore, sessionStore, sessionId, modeLoader, skillLoader, imageUrls, planMode, checkpoints, configResult.config.notify, configResult.config.env, notifySpawnOptions, errorReflector, errorRecovery, repomapInjection, dirtyBaseline, thinkingEnabled, getActiveModelCaps()?.contextWindow, hooks);
+        return runAgentTurnBridge(input, cb, shared, permissions, permissionProfile, getProvider, getCompactor(), diagnostics, skills, agents, memoryInjection, memoryStore, sessionStore, sessionId, modeLoader, skillLoader, imageUrls, planMode, checkpoints, configResult.config.notify, configResult.config.env, notifySpawnOptions, errorReflector, errorRecovery, repomapInjection, dirtyBaseline, thinkingEnabled, getActiveModelCaps()?.contextWindow, hooks, bashEnvelope);
       },
       // Async sub-agent delivery (async-subagents.md §2): the App registers its
       // session-scoped wake handler here; the orchestrator calls it once per
@@ -1717,7 +1746,7 @@ export async function handleSlashCore(
   }
 }
 
-async function runAgentTurnBridge(input: string, cb: any, shared: any, permissions: PermissionEngine, permissionProfile: ProfileEvaluator | undefined, getProvider: any, compactor: Compactor, diagnostics: DiagnosticRunner, skills: SkillDef[], agents: AgentDef[], memoryInjection: string | null | undefined, memoryStore: MemoryStore, sessionStore: SessionStore, sessionId: string, modeLoader: ModeLoader, skillLoader: SkillLoader, imageUrls?: string[], planMode?: boolean, checkpoints?: CheckpointManager, notifyScript?: string, notifyEnv?: Record<string, string | undefined>, notifySpawnOptions?: NotifySpawnOptions, errorReflector?: ErrorReflector, errorRecovery?: ErrorRecovery, repomapInjection?: string, dirtyBaseline?: string, thinkingEnabled?: boolean, contextWindow?: number, hooks?: HookRunner): Promise<any> {
+async function runAgentTurnBridge(input: string, cb: any, shared: any, permissions: PermissionEngine, permissionProfile: ProfileEvaluator | undefined, getProvider: any, compactor: Compactor, diagnostics: DiagnosticRunner, skills: SkillDef[], agents: AgentDef[], memoryInjection: string | null | undefined, memoryStore: MemoryStore, sessionStore: SessionStore, sessionId: string, modeLoader: ModeLoader, skillLoader: SkillLoader, imageUrls?: string[], planMode?: boolean, checkpoints?: CheckpointManager, notifyScript?: string, notifyEnv?: Record<string, string | undefined>, notifySpawnOptions?: NotifySpawnOptions, errorReflector?: ErrorReflector, errorRecovery?: ErrorRecovery, repomapInjection?: string, dirtyBaseline?: string, thinkingEnabled?: boolean, contextWindow?: number, hooks?: HookRunner, bashEnvelope?: BashEnvelope): Promise<any> {
   if (checkpoints) {
     const convLen = shared.conversationHistory.length;
     await checkpoints.save(`[convLen:${convLen}] ${input.slice(0, 80)}`);
@@ -1799,6 +1828,12 @@ async function runAgentTurnBridge(input: string, cb: any, shared: any, permissio
       cb.onUsage(input, output);
     },
     askUser: cb.askUser,
+    // Root run only (docs/permission-ux-redesign.md): the session grant is the
+    // interactive user's consent, so only this run may reuse or create one.
+    // Subagent runs (orchestrator) and headless exec runs are never handed an
+    // envelope, which is what keeps the grant from being inherited by
+    // delegated or autonomous work.
+    bashEnvelope,
     // Mid-turn steering mailbox (App's queue); the loop polls it before each
     // provider call and injects a queued message at the next decision point.
     pollSteeringMessage: cb.pollSteeringMessage,

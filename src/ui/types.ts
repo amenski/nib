@@ -6,6 +6,7 @@ import type { KeybindingMap, KeybindingConfig, KeybindingAction } from "./keybin
 import type { StatusLineManager } from "./statusline/index.js";
 import type { HookRunner } from "../hooks/index.js";
 import type { ProfileEvaluator } from "../permissions/index.js";
+import type { BashEnvelope } from "../permissions/session-grant.js";
 import type { TaskRecord } from "../orchestrator/runner.js";
 import type { SubagentProgress } from "../orchestrator/index.js";
 
@@ -263,8 +264,14 @@ export interface AgentBridgeCallbacks {
   onUsage: (input: number, output: number) => void;
   onNewMessages: (userInput: string, newMessages: Message[]) => Promise<void>;
   onHistoryUpdate: (messages: Message[]) => void;
-  /** Resolves "posture" when an auto-approve posture upgraded the ask without showing a prompt (recorded as allow-by-posture). */
-  askUser: (toolName: string, args: Record<string, unknown>) => Promise<boolean | "posture">;
+  /**
+   * Resolves "posture" when an auto-approve posture upgraded the ask without
+   * showing a prompt (recorded as allow-by-posture), or "envelope-grant" when
+   * the user approved the session grant for the sandbox envelope passed as the
+   * third argument (docs/permission-ux-redesign.md) — the agent records that
+   * one and stores the grant, so the UI writes no row for it.
+   */
+  askUser: (toolName: string, args: Record<string, unknown>, envelope?: BashEnvelope) => Promise<boolean | "posture" | "envelope-grant">;
   /** Mid-turn steering mailbox: polled once per decision point by the agent
    *  loop; returns the next queued message or null (the queue head is consumed). */
   pollSteeringMessage?: () => string | null;

@@ -48,9 +48,10 @@ import TodoPanel from "./TodoPanel.js";
 import { todoStore } from "../tools/todo.js";
 import type { TodoItem } from "../tools/todo.js";
 import StatusBar from "./StatusBar.js";
-import PermissionPrompt, { DestructiveConfirmPrompt, ScopeChoicePrompt, ExternalScopeChoicePrompt, type PermissionDecision } from "./PermissionPrompt.js";
+import PermissionPrompt, { DestructiveConfirmPrompt, ScopeChoicePrompt, ExternalScopeChoicePrompt, permissionOptions, type PermissionDecision, type PermissionRequest } from "./PermissionPrompt.js";
 import { extractCapabilityPlan } from "../permissions/capabilities.js";
 import { isGitConfigOperation } from "../permissions/git-config-operations.js";
+import { isEligibleForGrant, type BashEnvelope } from "../permissions/session-grant.js";
 import { explainToolAction } from "./explain-action.js";
 import { buildWelcomeLines } from "./views/WelcomeScreen.js";
 import PromptInput from "./views/PromptInput.js";
@@ -250,7 +251,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
   // (empty at mount).
   const [todos, setTodos] = useState<TodoItem[]>(() => todoStore.getTodos());
   const [askPrompt, setAskPrompt] = useState<{
-    resolve: (v: boolean) => void;
+    resolve: (v: boolean | "envelope-grant") => void;
     toolName: string;
     args: Record<string, unknown>;
     winningRule?: PermissionRule;
@@ -262,6 +263,8 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
     externalTreeRule?: PermissionRule;
     /** True when this tool does not yet have a safe persistent approval scope. */
     oneTimeOnly?: boolean;
+    /** The containment a session grant would cover (docs/permission-ux-redesign.md). */
+    envelope?: BashEnvelope;
     /** True once the user picked session/always and is choosing file-vs-folder scope. */
     scopeStage?: boolean;
     /** The session/always decision carried into the scope stage. */
@@ -1198,6 +1201,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
         askUser: async (
           toolName: string,
           args: Record<string, unknown>,
+          envelope?: BashEnvelope,
         ) => {
           if (
             [
@@ -1252,11 +1256,30 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           // never a secret-adjacent path guard — both must always surface the
           // real prompt, regardless of posture. "posture" (not true) tells
           // agent.ts to record allow-by-posture instead of ask-approved.
-          if (ctx.autoApproveAllowed && ctx.mutable.posture === "autoApprove" && !wasUnresolved && !isGuarded && !oneTimeOnly) {
+          //
+          // Bash is excluded outright (docs/permission-ux-redesign.md): the
+          // session grant is the way a Bash ask stops recurring, and consent for
+          // it can only come from a prompt. Approving the class silently would
+          // keep the prompt count where it is while never creating the grant.
+          if (ctx.autoApproveAllowed && ctx.mutable.posture === "autoApprove" && !wasUnresolved && !isGuarded && !oneTimeOnly && toolName !== "run_bash") {
             return "posture";
           }
 
-          return new Promise<boolean>((resolve) => {
+          // The session grant is offered only where the gate would honor it —
+          // the same single predicate agent.ts consults, applied here to the
+          // envelope the run handed over, so the option cannot appear on a call
+          // the grant would not cover.
+          const grantEnvelope = isEligibleForGrant({
+            toolName,
+            args,
+            isGuarded,
+            winningRuleOrigin: winningRule?.origin,
+            envelope,
+          })
+            ? envelope
+            : undefined;
+
+          return new Promise<boolean | "envelope-grant">((resolve) => {
             const defaultRule = ctx.permissions.buildDefaultRule(toolName, args);
             const folderRule = ctx.permissions.folderScopeRule(toolName, args);
             const externalTreeRule = ctx.permissions.externalTreeRule(toolName, args);
@@ -1269,6 +1292,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
               folderRule,
               externalTreeRule,
               oneTimeOnly,
+              envelope: grantEnvelope,
               capabilityPlan: extractCapabilityPlan(toolName, args, process.cwd()),
               workingDir: process.cwd(),
               cursor: 0,
@@ -1720,7 +1744,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
     [ctx, exit],
   );
 
-  function resolveAskPrompt(allowed: boolean): void {
+  function resolveAskPrompt(allowed: boolean | "envelope-grant"): void {
     // Cancel any in-flight Ctrl+E explanation — its prompt is going away.
     explainAbortRef.current?.abort();
     explainAbortRef.current = null;
@@ -1779,10 +1803,38 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
     })();
   }
 
+  /**
+   * The pending ask as a PermissionRequest — the one shape the mounted prompt
+   * and the key handler's option list are both built from, so the digits the
+   * user sees and the digits that select are never two lists that can drift.
+   */
+  function askPromptRequest(prompt: NonNullable<typeof askPrompt>): PermissionRequest {
+    return {
+      toolName: prompt.toolName,
+      command: extractToolSubject(prompt.toolName, prompt.args),
+      winningRule: prompt.winningRule,
+      defaultRule: prompt.defaultRule,
+      capabilityPlan: prompt.capabilityPlan,
+      workingDir: prompt.workingDir,
+      allowPersistentApproval: !prompt.oneTimeOnly,
+      envelope: prompt.envelope,
+      explain: prompt.explain,
+    };
+  }
+
   function handlePermissionDecision(decision: PermissionDecision): void {
     if (!askPrompt) return;
 
     if (askPrompt.oneTimeOnly && decision !== "once" && decision !== "deny") return;
+
+    // The session grant is consent for the containment envelope, not a rule
+    // about this command: it stores no rule, has no scope to choose, and is
+    // recorded by agent.ts (the canonical `allow-by-envelope-grant` row) — so
+    // there is deliberately no UI-side row here.
+    if (decision === "envelope-grant") {
+      resolveAskPrompt("envelope-grant");
+      return;
+    }
 
     const rawSubject = askPrompt.args?.command ?? askPrompt.args?.path ?? askPrompt.args?.filePath ?? askPrompt.args?.url;
     const subject = typeof rawSubject === "string" ? rawSubject : "";
@@ -1938,11 +1990,11 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
 
     if (askPrompt) {
       const lower = value.toLowerCase();
-      // Stage two (file-vs-folder scope) has two options; the main prompt has four.
+      // Stage two (file-vs-folder scope) has two options; the main prompt's
+      // options come from the same function the prompt renders (three with the
+      // session grant on offer, two for one-time-only, four otherwise).
       const scopeChoices: ("file" | "folder")[] = ["file", "folder"];
-      const decisions: PermissionDecision[] = askPrompt.oneTimeOnly
-        ? ["once", "deny"]
-        : ["once", "session", "always", "deny"];
+      const decisions: PermissionDecision[] = permissionOptions(askPromptRequest(askPrompt)).map((opt) => opt.decision);
       const optionCount = askPrompt.scopeStage ? scopeChoices.length : decisions.length;
 
       if (key.escape) {
@@ -2130,32 +2182,14 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
         />
       )) : askPrompt && (askPrompt.winningRule?.origin === "builtin-destructive" ? (
         <DestructiveConfirmPrompt
-          request={{
-            toolName: askPrompt.toolName,
-            command: extractToolSubject(askPrompt.toolName, askPrompt.args),
-            winningRule: askPrompt.winningRule,
-            defaultRule: askPrompt.defaultRule,
-            capabilityPlan: askPrompt.capabilityPlan,
-            workingDir: askPrompt.workingDir,
-            allowPersistentApproval: !askPrompt.oneTimeOnly,
-            explain: askPrompt.explain,
-          }}
+          request={askPromptRequest(askPrompt)}
           cursor={askPrompt.cursor}
           onChoose={handlePermissionDecision}
           onCancel={() => resolveAskPrompt(false)}
         />
       ) : (
         <PermissionPrompt
-          request={{
-            toolName: askPrompt.toolName,
-            command: extractToolSubject(askPrompt.toolName, askPrompt.args),
-            winningRule: askPrompt.winningRule,
-            defaultRule: askPrompt.defaultRule,
-            capabilityPlan: askPrompt.capabilityPlan,
-            workingDir: askPrompt.workingDir,
-            allowPersistentApproval: !askPrompt.oneTimeOnly,
-            explain: askPrompt.explain,
-          }}
+          request={askPromptRequest(askPrompt)}
           cursor={askPrompt.cursor}
           onChoose={handlePermissionDecision}
           onCancel={() => resolveAskPrompt(false)}

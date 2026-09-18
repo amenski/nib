@@ -380,7 +380,10 @@ describe("runAgent", () => {
 
       await runAgent("run tests", { provider, tools: [], executeTool, permissions, askUser });
 
-      expect(askUser).toHaveBeenCalledWith("run_bash", { command: "npm test" });
+      // The third argument is the sandbox envelope a session grant could cover.
+      // `undefined` here: this run carries no containment, so no grant applies
+      // and the prompter is not offered the option (agent.grant.test.ts).
+      expect(askUser).toHaveBeenCalledWith("run_bash", { command: "npm test" }, undefined);
       expect(executeTool).toHaveBeenCalled();
     });
 
@@ -700,7 +703,7 @@ describe("runAgent", () => {
       await runAgent("edit it", { provider, tools: [], executeTool, permissions: new PermissionEngine(undefined, "/workspace"), permissionProfile, askUser });
 
       expect(askUser).toHaveBeenCalledTimes(1);
-      expect(askUser).toHaveBeenCalledWith("edit", expect.objectContaining({ path: "/workspace/src/a.ts" }));
+      expect(askUser).toHaveBeenCalledWith("edit", expect.objectContaining({ path: "/workspace/src/a.ts" }), undefined);
       expect(executeTool).toHaveBeenCalled();
     });
 
@@ -899,7 +902,7 @@ describe("runAgent", () => {
       // The ask resolved once — no double prompt, and all three calls ran
       // (the reads concurrently, the ask sequentially in between).
       expect(askUser).toHaveBeenCalledTimes(1);
-      expect(askUser).toHaveBeenCalledWith("run_bash", { command: "npm test" });
+      expect(askUser).toHaveBeenCalledWith("run_bash", { command: "npm test" }, undefined);
       expect(executeTool).toHaveBeenCalledTimes(3);
       expect(sessionStore.appendPermission).toHaveBeenCalledWith("s1", expect.objectContaining({
         tool: "run_bash",

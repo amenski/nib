@@ -53,6 +53,16 @@ export interface CompactionSummary {
  *                      resolution; terminal, never promptable (permission-profile.md §4)
  *   headless-deny    — resolved to ask but no interactive prompter was available
  *   unresolved-ask   — a bash segment couldn't be safely classified (fail-closed ask)
+ *   allow-by-envelope-grant — a foreground Bash ask was covered by this
+ *                      session's sandbox-envelope grant, without a prompt
+ *                      (docs/permission-ux-redesign.md); `envelopeGrant` says
+ *                      whether the grant was reused or just created
+ *   grant-invalidated — the envelope a grant was approved against changed, so
+ *                      the grant was dropped and the call was asked again
+ *   grant-revoked    — the user revoked the session grant
+ *   sandbox-failure  — a sandboxed launch could not confirm its Seatbelt
+ *                      profile, so the command did not run and any grant was
+ *                      revoked; the specific error is in the tool result
  *
  * The four legacy values ("once" | "session" | "always" | "deny") are still
  * accepted for backward compatibility: the TUI (src/ui/App.tsx) writes those
@@ -62,11 +72,15 @@ export interface CompactionSummary {
 export type PermissionDecision =
   | "allow-by-rule"
   | "allow-by-posture"
+  | "allow-by-envelope-grant"
   | "ask-approved"
   | "ask-denied"
   | "deny-by-rule"
   | "deny-by-profile"
+  | "grant-invalidated"
+  | "grant-revoked"
   | "headless-deny"
+  | "sandbox-failure"
   | "unresolved-ask"
   // legacy / UI-side fine-grained values, still valid on read + write:
   | "deny"
@@ -93,6 +107,13 @@ export interface PermissionAuditRecord {
   reason?: string;
   /** Who produced this row — absent for top-level (parent) writes. */
   source?: AuditSource;
+  /**
+   * On an `allow-by-envelope-grant` row: whether the session grant was reused
+   * for an already-approved envelope (`"reuse"`) or created by this prompt
+   * (`"granted"`). The two are counted separately — a reuse is the prompt that
+   * did not happen, a grant is the consent that was given.
+   */
+  envelopeGrant?: "reuse" | "granted";
   /** Advisory command classification, persisted on canonical agent rows only. */
   commandClassification?: CommandClassificationResult;
 }
@@ -108,11 +129,15 @@ export interface SessionPermissionMetrics {
   permissionPrompts: number;
   permissionApprovals: number;
   permissionDenials: number;
-  classifierProvenReadOnly: number;
-  classifierUnknown: number;
-  falseAllowCount: number;
-  /** Null means no proven-read-only classifications were recorded. */
-  falseAllowRate: number | null;
+  /** Session grants created by a consent prompt, and grants reused without one. */
+  envelopeGrantsCreated: number;
+  envelopeGrantReuses: number;
+  /** Grants dropped because their sandbox envelope changed. */
+  envelopeGrantInvalidations: number;
+  /** Grants the user revoked (docs/permission-ux-redesign.md). */
+  envelopeGrantRevocations: number;
+  /** Launches that could not confirm their Seatbelt profile; the command did not run. */
+  sandboxFailures: number;
 }
 
 export interface TokenUsageRecord {
@@ -382,10 +407,7 @@ export class SessionStore {
 
   /** Returns session-local aggregates; no telemetry or external sink is used. */
   async queryPermissionMetrics(sessionId: string): Promise<SessionPermissionMetrics> {
-    return computeSessionPermissionMetrics(
-      await this.queryPermissionHistory(sessionId),
-      await this.queryClassifierEvidence(sessionId),
-    );
+    return computeSessionPermissionMetrics(await this.queryPermissionHistory(sessionId));
   }
 
   async appendToken(sessionId: string, record: TokenUsageRecord): Promise<void> {

@@ -275,6 +275,12 @@ render via ansi256; `red`/`yellow` use the theme's error/warning slots.
   into the UI as they arrive. A provider that throws, times out, or blocks
   never crashes or stalls the render — it only yields an empty (dropped)
   segment.
+- A `command` provider runs under the session's macOS sandbox profile when
+  containment is active, and that profile is confirmed inside the child before
+  its stdout counts (docs/permission-ux-redesign.md). A profile the machine
+  refuses to apply therefore drops the segment with an explicit
+  `SANDBOX_NOT_APPLIED` error rather than being read as a provider that failed
+  on its own — and the command is never retried outside the sandbox.
 - Provider output is **sanitized** before rendering: ANSI escapes and
   control characters are stripped, whitespace collapsed, and length capped
   (120 chars).

@@ -18,6 +18,10 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Publishing. The Homebrew formula source is a checksum-placeholder template
   until the scoped tarball exists; the release procedure documents the separate
   tap update.
+- **Sandboxed Bash session consent.** An interactive user can approve eligible
+  foreground Bash calls for the current workspace and sandbox profile for one
+  session, then revoke the grant in `/permissions`. Denied and guarded calls,
+  background jobs, subagents, and unsupported platforms remain outside it.
 
 ### Changed
 
@@ -26,6 +30,23 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   installation itself. This removes automatic network contact; providers and
   integrations are contacted only when configured or invoked.
 - **License text is the canonical Apache License 2.0.**
+- **Long-session context handling.** Older consumed tool results can be removed
+  from large model requests while the complete session transcript stays local;
+  oversized tool output is capped and earlier conversation can be compacted.
+
+### Security
+
+- **Child process containment.** macOS Seatbelt profiles now protect sibling
+  and credential paths under the home directory and restrict writes to approved
+  roots, including child paths through MCP servers, hooks, notifications, and
+  status lines. Files outside the home directory may still be readable. Direct
+  child network connections are denied by the tested profile; system name
+  resolution remains a documented residual.
+- **Fail-closed sandbox launch.** A child signals readiness only after its
+  sandbox profile applies. Missing readiness reports a specific failure,
+  revokes a Bash session grant, and never retries unsandboxed.
+- **Untrusted output marking.** Tool output uses matching per-call delimiters,
+  and duplicated wrappers and control-character sanitizers were consolidated.
 
 ## [0.5.0] — 2026-09-15
 

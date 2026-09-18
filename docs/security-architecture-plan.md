@@ -2,7 +2,7 @@
 
 **Status:** implemented (phases 0–4) · verified 2026-09-16 · listed release
 gates measured on their stated scope, four residuals recorded · sandboxed-Bash
-session grant added 2026-09-18 (measured, two live checks outstanding — see the
+session grant added 2026-09-18 (measured, live acceptance completed — see the
 observation below)
 
 This is the reviewed architecture and release-gate record. Phases 0–4 have
@@ -69,13 +69,11 @@ observed, and on which machine:
   and not a mode of this branch. Full results in
   docs/permission-ux-redesign.md.
 - **Not verified, and not claimed:** no CI run exists for any of this (nothing
-  is pushed); the failure recognizer has never seen a *real* Seatbelt refusal on
-  this machine — `sandbox-exec` is invoked by absolute path, so the refusing case
-  cannot be produced here, and the injected seam proves the code path only; and
-  no human has yet driven the interactive prompt on a TTY. The first is a push
-  decision, the second needs the Seatbelt-refusing runner already used for gate 5,
-  and the third is a one-minute manual step. Until at least the third happens, the
-  consent copy is verified as text and as a decision, not as a rendered prompt.
+  is pushed). The managed nested-Sandbox runner was re-run on 2026-09-18 and did
+  produce the real refusal: `sandbox-exec` exited 71 before readiness; the
+  failure-specific test passed. The normal local runner separately proves the
+  capable direction. A real Terminal acceptance run verified the rendered
+  consent, grant reuse, `/permissions` revocation, and the next-call re-ask.
 
 ## Final decision
 
@@ -997,8 +995,8 @@ parser that enforces it on the model's behalf, and the id rule is only as good a
 the model's compliance with one sentence in the system prompt. It is therefore
 still recorded rather than closed — model compliance is not a security boundary,
 and the OS sandbox remains the limit on what a command can do. See
-`docs/permission-ux-redesign.md` for the prerequisite this discharged, and for
-the `web-fetch-guard.ts` sanitizer duplication it still records as outstanding.
+`docs/permission-ux-redesign.md` for the prerequisite this discharged and its
+now-consolidated `web-fetch-guard.ts` sanitizer.
 
 **Residual 4 — a registry-served dependency is not probed.** The install-script
 mechanism is measured with a local package; the delivery path through a real

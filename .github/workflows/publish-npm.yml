@@ -39,7 +39,7 @@ jobs:
           echo "TARBALL=$tarball" >> "$GITHUB_ENV"
           prefix="$(mktemp -d)"
           npm install --prefix "$prefix" "$tarball"
-          "$prefix/bin/nib" doctor
+          "$prefix/node_modules/.bin/nib" doctor
       - name: Publish with npm Trusted Publishing
         run: |
           version="$(node -p "require('./package.json').version")"

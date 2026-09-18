@@ -17,7 +17,7 @@ The first publication of `@amenski/nib` is a manual npm/2FA bootstrap:
 tarball="$(npm pack --json | node -e "let data=''; process.stdin.on('data', c => data += c); process.stdin.on('end', () => console.log(JSON.parse(data)[0].filename))")"
 prefix="$(mktemp -d)"
 npm install --prefix "$prefix" "$tarball"
-"$prefix/bin/nib" doctor
+"$prefix/node_modules/.bin/nib" doctor
 npm publish "$tarball" --access public
 ```
 

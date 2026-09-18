@@ -1,11 +1,11 @@
 # Bash permission UX redesign
 
 **Status:** implemented on this branch · reviewed against source 2026-09-16 ·
-measured 2026-09-18. Two verifications remain **outstanding** and are named as
-such under "Verification before shipping": the live interactive acceptance run
-(needs a TTY) and the real refusal on a Seatbelt-refusing runner (needs such a
-runner). Neither is claimed as done below; the injected-seam cases prove the code
-path, not the machine.
+measured 2026-09-18. The live interactive acceptance run was completed in a
+real Terminal: the session grant was offered, reused, revoked through
+`/permissions`, and the next eligible Bash call asked again. The real refusal
+was observed in the managed nested-Sandbox runner; injected-seam cases
+additionally prove its code path.
 
 ## Problem
 
@@ -210,11 +210,11 @@ prompter) — it proves the code path, never the machine.
   envelope but **no** interactive prompter (headless) is denied without
   launching, even when a grant exists for that envelope — the grant block sits
   behind the `askUser` check. Non-macOS platforms have no envelope to build, so
-  no grant is reachable there. **Outstanding:** the live interactive run (grant
-  offered once, reused, revoked in `/permissions`) needs a TTY; it is a manual
-  step, and it is the only check that the offered prompt actually looks and reads
-  the way the consent copy above is written.
-- **Containment failure (proven by the suite; outstanding on a real runner).**
+  no grant is reachable there. **Live acceptance:** a real Terminal run verified
+  that the grant is offered once, reused, revoked in `/permissions`, and that the
+  next eligible Bash call asks again. This is the check that the consent copy is
+  rendered and reads as intended, rather than merely being verified as text.
+- **Containment failure (proven by the suite and observed on a real runner).**
   With a spawned child that never signals readiness, exactly one launch happens
   and it is `/usr/bin/sandbox-exec` — there is no unsandboxed retry — the command
   body never runs, the tool result carries the specific `SANDBOX_NOT_APPLIED`
@@ -225,10 +225,10 @@ prompter) — it proves the code path, never the machine.
   → not ready) and, against a fake child, the two branches no capable runner can
   produce: the timeout watchdog, which is what stops a launcher that neither
   signals nor exits from wedging the call forever, and that any byte counts as
-  the signal whatever its value. **Outstanding:** observing the *real*
-  refusal requires a macOS runner that refuses nested Seatbelt — the condition
-  already recorded in `0ded054`. This machine applies the profile, so it can
-  prove the capable direction only.
+  the signal whatever its value. The managed runner was re-run on 2026-09-18:
+  its nested `sandbox-exec` exited 71 before readiness, while the
+  refusal-specific test passed. The normal local macOS runner applies the
+  profile and proves the capable direction.
 - **Hostile output cannot hand itself authority (proven by the suite).**
   Command output that forges the block terminator, forges a self-consistent pair
   with a different id, and then claims the sandbox is off and names the next
@@ -271,17 +271,16 @@ each one now points at:
 - In a capable macOS runner, a first `timeout 60 python3 ...` asks once; later
   foreground commands under the same envelope reuse the explicit session grant.
   Denies and guarded asks still win, and a changed write root, profile,
-  workspace, or network policy asks again. → proven by the suite, live run
-  outstanding (above).
+  workspace, or network policy asks again. → proven by the suite and by the
+  completed live run above.
 - Verify that `run_bash_background`, `.git/config` trusted operations, headless
   mode, and unsupported platforms cannot use the grant; inject a Seatbelt
   application failure and assert no readiness signal, no command body, no
   fallback, a specific user-visible error, and grant revocation. → all proven by
-  the suite; the real refusal on a Seatbelt-refusing runner is outstanding
-  (above). `sandbox-exec` is invoked by absolute path
-  (`/usr/bin/sandbox-exec`), so a PATH shim cannot inject the failure case. An
-  already running child retains its OS profile after timeout migration or
-  detachment.
+  the suite; the real refusal is observed above. `sandbox-exec` is invoked by
+  absolute path (`/usr/bin/sandbox-exec`), so a PATH shim cannot inject the
+  failure case. An already running child retains its OS profile after timeout
+  migration or detachment.
 - Extend the existing synthetic fixtures in `seatbelt.test.ts`,
   `child-paths.test.ts`, `egress.test.ts`, and `hostile-input.test.ts` for the
   grant path. They already prove ordinary workspace work succeeds while

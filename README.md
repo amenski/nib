@@ -190,6 +190,10 @@ Full schema: [`docs/config-spec.md`](./docs/config-spec.md).
   repo; `/undo` can rewind code, conversation, or both.
 - **Durable sessions.** Conversations are append-only JSONL with automatic
   compaction and resumable todo state. Continue by directory or resume by ID.
+- **Lean long sessions.** Nib caps oversized tool output, clears older tool
+  results from large model requests, and compacts earlier conversation. Recent
+  results stay available to the model; the complete transcript remains in the
+  local session log.
 - **Skills, MCP, and sub-agents.** Load [Agent Skills](https://agentskills.io),
   connect stdio MCP servers, and delegate bounded work through `new_task`.
 - **Safe file coordination.** Nib tracks when it last read a file and refuses

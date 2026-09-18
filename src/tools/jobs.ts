@@ -10,6 +10,7 @@ import {
   validateCwdWithinTrustedRoot,
   type SandboxLevel,
 } from "../sandbox/seatbelt.js";
+import { containmentFailureError, spawnContained, type ReadinessOutcome } from "../sandbox/launcher.js";
 import { wrapUntrusted, sanitizeControlChars } from "./untrusted-content.js";
 
 // Background jobs can produce unbounded output (dev servers, tail -f); holding
@@ -178,18 +179,18 @@ export class JobManager {
 
     const id = randomUUID();
     let proc: ChildProcess;
+    // Undefined until the framed path sets it; track() treats undefined as
+    // "nothing to confirm" (the unsandboxed spawn).
+    let readiness: Promise<ReadinessOutcome> | undefined;
     try {
       // sandboxLevel (permission-profile.md §8, phase (e)): background jobs
       // spawn under the same Seatbelt profile as run_bash children.
       const sandbox = sandboxPrefix(command, cwd, trustedRoot, opts?.sandboxLevel, opts?.writeRoots, opts?.sessionTempDir);
       const env = opts?.sessionTempDir ? { ...process.env, TMPDIR: opts.sessionTempDir, TMP: opts.sessionTempDir, TEMP: opts.sessionTempDir, npm_config_cache: `${opts.sessionTempDir}/npm-cache` } : undefined;
       if (sandbox) {
-        proc = spawn(sandbox.file, sandbox.args, {
-          cwd,
-          detached: true,
-          stdio: ["ignore", "pipe", "pipe"],
-          env,
-        });
+        const contained = spawnContained(sandbox, ["/bin/sh", "-c", command], { cwd, env, detached: true });
+        proc = contained.proc;
+        readiness = contained.readiness;
       } else {
         proc = spawn(command, {
           cwd,
@@ -219,7 +220,7 @@ export class JobManager {
       stream: opts?.stream ?? false,
     };
     this.jobs.set(id, job);
-    this.track(job);
+    this.track(job, readiness);
 
     return { ok: true, id };
   }
@@ -277,8 +278,15 @@ export class JobManager {
   /**
    * Wire a job's process to the capped buffers, status transitions, timeout,
    * and the completion/output events. Shared by start() and adopt().
+   *
+   * `readiness` is present only for a job spawned under a Seatbelt profile
+   * (docs/permission-ux-redesign.md): the job's outcome is then held until the
+   * profile is confirmed inside the child, because a profile that never applied
+   * and an ordinary non-zero exit arrive as the same events. Absent — adopt(),
+   * or an unsandboxed spawn — the outcome settles on the event that carries it,
+   * exactly as before this change.
    */
-  private track(job: Job): void {
+  private track(job: Job, readiness?: Promise<ReadinessOutcome>): void {
     job.proc.stdout?.on("data", (chunk: Buffer) => {
       const text = chunk.toString();
       job.stdout = appendCapped(job.stdout, text, () => { job.stdoutTruncated = true; });
@@ -289,15 +297,54 @@ export class JobManager {
       job.stderr = appendCapped(job.stderr, text, () => { job.stderrTruncated = true; });
       this.emitOutput(job, text);
     });
-    job.proc.on("error", (err) => {
-      job.stderr += (job.stderr ? "\n" : "") + `[nib] failed to start: ${err.message}`;
-      job.exitCode = -1;
-      job.endTime = Date.now();
-      if (job.status === "running") {
+
+    // One decision point reads both signals instead of two handlers racing to
+    // finish the job first. Without a readiness promise the byte is already
+    // known, so `settle` runs synchronously from the event handler below.
+    let read: ReadinessOutcome | undefined = readiness ? undefined : { ready: true };
+    let spawnError: Error | undefined;
+    let closeCode: number | null | undefined;
+    const settle = (): void => {
+      if (read === undefined) return;
+      if (spawnError === undefined && closeCode === undefined) return;
+      // A job already finished by kill() or its own timeout keeps that outcome:
+      // both handlers below were guarded the same way.
+      if (job.status !== "running") return;
+      const outcome = read;
+      if (!outcome.ready) {
+        // The command never ran, so there is no exit to report and nothing to
+        // retry outside the sandbox — the child is killed and the job fails
+        // with the specific containment error, kept out of the command's own
+        // stderr precedent by the fixed prefix.
+        job.stderr += (job.stderr ? "\n" : "") + containmentFailureError(outcome);
+        job.exitCode = -1;
+        job.endTime = Date.now();
         job.status = "failed";
         this.emitCompleted(job);
+        clearJobTimeout(job);
+        killTree(job.proc);
+        return;
       }
+      if (spawnError) {
+        job.stderr += (job.stderr ? "\n" : "") + `[nib] failed to start: ${spawnError.message}`;
+        job.exitCode = -1;
+        job.endTime = Date.now();
+        job.status = "failed";
+        this.emitCompleted(job);
+        clearJobTimeout(job);
+        return;
+      }
+      const code = closeCode ?? null;
+      job.exitCode = code;
+      job.endTime = Date.now();
+      job.status = code === 0 ? "done" : "failed";
+      this.emitCompleted(job);
       clearJobTimeout(job);
+    };
+
+    job.proc.on("error", (err) => {
+      spawnError = err;
+      settle();
     });
     // 'close' rather than 'exit': 'exit' fires as soon as the process itself
     // terminates, which can race ahead of the stdout/stderr 'data' handlers
@@ -305,14 +352,10 @@ export class JobManager {
     // child's stdio streams have also closed, so job.stdout/stderr are
     // guaranteed complete by the time the completion report is built.
     job.proc.on("close", (code) => {
-      job.exitCode = code;
-      job.endTime = Date.now();
-      if (job.status === "running") {
-        job.status = code === 0 ? "done" : "failed";
-        this.emitCompleted(job);
-      }
-      clearJobTimeout(job);
+      closeCode = code;
+      settle();
     });
+    if (readiness) void readiness.then((outcome) => { read = outcome; settle(); });
 
     const timeout = setTimeout(() => this.timeoutJob(job.id), job.timeoutMs);
     timeout.unref();

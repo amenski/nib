@@ -41,7 +41,15 @@ describe("Seatbelt application failure (macOS)", () => {
       expect(existsSync(containedMarker)).toBe(false);
 
       const output = await runBashTimed(`touch ${shellQuote(handlerMarker)}`, root, root, 5000, false, "workspace-write", [], scratch);
+      // The command must not have run, and the failure must be reported as
+      // unconfirmed containment rather than as the command's own error — this
+      // test is the real-runner half of that guarantee (readiness.test.ts
+      // covers the refusal deterministically).
       expect(existsSync(handlerMarker)).toBe(false);
+      expect(output.error).toBe("SANDBOX_NOT_APPLIED");
+      expect(output.content).toContain("SANDBOX_NOT_APPLIED");
+      // The raw sandbox-exec stderr is kept as supplementary detail, never as
+      // the distinguishing evidence — the absent readiness byte is.
       expect(output.content).toContain("sandbox_apply: Operation not permitted");
     } finally {
       rmSync(root, { recursive: true, force: true });

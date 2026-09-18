@@ -4,11 +4,15 @@ import type { ToolHandler } from "./types.js";
 import { ToolRegistry } from "./registry.js";
 import { jobManager, killTree, appendCapped, DEFAULT_TIMEOUT_MS } from "./jobs.js";
 import {
+  buildSandboxProfile,
   isSandboxedLevel,
+  sandboxEnvelopeHash,
   sandboxPrefix,
   validateCwdWithinTrustedRoot,
   type SandboxLevel,
 } from "../sandbox/seatbelt.js";
+import { containmentFailureError, spawnContained, type ReadinessOutcome, type SandboxFailureReason } from "../sandbox/launcher.js";
+import { envelopeChangedError } from "../permissions/session-grant.js";
 import { wrapUntrusted, sanitizeControlChars } from "./untrusted-content.js";
 
 const RUN_BASH_TIMEOUT_MS = 120_000;
@@ -97,6 +101,11 @@ export function resolveTimeoutToBackground(v: boolean | undefined): boolean {
  * only when the user approved *this* call at the prompt. It widens one spawn
  * — workspace-scoped `.git/config` writes — so an approved `git init` /
  * `remote add` / `config` works without re-opening the always-denied set.
+ *
+ * `onSandboxFailure` likewise comes from `exec`, and is set on every sandboxed
+ * launch: a child that never confirmed its profile means the machine refused to
+ * apply it, so the verdict is reported to the agent gate, which revokes any
+ * session grant approved against that profile.
  */
 export function runBashTimed(
   command: string,
@@ -108,23 +117,28 @@ export function runBashTimed(
   writeRoots?: string[],
   sessionTempDir?: string,
   allowGitConfigWrite?: boolean,
+  onSandboxFailure?: (reason: SandboxFailureReason) => void,
 ): Promise<ToolOutput> {
   if (isSandboxedLevel(sandboxLevel)) {
     const checked = validateCwdWithinTrustedRoot(cwd, trustedRoot, writeRoots);
     if (!checked.ok) return Promise.resolve({ content: "", error: checked.error });
   }
   let proc: ChildProcess;
+  let readiness: Promise<ReadinessOutcome>;
   try {
-    const sandbox = sandboxPrefix(command, cwd, trustedRoot, sandboxLevel, writeRoots, sessionTempDir, allowGitConfigWrite);
     const env = sessionTempDir ? { ...process.env, TMPDIR: sessionTempDir, TMP: sessionTempDir, TEMP: sessionTempDir, npm_config_cache: `${sessionTempDir}/npm-cache` } : undefined;
+    const sandbox = sandboxPrefix(command, cwd, trustedRoot, sandboxLevel, writeRoots, sessionTempDir, allowGitConfigWrite);
     if (sandbox) {
-      proc = spawn(sandbox.file, sandbox.args, {
-        cwd,
-        detached: true,
-        stdio: ["ignore", "pipe", "pipe"],
-        env,
-      });
+      // Containment (docs/permission-ux-redesign.md): the readiness frame
+      // wraps the same `/bin/sh -c <command>` argv this path has always
+      // produced, so the command itself is unchanged — only the launcher in
+      // front of it is new.
+      const contained = spawnContained(sandbox, ["/bin/sh", "-c", command], { cwd, env, detached: true });
+      proc = contained.proc;
+      readiness = contained.readiness;
     } else {
+      // No profile applies: exactly the previous spawn, with no frame and
+      // nothing to wait for.
       proc = spawn(command, {
         cwd,
         shell: true,
@@ -132,6 +146,7 @@ export function runBashTimed(
         stdio: ["ignore", "pipe", "pipe"],
         env,
       });
+      readiness = Promise.resolve({ ready: true });
     }
   } catch (err) {
     return Promise.resolve({ content: `Exit code: -1\nFailed to start: ${(err as Error).message}` });
@@ -143,8 +158,89 @@ export function runBashTimed(
     let stdoutTruncated = false;
     let stderrTruncated = false;
     let settled = false;
+    // The command's outcome is held until readiness settles, because a profile
+    // that never applied must not be reported as an ordinary non-zero exit —
+    // and both arrive as the same events. One decision point reads every
+    // outcome, instead of separate handlers racing to resolve first.
+    let read: ReadinessOutcome | undefined;
+    let closeCode: number | null | undefined;
+    let spawnError: Error | undefined;
+    let timedOut = false;
+    let timer: NodeJS.Timeout | undefined;
     const truncationNote = () =>
       stdoutTruncated || stderrTruncated ? "\n(output truncated — kept last 512KB)" : "";
+
+    const finish = (): void => {
+      const outcome = read;
+      if (settled || outcome === undefined) return;
+      if (!outcome.ready) {
+        // Containment could not be confirmed, so the command never ran: there
+        // is no output to interpret and nothing to retry outside the sandbox.
+        // The raw sandbox-exec stderr below is supplementary detail — the
+        // absent signal is the evidence, not a pattern match on stderr.
+        settled = true;
+        clearTimeout(timer);
+        killTree(proc);
+        onSandboxFailure?.("containment-not-applied");
+        resolve({
+          content: wrapUntrusted(`${containmentFailureError(outcome)}${stderr ? `\n${stderr}` : ""}`),
+          error: "SANDBOX_NOT_APPLIED",
+        });
+        return;
+      }
+      if (closeCode !== undefined) {
+        settled = true;
+        clearTimeout(timer);
+        if (closeCode === 0) {
+          resolve({ content: wrapUntrusted(`${stdout || "(no output)"}${truncationNote()}`) });
+        } else if (stderr.trim() !== "") {
+          // F5 delta: real failure (non-zero + stderr) — set `error` so the
+          // bounded auto-fix loop engages, and prepend the grepped
+          // <error_analysis> block inside the untrusted delimiters (the matched
+          // lines are still command output). The full stdout/stderr body is kept.
+          const analysis = buildErrorAnalysis(stderr, closeCode);
+          resolve({
+            content: wrapUntrusted(`${analysis}Exit code: ${closeCode}\n${stdout}\n${stderr}${truncationNote()}`),
+            error: `Exit code: ${closeCode}`,
+          });
+        } else {
+          // Silent non-zero exit (empty stderr) — grep -q / diff / test idioms:
+          // content only, no error, no analysis block.
+          resolve({ content: wrapUntrusted(`Exit code: ${closeCode}\n${stdout}\n${stderr}${truncationNote()}`) });
+        }
+        return;
+      }
+      if (timedOut) {
+        settled = true;
+        if (timeoutToBackground && !looksInteractive(command)) {
+          // The child keeps running; JobManager takes over its streams and the
+          // model polls check_job for the rest of the output.
+          const adopted = jobManager.adopt(proc, {
+            command,
+            cwd,
+            timeoutMs: DEFAULT_TIMEOUT_MS,
+            stdout,
+            stderr,
+          });
+          if (adopted.ok) {
+            resolve({
+              content: `Command exceeded ${Math.ceil(timeoutMs / 1000)}s timeout — moved to background as job ${adopted.id}. Use check_job with job_id "${adopted.id}" to poll status and output; kill_job to terminate it.`,
+            });
+            return;
+          }
+          // Adoption failed (job cap) — fall through to the kill path.
+        }
+        killTree(proc);
+        // Same shape the old exec-based handler produced on a timeout kill.
+        resolve({ content: wrapUntrusted(`Exit code: null\n${stdout}\n${stderr}`) });
+        return;
+      }
+      if (spawnError) {
+        settled = true;
+        clearTimeout(timer);
+        resolve({ content: `Exit code: -1\nFailed to start: ${spawnError.message}` });
+      }
+    };
 
     // Terminal-control sanitization (T14) happens here, at the single choke
     // point where command output enters the buffers — before the T12 wrapper,
@@ -159,11 +255,12 @@ export function runBashTimed(
       if (settled) return;
       stderr = appendCapped(stderr, sanitizeControlChars(chunk.toString()), () => { stderrTruncated = true; }, MAX_BASH_OUTPUT_CHARS);
     });
+    // Recorded rather than resolved on the spot: a child that never started
+    // cannot have confirmed a profile, so the readiness outcome decides which
+    // failure this is.
     proc.on("error", (err) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve({ content: `Exit code: -1\nFailed to start: ${(err as Error).message}` });
+      spawnError = err;
+      finish();
     });
     // 'close' rather than 'exit', same reasoning as jobs.ts (d864909): 'exit'
     // fires when the process terminates, before the stdout/stderr 'data'
@@ -171,53 +268,19 @@ export function runBashTimed(
     // can hand back an exit code with truncated or empty output. 'close' waits
     // for the stdio streams to close, so the buffers are complete.
     proc.on("close", (code) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      if (code === 0) {
-        resolve({ content: wrapUntrusted(`${stdout || "(no output)"}${truncationNote()}`) });
-      } else if (stderr.trim() !== "") {
-        // F5 delta: real failure (non-zero + stderr) — set `error` so the
-        // bounded auto-fix loop engages, and prepend the grepped
-        // <error_analysis> block inside the untrusted delimiters (the matched
-        // lines are still command output). The full stdout/stderr body is kept.
-        const analysis = buildErrorAnalysis(stderr, code);
-        resolve({
-          content: wrapUntrusted(`${analysis}Exit code: ${code}\n${stdout}\n${stderr}${truncationNote()}`),
-          error: `Exit code: ${code}`,
-        });
-      } else {
-        // Silent non-zero exit (empty stderr) — grep -q / diff / test idioms:
-        // content only, no error, no analysis block.
-        resolve({ content: wrapUntrusted(`Exit code: ${code}\n${stdout}\n${stderr}${truncationNote()}`) });
-      }
+      closeCode = code;
+      finish();
     });
 
-    const timer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      if (timeoutToBackground && !looksInteractive(command)) {
-        // The child keeps running; JobManager takes over its streams and the
-        // model polls check_job for the rest of the output.
-        const adopted = jobManager.adopt(proc, {
-          command,
-          cwd,
-          timeoutMs: DEFAULT_TIMEOUT_MS,
-          stdout,
-          stderr,
-        });
-        if (adopted.ok) {
-          resolve({
-            content: `Command exceeded ${Math.ceil(timeoutMs / 1000)}s timeout — moved to background as job ${adopted.id}. Use check_job with job_id "${adopted.id}" to poll status and output; kill_job to terminate it.`,
-          });
-          return;
-        }
-        // Adoption failed (job cap) — fall through to the kill path.
-      }
-      killTree(proc);
-      // Same shape the old exec-based handler produced on a timeout kill.
-      resolve({ content: wrapUntrusted(`Exit code: null\n${stdout}\n${stderr}`) });
+    timer = setTimeout(() => {
+      timedOut = true;
+      finish();
     }, timeoutMs);
+
+    void readiness.then((outcome) => {
+      read = outcome;
+      finish();
+    });
   });
 }
 
@@ -227,7 +290,24 @@ const runBashHandler: ToolHandler = async (args, ctx, exec) => {
   // Seatbelt write-set root is ctx.workingDir, never a model-passed cwd.
   const root = ctx.workingDir || process.cwd();
   const cwd = (args.cwd as string) || root;
-  return runBashTimed(command, cwd, root, RUN_BASH_TIMEOUT_MS, resolveTimeoutToBackground(ctx.timeoutToBackground), ctx.sandboxLevel, ctx.writeRoots, ctx.sessionTempDir, exec?.approvedGitConfigWrite);
+  // The session grant was consent for one envelope: this check launches nothing
+  // unless the profile this call would run under is the profile that was
+  // approved (docs/permission-ux-redesign.md — "actual child launch must use
+  // the envelope that was approved"). The launch derives its profile from the
+  // live context, so an envelope that drifted after consent — a changed write
+  // root or level — is caught here rather than inheriting the old approval.
+  if (exec?.envelopeHash !== undefined) {
+    const live = isSandboxedLevel(ctx.sandboxLevel)
+      ? sandboxEnvelopeHash(
+          buildSandboxProfile(ctx.sandboxLevel, root, ctx.writeRoots, ctx.sessionTempDir, exec.approvedGitConfigWrite),
+        )
+      : null;
+    if (live !== exec.envelopeHash) {
+      exec.onSandboxFailure?.("envelope-changed");
+      return { content: wrapUntrusted(envelopeChangedError()), error: "SANDBOX_ENVELOPE_CHANGED" };
+    }
+  }
+  return runBashTimed(command, cwd, root, RUN_BASH_TIMEOUT_MS, resolveTimeoutToBackground(ctx.timeoutToBackground), ctx.sandboxLevel, ctx.writeRoots, ctx.sessionTempDir, exec?.approvedGitConfigWrite, exec?.onSandboxFailure);
 };
 
 const runBashDef: ToolDef = {

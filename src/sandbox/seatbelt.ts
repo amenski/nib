@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
@@ -422,15 +423,76 @@ export function sandboxPrefix(
     file: SANDBOX_EXEC,
     args: [
       "-p",
-      buildSeatbeltProfile(
-        level,
-        seatbeltWorkspaceRoot(trustedRoot),
-        level === "workspace-write" ? resolveWriteRoots(level, seatbeltWorkspaceRoot(trustedRoot), writeRoots, sessionTempDir) : undefined,
-        allowGitConfigWrite,
-      ),
+      buildSandboxProfile(level, trustedRoot, writeRoots, sessionTempDir, allowGitConfigWrite),
       "/bin/sh",
       "-c",
       command,
     ],
   };
+}
+
+/**
+ * The profile text for a launch — the single expression of "which profile does
+ * this launch get". {@link sandboxPrefix} and the session-grant envelope hash
+ * both derive from it, so the bytes a grant was approved against are the bytes
+ * Seatbelt is handed. A second, hand-maintained description of the envelope is
+ * exactly what this avoids (docs/permission-ux-redesign.md).
+ *
+ * Takes an already-narrowed {@link SandboxLevel}: the `ProfileLevel | undefined`
+ * shape belongs to {@link sandboxPrefix}, which gates on
+ * {@link isSandboxedLevel} before calling here.
+ *
+ * The root is resolved once and used for both the read boundary and the
+ * write-set computation, so the two cannot disagree about which directory they
+ * describe.
+ */
+export function buildSandboxProfile(
+  level: SandboxLevel,
+  trustedRoot: string,
+  writeRoots?: string[],
+  sessionTempDir?: string,
+  allowGitConfigWrite?: boolean,
+): string {
+  return buildSeatbeltProfile(
+    level,
+    seatbeltWorkspaceRoot(trustedRoot),
+    profileWriteSet(level, trustedRoot, writeRoots, sessionTempDir),
+    allowGitConfigWrite,
+  );
+}
+
+/**
+ * The write-set this level's profile actually grants, in the exact bytes
+ * {@link buildSandboxProfile} hands Seatbelt — the workspace root, the session
+ * scratch directory or the shared carve-outs when there is none, and the
+ * configured roots, all realpath-resolved, deduplicated and in the profile's
+ * order. Empty for `strict-sandbox`, which grants no writes at all.
+ *
+ * Exported for the session-grant consent text: the user is approving a profile,
+ * so the limits the prompt states must be this list and not the requested one
+ * (docs/permission-ux-redesign.md).
+ */
+export function profileWriteSet(
+  level: SandboxLevel,
+  trustedRoot: string,
+  writeRoots?: string[],
+  sessionTempDir?: string,
+): string[] {
+  if (level !== "workspace-write") return [];
+  return resolveWriteRoots(level, seatbeltWorkspaceRoot(trustedRoot), writeRoots, sessionTempDir);
+}
+
+/**
+ * The session-grant envelope key for a profile: sha256 of the exact profile
+ * text passed to the spawn.
+ *
+ * Hashing the text rather than enumerating envelope fields is deliberate. The
+ * write-set is computed per launch, so two launches of the same level can
+ * produce different profiles, and an enumerated field list can disagree with
+ * what Seatbelt was actually handed. Keying on the real bytes means a newly
+ * added profile rule — or a changed write root, workspace, or network policy —
+ * changes the hash and invalidates a stale grant with no extra bookkeeping.
+ */
+export function sandboxEnvelopeHash(profile: string): string {
+  return createHash("sha256").update(profile).digest("hex");
 }

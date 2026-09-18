@@ -117,10 +117,19 @@ describe("buildNotifyEnv", () => {
   });
 });
 
+/**
+ * The shared launcher reads its readiness byte off fd 3, so a mocked child has
+ * to expose a stdio array. All four slots are null: the mock creates no pipes,
+ * which the launcher reports as an unconfirmed spawn rather than a crash.
+ */
+function mockChild() {
+  return { on: vi.fn(), unref: vi.fn(), stdio: [null, null, null, null] };
+}
+
 describe("fireNotify", () => {
   beforeEach(() => {
     spawnSpy.mockReset();
-    spawnSpy.mockReturnValue({ on: vi.fn(), unref: vi.fn() });
+    spawnSpy.mockReturnValue(mockChild());
   });
   afterEach(() => {
     vi.restoreAllMocks();
@@ -137,7 +146,9 @@ describe("fireNotify", () => {
     const [cmd, args, opts] = spawnSpy.mock.calls[0] as [string, string[], any];
     expect(cmd).toBe("/tmp/notify.sh");
     expect(args).toEqual([]);
-    expect(opts.shell).toBe(false);
+    // Not a shell: the script path is the executable, never interpolated into
+    // a shell command line.
+    expect(opts.shell).not.toBe(true);
     expect(opts.detached).toBe(true);
     expect(opts.env.STATUS).toBe("completed");
     expect(opts.env.SLACK_WEBHOOK_URL).toBe("https://h/x");
@@ -176,7 +187,11 @@ describe("fireNotify", () => {
         expect(cmd).toBe("/usr/bin/sandbox-exec");
         expect(args[0]).toBe("-p");
         expect(args[1]).toContain("/workspace/cache");
-        expect(args).toContain("/tmp/notify.sh");
+        // The script stays the executed target — the readiness frame's last
+        // argv element, reached through `exec "$@"`, so the direct-argv
+        // contract this surface has always had is unchanged.
+        expect(args.at(-1)).toBe("/tmp/notify.sh");
+        expect(args.at(-2)).toBe("nib-readiness");
       } else {
         expect(cmd).toBe("/tmp/notify.sh");
         expect(args).toEqual([]);
@@ -195,11 +210,10 @@ describe("fireNotify", () => {
   });
 
   it("registers an async error handler and unrefs the child", () => {
-    const on = vi.fn();
-    const unref = vi.fn();
-    spawnSpy.mockReturnValue({ on, unref });
+    const child = mockChild();
+    spawnSpy.mockReturnValue(child);
     fireNotify("/tmp/notify.sh", base());
-    expect(on).toHaveBeenCalledWith("error", expect.any(Function));
-    expect(unref).toHaveBeenCalledTimes(1);
+    expect(child.on).toHaveBeenCalledWith("error", expect.any(Function));
+    expect(child.unref).toHaveBeenCalledTimes(1);
   });
 });

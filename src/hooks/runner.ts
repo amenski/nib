@@ -1,8 +1,14 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import type { NotifyInput } from "../notify.js";
 import { redactDeep, redactSecrets } from "../sessions/redact.js";
 import { wrapUntrusted } from "../tools/untrusted-content.js";
-import { buildChildEnvironment, prepareSandboxedShell } from "../sandbox/launcher.js";
+import {
+  buildChildEnvironment,
+  containmentFailureError,
+  prepareSandboxedShell,
+  spawnContained,
+  type ReadinessOutcome,
+} from "../sandbox/launcher.js";
 import type { SandboxLevel } from "../sandbox/seatbelt.js";
 import {
   hookContentHash,
@@ -239,7 +245,8 @@ export class HookRunner {
     return new Promise((resolve) => {
       const env = buildChildEnvironment(this.sessionTempDir);
 
-      let child;
+      let child: ChildProcess;
+      let readiness: Promise<ReadinessOutcome>;
       try {
         const shell = prepareSandboxedShell(entry.command, {
           cwd: this.cwd,
@@ -248,15 +255,20 @@ export class HookRunner {
           writeRoots: this.writeRoots,
           sessionTempDir: this.sessionTempDir,
         });
-        child = spawn(shell.file, shell.args, {
+        // A hook command runs under the same containment as Bash, and its
+        // profile is confirmed the same way: an unapplied profile must be
+        // reported as unconfirmed containment, not as a hook that failed.
+        const contained = spawnContained(shell, ["/bin/sh", "-c", entry.command], {
           cwd: this.cwd,
           env,
-          stdio: ["pipe", "pipe", "pipe"],
           // Own process group (fix 7): the timeout kills the whole group so
           // grandchildren die too — a hook must not outlive its deadline, and
           // a backgrounded child of a timed-out hook must not keep running.
           detached: true,
+          stdio: { stdin: "pipe" },
         });
+        child = contained.proc;
+        readiness = contained.readiness;
       } catch (err) {
         resolve({ exitCode: null, timedOut: false, stdout: "", stderr: "", error: (err as Error).message });
         return;
@@ -265,12 +277,23 @@ export class HookRunner {
       let stdout = "";
       let stderr = "";
       let settled = false;
+      // The hook's outcome is held until readiness settles — an unapplied
+      // profile and an ordinary hook failure arrive as the same events. One
+      // decision point reads both, as in run_bash.
+      let read: ReadinessOutcome | undefined;
+      let signalled: { exitCode: number | null; timedOut: boolean; stdout: string; stderr: string; error?: string } | undefined;
       const settle = (r: { exitCode: number | null; timedOut: boolean; stdout: string; stderr: string; error?: string }) => {
-        if (!settled) {
-          settled = true;
-          clearTimeout(timer);
-          resolve(r);
-        }
+        signalled = r;
+        if (read === undefined || settled) return;
+        settled = true;
+        clearTimeout(timer);
+        // The hook never ran, so its exit status would be a fiction — the
+        // framing shell's, not the command's.
+        resolve(
+          read.ready
+            ? r
+            : { exitCode: null, timedOut: false, stdout, stderr, error: containmentFailureError(read) },
+        );
       };
       const killGroup = (): void => {
         try {
@@ -316,14 +339,21 @@ export class HookRunner {
         killGroup();
         settle({ exitCode: code, timedOut: false, stdout, stderr });
       });
+      // Readiness is registered after the outcome handlers on purpose: the
+      // outcome is what arrives first, and settle() holds it until this lands.
+      void readiness.then((outcome) => {
+        read = outcome;
+        if (signalled) settle(signalled);
+      });
 
       // The payload is fire-and-forget: a hook that exits instantly without
       // reading stdin closes its read end, and the write then fails EPIPE.
       // Without this listener that surfaces as an uncaughtException and
       // crashes the host process (found via the trust.test.ts flake, 2026-08-14).
-      child.stdin.on("error", () => {});
-      child.stdin.write(payloadLine + "\n");
-      child.stdin.end();
+      const stdin = child.stdin!; // a pipe by construction: stdio.stdin is "pipe" above
+      stdin.on("error", () => {});
+      stdin.write(payloadLine + "\n");
+      stdin.end();
     });
   }
 }

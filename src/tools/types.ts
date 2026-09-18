@@ -5,6 +5,7 @@ import type { TodoStore } from "./todo.js";
 import type { SandboxLevel } from "../sandbox/seatbelt.js";
 import type { ProfileLevel } from "../permissions/profile.js";
 import type { WebSearchConfig } from "../config/loader.js";
+import type { SandboxFailureReason } from "../sandbox/launcher.js";
 
 export type ToolHandler = (
   args: Record<string, unknown>,
@@ -37,6 +38,25 @@ export interface ToolExecOptions {
    * `.git` denies. Absent — the normal case — the denies stand alone.
    */
   approvedGitConfigWrite?: boolean;
+  /**
+   * Called when a sandboxed child's containment promise did not hold, so the
+   * command did not run (docs/permission-ux-redesign.md). Set by agent.ts on
+   * every sandboxed `run_bash` call — a containment failure is a property of
+   * the launch, not of the approval path, and agent.ts revokes any session
+   * grant and records the reason. A failure on a call this hook is not set for
+   * still fails closed; the hook exists so a grant cannot outlive the profile
+   * it was approved against. Synchronous by design — the handler returns its
+   * refusal without waiting on the agent's audit write.
+   */
+  onSandboxFailure?: (reason: SandboxFailureReason) => void;
+  /**
+   * `sandboxEnvelopeHash` of the profile the session grant covering this call
+   * was approved against. Set only by agent.ts, and only when the call is
+   * actually covered by a grant — the Bash handler refuses to launch when the
+   * profile it would run under no longer hashes to this, because the child
+   * launch must use the envelope that was approved.
+   */
+  envelopeHash?: string;
 }
 
 export interface AskQuestionOption {

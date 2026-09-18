@@ -1,8 +1,14 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
 import type { ToolDef, ToolOutput } from "../types.js";
 import { pkg } from "../version.js";
-import { buildChildEnvironment, prepareSandboxedCommand } from "../sandbox/launcher.js";
+import {
+  buildChildEnvironment,
+  containmentFailureError,
+  prepareSandboxedCommand,
+  spawnContained,
+  type ReadinessOutcome,
+} from "../sandbox/launcher.js";
 import type { SandboxLevel } from "../sandbox/seatbelt.js";
 
 export interface McpServerConfig {
@@ -195,21 +201,25 @@ export class MCPClient {
     spawnOptions?: McpSpawnOptions,
   ): Promise<void> {
     return new Promise((resolve, reject) => {
-      const child = spawnOptions
-        ? prepareSandboxedCommand(command, args, spawnOptions)
-        : { file: command, args };
-      this.process = spawn(child.file, child.args, {
-        stdio: ["pipe", "pipe", "pipe"],
-        ...(spawnOptions?.cwd ? { cwd: spawnOptions.cwd } : {}),
-        env: {
-          // A contained MCP child receives only the minimal inherited
-          // environment; explicit per-server config is layered last so its
-          // documented overrides (PATH, credentials, and server settings)
-          // retain their existing precedence.
-          ...(spawnOptions ? buildChildEnvironment(spawnOptions.sessionTempDir) : process.env),
-          ...env,
-        },
+      const spec = spawnOptions ? prepareSandboxedCommand(command, args, spawnOptions) : null;
+      const childEnv = {
+        // A contained MCP child receives only the minimal inherited
+        // environment; explicit per-server config is layered last so its
+        // documented overrides (PATH, credentials, and server settings)
+        // retain their existing precedence.
+        ...(spawnOptions ? buildChildEnvironment(spawnOptions.sessionTempDir) : process.env),
+        ...env,
+      };
+      const contained = spawnContained(spec, [command, ...args], {
+        cwd: spawnOptions?.cwd ?? process.cwd(),
+        env: childEnv,
+        stdio: { stdin: "pipe" },
       });
+      this.process = contained.proc;
+      // An MCP server whose profile never applied did not start — the readiness
+      // outcome, not its exit status, is what says which failure this is.
+      let readiness: ReadinessOutcome | undefined;
+      const readinessSettled = contained.readiness.then((outcome) => { readiness = outcome; });
 
       this.process.stderr?.on("data", (chunk: Buffer) => {
         this.stderrTail = (this.stderrTail + chunk.toString()).slice(-2000);
@@ -246,12 +256,19 @@ export class MCPClient {
 
       this.process.on("exit", (code) => {
         if (this.process && this.process.exitCode !== null) return;
-        const tail = this.stderrTail.trim();
-        const msg = `MCP server exited with code ${code}` + (tail ? `: ${tail}` : "");
-        for (const [, pending] of this.pending) {
-          pending.reject(new Error(msg));
-        }
-        this.pending.clear();
+        // Held until readiness settles: the framing shell's exit code is not
+        // this server's, and an unapplied profile is the failure a reader must
+        // not mistake for a server that crashed on its own.
+        void readinessSettled.then(() => {
+          const tail = this.stderrTail.trim();
+          const msg = readiness && !readiness.ready
+            ? `${containmentFailureError(readiness)}${tail ? `: ${tail}` : ""}`
+            : `MCP server exited with code ${code}` + (tail ? `: ${tail}` : "");
+          for (const [, pending] of this.pending) {
+            pending.reject(new Error(msg));
+          }
+          this.pending.clear();
+        });
       });
 
       this.sendRequest("initialize", {

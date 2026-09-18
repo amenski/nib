@@ -1,6 +1,12 @@
-import { spawn } from "node:child_process";
 import { redactSecrets } from "./sessions/redact.js";
-import { buildChildEnvironment, prepareSandboxedCommand, type SandboxedShellOptions } from "./sandbox/launcher.js";
+import {
+  buildChildEnvironment,
+  containmentFailureError,
+  prepareSandboxedCommand,
+  spawnContained,
+  unrefContained,
+  type SandboxedShellOptions,
+} from "./sandbox/launcher.js";
 
 export type NotifySpawnOptions = SandboxedShellOptions;
 
@@ -103,25 +109,34 @@ export function fireNotify(
     // session containment context yet. All production call sites pass the
     // session options below, which switch to the shared launcher and minimal
     // environment.
-    const command = spawnOptions
-      ? prepareSandboxedCommand(scriptPath, [], spawnOptions)
-      : { file: scriptPath, args: [] };
-    const child = spawn(command.file, command.args, {
-      ...(spawnOptions ? { cwd: spawnOptions.cwd } : {}),
+    const prefix = spawnOptions ? prepareSandboxedCommand(scriptPath, [], spawnOptions) : null;
+    const contained = spawnContained(prefix, [scriptPath], {
+      cwd: spawnOptions?.cwd ?? process.cwd(),
       env: {
         ...(spawnOptions ? buildChildEnvironment(spawnOptions.sessionTempDir) : process.env),
         ...notifyEnv,
       },
-      stdio: "ignore",
+      // Fire-and-forget: no output stream is handed to a caller, and an
+      // undrained pipe could block a chatty script.
+      stdio: { stdout: "ignore", stderr: "ignore" },
       detached: true,
-      shell: false,
+    });
+    const child = contained.proc;
+    // A notification must never hold the CLI open: the child and its pipes
+    // (including the readiness pipe) are unref'd. Same swallow-on-throw
+    // contract as before: an unapplied profile means the notification did not
+    // fire, which is a debug-log fact, not a toast.
+    unrefContained(contained);
+    void contained.readiness.then((outcome) => {
+      if (!outcome.ready && opts.debug) {
+        process.stderr.write(`notify: ${containmentFailureError(outcome)}\n`);
+      }
     });
     // Errors (e.g. ENOENT for a bad path) arrive asynchronously on 'error';
     // swallow them so an unhandled event never crashes the app.
     child.on("error", (err) => {
       if (opts.debug) process.stderr.write(`notify: spawn failed: ${err.message}\n`);
     });
-    child.unref();
   } catch (err) {
     if (opts.debug) {
       process.stderr.write(`notify: spawn failed: ${(err as Error).message}\n`);

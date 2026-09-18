@@ -2,18 +2,20 @@ import { describe, expect, it } from "vitest";
 import { buildChildEnvironment, prepareSandboxedCommand, prepareSandboxedShell } from "./launcher.js";
 
 describe("sandbox child launcher", () => {
-  it("preserves the direct shell argv when no sandbox level applies", () => {
+  // Null is the no-frame control: with no profile there is nothing to confirm,
+  // so the caller spawns its own argv and spawnContained adds no readiness pipe.
+  it("reports no shell spec when no sandbox level applies", () => {
     expect(prepareSandboxedShell("echo hi", {
       cwd: process.cwd(),
       trustedRoot: process.cwd(),
-    })).toEqual({ file: "/bin/sh", args: ["-c", "echo hi"] });
+    })).toBeNull();
   });
 
-  it("preserves direct command argv when no sandbox level applies", () => {
+  it("reports no command spec when no sandbox level applies", () => {
     expect(prepareSandboxedCommand("node", ["server.js", "--stdio"], {
       cwd: process.cwd(),
       trustedRoot: process.cwd(),
-    })).toEqual({ file: "node", args: ["server.js", "--stdio"] });
+    })).toBeNull();
   });
 
   // Regression guard for the off-by-one that made every contained stdio MCP
@@ -27,12 +29,12 @@ describe("sandbox child launcher", () => {
       sandboxLevel: "workspace-write",
     });
 
-    expect(spec.file).toBe("/usr/bin/sandbox-exec");
-    expect(spec.args[0]).toBe("-p");
+    expect(spec?.file).toBe("/usr/bin/sandbox-exec");
+    expect(spec?.args[0]).toBe("-p");
     // Everything before the command is the `-p <profile>` pair, and nothing
     // else: a `/bin/sh` here is the bug this test exists to catch.
-    expect(spec.args.slice(2)).toEqual(["node", "server.js", "--stdio"]);
-    expect(spec.args).not.toContain("/bin/sh");
+    expect(spec?.args.slice(2)).toEqual(["node", "server.js", "--stdio"]);
+    expect(spec?.args).not.toContain("/bin/sh");
   });
 
   it("adds only the private session temp paths to the minimal environment", () => {

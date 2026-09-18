@@ -1,7 +1,13 @@
 import { execFile } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
-import { buildChildEnvironment, prepareSandboxedShell } from "../../sandbox/launcher.js";
+import {
+  buildChildEnvironment,
+  containmentFailureError,
+  prepareSandboxedShell,
+  spawnContained,
+  type ReadinessOutcome,
+} from "../../sandbox/launcher.js";
 import { isSandboxedLevel, validateCwdWithinTrustedRoot } from "../../sandbox/seatbelt.js";
 import type { SandboxedShellOptions } from "../../sandbox/launcher.js";
 import type {
@@ -36,6 +42,8 @@ export type CommandRunner = (
 /** Import a local module and return its default export (expected callable). */
 export type ModuleImporter = (path: string) => Promise<unknown>;
 
+const MAX_STDOUT_BYTES = 1024 * 1024;
+
 export const defaultCommandRunner: CommandRunner = (command, opts) =>
   new Promise((resolvePromise, reject) => {
     const { timeoutMs, cwd, trustedRoot, sandboxLevel, writeRoots, sessionTempDir } = opts;
@@ -49,30 +57,103 @@ export const defaultCommandRunner: CommandRunner = (command, opts) =>
         return;
       }
     }
-    const commandSpec = activeSandbox
-      ? prepareSandboxedShell(command, {
-        cwd,
-        trustedRoot: activeSandbox.trustedRoot,
-        sandboxLevel: activeSandbox.level,
-        writeRoots,
-        sessionTempDir,
-      })
-      : { file: process.env.SHELL || "/bin/sh", args: ["-c", command] };
-    execFile(
-      commandSpec.file,
-      commandSpec.args,
-      {
-        timeout: timeoutMs,
-        cwd,
-        windowsHide: true,
-        maxBuffer: 1024 * 1024,
-        env: activeSandbox && sessionTempDir ? buildChildEnvironment(sessionTempDir) : process.env,
-      },
-      (err, stdout) => {
-        if (err) reject(err);
-        else resolvePromise(stdout);
-      },
-    );
+    if (!activeSandbox) {
+      // No profile applies: unchanged execFile launch of the platform shell,
+      // with execFile's own timeout and maxBuffer semantics.
+      const commandSpec = { file: process.env.SHELL || "/bin/sh", args: ["-c", command] };
+      execFile(
+        commandSpec.file,
+        commandSpec.args,
+        {
+          timeout: timeoutMs,
+          cwd,
+          windowsHide: true,
+          maxBuffer: MAX_STDOUT_BYTES,
+          env: process.env,
+        },
+        (err, stdout) => {
+          if (err) reject(err);
+          else resolvePromise(stdout);
+        },
+      );
+      return;
+    }
+
+    // Contained: the profile is confirmed inside the child before its output
+    // counts, so an unapplied profile is reported rather than read as a
+    // provider that failed.
+    const spec = prepareSandboxedShell(command, {
+      cwd,
+      trustedRoot: activeSandbox.trustedRoot,
+      sandboxLevel: activeSandbox.level,
+      writeRoots,
+      sessionTempDir,
+    });
+    const { proc, readiness } = spawnContained(spec, ["/bin/sh", "-c", command], {
+      cwd,
+      env: sessionTempDir ? buildChildEnvironment(sessionTempDir) : process.env,
+    });
+
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    // One decision point, as in run_bash: the command's outcome is held until
+    // readiness is known, because an unapplied profile and a provider that
+    // failed arrive as the same events.
+    let read: ReadinessOutcome | undefined;
+    let exited: { code: number | null; error?: Error } | undefined;
+    let timer: NodeJS.Timeout | undefined;
+    const finish = (): void => {
+      if (settled || read === undefined || exited === undefined) return;
+      settled = true;
+      clearTimeout(timer);
+      if (!read.ready) {
+        // The command never ran, so its exit status is the framing shell's:
+        // report the unconfirmed containment instead.
+        proc.kill("SIGTERM");
+        reject(new Error(containmentFailureError(read)));
+        return;
+      }
+      if (exited.error) reject(exited.error);
+      else resolvePromise(stdout);
+    };
+
+    timer = setTimeout(() => {
+      exited = { code: null, error: new Error(`Command timed out after ${timeoutMs}ms`) };
+      proc.kill("SIGTERM");
+      finish();
+    }, timeoutMs);
+
+    proc.stdout?.on("data", (chunk: Buffer) => {
+      if (settled) return;
+      const text = chunk.toString();
+      if (stdout.length + text.length > MAX_STDOUT_BYTES) {
+        exited = { code: null, error: new Error("stdout maxBuffer length exceeded") };
+        proc.kill("SIGTERM");
+        finish();
+        return;
+      }
+      stdout += text;
+    });
+    proc.stderr?.on("data", (chunk: Buffer) => {
+      if (settled) return;
+      if (stderr.length < 2000) stderr += chunk.toString();
+    });
+    proc.on("error", (err) => {
+      exited = { code: null, error: err };
+      finish();
+    });
+    proc.on("close", (code) => {
+      exited = {
+        code,
+        error: code === 0 ? undefined : new Error(`Command failed with exit code ${code}${stderr.trim() ? `: ${stderr.trim()}` : ""}`),
+      };
+      finish();
+    });
+    void readiness.then((outcome) => {
+      read = outcome;
+      finish();
+    });
   });
 
 export const defaultModuleImporter: ModuleImporter = async (path) => {

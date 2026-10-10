@@ -1124,6 +1124,17 @@ export async function runAgent(
         messages.push({ role: "system", content: msg });
         options.onDiagnostic?.(msg);
       } else {
+        // A provider-stream failure ends the turn here, and the work already
+        // done this turn — tool results, partial assistant text — would
+        // otherwise be unreachable: the caller's catch sees only the error, and
+        // the next turn would start without the work the user paid for. Attach
+        // the delta and the live array so the caller can persist the turn
+        // anyway (the TUI does; headless keeps its non-zero exit).
+        if (err !== null && typeof err === "object") {
+          captureNewMessages();
+          (err as { newMessages?: Message[] }).newMessages = newMessages;
+          (err as { messages?: Message[] }).messages = messages;
+        }
         throw err;
       }
       break;

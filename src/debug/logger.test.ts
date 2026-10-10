@@ -97,4 +97,39 @@ describe("debug logger timing", () => {
     expect(persisted).toContain("[redacted-password]");
     expect(persisted).toContain("[redacted-authorization]");
   });
+
+  it("writes an error row that unwraps the Error rather than persisting {}", async () => {
+    vi.resetModules();
+    const { enableDebug, logError } = await import("./logger.js");
+    enableDebug("sess-error");
+    logError(
+      "provider-stream",
+      new Error("Authorization: Bearer error-bearer-token-123456", {
+        cause: new Error("socket hang up"),
+      }),
+    );
+
+    const file = join(projectDirPath(TEST_DIR), "debug", "sess-error.jsonl");
+    const lines = readFileSync(file, "utf8").trim().split("\n");
+    const entry = JSON.parse(lines[lines.length - 1]);
+    expect(entry.type).toBe("error");
+    expect(entry.phase).toBe("provider-stream");
+    // `Error`'s own properties are non-enumerable: without unwrapping, this row
+    // would be `{}` — the exact case the log exists to explain.
+    expect(entry.error.name).toBe("Error");
+    expect(entry.error.message).toContain("[redacted-authorization]");
+    expect(entry.error.stack).toBeTypeOf("string");
+    expect(entry.error.cause.message).toBe("socket hang up");
+  });
+
+  it("records a non-Error throw as-is", async () => {
+    vi.resetModules();
+    const { enableDebug, logError } = await import("./logger.js");
+    enableDebug("sess-error-raw");
+    logError("turn", "plain failure");
+
+    const file = join(projectDirPath(TEST_DIR), "debug", "sess-error-raw.jsonl");
+    const lines = readFileSync(file, "utf8").trim().split("\n");
+    expect(JSON.parse(lines[lines.length - 1]).error).toBe("plain failure");
+  });
 });

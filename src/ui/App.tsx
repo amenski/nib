@@ -1412,6 +1412,16 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           `Error: ${(err as Error).message}`,
           "assertive",
         );
+        // A provider failure mid-turn still produced work (tool results,
+        // partial text), and the loop attaches it to the error it throws. Save
+        // that turn like any other: without it the next message starts from a
+        // history that never saw this turn's edits or results, so the model
+        // redoes work it already did or assumes someone else's changes.
+        const failed = err as { newMessages?: any[]; messages?: any[] };
+        if (failed?.newMessages && failed.messages) {
+          ctx.mutable.conversationHistory = failed.messages;
+          await callbacks.onNewMessages(input, failed.newMessages);
+        }
       } finally {
         setAskQuestion(undefined);
         setAskQuestionPrompt(null);

@@ -11,6 +11,7 @@ import { initPresets, createProvider, getPreset } from "./providers/presets.js";
 import { imageSupportWarning } from "./providers/registry.js";
 import { PermissionEngine, ProfileEvaluator, authorize } from "./permissions/index.js";
 import { projectSettingsPath } from "./config/paths.js";
+import { enableDebug } from "./debug/logger.js";
 import { expandFileMentions } from "./ui/core/file-mentions.js";
 import { ErrorRecovery } from "./errorrecovery/index.js";
 import { ErrorReflector } from "./selfreflection/index.js";
@@ -96,6 +97,15 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
     if (configResult.errors.length > 0) {
       for (const e of configResult.errors) writeErr(`Error: ${e}`);
       return 1;
+    }
+
+    // `--debug` must produce a debug log here too. `enableDebug` used to be
+    // called only on the TUI path (cli.tsx), so `nib -p --debug` wrote nothing
+    // and a failing scripted run left no record to inspect. Filed under the
+    // resumed session's id, or a per-run stamp for a fresh one, so repeated
+    // headless runs never overwrite each other's log.
+    if (options.debug) {
+      enableDebug(options.resumeSessionId ?? `headless-${new Date().toISOString().replace(/[:.]/g, "-")}`);
     }
 
     // Folder-level "fast path" trust (config/folder-trust.ts) is

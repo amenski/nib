@@ -5,7 +5,7 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import type { Message, ToolDef } from "../types.js";
 import type { Provider, ProviderBalance, StreamEvent } from "./types.js";
 import type { ProviderPreset } from "./presets.js";
-import { logRequest, logResponse, logTiming } from "../debug/logger.js";
+import { logRequest, logResponse, logTiming, logError } from "../debug/logger.js";
 
 export function mapMessages(messages: Message[]): ModelMessage[] {
   const toolNameByCallId = new Map<string, string>();
@@ -268,91 +268,105 @@ export function createAISDKProvider(preset: ProviderPreset, model: string, apiKe
       const toolCallAccum = new Map<string, { id: string; name: string; args: string }>();
       const started = new Set<string>();
       let cachedTokens: number | undefined;
+      let sawFinishStep = false;
 
-      for await (const event of result.fullStream) {
-        if (firstEventAt === undefined) firstEventAt = Date.now();
-        switch (event.type) {
-          case "text-delta":
-            if (firstTextAt === undefined) firstTextAt = Date.now();
-            yield { type: "text_delta", content: event.text };
-            break;
+      try {
+        for await (const event of result.fullStream) {
+          if (firstEventAt === undefined) firstEventAt = Date.now();
+          switch (event.type) {
+            case "text-delta":
+              if (firstTextAt === undefined) firstTextAt = Date.now();
+              yield { type: "text_delta", content: event.text };
+              break;
 
-          case "reasoning-delta":
-            yield { type: "reasoning_delta", content: event.text };
-            break;
+            case "reasoning-delta":
+              yield { type: "reasoning_delta", content: event.text };
+              break;
 
-          case "tool-input-start": {
-            const id = event.id;
-            toolCallAccum.set(id, { id, name: event.toolName, args: "" });
-            if (!started.has(id)) {
-              started.add(id);
-              yield { type: "tool_call_start", id, name: event.toolName };
+            case "tool-input-start": {
+              const id = event.id;
+              toolCallAccum.set(id, { id, name: event.toolName, args: "" });
+              if (!started.has(id)) {
+                started.add(id);
+                yield { type: "tool_call_start", id, name: event.toolName };
+              }
+              break;
             }
-            break;
-          }
 
-          case "tool-input-delta": {
-            const id = event.id;
-            const entry = toolCallAccum.get(id);
-            if (entry) {
-              entry.args += event.delta;
+            case "tool-input-delta": {
+              const id = event.id;
+              const entry = toolCallAccum.get(id);
+              if (entry) {
+                entry.args += event.delta;
+              }
+              if (!started.has(id)) {
+                started.add(id);
+                yield { type: "tool_call_start", id, name: entry?.name ?? "unknown" };
+              }
+              yield { type: "tool_call_delta", id, arguments: event.delta };
+              break;
             }
-            if (!started.has(id)) {
-              started.add(id);
-              yield { type: "tool_call_start", id, name: entry?.name ?? "unknown" };
+
+            case "tool-input-end":
+              break;
+
+            case "tool-call": {
+              if (!started.has(event.toolCallId)) {
+                yield { type: "tool_call_start", id: event.toolCallId, name: event.toolName };
+                yield {
+                  type: "tool_call_delta",
+                  id: event.toolCallId,
+                  arguments: JSON.stringify(event.input),
+                };
+              }
+              break;
             }
-            yield { type: "tool_call_delta", id, arguments: event.delta };
-            break;
-          }
 
-          case "tool-input-end":
-            break;
-
-          case "tool-call": {
-            if (!started.has(event.toolCallId)) {
-              yield { type: "tool_call_start", id: event.toolCallId, name: event.toolName };
+            case "finish-step":
+              sawFinishStep = true;
+              cachedTokens = event.usage.inputTokenDetails?.cacheReadTokens ?? undefined;
               yield {
-                type: "tool_call_delta",
-                id: event.toolCallId,
-                arguments: JSON.stringify(event.input),
+                type: "usage",
+                inputTokens: event.usage.inputTokens ?? 0,
+                outputTokens: event.usage.outputTokens ?? 0,
+                cachedInputTokens: cachedTokens,
               };
+              logResponse(event.usage, Array.from(toolCallAccum.values()));
+              break;
+
+            case "finish": {
+              const finishedAt = Date.now();
+              logTiming({
+                phase: "request",
+                model,
+                effort: reasoning,
+                promptBytes,
+                toolCount: tools.length,
+                cachedTokens,
+                durationsMs: {
+                  total: finishedAt - requestStart,
+                  toFirstEvent: firstEventAt !== undefined ? firstEventAt - requestStart : undefined,
+                  toFirstText: firstTextAt !== undefined ? firstTextAt - requestStart : undefined,
+                },
+              });
+              yield { type: "done", finishReason: event.finishReason };
+              break;
             }
-            break;
+
+            case "error":
+              throw event.error;
           }
-
-          case "finish-step":
-            cachedTokens = event.usage.inputTokenDetails?.cacheReadTokens ?? undefined;
-            yield {
-              type: "usage",
-              inputTokens: event.usage.inputTokens ?? 0,
-              outputTokens: event.usage.outputTokens ?? 0,
-              cachedInputTokens: cachedTokens,
-            };
-            logResponse(event.usage, Array.from(toolCallAccum.values()));
-            break;
-
-          case "finish": {
-            const finishedAt = Date.now();
-            logTiming({
-              phase: "request",
-              model,
-              effort: reasoning,
-              promptBytes,
-              toolCount: tools.length,
-              cachedTokens,
-              durationsMs: {
-                total: finishedAt - requestStart,
-                toFirstEvent: firstEventAt !== undefined ? firstEventAt - requestStart : undefined,
-                toFirstText: firstTextAt !== undefined ? firstTextAt - requestStart : undefined,
-              },
-            });
-            yield { type: "done", finishReason: event.finishReason };
-            break;
-          }
-
-          case "error":
-            throw event.error;
         }
+        // The stream ended on its own without a `finish-step`, so no usage row
+        // was written: the log would show a request with no reply — the shape
+        // of the unexplained stop on 2026-10-10. Record it where it happens.
+        if (!sawFinishStep) logError("provider-stream", new Error("stream ended without finish-step"));
+      } catch (err) {
+        // A user abort is an expected end, not a failure worth a row; anything
+        // else (including a provider `error` event thrown above) is logged
+        // exactly once here and rethrown for the caller.
+        if (!options?.signal?.aborted) logError("provider-stream", err);
+        throw err;
       }
     },
   };

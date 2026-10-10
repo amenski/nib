@@ -870,3 +870,68 @@ describe("tool result preview colour", () => {
     expect(line).not.toContain("\x1b[2m");
   });
 });
+
+describe("a failed turn is still saved", () => {
+  it("persists the messages the agent attached to a provider error", async () => {
+    // The provider dies mid-turn: the agent rethrows inside its loop, but the
+    // tool results and partial text it already produced are attached to the
+    // error. Without saving them the next message starts from a history that
+    // never saw this turn's work.
+    todoStore.reset();
+    const assistant: any = { role: "assistant", content: "running a command" };
+    const toolResult: any = { role: "tool", toolCallId: "call_1", toolName: "run_bash", content: "hi" };
+    const fullHistory = [{ role: "user", content: "go" }, assistant, toolResult];
+
+    const appended: any[] = [];
+    const ctx = makeCtx(async (_input: string, cb: any) => {
+      cb.onText("running");
+      const err = new Error("Connection error.") as Error & { newMessages?: any[]; messages?: any[] };
+      err.newMessages = [assistant, toolResult];
+      err.messages = fullHistory;
+      throw err;
+    });
+    (ctx.sessionStore as any).appendMessage = async (_id: string, msg: any) => {
+      appended.push(msg);
+    };
+
+    const inst = render(<App ctx={ctx} />);
+    mounted.push(inst);
+    inst.stdin.write("go");
+    await flush();
+    inst.stdin.write("\r");
+    await flush();
+    await flush();
+    await flush();
+
+    // The error still reaches the screen...
+    expect(stripAnsi(inst.lastFrame() ?? "")).toContain("Error: Connection error.");
+    // ...and the turn it killed is in the session record and in history.
+    expect(appended.some((m) => m.content === "running a command")).toBe(true);
+    expect(appended.some((m) => m.content === "hi")).toBe(true);
+    expect(ctx.mutable.conversationHistory).toEqual(fullHistory);
+  });
+
+  it("saves nothing extra when the error carries no messages", async () => {
+    todoStore.reset();
+    const appended: any[] = [];
+    const ctx = makeCtx(async () => {
+      throw new Error("Connection error.");
+    });
+    (ctx.sessionStore as any).appendMessage = async (_id: string, msg: any) => {
+      appended.push(msg);
+    };
+
+    const inst = render(<App ctx={ctx} />);
+    mounted.push(inst);
+    inst.stdin.write("go");
+    await flush();
+    inst.stdin.write("\r");
+    await flush();
+    await flush();
+    await flush();
+
+    expect(stripAnsi(inst.lastFrame() ?? "")).toContain("Error: Connection error.");
+    expect(appended).toEqual([]);
+    expect(ctx.mutable.conversationHistory).toEqual([]);
+  });
+});

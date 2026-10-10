@@ -40,6 +40,37 @@ export function logResponse(usage: unknown, toolCalls: unknown[]): void {
   appendPrivateFileSync(debugPath, entry + "\n");
 }
 
+/**
+ * Records a failed stream or turn, so a stop that leaves no other trace is
+ * diagnosable after the fact. `phase` names the site that caught it, which is
+ * what distinguishes a provider-stream failure from a turn-level one.
+ *
+ * The error is unwrapped first: `Error`'s own properties are non-enumerable, so
+ * an error object passed straight to `JSON.stringify` reaches the file as `{}`
+ * — exactly the case this log exists to explain. Redacted like every other row
+ * (provider errors echo the request back).
+ */
+export function logError(phase: string, err: unknown): void {
+  if (!debugPath) return;
+  const entry = JSON.stringify(redactDeep({
+    ts: Date.now(),
+    type: "error",
+    phase,
+    error: describeError(err),
+  }));
+  appendPrivateFileSync(debugPath, entry + "\n");
+}
+
+function describeError(err: unknown): unknown {
+  if (!(err instanceof Error)) return err;
+  return {
+    name: err.name,
+    message: err.message,
+    stack: err.stack,
+    cause: describeError(err.cause),
+  };
+}
+
 export interface TimingEntry {
   /** Which phase this row measures — a turn emits one "prompt_assembly" row
    *  and one "request" row per provider call, in that order. */

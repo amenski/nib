@@ -1609,6 +1609,38 @@ describe("runAgent", () => {
         }),
       ).rejects.toThrow("HTTP 401");
     });
+
+    it("attaches the turn's messages to a provider stream error, so the caller can persist them", async () => {
+      // The provider dies on the second request, after a tool already ran. The
+      // turn's work exists only inside the loop that is about to unwind, so the
+      // error carries it out — otherwise the TUI's catch has nothing to save
+      // and the next message starts from a history that never saw the tool
+      // result (session record + history both lose the turn).
+      let calls = 0;
+      const provider: Provider = {
+        name: "boom",
+        async *streamChat() {
+          calls++;
+          if (calls === 1) {
+            yield { type: "tool_call_start", id: "call_1", name: "read" };
+            yield { type: "tool_call_delta", id: "call_1", arguments: '{"path":"a.txt"}' };
+            yield { type: "done", finishReason: "tool_calls" };
+            return;
+          }
+          throw new Error("HTTP 500: provider died");
+        },
+      };
+
+      const err = (await runAgent("go", {
+        provider,
+        tools: [],
+        executeTool: async () => ({ content: "file contents" }),
+      }).catch((e) => e)) as Error & { newMessages?: Message[]; messages?: Message[] };
+
+      expect(err.message).toContain("HTTP 500");
+      expect(err.newMessages?.some((m) => m.role === "tool" && m.content === "file contents")).toBe(true);
+      expect(err.messages?.some((m) => m.role === "user" && m.content === "go")).toBe(true);
+    });
   });
 
   describe("large tool-call args diagnostic", () => {

@@ -98,9 +98,9 @@ Queueing already exists: `App.tsx:265-287` (`messageQueueRef`/`turnActiveRef`)
 drains FIFO at turn end (`:926-934`). What we don't have is *mid-turn
 injection*: the queued message waits for the whole turn to finish.
 
-The machinery for injection already exists elsewhere: `runAgent` injects
-volatile context + the todo block into the trailing user message before every
-provider call via `withVolatilePrefix` (`src/agent.ts`). A steering message is
+The machinery for injection already exists elsewhere: `runAgent` appends
+volatile context + the todo block as a trailing system message before every
+provider call via `appendVolatile` (`src/agent.ts`). A steering message is
 one more block in that prefix.
 
 ### Proposed design

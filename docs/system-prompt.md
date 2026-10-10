@@ -11,8 +11,11 @@ agent. It is built in **two parts** by `src/prompt.ts`:
   prefix. Lives at `messages[0]` and is cached across turns keyed on
   mode/skills/memory/workingDir.
 - `buildVolatileContext()` (`src/prompt.ts:113`) — rebuilt per turn and
-  injected into the trailing user message of each request, never stored in
-  history (`src/agent.ts` `withVolatilePrefix`).
+  appended as a trailing system message on each request, never stored in
+  history (`src/agent.ts` `appendVolatile`). Appending rather than merging it
+  into the turn's user message keeps every earlier message at the same index
+  with the same bytes, which is what lets the provider's prefix cache survive
+  from one turn to the next.
 
 Philosophy (subsystems.md §4d): every token costs every turn. Rules the
 model already follows are dead weight; so are pleasantries. Each sentence

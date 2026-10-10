@@ -10,6 +10,15 @@ export interface UserMessage {
   content: string;
   /** Data URLs (e.g. "data:image/png;base64,...") for images attached to this message. */
   imageUrls?: string[];
+  /**
+   * Marks the request-only volatile block (env/git/RepoMap, live todo list,
+   * mid-turn steering notice) that `appendVolatile` adds to each provider
+   * request. It is appended rather than merged into the turn's user message so
+   * no message the provider has already seen is rewritten; it is never stored
+   * in `messages` or in the session transcript. Purely a control-plane marker —
+   * providers/aisdk.ts mapMessages does not send it.
+   */
+  volatile?: true;
 }
 
 export interface AssistantMessage {

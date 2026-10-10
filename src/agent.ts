@@ -288,10 +288,10 @@ export async function runAgent(
   // The system prompt lives at position 0 only, and holds only the stable
   // preamble — replacing it every turn with byte-identical content (the
   // common case) is a no-op for the provider's prefix cache. Volatile context
-  // (RepoMap, plan-mode instruction, env/git) is attached to the user turn
-  // only in the request sent to the provider (see withVolatilePrefix below),
-  // never stored on `messages`, so it reaches the model every turn without
-  // ever mutating the cached system prefix or polluting history.
+  // (RepoMap, plan-mode instruction, env/git) is appended only in the request
+  // sent to the provider (see appendVolatile below), never stored on
+  // `messages`, so it reaches the model every turn without ever mutating the
+  // cached system prefix or polluting history.
   if (messages[0]?.role === "system") messages.shift();
   messages.unshift({ role: "system", content: stablePreamble });
   messages.push({ role: "user", content: userMessage, ...(options.imageUrls?.length ? { imageUrls: options.imageUrls } : {}) });
@@ -321,22 +321,26 @@ export async function runAgent(
   // Volatile context is injected only into the request sent to the provider,
   // never into the stored `messages` array — otherwise it would accumulate in
   // history and bake stale RepoMap/env snapshots into every past user turn.
-  // Reattach it each sub-turn to the last user-role message (the turn's
-  // opening user message stays last-user as assistant/tool messages append
-  // after it), so it reaches the model on every streamChat call this turn.
-  function withVolatilePrefix(msgs: Message[], prefix: string): Message[] {
-    let idx = -1;
-    for (let i = msgs.length - 1; i >= 0; i--) {
-      if (msgs[i].role === "user") {
-        idx = i;
-        break;
-      }
-    }
-    if (idx === -1) return msgs;
-    const copy = [...msgs];
-    const target = copy[idx] as Message & { role: "user" };
-    copy[idx] = { ...target, content: `${prefix}\n\n${target.content}` };
-    return copy;
+  // Reattach it each sub-turn so it reaches the model on every streamChat call
+  // this turn.
+  //
+  // It is APPENDED as a trailing message rather than merged into the last
+  // user-role one. Merging rewrites a message the provider has already seen:
+  // the turn's opening user message carries the prefix on this turn and not on
+  // the next, so the provider's cached prefix is invalidated from that index
+  // onward — the whole conversation — on every turn's first request. Appending
+  // leaves every earlier message at the same index with the same bytes, so the
+  // stable prefix only ever grows and the volatile tail is the only part that
+  // changes. (See `request prefix stability` in agent.test.ts.)
+  // The block stays on the USER role deliberately. It carries filesystem- and
+  // repo-derived text (git status lists file paths), so the system role would
+  // promote attacker-influenceable strings to instruction authority; as user
+  // content it keeps the trust level it had when it was merged into the user's
+  // message. `volatile: true` is what keeps it distinguishable from the user's
+  // own words, since its content can no longer be told apart by position alone.
+  function appendVolatile(msgs: Message[], prefix: string): Message[] {
+    if (!prefix) return msgs;
+    return [...msgs, { role: "user", content: prefix, volatile: true }];
   }
 
   // Shared by the pre-request check (before provider.streamChat, so an
@@ -439,7 +443,7 @@ export async function runAgent(
     try {
     // Live todo block: volatileContext is session-stable (computed once above),
     // but the todo list changes mid-turn, so it is re-read and appended here per
-    // sub-turn — same withVolatilePrefix mechanism, one extra section.
+    // sub-turn — same appendVolatile mechanism, one extra section.
     const todoBlock = options.getTodos ? formatTodoBlock(options.getTodos()) : "";
     // Mid-turn steering mailbox: poll once per decision point; a hit joins the
     // volatile assembly below AND is pushed to `messages` as a real user
@@ -454,7 +458,7 @@ export async function runAgent(
     if (orphaned > 0) {
       options.onDiagnostic?.(`backfilled ${orphaned} unanswered tool result${orphaned === 1 ? "" : "s"}`);
     }
-    const assembledMessages = prefix ? withVolatilePrefix(messages, prefix) : messages;
+    const assembledMessages = appendVolatile(messages, prefix);
     // The volatile prefix is already present in assembledMessages, so only
     // tool-schema overhead is added here. This request-only copy deliberately
     // leaves messages/newMessages/session history complete and unedited.

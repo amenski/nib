@@ -67,9 +67,13 @@ function contentKeyedProvider(opts: ContentKeyedOptions) {
     lastUserInputs,
     async *streamChat(messages: Message[]): AsyncGenerator<StreamEvent> {
       const text = JSON.stringify(messages);
-      const lastUser = [...messages].reverse().find((m) => m.role === "user");
+      // The request-only volatile block is a user-role message too, so it is
+      // excluded here: `userCount` below distinguishes a sub-run (one user
+      // message, no history) from a parent turn, and `lastUser` is meant to be
+      // the prompt that drove the turn.
+      const lastUser = [...messages].reverse().find((m) => m.role === "user" && !m.volatile);
       lastUserInputs.push(typeof lastUser?.content === "string" ? lastUser.content : "");
-      const userCount = messages.filter((m) => m.role === "user").length;
+      const userCount = messages.filter((m) => m.role === "user" && !m.volatile).length;
       let script: TurnScript;
       if (first) {
         first = false;

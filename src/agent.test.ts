@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { runAgent } from "./agent.js";
@@ -10,6 +10,7 @@ import { CLEARED_TOOL_RESULT_PLACEHOLDER } from "./compaction/context-editing.js
 import { SessionStore } from "./sessions/store.js";
 import type { Provider, StreamEvent } from "./providers/types.js";
 import type { Message, ToolCall } from "./types.js";
+import { buildVolatileContext } from "./prompt.js";
 import { todoStore } from "./tools/todo.js";
 import { runBashTimed } from "./tools/bash.js";
 import { wrapUntrusted } from "./tools/untrusted-content.js";
@@ -77,6 +78,97 @@ describe("runAgent", () => {
     expect(sent[0].role).toBe("system");
     expect(sent).toContainEqual({ role: "assistant", content: "first reply" });
     expect(sent.at(-1)).toEqual({ role: "user", content: "who are you?" });
+  });
+
+  // Provider prompt caching only pays off if every request repeats the
+  // previous request's messages byte-for-byte and appends after them. The
+  // volatile block (env/git/RepoMap) is injected into the request copy only,
+  // so it must not move between requests: a request that mutates an earlier
+  // message invalidates every cached token after that point.
+  describe("request prefix stability", () => {
+    const VOLATILE = "VOLATILE-CONTEXT";
+
+    beforeEach(() => vi.mocked(buildVolatileContext).mockResolvedValue(VOLATILE));
+    afterEach(() => vi.mocked(buildVolatileContext).mockResolvedValue(""));
+
+    // The volatile tail is request-only and is deliberately absent from the
+    // next request, so it is dropped before comparing. What must hold is that
+    // the conversation nib persists — every message the provider has already
+    // seen — keeps its index and its bytes.
+    const stablePart = (msgs: Message[]): Message[] => {
+      const tail = msgs.at(-1);
+      return tail?.role === "user" && tail.volatile ? msgs.slice(0, -1) : msgs;
+    };
+
+    const isPrefixOf = (shorter: Message[], longer: Message[]): number => {
+      const limit = Math.min(shorter.length, longer.length);
+      for (let i = 0; i < limit; i++) {
+        if (JSON.stringify(shorter[i]) !== JSON.stringify(longer[i])) return i;
+      }
+      return -1;
+    };
+
+    const expectAppendOnly = (before: Message[], after: Message[]): void => {
+      expect(
+        after.some((m) => typeof m.content === "string" && m.content.includes(VOLATILE)),
+        "volatile context should reach the provider",
+      ).toBe(true);
+      const a = stablePart(before);
+      const b = stablePart(after);
+      const brokenAt = isPrefixOf(a, b);
+      expect(
+        brokenAt,
+        brokenAt === -1
+          ? "ok"
+          : `diverges at message ${brokenAt}: ${JSON.stringify(a[brokenAt])?.slice(0, 90)} -> ${JSON.stringify(b[brokenAt])?.slice(0, 90)}`,
+      ).toBe(-1);
+    };
+
+    it("appends across sub-turns within a turn", async () => {
+      const { provider, receivedMessages } = makeProvider([
+        [
+          { type: "tool_call_start", id: "c1", name: "read" },
+          { type: "tool_call_delta", id: "c1", arguments: "{}" },
+          { type: "done", finishReason: "tool_calls" },
+        ],
+        textTurn("first reply"),
+      ]);
+
+      await runAgent("first question", {
+        provider,
+        tools: [],
+        executeTool: async () => ({ content: "tool output" }),
+      });
+
+      expect(receivedMessages.length).toBeGreaterThan(1);
+      expectAppendOnly(receivedMessages[0], receivedMessages[1]);
+    });
+
+    it("appends across a turn boundary", async () => {
+      const first = makeProvider([
+        [
+          { type: "tool_call_start", id: "c1", name: "read" },
+          { type: "tool_call_delta", id: "c1", arguments: "{}" },
+          { type: "done", finishReason: "tool_calls" },
+        ],
+        textTurn("first reply"),
+      ]);
+      const firstResult = await runAgent("first question", {
+        provider: first.provider,
+        tools: [],
+        executeTool: async () => ({ content: "tool output" }),
+      });
+
+      const second = makeProvider([textTurn("second reply")]);
+      await runAgent("second question", {
+        provider: second.provider,
+        tools: [],
+        executeTool: async () => ({ content: "" }),
+        history: firstResult.messages,
+      });
+
+      expectAppendOnly(first.receivedMessages.at(-1)!, second.receivedMessages[0]!);
+    });
   });
 
   it("records tool calls, tool results, and the final reply in newMessages", async () => {

@@ -800,10 +800,10 @@ describe("runExecMode lifecycle hooks (headless)", () => {
 
   it("appends exit-0 UserPromptSubmit stdout to the prompt as context", async () => {
     writeGlobalSettings({ sandbox: { enabled: false }, hooks: { UserPromptSubmit: [{ command: "echo HOOK-CONTEXT" }] } });
-    const seenMessages: Array<Array<{ role: string; content?: string }>> = [];
+    const seenMessages: Array<Array<{ role: string; content?: string; volatile?: boolean }>> = [];
     providerFactory = () => ({
       name: "fake",
-      async *streamChat(messages: Array<{ role: string; content?: string }>) {
+      async *streamChat(messages: Array<{ role: string; content?: string; volatile?: boolean }>) {
         seenMessages.push([...messages]);
         yield { type: "text_delta", content: "done" };
         yield { type: "done", finishReason: "stop" };
@@ -813,7 +813,9 @@ describe("runExecMode lifecycle hooks (headless)", () => {
     const { code } = await run();
 
     expect(code).toBe(0);
-    const lastUser = [...seenMessages[0]].reverse().find((m) => m.role === "user");
+    // Skip the request-only volatile block; the hook context rides on the
+    // user's own message.
+    const lastUser = [...seenMessages[0]].reverse().find((m) => m.role === "user" && !m.volatile);
     expect(String(lastUser?.content ?? "")).toContain("HOOK-CONTEXT");
   });
 });

@@ -453,7 +453,7 @@ async function main() {
   function getCompactor(): Compactor {
     if (!_compactor) {
       const contextWindow = configResult.config.contextWindow ?? getActiveModelCaps()?.contextWindow ?? 128000;
-      _compactor = new Compactor(getProvider(), contextWindow, configResult.config.compaction?.threshold, configResult.config.compaction?.auto ?? true);
+      _compactor = new Compactor(getProvider(), contextWindow, configResult.config.compaction?.threshold, configResult.config.compaction?.auto ?? true, configResult.config.compaction?.maxTokens);
     }
     return _compactor;
   }
@@ -1558,7 +1558,7 @@ export async function handleSlashCore(
       const caps = preset?.models[shared.activeModel ?? preset.defaultModel];
       const cw = caps?.contextWindow ?? 128000;
       const threshold = configResult.config.compaction?.threshold ?? 0.7;
-      const compactionCutoff = compactionCutoffTokens(cw, threshold);
+      const compactionCutoff = compactionCutoffTokens(cw, threshold, configResult.config.compaction?.maxTokens);
 
       const breakdown = estimateTokensDetailed(shared.conversationHistory);
       const sysTokens = breakdown.filter(b => b.role === "system").reduce((s, b) => s + b.tokens, 0);

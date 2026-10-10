@@ -160,3 +160,20 @@ describe("estimateOverheadTokens", () => {
     );
   });
 });
+
+describe("compaction.maxTokens cap (opt-in, 2026-10-10)", () => {
+  it("is the smaller of the window fraction and the cap", () => {
+    expect(compactionCutoffTokens(1_000_000, 0.7, 200_000)).toBe(200_000);
+    expect(compactionCutoffTokens(128_000, 0.7, 200_000)).toBe(89_600);
+  });
+
+  it("changes nothing when unset", () => {
+    expect(compactionCutoffTokens(1_000_000, 0.7, undefined)).toBe(700_000);
+  });
+
+  it("makes shouldCompact trigger at the cap", () => {
+    const big: Message[] = [{ role: "user", content: "x".repeat(1_200_000) }];
+    expect(shouldCompact(big, 1_000_000, 0.7)).toBe(false);
+    expect(shouldCompact(big, 1_000_000, 0.7, 0, 200_000)).toBe(true);
+  });
+});

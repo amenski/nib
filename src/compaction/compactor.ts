@@ -55,13 +55,15 @@ export class Compactor {
     private contextWindow: number = 128000,
     private threshold?: number,
     private auto: boolean = true,
+    /** `compaction.maxTokens`: absolute cap on the trigger point (see budget.ts). */
+    private maxTokens?: number,
   ) {}
 
   needsCompaction(messages: Message[], overheadTokens = 0): boolean {
     // `auto: false` (config compaction.auto) disables automatic compaction.
     // Explicit paths (summarizeForResume, manual /compact) bypass this gate.
     if (!this.auto) return false;
-    return shouldCompact(messages, this.contextWindow, this.threshold, overheadTokens);
+    return shouldCompact(messages, this.contextWindow, this.threshold, overheadTokens, this.maxTokens);
   }
 
   trackFiles(files: string[]): void {

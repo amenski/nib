@@ -1132,3 +1132,19 @@ describe("loadConfig webSearch.searxngUrl", () => {
     expect(config.webSearch?.enrich).toBeUndefined();
   });
 });
+
+describe("loadConfig compaction.maxTokens", () => {
+  it("accepts an integer cap", () => {
+    writeProjectSettings({ compaction: { maxTokens: 200000 } });
+    const { config, errors } = loadConfig(projectDir);
+    expect(errors).toEqual([]);
+    expect(config.compaction?.maxTokens).toBe(200000);
+  });
+
+  it("rejects a non-integer or tiny cap and drops it", () => {
+    writeProjectSettings({ compaction: { maxTokens: 500 } });
+    const { config, errors } = loadConfig(projectDir);
+    expect(errors.some((e) => e.includes("config.compaction.maxTokens"))).toBe(true);
+    expect(config.compaction?.maxTokens).toBeUndefined();
+  });
+});

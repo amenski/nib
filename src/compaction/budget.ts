@@ -92,11 +92,20 @@ export function estimateOverheadTokens(
   return Math.ceil((toolChars + (volatileContext?.length ?? 0)) / 4);
 }
 
+/**
+ * The token count at which auto-compaction triggers: `contextWindow ×
+ * threshold`, capped by the optional `compaction.maxTokens` setting. The cap is
+ * opt-in — unset, a 1M-window model compacts near 700K. Measured 2026-10-10 on
+ * real onramp sessions: a 200K cap cut cost ~10–15% and request size ~3×, at
+ * the price of more summaries (detail lost), so it is the user's call.
+ */
 export function compactionCutoffTokens(
   contextWindow: number,
   threshold?: number,
+  maxTokens?: number,
 ): number {
-  return contextWindow * (threshold ?? 0.7);
+  const fraction = contextWindow * (threshold ?? 0.7);
+  return maxTokens !== undefined ? Math.min(fraction, maxTokens) : fraction;
 }
 
 export function shouldCompact(
@@ -104,8 +113,9 @@ export function shouldCompact(
   contextWindow: number,
   threshold?: number,
   overheadTokens = 0,
+  maxTokens?: number,
 ): boolean {
-  const cutoff = compactionCutoffTokens(contextWindow, threshold);
+  const cutoff = compactionCutoffTokens(contextWindow, threshold, maxTokens);
   const used = estimateTokens(messages) + overheadTokens;
   return used >= cutoff;
 }

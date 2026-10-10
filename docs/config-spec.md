@@ -438,6 +438,12 @@ one skill leaves all others unaffected.
 
 - `compaction.threshold` (number, default `0.7`) — the context-window
   fraction at which auto-compaction triggers (`contextWindow × threshold`).
+- `compaction.maxTokens` (integer ≥ 10000, default unset) — an absolute
+  cap on the trigger point: compaction runs at
+  `min(contextWindow × threshold, maxTokens)`. Opt-in. Measured 2026-10-10 on
+  real sessions: with a 1M-window model and no cap, requests reached 300K+
+  tokens and took ~2× longer than small ones; a 200–250K cap cuts request
+  size ~3× and cost ~10–15%, at the price of more summaries (detail loss).
 - `compaction.auto` (boolean, default `true`) — gates **automatic**
   compaction. When `false`, the agent never auto-compacts mid-conversation
   regardless of `threshold`. Explicit compaction paths are unaffected: the

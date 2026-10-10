@@ -178,6 +178,8 @@ export interface DeepCodeSettings {
   compaction?: {
     auto?: boolean;
     threshold?: number;
+    /** Absolute cap on the auto-compaction trigger, in tokens (opt-in; see compaction/budget.ts). */
+    maxTokens?: number;
   };
   /** Command-group behavior knobs (nib extension) */
   commands?: {
@@ -1542,6 +1544,11 @@ export function loadConfig(projectDir?: string): LoadResult {
   if ("compaction" in merged) {
     if (isObject(merged.compaction)) {
       config.compaction = merged.compaction as DeepCodeSettings["compaction"];
+      const max = (merged.compaction as Record<string, unknown>).maxTokens;
+      if (max !== undefined && !(typeof max === "number" && Number.isInteger(max) && max >= 10_000)) {
+        errors.push("config.compaction.maxTokens: must be an integer >= 10000");
+        delete config.compaction?.maxTokens;
+      }
     } else {
       errors.push("config.compaction: must be an object");
     }

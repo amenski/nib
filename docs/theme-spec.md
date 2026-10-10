@@ -68,6 +68,11 @@ screens also used fixed ANSI named colors (`"cyan"`, `"yellow"`, …). Every
 `color={ansi256(theme.theme.textDim)}`, raw `\x1b[2m` → `theme.fg(textDim, …)`,
 named colors → their slot (cyan→`secondary`, yellow→`warning`, red→`error`,
 green→`success`, magenta→`accent`), including `<Box borderColor>` values.
+Rendered tables follow the same reasoning (2026-10-10): only the box-drawing
+characters take `textDim`, so the cells keep normal contrast — dimming the
+whole table made its content hard to read. `MarkdownTable` colors exactly the
+characters it draws as borders (`Object.values(BOX)`), which is also why a cell
+can never pick up the dim by accident.
 Deliberately unchanged: the no-theme fallbacks in `MarkdownText`/`MarkdownTable`
 (they render without a theme on purpose) and the non-component producers
 (`ui/types.ts` `StatusSegment.dimColor`, `ui/core/task-status.ts`), whose data

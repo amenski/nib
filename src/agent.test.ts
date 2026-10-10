@@ -1184,8 +1184,15 @@ describe("runAgent", () => {
 
       // The first request is untouched; the second carries the steering block
       // in its volatile prefix (attached to the pushed user message).
-      expect(JSON.stringify(receivedMessages[0])).not.toContain("typed mid-turn");
-      expect(JSON.stringify(receivedMessages[1])).toContain("User message (typed mid-turn): stop what you're doing");
+      expect(JSON.stringify(receivedMessages[0])).not.toContain("typed while you were working");
+      const second = JSON.stringify(receivedMessages[1]);
+      expect(second).toContain(
+        "The user's latest message was typed while you were working. Answer it once, then continue the task.",
+      );
+      // The note does not repeat the message: it reaches the model once, as the
+      // user message. Echoing it here made the model answer it twice — once to
+      // the note, once to the message (onramp 1117-ecdc, 2026-10-10).
+      expect(second.match(/stop what you're doing/g)).toHaveLength(1);
       // Polled exactly once per decision point (two provider calls).
       expect(poll).toHaveBeenCalledTimes(2);
     });
@@ -1236,15 +1243,16 @@ describe("runAgent", () => {
 
       expect(polls).toEqual(["steer me", null]);
       // The message appears in exactly one provider request — not replayed.
-      const withSteering = receivedMessages.filter((req) => JSON.stringify(req).includes("typed mid-turn"));
+      const withSteering = receivedMessages.filter((req) =>
+        JSON.stringify(req).includes("typed while you were working"),
+      );
       expect(withSteering).toHaveLength(1);
     });
 
-    it("summarizes a long steering payload by its first line in the volatile notice", async () => {
+    it("does not repeat a long steering payload in the volatile notice", async () => {
       // A mid-turn `/skill <name> <text>` injects a whole SKILL.md body. The
       // payload is pushed as a real user message — that is the model's copy —
-      // so the volatile notice only needs to say something arrived, and must
-      // not re-send the body into the prefix of every following request.
+      // so the note only says a message arrived, and re-sends none of it.
       const payload = `[skill: task-loop]\n${"body line\n".repeat(80)}apply the plan`;
       const { provider, receivedMessages } = makeProvider([toolTurn(), textTurn("steered")]);
       const poll = vi.fn()
@@ -1263,34 +1271,14 @@ describe("runAgent", () => {
       const volatile = (receivedMessages[0] as Array<{ volatile?: boolean; content: string }>).find(
         (m) => m.volatile === true,
       );
-      expect(volatile?.content).toContain("User message (typed mid-turn): [skill: task-loop]");
+      expect(volatile?.content).toContain("typed while you were working");
+      expect(volatile?.content).not.toContain("[skill: task-loop]");
       expect(volatile?.content).not.toContain("body line");
       // The full payload is still the message the model reads, exactly once.
       const steering = result.messages.filter((m) => m.content === payload);
       expect(steering).toHaveLength(1);
     });
 
-    it("clips a single long first line to 120 characters", async () => {
-      const long = "x".repeat(400);
-      const { provider, receivedMessages } = makeProvider([toolTurn(), textTurn("steered")]);
-      const poll = vi.fn().mockReturnValueOnce(long).mockReturnValueOnce(null);
-
-      await runAgent("read a.txt", {
-        provider,
-        tools: [],
-        executeTool: async () => ({ content: "file contents" }),
-        pollSteeringMessage: poll,
-      });
-
-      // The clip is asserted on the volatile trailer itself — the payload is in
-      // the same request as the pushed user message, so a plain "no long runs"
-      // check would fail on the model's own copy.
-      const volatile = (receivedMessages[0] as Array<{ volatile?: boolean; content: string }>).find(
-        (m) => m.volatile === true,
-      );
-      expect(volatile?.content).toContain(`User message (typed mid-turn): ${"x".repeat(119)}…`);
-      expect(volatile?.content).not.toContain(`: ${"x".repeat(120)}`);
-    });
   });
 
   describe("token-usage logging", () => {

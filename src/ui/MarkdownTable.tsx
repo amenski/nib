@@ -1,11 +1,27 @@
 import React from "react";
 import { Text } from "ink";
+import { parseInline } from "./core/markdown-inline.js";
 
 const BOX = {
   tl: "\u250C", tr: "\u2510", bl: "\u2514", br: "\u2518",
   hd: "\u252C", hu: "\u2534", vl: "\u251C", vr: "\u2524",
   cr: "\u253C", hz: "\u2500", vt: "\u2502",
 } as const;
+
+/** Every character the box drawing uses \u2014 the ones that recede, and no others. */
+const BORDER_CHARS = new Set<string>(Object.values(BOX));
+
+/**
+ * A cell's displayed text: inline markers removed by the same parser the rest
+ * of the renderer uses (`**x**` \u2192 x, `` `x` `` \u2192 x, `[t](u)` \u2192 `t (u)`). A
+ * cell shows text, not markdown \u2014 and measuring the stripped form is what makes
+ * the column widths match what is drawn, since the raw form is wider.
+ */
+function plainCell(cell: string): string {
+  return parseInline(cell)
+    .map((segment) => segment.text)
+    .join("");
+}
 
 interface MarkdownTableProps {
   children: string;
@@ -90,7 +106,7 @@ export function parseTable(text: string): ParsedTable | null {
   const lines = text.split("\n").filter((l) => l.trim());
   if (lines.length < 2) return null;
 
-  const headers = splitCells(lines[0]);
+  const headers = splitCells(lines[0]).map(plainCell);
   if (headers.length === 0) return null;
 
   let sepIdx = -1;
@@ -104,7 +120,7 @@ export function parseTable(text: string): ParsedTable | null {
 
   const alignments = parseAlignments(lines[sepIdx], headers.length);
   const rows = lines.slice(sepIdx + 1)
-    .map(splitCells)
+    .map((line) => splitCells(line).map(plainCell))
     .filter((row) => row.some((c) => c !== ""));
 
   return { headers, alignments, rows };
@@ -378,10 +394,12 @@ function MarkdownTable({ children, width, theme }: MarkdownTableProps) {
 
   if (!rendered) return <Text>{children}</Text>;
 
+  // Only the borders recede. Dimming the whole table made the content hard to
+  // read; the border characters are what should sit back.
   const dim = theme ? (s: string) => theme.fg(theme.theme.textDim, s) : ((s: string) => `\x1b[2m${s}\x1b[0m`);
-  const dimmed = dim(rendered);
+  const colored = [...rendered].map((ch) => (BORDER_CHARS.has(ch) ? dim(ch) : ch)).join("");
 
-  return <Text>{dimmed}</Text>;
+  return <Text>{colored}</Text>;
 }
 
 export default MarkdownTable;

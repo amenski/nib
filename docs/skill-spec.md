@@ -127,10 +127,10 @@ guessed tracker file 11 s before the user's real instruction arrived.
 the payload (`buildSkillLoadMessage` body + any `text`) goes into the steering
 mailbox, so the live turn picks the skill up at its next decision point
 (`pollSteeringMessage`) and saves it with its own messages. The queue line and
-the echo show the command as typed, not the body; the volatile
-`User message (typed mid-turn)` notice carries only the payload's first line,
-since the body is already a message of its own. The `/skills` picker routes
-through the same input path, so a pick mid-turn behaves exactly like typing it.
+the echo show the command as typed, not the body; the volatile notice only says
+a message arrived (the body is already a message of its own). The `/skills`
+picker routes through the same input path, so a pick mid-turn behaves exactly
+like typing it.
 
 ## 8. Example
 

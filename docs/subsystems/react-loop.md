@@ -96,12 +96,15 @@ The volatile prefix is assembled at the request-build site each sub-turn
 point (before each provider call, never mid-stream). The returned string can
 be a payload the user never typed — a mid-turn `/skill <name> <text>` injects
 the skill body plus the instruction (App.tsx), while the queue and the echo
-show the command line — so the volatile notice carries only its first line. A
-hit is injected as a `User message (typed mid-turn): …` block in that call's volatile prefix AND
-pushed to `messages` as a real user message at the poll site, so the
-conversation order stays honest (the message sits before the
-assistant/tool messages that respond to it) and `newMessages`/`onNewMessages`
-persistence picks it up automatically. The TUI's queue (`App.tsx`
+show the command line. A hit is pushed to `messages` as a real user message at
+the poll site, and the volatile prefix gains a fixed note saying a message
+arrived and to answer it once (agent.ts `STEERING_NOTE`) — it deliberately does
+not repeat the message, since the message is right there: echoing even its
+first line put the same text in the request twice and the model answered it
+twice, once to the note and once to the message (onramp 1117-ecdc,
+2026-10-10). Pushing at the poll site keeps the conversation order honest (the
+message sits before the assistant/tool messages that respond to it) and
+`newMessages`/`onNewMessages` persistence picks it up automatically. The TUI's queue (`App.tsx`
 `messageQueueRef`) is the mailbox: the poll consumes message-kind items only
 (slash commands stay queued for the turn-end drain, preserving FIFO order),
 and Esc interrupt never touches the queue — anything not consumed mid-turn

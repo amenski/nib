@@ -240,18 +240,18 @@ those actions to chords that do encode.
 **Mid-turn input (steering).** Typing during a running turn is queued
 (`src/ui/App.tsx` `messageQueueRef`). The agent loop polls the mailbox once
 per decision point — before each provider call, never mid-stream — and
-injects a queued message as a `User message (typed mid-turn): …` block in
-the volatile prefix, persisting it as a real user message so the session
-record stays honest. Esc interrupts the current call and returns to the
+injects a queued message as a real user message (so the session record stays
+honest), plus a fixed note in the volatile prefix saying a message arrived and
+to answer it once. The note never repeats the message: repeating it made the
+model answer the same question twice (see subsystems/react-loop.md). Esc interrupts the current call and returns to the
 prompt; queued input is never dropped and runs in the next turn. Slash
 commands typed mid-turn stay queued and run at turn end (FIFO) — except
 `/skill <name> [text]`, which is injected into the running turn instead
 (skill-spec.md §7): a load queued behind the turn would arrive after the work
 it was meant to shape, and the turn it used to start then raced the live one.
 A queued item may carry a `payload` distinct from its displayed `text`: the
-queue stack and the echo show the command as typed, the mailbox returns the
-payload, and the volatile notice uses its first line only. Shipped
-2026-08-13; mechanics in subsystems/react-loop.md.
+queue stack and the echo show the command as typed, and the mailbox returns the
+payload. Shipped 2026-08-13; mechanics in subsystems/react-loop.md.
 
 ## 8. Output conventions
 

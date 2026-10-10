@@ -35,6 +35,14 @@ export type { Segment };
 
 interface MarkdownTextProps {
   children: string;
+  /**
+   * Columns this text may occupy. Passed to a table so its rows are sized to
+   * the width actually available: a table on a gutter line sits two columns in
+   * from the terminal edge, and sizing it to the full terminal made every row
+   * wrap (the wrapped tail landed at column 0 as stray `┤ ─` fragments).
+   * Without it the table falls back to the terminal width.
+   */
+  width?: number;
   /** Optional theme context for syntax highlighting and colors */
   theme?: {
     colorEnabled: boolean;
@@ -160,7 +168,7 @@ function splitListItems(text: string, itemRe: RegExp): ListItem[] | null {
 
 // ── Main Markdown Renderer ──
 
-function MarkdownText({ children, theme }: MarkdownTextProps) {
+function MarkdownText({ children, theme, width }: MarkdownTextProps) {
   const text = children;
 
   // An empty string is an intentional blank line (used for spacing between
@@ -183,7 +191,7 @@ function MarkdownText({ children, theme }: MarkdownTextProps) {
 
   // ── Table: multi-line pipe-separated with separator row ──
   if (isTableBlock(text)) {
-    return <MarkdownTable theme={theme}>{text}</MarkdownTable>;
+    return <MarkdownTable theme={theme} width={width}>{text}</MarkdownTable>;
   }
 
   // ── Heading: #, ##, ###, etc. (first line; a merged paragraph may carry

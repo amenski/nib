@@ -278,16 +278,14 @@ function isTransientNetworkError(err: Error): boolean {
  * delimiters, and nib's own notes (the sandbox hint) sit after them.
  */
 /**
- * First line of a mid-turn steering payload, clipped, for the volatile notice.
- * A steering payload can be a whole SKILL.md body (`/skill <name> <text>`
- * typed during a turn, App.tsx), and the notice only has to say that something
- * arrived — the payload itself is already pushed as a real user message.
+ * The volatile note for a message that arrived mid-turn. It states the fact and
+ * asks for one answer; the message itself is already pushed into the request as
+ * a real user message (which may be long — a mid-turn `/skill <name> <text>`
+ * injects a whole SKILL.md body), so repeating even its first line would send
+ * the same thing twice and invite answering it twice.
  */
-const STEERING_NOTICE_MAX = 120;
-function steeringNoticeLine(text: string): string {
-  const first = text.split("\n", 1)[0] ?? "";
-  return first.length > STEERING_NOTICE_MAX ? `${first.slice(0, STEERING_NOTICE_MAX - 1)}…` : first;
-}
+const STEERING_NOTE =
+  "The user's latest message was typed while you were working. Answer it once, then continue the task.";
 
 export function toolResultForHistory(result: Pick<ToolOutput, "content" | "error">): string {
   if (!result.error) return result.content;
@@ -506,7 +504,12 @@ export async function runAgent(
     // onNewMessages persistence picks it up automatically.
     const steering = options.pollSteeringMessage?.() ?? null;
     if (steering) messages.push({ role: "user", content: steering });
-    const prefix = [volatileContext, todoBlock, steering ? `User message (typed mid-turn): ${steeringNoticeLine(steering)}` : ""].filter(Boolean).join("\n\n");
+    // The note says the message arrived and asks for one answer — it does not
+    // repeat the message. It used to echo the first line, so in the request
+    // that carried the question the question appeared twice, and the model
+    // answered it twice: once to the note, once to the message, both before a
+    // tool call (2026-10-10, onramp 1117-ecdc).
+    const prefix = [volatileContext, todoBlock, steering ? STEERING_NOTE : ""].filter(Boolean).join("\n\n");
     const orphaned = repairOrphanedToolCalls(messages);
     if (orphaned > 0) {
       options.onDiagnostic?.(`backfilled ${orphaned} unanswered tool result${orphaned === 1 ? "" : "s"}`);

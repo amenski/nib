@@ -4,6 +4,7 @@ import { render } from "ink-testing-library";
 import OutputArea from "./OutputArea.js";
 import { BULLET_TAG, ANSWER_CONT_TAG } from "./constants.js";
 import { stripAnsi } from "./test-helpers.js";
+import { visualLength } from "./MarkdownTable.js";
 
 describe("answer block gutter (2026-10-10)", () => {
   it("indents every later line of an answer block under the text after the bullet", () => {
@@ -20,5 +21,39 @@ describe("answer block gutter (2026-10-10)", () => {
     const rows = stripAnsi(lastFrame() ?? "").split("\n").filter((r) => r.includes("word"));
     expect(rows.length).toBeGreaterThan(1);
     for (const r of rows) expect(r.startsWith("  word") || r.startsWith("   word")).toBe(true);
+  });
+});
+
+describe("table width inside the gutter (2026-10-10)", () => {
+  // A table long enough that the renderer fills the width it is given: one
+  // column wide enough to be grown, one frozen. Sized to the terminal (80) it
+  // needs 82 columns on a gutter line, so Ink wraps it and the tail lands at
+  // column 0 as stray border fragments — the reported breakage.
+  const table = "| Component | Status |\n|---|---|\n| CarouselStorePort | done |";
+
+  const rowsOf = (frame: string) => stripAnsi(frame).split("\n").filter((r) => r.trim() !== "");
+
+  it("sizes a gutter table to the columns the gutter leaves", () => {
+    const { lastFrame } = render(
+      <OutputArea lines={[ANSWER_CONT_TAG + table]} activeLine="" busy={false} staticEpoch={0} />,
+    );
+    const rows = rowsOf(lastFrame() ?? "");
+    // Two columns of gutter + a 78-wide table: exactly the terminal, no wrap.
+    const top = rows.find((r) => r.includes("┌"))!;
+    expect(visualLength(top)).toBe(80);
+    for (const row of rows) expect(visualLength(row)).toBeLessThanOrEqual(80);
+    // Nothing wrapped: the five table lines, each indented by the gutter. A
+    // wrapped row would add a line starting at the gutter's edge instead.
+    expect(rows).toHaveLength(5);
+    for (const row of rows) expect(row.startsWith("  ")).toBe(true);
+  });
+
+  it("gives a non-gutter table the full terminal width", () => {
+    const { lastFrame } = render(
+      <OutputArea lines={[table]} activeLine="" busy={false} staticEpoch={0} />,
+    );
+    const rows = rowsOf(lastFrame() ?? "");
+    const top = rows.find((r) => r.includes("┌"))!;
+    expect(visualLength(top)).toBe(80);
   });
 });

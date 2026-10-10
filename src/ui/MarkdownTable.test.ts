@@ -1,4 +1,8 @@
+import React from "react";
 import { describe, it, expect } from "vitest";
+import { render } from "ink-testing-library";
+import MarkdownTable from "./MarkdownTable.js";
+import { stripAnsi } from "./test-helpers.js";
 import {
   visualWidth,
   visualLength,
@@ -235,5 +239,56 @@ describe("renderTable (empty cells)", () => {
     expect(result).toContain("x");
     expect(result).toContain("y");
     expect(result).toContain("z");
+  });
+});
+
+describe("cells render as text, not markdown (2026-10-10)", () => {
+  const text = "| Port | Value |\n|---|---|\n| **all** `MediaStore` | [docs](https://x.y) |";
+
+  it("strips inline markers, using the renderer's own parser", () => {
+    const parsed = parseTable(text)!;
+    expect(parsed.headers).toEqual(["Port", "Value"]);
+    expect(parsed.rows[0]).toEqual(["all MediaStore", "docs (https://x.y)"]);
+  });
+
+  it("sizes columns from the stripped text", () => {
+    // Both widths stay under the width that would trigger filling, so the
+    // column keeps its natural size and the padding is readable directly.
+    const rendered = renderTable("| tag | n |\n|---|---|\n| **all** | 1 |", 80)!;
+    expect(rendered).not.toContain("*");
+    const rows = rendered.split("\n");
+    expect(rows[1]!.split("│")[1]).toBe(" tag ");
+    // " all ", not " **all** ": the column is as wide as the text drawn in it.
+    expect(rows.find((r) => r.includes("all"))!.split("│")[1]).toBe(" all ");
+  });
+
+  it("leaves text that is not markup alone", () => {
+    const snake = "| snake_case_name | a*b |\n|---|---|\n| x | y |";
+    expect(parseTable(snake)!.headers).toEqual(["snake_case_name", "a*b"]);
+  });
+});
+
+describe("table colour (2026-10-10)", () => {
+  it("dims the borders only, leaving the cells at normal contrast", () => {
+    // A whole-table dim made the content hard to read; the border characters
+    // are what should recede. A sentinel `fg` makes the assertion exact — the
+    // component's only colouring call is the one under test.
+    const theme = {
+      colorEnabled: true,
+      theme: { textDim: 246 },
+      fg: (_color: number, s: string) => `[dim:${s}]`,
+    };
+    const table = React.createElement(
+      MarkdownTable,
+      { theme, children: "| Component | Status |\n|---|---|\n| CarouselStorePort | done |" },
+    );
+    const frame = stripAnsi(render(table).lastFrame() ?? "");
+
+    expect(frame).toContain("[dim:┌]");
+    expect(frame).toContain("[dim:│]");
+    expect(frame).toContain("[dim:─]");
+    // The content is drawn as-is: no dim wrapper around a cell's text.
+    expect(frame).not.toContain("[dim:C]");
+    expect(frame).not.toContain("[dim:CarouselStorePort]");
   });
 });

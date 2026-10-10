@@ -13,7 +13,7 @@
 import React, { useMemo, memo } from "react";
 import { Box, Static, Text } from "ink";
 import MarkdownText from "./MarkdownText.js";
-import { useTheme } from "./contexts.js";
+import { useTheme, useTerminalInfo } from "./contexts.js";
 import { ansi256 } from "./theme.js";
 import { USER_ECHO_TAG, COMMAND_ECHO_TAG, BULLET_TAG, ANSWER_CONT_TAG, VERBATIM_TAG } from "./constants.js";
 import { formatEcho } from "./core/echo-format.js";
@@ -86,6 +86,9 @@ const OutputLine = memo(function OutputLine({
   line: string;
 }) {
   const theme = useTheme();
+  // Columns this line may occupy, for the table sizing inside MarkdownText: a
+  // gutter line (below) sits two columns in, so it gets two fewer.
+  const columns = useTerminalInfo().columns;
 
   // A verbatim-tagged line (tagged with VERBATIM_TAG) comes from resumed-
   // session replay (buildReplayLines) rather than live streaming. Progressive
@@ -118,7 +121,7 @@ const OutputLine = memo(function OutputLine({
         <Box flexDirection="column">
           <Box>
             {bulletEl}
-            <MarkdownText theme={theme}>{summarizeText(body)}</MarkdownText>
+            <MarkdownText theme={theme} width={columns - 2}>{summarizeText(body)}</MarkdownText>
           </Box>
           <Text color={theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined}>{summary}</Text>
         </Box>
@@ -127,7 +130,7 @@ const OutputLine = memo(function OutputLine({
     return (
       <Box>
         {bulletEl}
-        <MarkdownText theme={theme}>{body}</MarkdownText>
+        <MarkdownText theme={theme} width={columns - 2}>{body}</MarkdownText>
       </Box>
     );
   }
@@ -185,13 +188,13 @@ const OutputLine = memo(function OutputLine({
   if (summary) {
     return (
       <Box flexDirection="column">
-        <MarkdownText theme={theme}>{summarizeText(untagged)}</MarkdownText>
+        <MarkdownText theme={theme} width={columns}>{summarizeText(untagged)}</MarkdownText>
         <Text color={theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined}>{summary}</Text>
       </Box>
     );
   }
 
-  return <MarkdownText theme={theme}>{untagged}</MarkdownText>;
+  return <MarkdownText theme={theme} width={columns}>{untagged}</MarkdownText>;
 });
 
 // ── Main OutputArea ──

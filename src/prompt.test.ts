@@ -316,6 +316,17 @@ describe("buildStablePreamble — repository map injection", () => {
   });
 });
 
+describe("base rules — output discipline (2026-10-10)", () => {
+  it("tells the model to state a conclusion once", () => {
+    // A mid-turn question was answered three times, each restatement landing
+    // before the next tool call (onramp 1117-ecdc, 2026-10-10).
+    const out = buildStablePreamble({ workingDir: process.cwd() });
+    expect(out).toContain(
+      "State a conclusion once. Text before a tool call says what you are about to check, not the answer again.",
+    );
+  });
+});
+
 describe("buildStablePreamble — default persona", () => {
   // The product name is part of the model's own self-description, and nothing
   // asserted it: every other `You are` assertion in the suite targets a mode's

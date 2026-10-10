@@ -780,3 +780,68 @@ describe("background jobs (plan §3)", () => {
     expect(frame).not.toContain("not-streamed-row");
   });
 });
+
+// A turn that produces no answer must never be silent. Reported symptom: the
+// echoed prompt, then nothing but the "✳ Worked for Ns" footer. Two paths led
+// there — see the turn-start renewAbortController() and the onDiagnostic
+// handler in App.tsx.
+describe("turns that end without an answer", () => {
+  it("runs a turn submitted after an idle interrupt (fresh signal per turn)", async () => {
+    // Mirrors cli.tsx: one shared controller, swapped by renewAbortController.
+    let controller = new AbortController();
+    const abortedAtTurnStart: boolean[] = [];
+    const ctx = makeCtx(async (_input: string, cb: any) => {
+      // What the real bridge reads when it builds the run's options.
+      abortedAtTurnStart.push(controller.signal.aborted);
+      cb.onText("reply");
+      return { stopReason: "done", messages: [], newMessages: [] };
+    });
+    ctx.provideAbortController = () => controller;
+    ctx.renewAbortController = () => {
+      controller = new AbortController();
+    };
+
+    const inst = render(<App ctx={ctx} />);
+    mounted.push(inst);
+    await flush();
+
+    // Esc with no turn in flight: PromptInput forwards it to onInterrupt
+    // regardless of `busy`, so it aborts the controller the next turn would
+    // otherwise have inherited.
+    inst.stdin.write("\x1b");
+    await flush();
+    expect(controller.signal.aborted).toBe(true);
+
+    inst.stdin.write("hello");
+    await flush();
+    inst.stdin.write("\r");
+    await flush();
+    await flush();
+
+    expect(abortedAtTurnStart).toEqual([false]);
+    expect(stripAnsi(inst.lastFrame() ?? "")).toContain("reply");
+  });
+
+  it("prints the reason on the transcript instead of ending silently", async () => {
+    const ctx = makeCtx(async (_input: string, cb: any) => {
+      cb.onText("partial reply\n");
+      cb.onDiagnostic("connection lost: socket hang up");
+      return { stopReason: "aborted", messages: [], newMessages: [] };
+    });
+
+    const inst = render(<App ctx={ctx} />);
+    mounted.push(inst);
+    inst.stdin.write("hello");
+    await flush();
+    inst.stdin.write("\r");
+    await flush();
+    await flush();
+
+    const frame = stripAnsi(inst.lastFrame() ?? "");
+    expect(frame).toContain("connection lost: socket hang up");
+    // ...below the text that streamed before it, not above it.
+    expect(frame.indexOf("partial reply")).toBeLessThan(
+      frame.indexOf("connection lost"),
+    );
+  });
+});

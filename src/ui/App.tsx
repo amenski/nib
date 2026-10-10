@@ -927,6 +927,16 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
       setFirstTokenBoth(false);
       startFlushTimer();
       cancelled.current = false;
+      // Every turn runs against an abort signal created for it. The `finally`
+      // below renews the controller too, but that only covers an interrupt that
+      // lands while a turn is in flight — and PromptInput forwards Esc to
+      // onInterrupt even at idle (it reports "Interrupting…" only when `busy`).
+      // With no running turn to reach that `finally`, the shared controller
+      // stayed aborted, so the NEXT turn started against an already-aborted
+      // signal: the agent loop breaks on its first check and the turn ends with
+      // no output at all — an echo, then nothing but the "✳ Worked for Ns"
+      // footer. Renewing here makes a stale interrupt harmless by construction.
+      ctx.renewAbortController();
       reasoningRef.current = { buffer: "", flushed: false };
       const turnStart = Date.now();
       // Set on each sub-agent "start" event so the "finished" line can report
@@ -1118,7 +1128,20 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           }
           needTextSeparator = true;
         },
-        onDiagnostic: () => {},
+        // The turn's "what happened instead" channel: the reasons a turn can
+        // end without an answer (a lost connection, an empty provider response,
+        // an announced action the model never performed) reach the UI only
+        // here. This was a no-op, so those turns ended silently — the prompt
+        // echo, then nothing but the "✳ Worked for Ns" footer. Rendered dim,
+        // after the same reasoning/stream flush a tool line does, so the notice
+        // never lands above text that streamed before it.
+        onDiagnostic: (msg: string) => {
+          flushReasoning();
+          flushStream();
+          if (activeLineRef.current) scheduleOutput(activeLineRef.current);
+          setActiveLineBoth("");
+          scheduleOutput(theme.colorEnabled ? `\x1b[2m⚠ ${msg}\x1b[0m` : `⚠ ${msg}`);
+        },
         onRetry: () => {},
         onCompacted: () => {},
         // Live sub-agent activity, styled after Claude Code's inline agent

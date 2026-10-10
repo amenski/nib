@@ -1622,7 +1622,10 @@ export async function handleSlashCore(
       return;
     }
     case "/skill": {
-      const name = input.slice(7).trim();
+      // First token only: the command line may carry an instruction for the
+      // turn that follows the load (`/skill task-loop implement phase 1`), and
+      // the App takes the text from the same parse.
+      const name = input.slice(7).trim().split(/\s+/)[0] ?? "";
       const skill = skills.find((s: SkillDef) => s.name === name);
       if (!skill) { console.log(`Unknown skill: ${name}`); return; }
       if (isSkillAlreadyLoaded(shared.conversationHistory, name)) {

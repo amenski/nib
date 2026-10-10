@@ -277,6 +277,18 @@ function isTransientNetworkError(err: Error): boolean {
  * The content is used as-is: handlers already wrapped it in the untrusted
  * delimiters, and nib's own notes (the sandbox hint) sit after them.
  */
+/**
+ * First line of a mid-turn steering payload, clipped, for the volatile notice.
+ * A steering payload can be a whole SKILL.md body (`/skill <name> <text>`
+ * typed during a turn, App.tsx), and the notice only has to say that something
+ * arrived — the payload itself is already pushed as a real user message.
+ */
+const STEERING_NOTICE_MAX = 120;
+function steeringNoticeLine(text: string): string {
+  const first = text.split("\n", 1)[0] ?? "";
+  return first.length > STEERING_NOTICE_MAX ? `${first.slice(0, STEERING_NOTICE_MAX - 1)}…` : first;
+}
+
 export function toolResultForHistory(result: Pick<ToolOutput, "content" | "error">): string {
   if (!result.error) return result.content;
   return result.content.trim() !== ""
@@ -494,7 +506,7 @@ export async function runAgent(
     // onNewMessages persistence picks it up automatically.
     const steering = options.pollSteeringMessage?.() ?? null;
     if (steering) messages.push({ role: "user", content: steering });
-    const prefix = [volatileContext, todoBlock, steering ? `User message (typed mid-turn): ${steering}` : ""].filter(Boolean).join("\n\n");
+    const prefix = [volatileContext, todoBlock, steering ? `User message (typed mid-turn): ${steeringNoticeLine(steering)}` : ""].filter(Boolean).join("\n\n");
     const orphaned = repairOrphanedToolCalls(messages);
     if (orphaned > 0) {
       options.onDiagnostic?.(`backfilled ${orphaned} unanswered tool result${orphaned === 1 ? "" : "s"}`);

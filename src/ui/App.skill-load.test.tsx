@@ -6,7 +6,7 @@ import type { AppContext } from "./types.js";
 import { __resetInputWireForTests } from "./hooks/useTerminalInput.js";
 import { stripAnsi } from "./test-helpers.js";
 import { todoStore } from "../tools/todo.js";
-import { buildSkillLoadMessage, SKILL_APPLY_PROMPT } from "./core/skill-load.js";
+import { buildSkillLoadMessage, skillLoadMarker } from "./core/skill-load.js";
 
 // App's promptHistory initializer reads ~/.nib at mount; point it at a
 // throwaway implementation so these tests never touch real history.
@@ -33,13 +33,16 @@ interface Harness {
  * load message to conversationHistory (so `shared.conversationHistory` really
  * holds the skill, as in production) and returns the confirmation line.
  */
-function makeHarness(skillNames: string[]): Harness {
+function makeHarness(
+  skillNames: string[],
+  runner?: (input: string, cb: any) => Promise<any>,
+): Harness {
   const slashCalls: string[] = [];
   let historyAtTurnSnapshot: any[] = [];
-  const runAgentTurnCore = vi.fn(async () => {
+  const runAgentTurnCore = vi.fn(runner ?? (async () => {
     historyAtTurnSnapshot = [...ctx.mutable.conversationHistory];
     return { stopReason: "done", messages: [], newMessages: [] };
-  });
+  }));
 
   const ctx = {
     mutable: {
@@ -119,8 +122,8 @@ async function typeCommand(inst: ReturnType<typeof render>, text: string): Promi
   await flush();
 }
 
-describe("/skill force-load starts a turn", () => {
-  it("starts a turn with the apply prompt after loading a known skill", async () => {
+describe("/skill loads, and runs only with the user's words", () => {
+  it("does not start a turn for a bare /skill <name>", async () => {
     const h = makeHarness(["update-docs"]);
     const inst = render(<App ctx={h.ctx} />);
     mounted.push(inst);
@@ -128,25 +131,32 @@ describe("/skill force-load starts a turn", () => {
     await typeCommand(inst, "/skill update-docs");
 
     expect(h.slashCalls).toEqual(["/skill update-docs"]);
-    // The whole point of the fix: loading alone left the skill inert.
-    expect(h.runAgentTurnCore).toHaveBeenCalledTimes(1);
-    expect(h.runAgentTurnCore.mock.calls[0][0]).toBe(SKILL_APPLY_PROMPT);
-    // The skill really is in the history the turn reads.
-    expect(h.historyAtTurn()[0].content).toContain("update-docs BODY");
+    // The whole point: loading is not an instruction. It used to start a turn
+    // with a synthetic "apply the skill you just loaded" prompt, which began
+    // work the user had not asked for.
+    expect(h.runAgentTurnCore).not.toHaveBeenCalled();
+    // The skill IS loaded — in the history, ready for the next message.
+    expect(h.ctx.mutable.conversationHistory[0].content).toContain("update-docs BODY");
+    expect(stripAnsi(inst.lastFrame() ?? "")).toContain(
+      "Skill update-docs loaded — your next message will use it.",
+    );
   });
 
-  it("does not echo the synthetic prompt as a user message in the transcript", async () => {
-    const h = makeHarness(["update-docs"]);
+  it("runs the trailing instruction as the turn prompt", async () => {
+    const h = makeHarness(["task-loop"]);
     const inst = render(<App ctx={h.ctx} />);
     mounted.push(inst);
 
-    await typeCommand(inst, "/skill update-docs");
+    await typeCommand(inst, "/skill task-loop implement phase 1");
 
-    const frame = stripAnsi(inst.lastFrame() ?? "");
-    // The command echo is the visible record of what was typed...
-    expect(frame).toContain("/skill update-docs");
-    // ...but the synthetic apply prompt is suppressed: the user never typed it.
-    expect(frame).not.toContain(SKILL_APPLY_PROMPT);
+    // The command is passed to the CLI with the canonical (name-only) form...
+    expect(h.slashCalls).toEqual(["/skill task-loop"]);
+    // ...and the user's words are the turn, exactly as typed.
+    expect(h.runAgentTurnCore).toHaveBeenCalledTimes(1);
+    expect(h.runAgentTurnCore.mock.calls[0][0]).toBe("implement phase 1");
+    expect(h.historyAtTurn()[0].content).toContain("task-loop BODY");
+    // Echoed, so the transcript records what was asked.
+    expect(stripAnsi(inst.lastFrame() ?? "")).toContain("implement phase 1");
   });
 
   it("does not start a turn for an unknown skill", async () => {
@@ -160,7 +170,7 @@ describe("/skill force-load starts a turn", () => {
     expect(stripAnsi(inst.lastFrame() ?? "")).toContain("Unknown skill");
   });
 
-  it("does not mistake the /skills list command for a force-load", async () => {
+  it("does not mistake the /skills list command for a load", async () => {
     const h = makeHarness(["update-docs"]);
     const inst = render(<App ctx={h.ctx} />);
     mounted.push(inst);
@@ -168,5 +178,109 @@ describe("/skill force-load starts a turn", () => {
     await typeCommand(inst, "/skills");
 
     expect(h.runAgentTurnCore).not.toHaveBeenCalled();
+  });
+
+});
+
+/**
+ * A runner that polls the steering mailbox exactly like the agent loop does
+ * (once per decision point), waiting on the observable mailbox state rather
+ * than a fixed sleep, and returns the messages a real turn would have built —
+ * the injected user message included. Records every poll for assertions.
+ */
+function midTurnRunner(polled: (string | null)[]): (input: string, cb: any) => Promise<any> {
+  return async (_input: string, cb: any) => {
+    const deadline = Date.now() + 5000;
+    let payload: string | null = null;
+    while (payload === null && Date.now() < deadline) {
+      payload = cb.pollSteeringMessage();
+      if (payload === null) await new Promise((r) => setTimeout(r, 50));
+    }
+    polled.push(payload);
+    return {
+      stopReason: "done",
+      messages: payload ? [{ role: "user", content: payload }] : [],
+      newMessages: [],
+    };
+  };
+}
+
+describe("mid-turn /skill", () => {
+  it("injects the skill into the running turn instead of queueing it", async () => {
+    // The fake runner polls the steering mailbox exactly like the agent loop
+    // does (once per decision point), waiting on the observable mailbox state
+    // rather than a fixed sleep, then returns the messages a real turn would
+    // have built — the injected user message included.
+    const polled: (string | null)[] = [];
+    const h = makeHarness(["update-docs"], midTurnRunner(polled));
+    const inst = render(<App ctx={h.ctx} />);
+    mounted.push(inst);
+
+    inst.stdin.write("first");
+    await flush();
+    inst.stdin.write("\r");
+    await flush();
+    // Typed while the turn is in flight.
+    inst.stdin.write("/skill update-docs go");
+    await flush();
+    inst.stdin.write("\r");
+    // Wait on the observable outcome — the runner having polled and returned —
+    // rather than a fixed number of flushes, so machine load can only delay
+    // this, never let the assertions run first.
+    const deadline = Date.now() + 5000;
+    while (polled.length === 0 && Date.now() < deadline) await flush();
+
+    // The mailbox handed the agent the skill body plus the instruction — not
+    // the command line, which is what the queue and the echo show.
+    expect(polled[0]).toContain(skillLoadMarker("update-docs"));
+    expect(polled[0]).toContain("update-docs BODY");
+    expect(polled[0]?.trimEnd().endsWith("go")).toBe(true);
+
+    const frame = stripAnsi(inst.lastFrame() ?? "");
+    // The queue/echo line is the command the user typed...
+    expect(frame).toContain("/skill update-docs go");
+    // ...and the skill body is not echoed into the transcript.
+    expect(frame).not.toContain("update-docs BODY");
+
+    // The turn's own messages are the single source of history: the App did not
+    // also push the skill into conversationHistory, so nothing was lost to the
+    // turn-end overwrite that ate the old `/skills` picker path.
+    const history = h.ctx.mutable.conversationHistory as any[];
+    expect(history).toHaveLength(1);
+    expect(history[0].content).toContain(skillLoadMarker("update-docs"));
+    expect(h.slashCalls).toEqual([]);
+  });
+
+  it("the /skills picker takes the same path as a typed /skill", async () => {
+    // Picking used to call handleSlashCommand directly, bypassing the gate: it
+    // pushed the load into conversationHistory while the turn ran, and the
+    // turn's completion assigned its own messages over that array — the skill
+    // was silently lost, and the turn it started raced the live one.
+    const polled: (string | null)[] = [];
+    const h = makeHarness(["update-docs"], midTurnRunner(polled));
+    const inst = render(<App ctx={h.ctx} />);
+    mounted.push(inst);
+
+    inst.stdin.write("first");
+    await flush();
+    inst.stdin.write("\r");
+    await flush();
+    // /skills is a modal command, so it opens mid-turn rather than queueing.
+    inst.stdin.write("/skills");
+    await flush();
+    inst.stdin.write("\r");
+    await flush();
+    inst.stdin.write("\r"); // Enter on the highlighted skill
+    const deadline = Date.now() + 5000;
+    while (polled.length === 0 && Date.now() < deadline) await flush();
+
+    expect(polled[0]).toContain(skillLoadMarker("update-docs"));
+    expect(polled[0]).toContain("update-docs BODY");
+    // Loaded once, through the turn that saved it — nothing pushed into the
+    // parent array behind the turn's back.
+    expect(h.slashCalls).toEqual([]);
+    const history = h.ctx.mutable.conversationHistory as any[];
+    expect(history).toHaveLength(1);
+    expect(history[0].content).toContain("update-docs BODY");
   });
 });

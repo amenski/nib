@@ -1239,6 +1239,58 @@ describe("runAgent", () => {
       const withSteering = receivedMessages.filter((req) => JSON.stringify(req).includes("typed mid-turn"));
       expect(withSteering).toHaveLength(1);
     });
+
+    it("summarizes a long steering payload by its first line in the volatile notice", async () => {
+      // A mid-turn `/skill <name> <text>` injects a whole SKILL.md body. The
+      // payload is pushed as a real user message — that is the model's copy —
+      // so the volatile notice only needs to say something arrived, and must
+      // not re-send the body into the prefix of every following request.
+      const payload = `[skill: task-loop]\n${"body line\n".repeat(80)}apply the plan`;
+      const { provider, receivedMessages } = makeProvider([toolTurn(), textTurn("steered")]);
+      const poll = vi.fn()
+        .mockReturnValueOnce(payload)
+        .mockReturnValueOnce(null);
+
+      const result = await runAgent("read a.txt", {
+        provider,
+        tools: [],
+        executeTool: async () => ({ content: "file contents" }),
+        pollSteeringMessage: poll,
+      });
+
+      // The notice rides in the volatile trailer of the request that polled it
+      // (the first here — the payload is taken before the first provider call).
+      const volatile = (receivedMessages[0] as Array<{ volatile?: boolean; content: string }>).find(
+        (m) => m.volatile === true,
+      );
+      expect(volatile?.content).toContain("User message (typed mid-turn): [skill: task-loop]");
+      expect(volatile?.content).not.toContain("body line");
+      // The full payload is still the message the model reads, exactly once.
+      const steering = result.messages.filter((m) => m.content === payload);
+      expect(steering).toHaveLength(1);
+    });
+
+    it("clips a single long first line to 120 characters", async () => {
+      const long = "x".repeat(400);
+      const { provider, receivedMessages } = makeProvider([toolTurn(), textTurn("steered")]);
+      const poll = vi.fn().mockReturnValueOnce(long).mockReturnValueOnce(null);
+
+      await runAgent("read a.txt", {
+        provider,
+        tools: [],
+        executeTool: async () => ({ content: "file contents" }),
+        pollSteeringMessage: poll,
+      });
+
+      // The clip is asserted on the volatile trailer itself — the payload is in
+      // the same request as the pushed user message, so a plain "no long runs"
+      // check would fail on the model's own copy.
+      const volatile = (receivedMessages[0] as Array<{ volatile?: boolean; content: string }>).find(
+        (m) => m.volatile === true,
+      );
+      expect(volatile?.content).toContain(`User message (typed mid-turn): ${"x".repeat(119)}…`);
+      expect(volatile?.content).not.toContain(`: ${"x".repeat(120)}`);
+    });
   });
 
   describe("token-usage logging", () => {

@@ -93,8 +93,11 @@ sub-agent's own context gets its own plan.
 The volatile prefix is assembled at the request-build site each sub-turn
 (`src/agent.ts`); the agent also polls an optional mailbox there —
 `AgentOptions.pollSteeringMessage: () => string | null`, once per decision
-point (before each provider call, never mid-stream). A hit is injected as a
-`User message (typed mid-turn): …` block in that call's volatile prefix AND
+point (before each provider call, never mid-stream). The returned string can
+be a payload the user never typed — a mid-turn `/skill <name> <text>` injects
+the skill body plus the instruction (App.tsx), while the queue and the echo
+show the command line — so the volatile notice carries only its first line. A
+hit is injected as a `User message (typed mid-turn): …` block in that call's volatile prefix AND
 pushed to `messages` as a real user message at the poll site, so the
 conversation order stays honest (the message sits before the
 assistant/tool messages that respond to it) and `newMessages`/`onNewMessages`

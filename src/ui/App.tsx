@@ -72,7 +72,7 @@ import UsageView from "./views/UsageView.js";
 import ResumeChooser from "./views/ResumeChooser.js";
 import { buildReplayLines } from "./core/replay.js";
 import { opensModal } from "./core/modal-commands.js";
-import { parseSkillLoadCommand, SKILL_APPLY_PROMPT } from "./core/skill-load.js";
+import { parseSkillLoadCommand, isSkillAlreadyLoaded, buildSkillLoadMessage } from "./core/skill-load.js";
 import { findCommand, expandCommand } from "../commands/index.js";
 import { toolResultForHistory } from "../agent.js";
 import type { Message } from "../types.js";
@@ -363,8 +363,12 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
   // is in flight. Drained FIFO, one turn at a time, when the active turn ends.
   // `at` is the wall-clock time the item was queued (ms epoch), shown as a
   // "time capsule" in front of each stacked line.
+  // `payload` is what the agent receives when the steering mailbox consumes the
+  // item, when it must differ from `text`: a mid-turn `/skill <name> <text>`
+  // shows the command the user typed in the queue stack and the echo, while the
+  // agent gets the skill body plus the instruction.
   type QueuedItem =
-    | { kind: "message"; text: string; at: number; imageUrls?: string[] }
+    | { kind: "message"; text: string; at: number; imageUrls?: string[]; payload?: string }
     | { kind: "slash"; text: string; at: number };
   const messageQueueRef = useRef<QueuedItem[]>([]);
   // Text + queue time of each item in arrival order, shown stacked above the input.
@@ -1354,7 +1358,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           scheduleOutput("");
           scheduleOutput(USER_ECHO_TAG + head.text);
           scheduleOutput("");
-          return head.text;
+          return head.payload ?? head.text;
         },
       };
 
@@ -1505,6 +1509,21 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
     void appendPromptHistory(process.cwd(), text);
   }
 
+  /**
+   * A queued item that injects a skill into the running turn, or null when
+   * `text` is not a loadable `/skill` command. Null covers the unknown name and
+   * the already-loaded skill: both fall through to the ordinary queue path,
+   * where the CLI handler reports them as it always did.
+   */
+  function midTurnSkillItem(text: string): QueuedItem | null {
+    const parsed = parseSkillLoadCommand(text);
+    if (!parsed) return null;
+    const skill = (ctx.skills ?? []).find((s) => s.name === parsed.name);
+    if (!skill || isSkillAlreadyLoaded(ctx.mutable.conversationHistory, parsed.name)) return null;
+    const body = buildSkillLoadMessage(parsed.name, skill.content).content ?? "";
+    return { kind: "message", text, at: Date.now(), payload: parsed.text ? `${body}\n\n${parsed.text}` : body };
+  }
+
   // Handles a submission from the input box: runs it now if idle, otherwise
   // enqueues it to drain after the in-flight turn(s) complete.
   function submitFromInput({ text, command, imageUrls }: { text: string; command?: string; imageUrls?: string[] }) {
@@ -1522,6 +1541,19 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
       return;
     }
     const isSlash = text.startsWith("/");
+    // Mid-turn `/skill`: hand the skill to the running turn instead of queueing
+    // it. Queued as a slash command it could only run after the turn ended, and
+    // the run it started would race the live one; the `/skills` picker's direct
+    // `handleSlashCommand` call was worse — the running turn overwrote
+    // conversationHistory on completion, so the loaded skill was lost.
+    if (turnActiveRef.current && isSlash) {
+      const skillItem = midTurnSkillItem(text);
+      if (skillItem) {
+        messageQueueRef.current.push(skillItem);
+        syncQueueState();
+        return;
+      }
+    }
     if (turnActiveRef.current && !(isSlash && opensModal(text))) {
       messageQueueRef.current.push(isSlash ? { kind: "slash", text, at: Date.now() } : { kind: "message", text, at: Date.now(), imageUrls });
       syncQueueState();
@@ -1657,22 +1689,33 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
       void runAgentTurn(expandCommand(customCommand, customMatch?.[2] ?? ""), undefined, { echo: false });
       return;
     }
-    const skillName = parseSkillLoadCommand(trimmed);
-    if (skillName) {
-      const known = (ctx.skills ?? []).some((s) => s.name === skillName);
+    const skill = parseSkillLoadCommand(trimmed);
+    if (skill) {
+      const known = (ctx.skills ?? []).some((s) => s.name === skill.name);
       // Claim the turn gate synchronously: the CLI load below is async, and the
       // queue drain loops while this gate is open, so without claiming it here
       // the drain would start the next queued submission and race this turn.
       if (known) turnActiveRef.current = true;
-      ctx.handleSlash(trimmed).then((lines) => {
+      // The canonical `/skill <name>` form: the load is per-skill, and the
+      // trailing text belongs to the turn, not to the command.
+      ctx.handleSlash(`/skill ${skill.name}`).then((lines) => {
         for (const line of lines) pushOutput(line);
         setStatusLine(ctx.buildStatusBar());
         if (!known) return;
-        // Force-load means "start using it now" (skill-spec.md §7). Pushing the
-        // skill into history alone left it inert until the user asked again,
-        // because no turn was running for it to apply to.
         turnActiveRef.current = false;
-        void runAgentTurn(SKILL_APPLY_PROMPT, undefined, { echo: false });
+        if (skill.text) {
+          // The user's own words are the turn — echoed as typed, so a skill
+          // instruction reads like any other prompt in the transcript.
+          void runAgentTurn(skill.text);
+          return;
+        }
+        // Loaded, and nothing more. `/skill <name>` used to start a turn with a
+        // synthetic "apply the skill you just loaded" prompt, which began work
+        // the user had not asked for (onramp 2026-10-10: it started the task
+        // loop on a guessed tracker file 11 s before the real instruction).
+        pushOutput(theme.fg(theme.theme.textDim, `Skill ${skill.name} loaded — your next message will use it.`));
+        // The gate is open again: keep any queue the claim held back moving.
+        drainQueueRef.current();
       });
       return;
     }
@@ -2295,7 +2338,10 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           skills={ctx.skills ?? []}
           onSelect={(name) => {
             setShowSkillList(false);
-            handleSlashCommand(`/skill ${name}`);
+            // Through the input gate, not straight to handleSlashCommand: mid-turn
+            // this loads into the running turn, and idle it loads without
+            // starting one — the same rules a typed `/skill` gets.
+            submitFromInput({ text: `/skill ${name}` });
           }}
           onClose={() => setShowSkillList(false)}
           width={term.columns}

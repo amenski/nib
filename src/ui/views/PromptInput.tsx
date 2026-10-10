@@ -228,7 +228,11 @@ const PromptInput = React.memo(function PromptInput({
   }
 
   function handleSlashSelection(item: SlashCommandItem): void {
-    if (busy && item.kind !== "exit") { setStatusMessage("wait for response or press esc"); return; }
+    // No blanket busy guard: every branch below routes through onSubmit or
+    // onModelPickerOpen, and App is the one decision point — it opens a modal
+    // picker now (MODAL_COMMANDS) or queues the command behind the turn. The
+    // old guard refused the whole menu while busy, so `/model` could be typed
+    // but not picked from the menu, even though App already allows it mid-turn.
     if (item.kind === "new") { onSubmit({ text: "", command: "new" }); resetInput(); return; }
     if (item.kind === "resume") { onSubmit({ text: "", command: "resume" }); resetInput(); return; }
     if (item.kind === "continue") { onSubmit({ text: "/continue", command: "continue" }); resetInput(); return; }

@@ -112,16 +112,25 @@ Typed at the prompt inside the TUI. Three surfaces:
    `/tasks`, `/permissions`, `/usage`, `/plan`, `/raw`, `/clear`, `/compact`,
    `/doctor`, `/help`, `/exit`.
 2. **Text dispatcher** — `handleSlashCore` (`src/cli.tsx:987`): `/help`,
-   `/cost`, `/context`, `/usage`, `/doctor`, `/skills`, `/skill <name>`,
-   `/clear`, `/compact`, `/modes`, `/mode [slug]`, `/model [provider/model]`,
-   `/effort [value]`, `/sessions`.
+   `/cost`, `/context`, `/usage`, `/doctor`, `/skills`, `/skill <name> [text]`
+   (only the first token is the skill name — the rest is the instruction the
+   App runs as the turn, skill-spec.md §7), `/clear`, `/compact`, `/modes`,
+   `/mode [slug]`, `/model [provider/model]`, `/effort [value]`, `/sessions`.
 3. **TUI handlers** (`src/ui/App.tsx` `handleSlashCommand`): `/theme`,
    `/new`, `/resume`, `/continue`, `/sessions` (alias for the session
    list), `/undo`, `/mcp`, `/tasks`, `/permissions`, `/usage`, `/plan`,
    `/raw`, `/exit`.
 
 **Routed but not in the autocomplete menu:** `/cost`, `/context`, `/modes`,
-`/skill <name>`, `/sessions`.
+`/skill <name> [text]`, `/sessions`.
+
+**Menu picks while a turn runs.** Selecting from the autocomplete menu is not
+blocked by a running turn: every item routes to App (`onSubmit` /
+`onModelPickerOpen`), which opens a modal command now (`MODAL_COMMANDS`,
+`src/ui/core/modal-commands.ts` — `/model`, `/theme`, `/effort`, …) or queues
+the rest behind the turn. The menu used to refuse every pick with "wait for
+response or press esc", which locked the user out of `/model` even though
+typing it mid-turn already worked.
 
 The in-app help screen (`src/ui/HelpOverlay.tsx`) lists the commands above
 (including `/sessions`, `/skill`, `/cost`); it no longer advertises
@@ -235,7 +244,13 @@ injects a queued message as a `User message (typed mid-turn): …` block in
 the volatile prefix, persisting it as a real user message so the session
 record stays honest. Esc interrupts the current call and returns to the
 prompt; queued input is never dropped and runs in the next turn. Slash
-commands typed mid-turn stay queued and run at turn end (FIFO). Shipped
+commands typed mid-turn stay queued and run at turn end (FIFO) — except
+`/skill <name> [text]`, which is injected into the running turn instead
+(skill-spec.md §7): a load queued behind the turn would arrive after the work
+it was meant to shape, and the turn it used to start then raced the live one.
+A queued item may carry a `payload` distinct from its displayed `text`: the
+queue stack and the echo show the command as typed, the mailbox returns the
+payload, and the volatile notice uses its first line only. Shipped
 2026-08-13; mechanics in subsystems/react-loop.md.
 
 ## 8. Output conventions

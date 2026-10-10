@@ -22,20 +22,18 @@ export function buildSkillLoadMessage(name: string, content: string): Message {
 }
 
 /**
- * The prompt that starts the turn a force-loaded skill runs in. `/skill` means
- * "start using this now" (skill-spec.md §7) — pushing the skill into history
- * alone left it inert until the user asked again, because no turn was running
- * for it to apply to.
+ * The skill name (and optional instruction) in a `/skill <name> [text]`
+ * command, or null when `input` is not that form. Requires whitespace after
+ * `skill`, so `/skills` (the list command) and a bare `/skill` never match.
+ *
+ * `text` is everything after the name, trimmed — the instruction to run with
+ * (`/skill task-loop implement phase 1 from ~/…`). It used to be impossible to
+ * give one in the same step, and `/skill <name>` started a turn on its own: in
+ * onramp at 12:35:34 that hidden turn began the task loop on a guessed tracker
+ * file 11 s before the user's real instruction arrived.
  */
-export const SKILL_APPLY_PROMPT =
-  "Apply the skill you just loaded, following its instructions now.";
-
-/**
- * The skill name in a `/skill <name>` command, or null when `input` is not
- * exactly that form. Requires whitespace after `skill`, so `/skills` (the list
- * command) and a bare `/skill` never match.
- */
-export function parseSkillLoadCommand(input: string): string | null {
-  const match = /^\/skill\s+(\S+)\s*$/.exec(input.trim());
-  return match ? match[1] : null;
+export function parseSkillLoadCommand(input: string): { name: string; text: string } | null {
+  const match = /^\/skill\s+(\S+)(?:\s+([\s\S]*))?$/.exec(input.trim());
+  if (!match) return null;
+  return { name: match[1], text: (match[2] ?? "").trim() };
 }

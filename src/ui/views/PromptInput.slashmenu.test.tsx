@@ -26,7 +26,7 @@ afterEach(() => {
   __resetInputWireForTests();
 });
 
-function setup() {
+function setup(busy = false) {
   const onSubmit = vi.fn<(s: PromptSubmission) => void>();
   const onModelPickerOpen = vi.fn();
   const inst = render(
@@ -35,7 +35,7 @@ function setup() {
       onModelPickerOpen={onModelPickerOpen}
       screenWidth={80}
       promptHistory={[]}
-      busy={false}
+      busy={busy}
     />,
   );
   mounted.push(inst);
@@ -81,6 +81,23 @@ describe("PromptInput slash menu Enter-to-select", () => {
     await flush();
     expect(onSubmit).toHaveBeenCalledWith({ text: "/clear" });
     expect(stripAnsi(lastFrame() ?? "")).not.toContain("/clear");
+  });
+
+  it("a menu pick while a turn is running routes to App instead of being refused", async () => {
+    // The menu used to answer every pick with "wait for response or press esc"
+    // while busy — including /model, which App already opens mid-turn when it
+    // is typed. Every branch routes through onSubmit or onModelPickerOpen, and
+    // App is the decision point that opens the modal or queues the command.
+    const { stdin, lastFrame, onSubmit, onModelPickerOpen } = setup(true);
+    stdin.write("/");
+    await flush();
+    stdin.write(DOWN);
+    await flush();
+    stdin.write(RETURN);
+    await flush();
+    expect(onModelPickerOpen).toHaveBeenCalledTimes(1);
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(stripAnsi(lastFrame() ?? "")).not.toContain("wait for response");
   });
 
   it("the menu shows navigation hint and moves the highlight on Down", async () => {

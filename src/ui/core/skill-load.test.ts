@@ -37,13 +37,26 @@ describe("isSkillAlreadyLoaded", () => {
 });
 
 describe("parseSkillLoadCommand", () => {
-  it("extracts the name from `/skill <name>`", () => {
-    expect(parseSkillLoadCommand("/skill update-docs")).toBe("update-docs");
-    expect(parseSkillLoadCommand("  /skill   spaced-name  ")).toBe("spaced-name");
+  it("extracts the name from a bare `/skill <name>`, with no instruction text", () => {
+    expect(parseSkillLoadCommand("/skill update-docs")).toEqual({ name: "update-docs", text: "" });
+    expect(parseSkillLoadCommand("  /skill   spaced-name  ")).toEqual({ name: "spaced-name", text: "" });
+  });
+
+  it("keeps the trailing instruction, so a skill and its task arrive in one step", () => {
+    expect(parseSkillLoadCommand("/skill task-loop implement phase 1")).toEqual({
+      name: "task-loop",
+      text: "implement phase 1",
+    });
+    // Multi-line instruction, and args that look like flags stay intact.
+    expect(parseSkillLoadCommand("/skill review check the diff\nand the tests")?.text).toBe(
+      "check the diff\nand the tests",
+    );
+    expect(parseSkillLoadCommand("/skill review --strict")?.text).toBe("--strict");
   });
 
   it("does not match the /skills list command", () => {
     expect(parseSkillLoadCommand("/skills")).toBeNull();
+    expect(parseSkillLoadCommand("/skills extra")).toBeNull();
   });
 
   it("does not match a bare /skill with no argument", () => {
@@ -51,9 +64,9 @@ describe("parseSkillLoadCommand", () => {
     expect(parseSkillLoadCommand("/skill   ")).toBeNull();
   });
 
-  it("does not match extra arguments or unrelated text", () => {
-    expect(parseSkillLoadCommand("/skill a b")).toBeNull();
+  it("does not match unrelated text", () => {
     expect(parseSkillLoadCommand("not a command")).toBeNull();
+    expect(parseSkillLoadCommand("/skilful thing")).toBeNull();
   });
 });
 

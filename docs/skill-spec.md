@@ -108,16 +108,29 @@ trusted }` — never the content.
 
 | Command | Behavior |
 |---------|----------|
-| `/skills` | List available skills: name, description, source path |
-| `/skill <name>` | Force-load a skill and **start a turn immediately**, bypassing model discretion |
+| `/skills` | List available skills: name, description, source path; picking one loads it |
+| `/skill <name> [text]` | Load a skill; with `text`, run that text as the turn's prompt |
 
 `/skill` pushes the skill body into history as a user message
-(`buildSkillLoadMessage`, marker `[skill: <name>]`), then starts a turn with
-`SKILL_APPLY_PROMPT` so the model applies it in that same turn. Loading into
-history without starting a turn left the skill inert until the user asked
-again — the model reads history only when a turn runs. The synthetic prompt is
-not echoed into the transcript as a user message (it was never typed). An
-unknown name, or a skill already loaded this conversation, starts no turn.
+(`buildSkillLoadMessage`, marker `[skill: <name>]`) and stops there. The turn
+is the user's: `/skill <name> implement phase 1` runs "implement phase 1" as
+the prompt, echoed like any submission. A bare `/skill <name>` starts no turn
+and says so — `Skill <name> loaded — your next message will use it.` An
+unknown name, or a skill already loaded this conversation, loads nothing.
+
+It used to start a turn on its own with a synthetic `SKILL_APPLY_PROMPT`
+("Apply the skill you just loaded"), which began work the user had not asked
+for: in onramp on 2026-10-10 that hidden turn started the task loop on a
+guessed tracker file 11 s before the user's real instruction arrived.
+
+**During a running turn**, `/skill` is injected rather than queued or refused:
+the payload (`buildSkillLoadMessage` body + any `text`) goes into the steering
+mailbox, so the live turn picks the skill up at its next decision point
+(`pollSteeringMessage`) and saves it with its own messages. The queue line and
+the echo show the command as typed, not the body; the volatile
+`User message (typed mid-turn)` notice carries only the payload's first line,
+since the body is already a message of its own. The `/skills` picker routes
+through the same input path, so a pick mid-turn behaves exactly like typing it.
 
 ## 8. Example
 

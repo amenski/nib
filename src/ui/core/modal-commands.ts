@@ -25,6 +25,7 @@ const MODAL_COMMANDS = new Set([
   // mutating session state, so it is safe to run without queueing behind an
   // active turn.
   "doctor",
+  "context",
 ]);
 
 /**

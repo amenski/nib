@@ -49,6 +49,7 @@ const SLASH_COMMANDS: { command: string; description: string }[] = [
   { command: "/skills", description: "List available skills" },
   { command: "/skill <name>", description: "Print a skill's contents" },
   { command: "/cost", description: "Show session token totals and cost" },
+  { command: "/context", description: "Show context usage and when compaction triggers" },
   { command: "/usage", description: "Show account balance and token usage" },
   { command: "/effort", description: "Show/set reasoning effort" },
 ];

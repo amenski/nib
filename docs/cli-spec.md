@@ -110,7 +110,7 @@ Typed at the prompt inside the TUI. Three surfaces:
    (`src/ui/core/slash-commands.ts`): `/skills`, `/model`, `/mode`,
    `/effort`, `/theme`, `/new`, `/resume`, `/continue`, `/undo`, `/mcp`,
    `/tasks`, `/permissions`, `/usage`, `/plan`, `/raw`, `/clear`, `/compact`,
-   `/doctor`, `/help`, `/exit`.
+   `/context`, `/doctor`, `/help`, `/exit`.
 2. **Text dispatcher** — `handleSlashCore` (`src/cli.tsx:987`): `/help`,
    `/cost`, `/context`, `/usage`, `/doctor`, `/skills`, `/skill <name> [text]`
    (only the first token is the skill name — the rest is the instruction the
@@ -121,7 +121,7 @@ Typed at the prompt inside the TUI. Three surfaces:
    list), `/undo`, `/mcp`, `/tasks`, `/permissions`, `/usage`, `/plan`,
    `/raw`, `/exit`.
 
-**Routed but not in the autocomplete menu:** `/cost`, `/context`, `/modes`,
+**Routed but not in the autocomplete menu:** `/cost`, `/modes`,
 `/skill <name> [text]`, `/sessions`.
 
 **Menu picks while a turn runs.** Selecting from the autocomplete menu is not

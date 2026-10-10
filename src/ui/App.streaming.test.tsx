@@ -456,6 +456,53 @@ describe("mid-turn steering (queue mailbox)", () => {
     expect(frame).toContain("steer me");
   });
 
+  it("runs a read-only /context mid-turn instead of queueing it, while a stateful /compact waits", async () => {
+    // /context only reads state (the token breakdown and the compaction
+    // trigger), so it is in MODAL_COMMANDS and must bypass the queue — it used
+    // to be unreachable while a turn ran, exactly like /doctor was.
+    let release!: (v: unknown) => void;
+    const slashCalls: string[] = [];
+    const ctx = makeCtx(() => new Promise((r) => { release = r; }));
+    ctx.handleSlash = async (cmd: string) => {
+      slashCalls.push(cmd);
+      return [];
+    };
+    const inst = render(<App ctx={ctx} />);
+    mounted.push(inst);
+    inst.stdin.write("first");
+    await flush();
+    inst.stdin.write("\r");
+    await flush();
+
+    // A stateful command typed mid-turn: queued, not run.
+    inst.stdin.write("/compact");
+    await flush();
+    inst.stdin.write("\r");
+    await flush();
+    expect(slashCalls).toEqual([]);
+
+    // A read-only one: runs now, ahead of the queue.
+    inst.stdin.write("/context");
+    await flush();
+    inst.stdin.write("\r");
+    await flush();
+    await flush();
+    expect(slashCalls).toEqual(["/context"]);
+
+    // The queue stack holds /compact only — /context never entered it.
+    // The queue stack shows the waiting /compact; /context ran and never
+    // entered it. (Both appear once as the transcript's own command echo, so
+    // the check targets the stack's "[HH:MM] <command>" shape.)
+    const frame = stripAnsi(inst.lastFrame() ?? "");
+    expect(frame).toMatch(/^\[\d\d:\d\d\] \/compact$/m);
+    expect(frame).not.toMatch(/^\[\d\d:\d\d\] \/context$/m);
+
+    release({ stopReason: "done", messages: [], newMessages: [] });
+    await flush();
+    await flush();
+    expect(slashCalls).toEqual(["/context", "/compact"]);
+  });
+
   it("Esc interrupts the turn and queued input survives into the next turn", async () => {
     const inputs: string[] = [];
     const controller = new AbortController();

@@ -848,7 +848,14 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
     pushOutputLines(lines);
     setResumeChoice(null);
     pendingResumeRef.current = null;
-  }, [theme]);
+    // The resumed history is now the live one, so the ctx meter (and cost)
+    // must be rebuilt here: this is the single exit for both "Load" and
+    // "Compact", and nothing else repaints the bar until a turn ends — so a
+    // resumed session showed ~0% (a fresh process's pre-load value) until the
+    // first turn finished. A compacting resume also leaves the pre-compact
+    // value stale without this.
+    setStatusLine(ctx.buildStatusBar());
+  }, [theme, ctx]);
 
   // Restore the previous session's last todo plan (persisted by
   // update_todo_list) so the panel and the model's first turn see it. The

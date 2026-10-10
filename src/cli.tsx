@@ -1308,7 +1308,7 @@ function listKnownModels(): ModelEntry[] {
 /** Slash commands offered by Tab completion: the autocomplete menu's set plus the headless-routed extras (cli-spec.md §5). */
 const SLASH_COMMANDS = [
   ...BUILTIN_SLASH_COMMANDS.map(c => c.label),
-  "/cost", "/context", "/modes", "/skill", "/sessions", "/rename",
+  "/cost", "/modes", "/skill", "/sessions", "/rename",
 ];
 
 /**

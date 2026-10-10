@@ -30,6 +30,7 @@ const ROUTED_KINDS: ReadonlySet<SlashCommandKind> = new Set<SlashCommandKind>([
   "plan",
   "raw",
   "doctor",
+  "context",
   "compact",
 ]);
 
@@ -86,6 +87,17 @@ describe("slash command registry routing", () => {
     const names = getSlashCommands().map((c) => c.name);
     expect(names).toContain("permissions");
     expect(names).toContain("raw");
+  });
+
+  it("registers /context with a routed 'context' kind", () => {
+    const cmd = findExactSlashCommand(getSlashCommands(), "/context");
+    expect(cmd?.kind).toBe("context");
+    expect(cmd?.description).toMatch(/context/i);
+    expect(ROUTED_KINDS.has("context")).toBe(true);
+  });
+
+  it("lists /context in the menu's filtered set", () => {
+    expect(filterSlashCommands(getSlashCommands(), "/con").map((h) => h.name)).toContain("context");
   });
 
   it("registers /usage with a routed 'usage' kind", () => {

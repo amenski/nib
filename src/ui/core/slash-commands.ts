@@ -1,5 +1,5 @@
 export type SlashCommandKind =
-  | "model" | "mode" | "effort" | "theme" | "new" | "resume" | "continue" | "undo" | "mcp" | "tasks" | "permissions" | "usage" | "exit" | "help" | "clear" | "skills" | "plan" | "raw" | "doctor" | "compact";
+  | "model" | "mode" | "effort" | "theme" | "new" | "resume" | "continue" | "undo" | "mcp" | "tasks" | "permissions" | "usage" | "exit" | "help" | "clear" | "skills" | "plan" | "raw" | "doctor" | "context" | "compact";
 
 export interface SlashCommandItem {
   kind: SlashCommandKind;
@@ -26,6 +26,7 @@ export const BUILTIN_SLASH_COMMANDS: SlashCommandItem[] = [
   { kind: "raw", name: "raw", label: "/raw", description: "Cycle display mode (lite | normal | raw-scrollback)" },
   { kind: "clear", name: "clear", label: "/clear", description: "Clear conversation history" },
   { kind: "compact", name: "compact", label: "/compact", description: "Summarize older turns to free context" },
+  { kind: "context", name: "context", label: "/context", description: "Show context usage and when compaction triggers" },
   { kind: "doctor", name: "doctor", label: "/doctor", description: "Show provider, model, and refresh settings" },
   { kind: "help", name: "help", label: "/help", description: "Show help" },
   { kind: "exit", name: "exit", label: "/exit", description: "Quit" },

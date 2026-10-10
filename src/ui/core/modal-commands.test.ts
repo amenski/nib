@@ -3,7 +3,7 @@ import { opensModal } from "./modal-commands.js";
 
 describe("opensModal", () => {
   it("recognizes UI-only modal commands (bare name)", () => {
-    for (const c of ["model", "theme", "effort", "resume", "continue", "sessions", "skills", "modes", "undo", "mcp", "tasks", "permissions", "usage", "help"]) {
+    for (const c of ["model", "theme", "effort", "resume", "continue", "sessions", "skills", "modes", "undo", "mcp", "tasks", "permissions", "usage", "help", "doctor", "context"]) {
       expect(opensModal(c)).toBe(true);
     }
   });
@@ -11,6 +11,12 @@ describe("opensModal", () => {
   it("recognizes the same commands as slash text", () => {
     expect(opensModal("/resume")).toBe(true);
     expect(opensModal("/model")).toBe(true);
+  });
+
+  it("treats /context as a modal command (read-only diagnostics, like /doctor)", () => {
+    // It only reads state (the token breakdown and the compaction trigger), so
+    // it must run over an in-flight turn instead of queueing behind it.
+    expect(opensModal("/context")).toBe(true);
   });
 
   it("matches on the first token so args don't defeat it", () => {

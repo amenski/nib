@@ -3,6 +3,8 @@ import { registerBash, runBashTimed, resolveTimeoutToBackground } from "./bash.j
 import { jobManager, registerJobs } from "./jobs.js";
 import { SANDBOX_BLOCKED_HINT } from "./sandbox-hint.js";
 import { ToolRegistry } from "./registry.js";
+import { runAgent } from "../agent.js";
+import type { Provider } from "../providers/types.js";
 import type { ToolContext } from "./types.js";
 import { basename, join } from "node:path";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -318,6 +320,59 @@ describe("sandbox refusal hint (2026-10-10)", () => {
       // A command that was not refused gets no note.
       const ok = await registry.execute({ id: "c2", name: "run_bash", arguments: { command: "echo fine" } }, ctx);
       expect(ok.content).not.toContain(SANDBOX_BLOCKED_HINT);
+    } finally {
+      rmSync(blocked, { force: true });
+      rmSync(workspace, { recursive: true, force: true });
+      tmp.cleanup();
+    }
+  });
+
+  itOnDarwin("the note reaches the message the model receives, not just the tool result", async () => {
+    // The note is worthless if it stops at the raw result: the agent loop
+    // composes the tool message, and it used to drop `content` on error — so
+    // this exact block arrived at the model as `Error: Exit code: 1`, with the
+    // `Operation not permitted` and the note both gone (the failure the
+    // 2026-10-10 onramp logs show costing a session three Bash attempts).
+    const registry = new ToolRegistry();
+    registerBash(registry);
+    const tmp = createSessionTempDir();
+    const workspace = mkdtempSync(join(tmpdir(), "nib-hint-model-"));
+    const blocked = join(homedir(), `.nib-sandbox-hint-model-${process.pid}.txt`);
+    writeFileSync(blocked, "secret\n");
+    try {
+      const sandboxCtx: ToolContext = {
+        workingDir: workspace,
+        sessionId: "hint-model",
+        signal: new AbortController().signal,
+        sandboxLevel: "workspace-write",
+        writeRoots: [],
+        sessionTempDir: tmp.path,
+      };
+      let turn = 0;
+      const provider: Provider = {
+        name: "fake",
+        async *streamChat() {
+          if (turn++ === 0) {
+            yield { type: "tool_call_start", id: "c1", name: "run_bash" };
+            yield { type: "tool_call_delta", id: "c1", arguments: JSON.stringify({ command: `cat "${blocked}"` }) };
+            yield { type: "done", finishReason: "tool_calls" };
+          } else {
+            yield { type: "text_delta", content: "ok" };
+            yield { type: "done", finishReason: "stop" };
+          }
+        },
+      };
+
+      const result = await runAgent("show me that file", {
+        provider,
+        tools: [],
+        executeTool: (call) => registry.execute(call, sandboxCtx),
+      });
+
+      const toolMsg = result.messages.find((m) => m.role === "tool");
+      expect(toolMsg?.content).toContain("Error: Exit code: 1");
+      expect(toolMsg?.content).toContain("Operation not permitted");
+      expect(toolMsg?.content).toContain(SANDBOX_BLOCKED_HINT);
     } finally {
       rmSync(blocked, { force: true });
       rmSync(workspace, { recursive: true, force: true });

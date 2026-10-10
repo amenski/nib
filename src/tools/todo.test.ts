@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { ToolRegistry } from "./registry.js";
+import { SessionStore, subagentAuditStore } from "../sessions/store.js";
 import type { ToolContext } from "./types.js";
 import {
   todoStore,
@@ -162,10 +166,35 @@ describe("update_todo_list handler", () => {
     expect(appendTodo).toHaveBeenCalledWith("test", [todo("step", "in_progress")]);
   });
 
-  it("no-ops without ctx.sessionStore (headless, sub-agents)", async () => {
+  it("no-ops without ctx.sessionStore (headless)", async () => {
     const registry = makeRegistry();
     const out = await execUpdate(registry, [todo("step", "pending")]);
     expect(out.error).toBeUndefined();
+  });
+
+  it("succeeds with a sub-agent's audit-only store, writing no snapshot (2026-10-10)", async () => {
+    // A sub-agent's store is a Proxy exposing permission/token writes only, so
+    // `appendTodo` is *present as undefined* on a store that exists — `?.` on
+    // the store alone left the call throwing `appendTodo is not a function`,
+    // which is what the onramp log showed a planning sub-agent hitting.
+    const registry = makeRegistry();
+    const home = mkdtempSync(join(tmpdir(), "nib-todo-audit-"));
+    try {
+      const parent = new SessionStore(home);
+      const out = await registry.execute(
+        { id: "t1", name: "update_todo_list", arguments: { todos: [todo("sub step", "in_progress")] } },
+        { ...makeCtx(), sessionStore: subagentAuditStore(parent) },
+      );
+
+      expect(out.error).toBeUndefined();
+      expect(out.content).toContain("Todo list updated (1 item)");
+      // The handler still did its job — the plan reaches the sub-agent's own
+      // panel — while nothing is written into the parent session.
+      expect(todoStore.getTodos()).toEqual([todo("sub step", "in_progress")]);
+      expect(await parent.queryTodos("test")).toEqual([]);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });
 

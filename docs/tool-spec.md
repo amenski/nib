@@ -21,6 +21,13 @@ not a failure to retry.
 - Errors are plain messages duplicated in `error` — e.g.
   `String not found in /abs/path`. There is **no formal error-code enum**;
   the distinctive prefixes that exist are documented in §6.
+- **A failing call keeps its output.** The loop composes the `role: "tool"`
+  message as `Error: <error>` followed by `content`
+  (`toolResultForHistory`, `src/agent.ts`), and the TUI's `⎿` preview shows the
+  same string — the user sees what the model sees. Handlers therefore set
+  `content` on failure too (stderr text, the `<error_analysis>` block, nib's
+  sandbox note), and a result with empty `content` stays the single
+  `Error: <error>` line.
 - Tool `path` arguments are expected to be absolute (the system prompt
   requires it; the read-before-write rule is also enforced mechanically via
   stale-file detection, §4).
@@ -238,7 +245,10 @@ a time; the handler warns in its output when that's violated but does not
 reject. Context: the current list is injected live into the volatile prefix
 each sub-turn (`src/agent.ts`), and the CLI renders it as a checklist panel
 above the input (`src/ui/TodoPanel.tsx`). Sub-agents (`new_task`) run with
-their own isolated store for the duration of the sub-run.
+their own isolated store for the duration of the sub-run, and their
+`sessionStore` is the audit-only view (orchestration.md), which withholds
+`appendTodo` — the snapshot write is optional-called and no-ops, so a
+sub-agent plans normally without writing into the parent session.
 
 `new_task` details (`src/orchestrator/index.ts`): nesting depth ≤ 3,
 sub-turns ≤ 10, mode-scoped tool set, shared permission engine with

@@ -92,8 +92,11 @@ const todoHandler: ToolHandler = async (args, ctx) => {
   store.setTodos(items);
 
   // Persist the snapshot so a resumed session restores the plan. No-op
-  // without a session store (headless, sub-agents) — like appendPermission.
-  await ctx.sessionStore?.appendTodo(ctx.sessionId, items);
+  // without a session store (headless), or without this member — a sub-agent's
+  // audit-only view exposes just appendPermission/appendToken/getMessageCount,
+  // so the store is present while appendTodo is absent, and `?.` on the store
+  // alone is not enough (store.ts subagentAuditStore).
+  await ctx.sessionStore?.appendTodo?.(ctx.sessionId, items);
 
   // Spec: exactly one in_progress at a time; warn in output when violated,
   // do not reject (tool-spec.md).

@@ -871,6 +871,35 @@ describe("tool result preview colour", () => {
   });
 });
 
+describe("failed tool preview (2026-10-10)", () => {
+  it("shows the failing command's own output under the error line", async () => {
+    // What the model receives, shown to the user too: the preview used to stop
+    // at `Error: Exit code: 1`, so a refused read looked like a plain failure
+    // with no stderr and no nib note under it.
+    const { wrapUntrusted } = await import("../tools/untrusted-content.js");
+    const ctx = makeCtx(async (_input: string, cb: any) => {
+      cb.onToolStart("run_bash", { command: 'cat "/Users/x/notes.txt"' });
+      cb.onToolResult("run_bash", {
+        content:
+          `${wrapUntrusted("Exit code: 1\ncat: /Users/x/notes.txt: Operation not permitted")}\n` +
+          "[nib] The OS sandbox blocked that path. Files in your home directory outside the workspace can be read with read_file, list_files or glob — a shell command cannot reach them.",
+        error: "Exit code: 1",
+      });
+      return { stopReason: "done", messages: [], newMessages: [] };
+    });
+    const inst = render(<App ctx={ctx} />);
+    mounted.push(inst);
+    inst.stdin.write("go");
+    await flush();
+    inst.stdin.write("\r");
+    await flush();
+    await flush();
+    const frame = stripAnsi(inst.lastFrame() ?? "");
+    expect(frame).toContain("Error: Exit code: 1");
+    expect(frame).toContain("Operation not permitted");
+  });
+});
+
 describe("a failed turn is still saved", () => {
   it("persists the messages the agent attached to a provider error", async () => {
     // The provider dies mid-turn: the agent rethrows inside its loop, but the

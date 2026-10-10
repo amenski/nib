@@ -174,6 +174,13 @@ the same view). The view:
   anything but audit rows into the parent session, and the view needs no
   re-audit when `SessionStore` grows: new members default to blocked.
 
+An absent member is a *runtime* hole in a compile-time type: a tool holding
+`ctx.sessionStore` sees `appendTodo` as required by `SessionStore`, so
+`ctx.sessionStore?.appendTodo(...)` type-checks and still throws
+`appendTodo is not a function` under the view. Call sites must optional-call
+the *member* (`ctx.sessionStore?.appendTodo?.(…)`) — the one that did not
+(update_todo_list) failed for every planning sub-agent until 2026-10-10.
+
 **Contract.**
 
 - Parent-side rows stay untagged — no `source` field (session-spec.md §4).

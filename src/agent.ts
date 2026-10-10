@@ -261,6 +261,29 @@ function isTransientNetworkError(err: Error): boolean {
   return false;
 }
 
+/**
+ * The text of a tool result as it enters message history — and, because the
+ * user should see what the model sees, as the TUI previews it (`App.tsx`
+ * onToolResult imports this rather than rebuilding it).
+ *
+ * A failing result keeps the tool's own output under the error line. It used
+ * to be dropped (`result.error ? \`Error: ${result.error}\` : result.content`),
+ * so every failure reached the model as a bare line — `Error: Exit code: 1`
+ * with no stderr, no `<error_analysis>` block, and no sandbox hint — which the
+ * 2026-10-10 onramp logs show costing the model extra calls to rediscover what
+ * the output already said (src/tools/sandbox-hint.ts documents one such case).
+ * A tool that returns `content: ""` on error is byte-identical to before.
+ *
+ * The content is used as-is: handlers already wrapped it in the untrusted
+ * delimiters, and nib's own notes (the sandbox hint) sit after them.
+ */
+export function toolResultForHistory(result: Pick<ToolOutput, "content" | "error">): string {
+  if (!result.error) return result.content;
+  return result.content.trim() !== ""
+    ? `Error: ${result.error}\n${result.content}`
+    : `Error: ${result.error}`;
+}
+
 export async function runAgent(
   userMessage: string,
   options: AgentOptions,
@@ -978,7 +1001,7 @@ export async function runAgent(
         }
       }
       options.onToolResult?.(tc.name, result);
-      const historyContent = result.error ? `Error: ${result.error}` : result.content;
+      const historyContent = toolResultForHistory(result);
 
       const callKey = `${tc.name}:${JSON.stringify(tc.arguments)}`;
       const callCount = (seenCalls.get(callKey) || 0) + 1;
@@ -1007,7 +1030,7 @@ export async function runAgent(
         appendFreshToolResult(tc.id, tc.name, historyContent);
         batchNotes.push({
           role: "user",
-          content: errorReflector.formatError(tc.name, result.error, result.content),
+          content: errorReflector.formatError(tc.name, result.error),
         });
         options.onRetry?.("retrying");
         errorReflector.resetTurn();

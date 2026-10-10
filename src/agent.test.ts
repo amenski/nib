@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
-import { runAgent } from "./agent.js";
+import { runAgent, toolResultForHistory } from "./agent.js";
 import { PermissionEngine, ProfileEvaluator } from "./permissions/index.js";
 import { Compactor } from "./compaction/compactor.js";
 import { ErrorReflector } from "./selfreflection/index.js";
@@ -1445,7 +1445,7 @@ describe("runAgent", () => {
         expect(onDiagnostic).not.toHaveBeenCalled();
       });
 
-      it("carries the grepped <error_analysis> block into the retry prompt the model receives", async () => {
+      it("carries the failing output and <error_analysis> block in the tool result, not the retry note", async () => {
         const { provider } = makeProvider([bashFailTurn("call_1", failingBash), textTurn("fixed")]);
         const onRetry = vi.fn();
 
@@ -1458,15 +1458,23 @@ describe("runAgent", () => {
         });
 
         expect(onRetry).toHaveBeenCalledTimes(1);
+        // The tool message now carries the error line AND the tool's own
+        // output, so the matched error lines reach the model where they
+        // happened.
+        const toolMsg = result.messages.find((m) => m.role === "tool");
+        expect(toolMsg?.content).toContain("Error: Exit code: 3");
+        expect(toolMsg?.content).toContain("<error_analysis>");
+        expect(toolMsg?.content).toContain("</error_analysis>");
+        expect(toolMsg?.content).toContain("build failed: Cannot find module ./missing");
+
+        // The retry note stays the short fix-reminder: the block is already in
+        // the tool result, so re-appending it here would send it twice.
         const reflection = result.messages.find(
           (m) => m.role === "user" && typeof m.content === "string" && m.content.includes("Try a different approach"),
         );
         expect(reflection).toBeDefined();
-        // The block rides along with the fix-reminder, so the model sees the
-        // matched error lines — not just "Error: Exit code: 3".
-        expect(reflection?.content).toContain("<error_analysis>");
-        expect(reflection?.content).toContain("</error_analysis>");
-        expect(reflection?.content).toContain("build failed: Cannot find module ./missing");
+        expect(reflection?.content).not.toContain("<error_analysis>");
+        expect(reflection?.content).not.toContain("./missing");
       });
 
       it("silent non-zero exit — no <error_analysis> block reaches the model", async () => {
@@ -1509,6 +1517,29 @@ describe("runAgent", () => {
         // The failure reached the model as plain tool output, not an Error.
         expect(toolMsg?.content).toContain("Exit code: 3");
         expect(toolMsg?.content).not.toContain("Error: Exit code");
+      });
+
+      it("gives the model the failing command's stderr, not just the exit line", async () => {
+        // The 2026-10-10 logs: every error result arrived as `Error: Exit
+        // code: N` with the command's own output dropped — so the `boom` here
+        // (and, in the onramp sessions, the sandbox's `Operation not
+        // permitted`) never reached the model, which re-ran the command to
+        // find out what had happened.
+        const { provider } = makeProvider([
+          bashFailTurn("call_1", "printf 'boom\\n' >&2; exit 3"),
+          textTurn("ok"),
+        ]);
+
+        const result = await runAgent("run it", {
+          provider,
+          tools: [],
+          executeTool: realBash,
+          errorReflector: new ErrorReflector(),
+        });
+
+        const toolMsg = result.messages.find((m) => m.role === "tool" && m.toolCallId === "call_1");
+        expect(toolMsg?.content).toContain("Error: Exit code: 3");
+        expect(toolMsg?.content).toContain("boom");
       });
 
       it("fires the escalation diagnostic when the retry cap is exhausted", async () => {
@@ -2451,5 +2482,25 @@ describe("maxTurns (turn cap)", () => {
 
     expect(result.stopReason).toBe("max_turns");
     expect(reported).toEqual([3]);
+  });
+});
+
+describe("toolResultForHistory", () => {
+  it("keeps a failing tool's own output under the error line", () => {
+    expect(toolResultForHistory({ content: "[block]\nExit code: 1\nstderr", error: "Exit code: 1" })).toBe(
+      "Error: Exit code: 1\n[block]\nExit code: 1\nstderr",
+    );
+  });
+
+  it("leaves an error with empty content byte-identical to the old shape", () => {
+    // The PostToolUseFailure hook test above depends on these exact bytes:
+    // the hook appends to `error`, so `content` is empty and the result must
+    // still read as a single line.
+    expect(toolResultForHistory({ content: "", error: "boom" })).toBe("Error: boom");
+    expect(toolResultForHistory({ content: "  \n", error: "boom" })).toBe("Error: boom");
+  });
+
+  it("passes a successful result through untouched", () => {
+    expect(toolResultForHistory({ content: "ok" })).toBe("ok");
   });
 });

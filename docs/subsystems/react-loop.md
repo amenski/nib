@@ -129,6 +129,22 @@ codes — they are *content classifications* the diagnostics/reflection
 machinery applies to `run_bash` output (compilation failures, failing test
 runs), fed back to the model as a system note rather than a tool error.
 
+### What a tool result carries on failure
+
+A failing call keeps its output. The loop composes the tool message as
+`Error: <error>` then the result's `content` (`toolResultForHistory`,
+`src/agent.ts`), and the TUI previews that same string under `⎿` — the user
+sees what the model sees. Content is used verbatim: handlers wrapped command
+or page text in the untrusted delimiters already, and nib's own notes (the
+sandbox hint, src/tools/sandbox-hint.ts) sit after them. A result with empty
+content is exactly the single `Error: <error>` line it always was.
+
+So the bounded fix-reminder is only the reminder
+(`ErrorReflector.formatError`): it dropped the `<error_analysis>` block it
+used to re-append, because the tool result now carries that block itself
+(2026-10-10 — before the change, every error reached the model as a bare
+`Error: Exit code: N`, with stderr and hints discarded on the way).
+
 ---
 
 _Part of the [subsystems deep dive](../subsystems.md)._

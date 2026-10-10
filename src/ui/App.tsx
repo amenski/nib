@@ -74,6 +74,7 @@ import { buildReplayLines } from "./core/replay.js";
 import { opensModal } from "./core/modal-commands.js";
 import { parseSkillLoadCommand, SKILL_APPLY_PROMPT } from "./core/skill-load.js";
 import { findCommand, expandCommand } from "../commands/index.js";
+import { toolResultForHistory } from "../agent.js";
 import type { Message } from "../types.js";
 import type { AskQuestionItem } from "../tools/types.js";
 import { setAskQuestion } from "../tools/index.js";
@@ -1121,9 +1122,10 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           _name: string,
           result: { content: string; error?: string },
         ) => {
-          const content = result.error
-            ? `Error: ${result.error}`
-            : (result.content ?? "");
+          // Same composition the model receives (toolResultForHistory): a
+          // failing tool's preview shows its stderr under the error line, not
+          // a bare `Error: Exit code: 1`.
+          const content = toolResultForHistory(result);
           // The TodoPanel renders todo state live; echoing the whole list as a
           // dim preview is noise (the list can be 12 lines). Keep the ⏺ header.
           if (content.trim() !== "" && _name !== "update_todo_list") {

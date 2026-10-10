@@ -769,7 +769,7 @@ describe("Orchestrator", () => {
       // Uses the REAL module-level registry (like the todo-store isolation
       // test above) so the real update_todo_list handler runs against the
       // per-call context the orchestrator builds.
-      const { provider: subProvider } = makeProvider([
+      const { provider: subProvider, received } = makeProvider([
         toolCallTurn("c1", "update_todo_list", JSON.stringify({
           todos: [{ content: "Sub step A", status: "in_progress" }],
         })),
@@ -794,6 +794,14 @@ describe("Orchestrator", () => {
       await deliveries.delivered();
       // The parent's checklist panel store was never touched.
       expect(todoStore.getTodos()).toEqual([]);
+
+      // The sub-agent's model got a working todo call. It used to receive
+      // `Error: ctx.sessionStore?.appendTodo is not a function` — the store
+      // exists, and `?.` on the store alone does not cover the member the
+      // audit-only view withholds (src/sessions/store.ts).
+      const subToolMsg = received[1]?.messages.find((m) => m.role === "tool");
+      expect(subToolMsg?.content).toContain("Todo list updated (1 item)");
+      expect(subToolMsg?.content).not.toContain("is not a function");
 
       // No todo snapshot row (and no message) ever reaches the parent JSONL —
       // the audit-only view blocks appendTodo; the transcript stays empty.

@@ -623,6 +623,9 @@ never engage for the most common failure class) and no
 bash branch (gated on exit code AND non-empty stderr to spare
 `grep -q`/`diff` idioms), prepend a grepped error block, optional
 cap-exhaustion diagnostic. Tracked as dev-todo item 15.
+*(Superseded in part 2026-10-10: the failing tool result now reaches the model
+with its output, so the block lives there and the reminder no longer re-appends
+it — see react-loop.md, "What a tool result carries on failure".)*
 
 ### F6. Housekeeping — no code
 

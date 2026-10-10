@@ -2361,3 +2361,46 @@ describe("unfinished-intent nudge", () => {
     expect(result.stopReason).toBe("done");
   });
 });
+
+describe("maxTurns (turn cap)", () => {
+  /** One tool-call sub-turn; `i` keeps every call distinct so neither the
+   *  repeat warning nor loop detection ends the run early. */
+  const step = (i: number): TurnScript => [
+    { type: "tool_call_start", id: `call_${i}`, name: "read" },
+    { type: "tool_call_delta", id: `call_${i}`, arguments: `{"path":"file-${i}.txt"}` },
+    { type: "done", finishReason: "tool_calls" },
+  ];
+
+  it("runs past 100 model requests when no maxTurns is given", async () => {
+    // The interactive default is unlimited: a fixed cap truncated long
+    // legitimate work at 100 requests and reported it as a saved session.
+    const { provider } = makeProvider([
+      ...Array.from({ length: 150 }, (_, i) => step(i)),
+      textTurn("all done"),
+    ]);
+
+    const result = await runAgent("go", {
+      provider,
+      tools: [],
+      executeTool: async () => ({ content: "ok" }),
+    });
+
+    expect(result.stopReason).toBe("done");
+  });
+
+  it("still stops at an explicit maxTurns and reports the request count", async () => {
+    const { provider } = makeProvider([step(0), step(1), step(2), step(3), textTurn("unreached")]);
+    const reported: number[] = [];
+
+    const result = await runAgent("go", {
+      provider,
+      tools: [],
+      executeTool: async () => ({ content: "ok" }),
+      maxTurns: 3,
+      onMaxTurns: (_messages, requests) => reported.push(requests),
+    });
+
+    expect(result.stopReason).toBe("max_turns");
+    expect(reported).toEqual([3]);
+  });
+});

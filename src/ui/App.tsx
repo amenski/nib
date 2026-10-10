@@ -1193,8 +1193,14 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
         onLoopDetected: (m: string) => {
           scheduleOutput(`[${m}]`);
         },
-        onMaxTurns: () => {
-          scheduleOutput("[max turns reached. Session saved.]");
+        onMaxTurns: (_messages: any, requests: number) => {
+          // Truthful now that the turn is saved like any other (below): an
+          // explicit --max-turns cut the turn short, it did not strand it.
+          flushReasoning();
+          flushStream();
+          if (activeLineRef.current) scheduleOutput(activeLineRef.current);
+          setActiveLineBoth("");
+          scheduleOutput(theme.fg(theme.theme.textDim, `⚠ stopped after ${requests} model requests (--max-turns)`));
         },
         onUsage: () => {
           // Usage totals live on ctx.mutable (sessionInput/sessionOutput) and
@@ -1376,7 +1382,9 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
         // the tool calls already made OUT of the session record, while their
         // file edits stayed on disk. On "continue" the model then saw only the
         // dirty tree and assumed the uncommitted work was its own.
-        if (result.stopReason === "done" || result.stopReason === "aborted") {
+        // `max_turns` is the same case: an explicit --max-turns cut the turn
+        // short, and the work it did before the cut is just as real.
+        if (result.stopReason === "done" || result.stopReason === "aborted" || result.stopReason === "max_turns") {
           ctx.mutable.conversationHistory = result.messages;
           await callbacks.onNewMessages(input, result.newMessages);
         }

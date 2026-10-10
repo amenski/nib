@@ -96,7 +96,9 @@ this pattern. Enhancements over vanilla ReAct:
 4. **Auto-compaction** (opencode) — old messages summarized before the
    next call when the budget trips (subsystems.md §2).
 5. **Loop guards** — 3 identical failures warn, 4 trip loop detection, 5
-   consecutive failures end the turn; `maxTurns` default 100.
+   consecutive failures end the turn; `maxTurns` is unlimited unless given
+   (headless `-p` passes 100, subagents pass `maxSubTurns`, `--max-turns`
+   caps the TUI).
 
 ### One turn, end to end
 

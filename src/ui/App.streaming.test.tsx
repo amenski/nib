@@ -935,3 +935,36 @@ describe("a failed turn is still saved", () => {
     expect(ctx.mutable.conversationHistory).toEqual([]);
   });
 });
+
+describe("a max_turns stop", () => {
+  it("is saved like any other turn and reports the request count", async () => {
+    // The old notice claimed "Session saved." while only done/aborted turns
+    // were written, so the next message started without the work.
+    todoStore.reset();
+    const appended: any[] = [];
+    const history = [
+      { role: "user", content: "go" },
+      { role: "assistant", content: "partial work" },
+    ];
+    const ctx = makeCtx(async (_input: string, cb: any) => {
+      cb.onMaxTurns(history, 3);
+      return { stopReason: "max_turns", messages: history, newMessages: [history[1]] };
+    });
+    (ctx.sessionStore as any).appendMessage = async (_id: string, msg: any) => {
+      appended.push(msg);
+    };
+
+    const inst = render(<App ctx={ctx} />);
+    mounted.push(inst);
+    inst.stdin.write("go");
+    await flush();
+    inst.stdin.write("\r");
+    await flush();
+    await flush();
+    await flush();
+
+    expect(stripAnsi(inst.lastFrame() ?? "")).toContain("⚠ stopped after 3 model requests (--max-turns)");
+    expect(appended.some((m) => m.content === "partial work")).toBe(true);
+    expect(ctx.mutable.conversationHistory).toEqual(history);
+  });
+});

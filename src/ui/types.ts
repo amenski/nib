@@ -260,7 +260,7 @@ export interface AgentBridgeCallbacks {
   onRetry: (m: string) => void;
   onCompacted: (m: string) => void;
   onLoopDetected: (m: string) => void;
-  onMaxTurns: () => void;
+  onMaxTurns: (messages: Message[], requests: number) => void;
   onUsage: (input: number, output: number) => void;
   onNewMessages: (userInput: string, newMessages: Message[]) => Promise<void>;
   onHistoryUpdate: (messages: Message[]) => void;

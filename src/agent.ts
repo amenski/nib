@@ -138,6 +138,14 @@ export interface AgentOptions {
   diagnostics?: DiagnosticRunner;
   errorReflector?: ErrorReflector;
   errorRecovery?: ErrorRecovery;
+  /**
+   * Cap on model requests for this turn (one request per loop iteration).
+   * Defaults to unlimited: an interactive turn ends on completion, a loop
+   * detection, the five-consecutive-failure stop, or Esc — a fixed cap only
+   * truncated long legitimate work. Headless `-p` and subagents pass their own
+   * explicit bounds (100 and `maxSubTurns`); `--max-turns` still caps here when
+   * given.
+   */
   maxTurns?: number;
   /** Context-window ceiling used as budgetMax for per-turn token rows. Defaults to 128000, the codebase-wide fallback. */
   contextWindow?: number;
@@ -171,7 +179,7 @@ export interface AgentOptions {
   onRetry?: (msg: string) => void;
   onCompacted?: (msg: string) => void;
   onLoopDetected?: (msg: string) => void;
-  onMaxTurns?: (messages: Message[]) => void;
+  onMaxTurns?: (messages: Message[], requests: number) => void;
   onUsage?: (input: number, output: number, cached?: number) => void;
   /**
    * Interactive approval bridge for ask-tier calls. Resolves true (approved)
@@ -247,7 +255,7 @@ export async function runAgent(
   userMessage: string,
   options: AgentOptions,
 ): Promise<AgentResult> {
-  const { provider, tools, executeTool, permissions, permissionProfile, compactor, diagnostics, errorReflector, errorRecovery, maxTurns = 100, effort, thinkingEnabled } = options;
+  const { provider, tools, executeTool, permissions, permissionProfile, compactor, diagnostics, errorReflector, errorRecovery, maxTurns = Infinity, effort, thinkingEnabled } = options;
 
   const promptCtx: PromptContext = {
     mode: options.mode,
@@ -1143,7 +1151,9 @@ export async function runAgent(
 
   if (turn >= maxTurns) {
     stopReason = "max_turns";
-    options.onMaxTurns?.(messages);
+    // `turn` counts model requests, one per loop iteration — the number the
+    // caller reports back to the user.
+    options.onMaxTurns?.(messages, turn);
   }
 
   captureNewMessages();

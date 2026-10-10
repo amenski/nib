@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
+import { useTheme } from "../contexts.js";
+import { ansi256 } from "../theme.js";
 
 interface Props {
   /** Number of messages in the resumed transcript (for the prompt). */
@@ -22,6 +24,7 @@ const OPTIONS = [
  * no cancel — a resumed session must resolve to one of the two.
  */
 export default function ResumeChooser({ messageCount, onLoad, onCompact, width }: Props) {
+  const theme = useTheme();
   const [selected, setSelected] = useState(0);
 
   const choose = (index: number) => {
@@ -50,9 +53,9 @@ export default function ResumeChooser({ messageCount, onLoad, onCompact, width }
   });
 
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1} marginY={1} width={width}>
+    <Box flexDirection="column" borderStyle="round" borderColor={ansi256(theme.theme.secondary)} paddingX={1} marginY={1} width={width}>
       <Box marginBottom={1}>
-        <Text color="cyan" bold>Resume session</Text>
+        <Text color={ansi256(theme.theme.secondary)} bold>Resume session</Text>
       </Box>
       <Text wrap="wrap">
         This session has {messageCount} message{messageCount === 1 ? "" : "s"}. How should it be loaded?
@@ -61,15 +64,15 @@ export default function ResumeChooser({ messageCount, onLoad, onCompact, width }
         {OPTIONS.map((opt, i) => {
           const isSelected = selected === i;
           return (
-            <Text key={opt.key} color={isSelected ? "cyanBright" : undefined}>
+            <Text key={opt.key} color={isSelected ? ansi256(theme.theme.secondary) : undefined}>
               {isSelected ? ">" : " "} {isSelected ? "◉" : "○"} {opt.label}
-              <Text dimColor> — {opt.desc}</Text>
+              <Text color={ansi256(theme.theme.textDim)}> — {opt.desc}</Text>
             </Text>
           );
         })}
       </Box>
       <Box marginTop={1}>
-        <Text dimColor>↑↓ navigate · 1-2 select · Enter choose</Text>
+        <Text color={ansi256(theme.theme.textDim)}>↑↓ navigate · 1-2 select · Enter choose</Text>
       </Box>
     </Box>
   );

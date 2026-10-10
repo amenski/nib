@@ -9,6 +9,7 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
 import { useTheme } from "./contexts.js";
+import { ansi256 } from "./theme.js";
 import { fuzzyFilter } from "./FuzzySearch.js";
 
 export interface CommandPaletteAction {
@@ -91,8 +92,8 @@ export default function CommandPalette({
     }
   });
 
-  const dim = (s: string) => (theme.colorEnabled ? `\x1b[2m${s}\x1b[0m` : s);
-  const bright = (s: string) => (theme.colorEnabled ? `\x1b[97m${s}\x1b[0m` : s);
+  const dim = (s: string) => theme.fg(theme.theme.textDim, s);
+  const bright = (s: string) => theme.fg(theme.theme.textBright, s);
 
   const maxVisible = Math.min(results.length, 12);
   const visibleResults = results.slice(0, maxVisible);
@@ -124,11 +125,11 @@ export default function CommandPalette({
             ): { color?: string; label: string } => {
               switch (cat) {
                 case "command":
-                  return { color: "cyan", label: "cmd" };
+                  return { color: ansi256(theme.theme.secondary), label: "cmd" };
                 case "mode":
-                  return { color: "yellow", label: "mode" };
+                  return { color: ansi256(theme.theme.warning), label: "mode" };
                 case "action":
-                  return { color: "green", label: "act" };
+                  return { color: ansi256(theme.theme.success), label: "act" };
                 default:
                   return { color: undefined, label: "  " };
               }
@@ -149,14 +150,14 @@ export default function CommandPalette({
                       {action.label}
                     </Text>
                   )}
-                  <Text dimColor>{dim(`  ${action.description}`)}</Text>
+                  <Text>{dim(`  ${action.description}`)}</Text>
                 </Text>
               </Box>
             );
           })}
           {results.length > maxVisible && (
             <Box>
-              <Text dimColor>
+              <Text>
                 {dim(`  ... ${results.length - maxVisible} more results`)}
               </Text>
             </Box>
@@ -164,13 +165,13 @@ export default function CommandPalette({
         </Box>
       ) : query.trim() ? (
         <Box>
-          <Text dimColor>{dim("  No matching commands")}</Text>
+          <Text>{dim("  No matching commands")}</Text>
         </Box>
       ) : null}
 
       {/* Footer */}
       <Box>
-        <Text dimColor>
+        <Text>
           {dim("\u2514")}
           {dim("\u2500".repeat(40))}
           {"\n"}

@@ -6,6 +6,9 @@ import { buildReplayLines } from "./core/replay.js";
 import { USER_ECHO_TAG, VERBATIM_TAG, BULLET_TAG } from "./constants.js";
 import type { Message } from "../types.js";
 import { stripAnsi } from "./test-helpers.js";
+import { ThemeContextValue, DARK_THEME } from "./theme.js";
+
+const noColor = new ThemeContextValue(DARK_THEME, false);
 
 function frameOf(lines: string[]): string {
   // See trap #4 in test-helpers.ts: lastFrame() is a full composite of
@@ -30,7 +33,7 @@ describe("OutputArea verbatim (replay) rendering", () => {
   it("renders a >1000-char replayed assistant message in full, with no 'more chars' marker", () => {
     const longText = "A".repeat(1400) + "END_OF_MESSAGE";
     const msgs: Message[] = [{ role: "assistant", content: longText }];
-    const lines = buildReplayLines(msgs, false);
+    const lines = buildReplayLines(msgs, noColor);
     const frame = frameOf(lines);
     // Terminal-width wrapping can insert a line break (and whitespace) into a
     // long unbroken run of chars — a rendering artifact, not evidence of
@@ -46,7 +49,7 @@ describe("OutputArea verbatim (replay) rendering", () => {
   it("renders a >20-line replayed assistant message in full, with no '(N lines)' collapse marker", () => {
     const bigBody = Array.from({ length: 30 }, (_, i) => `line ${i}`).join("\n");
     const msgs: Message[] = [{ role: "assistant", content: bigBody }];
-    const lines = buildReplayLines(msgs, false);
+    const lines = buildReplayLines(msgs, noColor);
     const frame = frameOf(lines);
 
     expect(frame).toContain("line 29");
@@ -56,7 +59,7 @@ describe("OutputArea verbatim (replay) rendering", () => {
   it("renders a >1000-char replayed user message in full, with no 'more chars' marker", () => {
     const longText = "B".repeat(1400) + "END_OF_USER_MESSAGE";
     const msgs: Message[] = [{ role: "user", content: longText }];
-    const lines = buildReplayLines(msgs, false);
+    const lines = buildReplayLines(msgs, noColor);
     const rawFrame = frameOf(lines);
     // Terminal-width wrapping can insert a line break (and whitespace) into a
     // long unbroken run of chars, so strip ALL whitespace before checking for
@@ -73,13 +76,13 @@ describe("OutputArea verbatim (replay) rendering", () => {
 
   it("still draws the ▌ gutter on a replayed user-echo line", () => {
     const msgs: Message[] = [{ role: "user", content: "fix the bug" }];
-    const lines = buildReplayLines(msgs, false);
+    const lines = buildReplayLines(msgs, noColor);
     expect(frameOf(lines)).toContain("▌ fix the bug");
   });
 
   it("still draws the ● bullet on a replayed assistant line", () => {
     const msgs: Message[] = [{ role: "assistant", content: "Done." }];
-    const lines = buildReplayLines(msgs, false);
+    const lines = buildReplayLines(msgs, noColor);
     expect(frameOf(lines)).toContain("● Done.");
   });
 
@@ -88,7 +91,7 @@ describe("OutputArea verbatim (replay) rendering", () => {
       "\n",
     );
     const msgs: Message[] = [{ role: "user", content: longText + "\nTAIL_MARKER" }];
-    const lines = buildReplayLines(msgs, false);
+    const lines = buildReplayLines(msgs, noColor);
     const rawFrame = frameOf(lines);
     const collapsed = rawFrame.replace(/\s/g, "");
 

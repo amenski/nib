@@ -57,14 +57,9 @@ function formatElapsedShort(startMs: number, nowMs: number): string {
 /**
  * Build a git status indicator string.
  */
-/** Re-enter dim mode after an inline colour reset inside a dim run. */
-function ansiDim(): string {
-  return "\x1b[2m";
-}
-
 function gitStatusString(
   git: GitStatus,
-  paint?: { colorEnabled: boolean; added: number; deleted: number; conflict: number },
+  paint?: { colorEnabled: boolean; added: number; deleted: number; conflict: number; dimFg?: number },
 ): string {
   const parts: string[] = [];
   // Diff counts follow the convention every other tool uses \u2014 additions green,
@@ -72,7 +67,9 @@ function gitStatusString(
   // the counts are coloured; the branch and ahead/behind stay dim, since a
   // dirty tree is the normal working state and shouldn't read as an alarm.
   const paintFg = (code: number, s: string) =>
-    paint?.colorEnabled ? `${ansiFg(code)}${s}${ANSI_RESET}${ansiDim()}` : s;
+    paint?.colorEnabled
+      ? `${ansiFg(code)}${s}${ANSI_RESET}${paint.dimFg !== undefined ? ansiFg(paint.dimFg) : ""}`
+      : s;
 
   // Branch name
   parts.push(git.branch);
@@ -123,7 +120,7 @@ function StatusBar({
   if (segments.length === 0 && !gitStatus && !showTimer) return null;
 
   const t = theme.theme.statusBar;
-  const dim = (s: string) => (theme.colorEnabled ? `\x1b[2m${s}\x1b[0m` : s);
+  const dim = (s: string) => theme.fg(theme.theme.textDim, s);
   const fg = (c: number, s: string) => (theme.colorEnabled ? `\x1b[38;5;${c}m${s}\x1b[0m` : s);
 
   // ansi256 codes for named colors used by config-driven statusline providers.
@@ -177,6 +174,7 @@ function StatusBar({
       added: ANSI.lime,
       deleted: ANSI.coral,
       conflict: ANSI.coral,
+      dimFg: theme.theme.textDim,
     }));
   }
 

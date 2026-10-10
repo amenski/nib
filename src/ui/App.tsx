@@ -29,6 +29,7 @@ import {
   RefreshProvider,
   useRefresh,
 } from "./contexts.js";
+import { ansi256 } from "./theme.js";
 import ErrorBoundary from "./ErrorBoundary.js";
 import HelpOverlay from "./HelpOverlay.js";
 import CommandPalette, {
@@ -829,11 +830,11 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
   // replays the shorter result. Both close the chooser and drop the "N messages"
   // notice, which the replay supersedes.
   const replayResumed = useCallback((messages: Message[]) => {
-    const lines = buildReplayLines(messages, theme.colorEnabled);
+    const lines = buildReplayLines(messages, theme);
     pushOutputLines(lines);
     setResumeChoice(null);
     pendingResumeRef.current = null;
-  }, [theme.colorEnabled]);
+  }, [theme]);
 
   // Restore the previous session's last todo plan (persisted by
   // update_todo_list) so the panel and the model's first turn see it. The
@@ -2146,7 +2147,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
   if (exitHint) {
     // Final frame: a single dim line. Ink erases the old frame rows and
     // redraws only this, leaving the transcript scrollback intact above it.
-    return <Text dimColor>{exitHint}</Text>;
+    return <Text color={ansi256(theme.theme.textDim)}>{exitHint}</Text>;
   }
 
   return (
@@ -2459,8 +2460,8 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
 
       {compactingResume && (
         <Box marginY={1}>
-          <Text color="cyan">✳ </Text>
-          <Text dimColor>Compacting resumed session…</Text>
+          <Text color={ansi256(theme.theme.secondary)}>✳ </Text>
+          <Text color={ansi256(theme.theme.textDim)}>Compacting resumed session…</Text>
         </Box>
       )}
 
@@ -2470,7 +2471,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
       {queuedItems.length > 0 && (
         <Box flexDirection="column">
           {queuedItems.map((item, i) => (
-            <Text key={i} color="magenta" dimColor>
+            <Text key={i} color={ansi256(theme.theme.accent)}>
               {`${formatQueueTime(item.at)} ${queuedLabel(item.text)}`}
             </Text>
           ))}
@@ -2564,7 +2565,7 @@ export default function App({
   const colorEnabled = ctx.getColorEnabled();
 
   return (
-    <ErrorBoundary colorEnabled={colorEnabled}>
+    <ErrorBoundary colorEnabled={colorEnabled} theme={ctx.theme}>
       <ThemeProvider
         config={{
           mode: themeConfig?.mode ?? "dark",

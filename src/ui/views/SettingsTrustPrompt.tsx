@@ -53,12 +53,12 @@ export default function SettingsTrustPrompt({ keys, settingsPath, status, resolv
         <Text wrap="wrap">Source: <Text bold>{settingsPath}</Text></Text>
       </Box>
       <Box flexDirection="column" marginTop={1}>
-        <Text dimColor>This file asks for these execution-capable settings:</Text>
+        <Text color={theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined}>This file asks for these execution-capable settings:</Text>
         {keys.map((k) => (
           <Text key={k}>  - <Text bold>{k}</Text></Text>
         ))}
       </Box>
-      <Text dimColor>Trusting runs commands/modules/servers this project supplies, with your privileges. Trust it?</Text>
+      <Text color={theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined}>Trusting runs commands/modules/servers this project supplies, with your privileges. Trust it?</Text>
       <Box flexDirection="column" marginTop={1}>
         <Text color={cursor === 0 ? accentColor : undefined}>
           {cursor === 0 ? "> " : "  "}Yes — trust forever
@@ -67,7 +67,7 @@ export default function SettingsTrustPrompt({ keys, settingsPath, status, resolv
           {cursor === 1 ? "> " : "  "}No — skip this session
         </Text>
       </Box>
-      <Text dimColor>↑↓ navigate · Enter choose · y/n · Esc cancel</Text>
+      <Text color={theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined}>↑↓ navigate · Enter choose · y/n · Esc cancel</Text>
     </Box>
   );
 }

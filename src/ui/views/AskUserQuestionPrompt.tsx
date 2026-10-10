@@ -173,18 +173,18 @@ export default function AskUserQuestionPrompt({ questions, resolve, width }: Pro
               <Text key={i} color={isSelected ? accentColor : undefined}>
                 {isSelected ? "> " : "  "}
                 {checked ? "[x]" : "[ ]"} {opt.label}
-                {opt.description ? <Text dimColor> — {opt.description}</Text> : null}
+                {opt.description ? <Text color={theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined}> — {opt.description}</Text> : null}
               </Text>
             );
           }
           return (
             <Text key={i} color={isSelected ? accentColor : undefined}>
               {isSelected ? ">" : " "} {isSelected ? "\u25C9" : "\u25CB"} {opt.label}
-              {opt.description ? <Text dimColor> — {opt.description}</Text> : null}
+              {opt.description ? <Text color={theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined}> — {opt.description}</Text> : null}
             </Text>
           );
         })}
-        <Text color={selectedIndex === current.options.length ? accentColor : undefined} dimColor={selectedIndex !== current.options.length}>
+        <Text color={selectedIndex === current.options.length ? accentColor : (theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined)}>
           {selectedIndex === current.options.length ? "> " : "  "}
           {isMulti && selectedIndex === current.options.length && showOther ? "[x]" : isMulti ? "[ ]" : selectedIndex === current.options.length ? "\u25C9" : "\u25CB"}
           {" "}Other
@@ -192,18 +192,18 @@ export default function AskUserQuestionPrompt({ questions, resolve, width }: Pro
             <Text> — <Text color={accentColor} inverse> {otherText || (showOther ? "\u00A0" : "")} </Text></Text>
           )}
           {focused !== "other" && selectedIndex === current.options.length && showOther && (
-            <Text> — {otherText || <Text dimColor>type your answer</Text>}</Text>
+            <Text> — {otherText || <Text color={theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined}>type your answer</Text>}</Text>
           )}
           {focused !== "other" && (selectedIndex !== current.options.length || !showOther) && (
-            <Text dimColor> — type a custom answer</Text>
+            <Text color={theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined}> — type a custom answer</Text>
           )}
         </Text>
       </Box>
       <Box marginTop={1}>
         {isMulti ? (
-          <Text dimColor>↑↓ navigate · Space toggle · Enter confirm · Esc cancel</Text>
+          <Text color={theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined}>↑↓ navigate · Space toggle · Enter confirm · Esc cancel</Text>
         ) : (
-          <Text dimColor>↑↓ navigate · 1-9 select · Enter choose · Esc cancel</Text>
+          <Text color={theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined}>↑↓ navigate · 1-9 select · Enter choose · Esc cancel</Text>
         )}
       </Box>
     </Box>

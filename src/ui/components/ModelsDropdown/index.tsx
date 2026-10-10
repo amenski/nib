@@ -295,7 +295,7 @@ const ModelsDropdown: React.FC<Props> = ({
         <Box marginBottom={1}>
           <Text color={accent} bold>Connect {providerLabel}</Text>
         </Box>
-        <Text dimColor>
+        <Text color={slotColor(theme, "textDim")}>
           Paste the API key for {providerLabel}{envVar ? ` (${envVar})` : ""}:
         </Text>
         <Box marginTop={1}>
@@ -303,11 +303,11 @@ const ModelsDropdown: React.FC<Props> = ({
         </Box>
         {keyPromptError && (
           <Box marginTop={1}>
-            <Text color="red">{keyPromptError}</Text>
+            <Text color={slotColor(theme, "error")}>{keyPromptError}</Text>
           </Box>
         )}
         <Box marginTop={1}>
-          <Text dimColor>Enter save · Esc cancel</Text>
+          <Text color={slotColor(theme, "textDim")}>Enter save · Esc cancel</Text>
         </Box>
       </Box>
       </Box>
@@ -336,21 +336,21 @@ const ModelsDropdown: React.FC<Props> = ({
       <Box flexDirection="column" borderStyle="round" borderColor={borderColor} paddingX={1} width={panelWidth}>
       <Box marginBottom={1} justifyContent="space-between">
         <Text bold>Select model</Text>
-        <Text dimColor>esc</Text>
+        <Text color={slotColor(theme, "textDim")}>esc</Text>
       </Box>
       {/* A bordered field reads as something you type into, rather than a
           label with text after it. */}
       <Box marginBottom={1} borderStyle="round" borderDimColor paddingX={1}>
-        <Text dimColor>{"⌕ "}</Text>
+        <Text color={slotColor(theme, "textDim")}>{"⌕ "}</Text>
         <Text>{query || ""}</Text>
-        {!query && <Text dimColor>Search…</Text>}
+        {!query && <Text color={slotColor(theme, "textDim")}>Search…</Text>}
       </Box>
 
       {rows.length === 0 ? (
-        <Text dimColor>No models match "{query}".</Text>
+        <Text color={slotColor(theme, "textDim")}>No models match "{query}".</Text>
       ) : (
         <Box flexDirection="column">
-          {hiddenAbove > 0 && <Text dimColor>{`  ... (${hiddenAbove} more above) ...`}</Text>}
+          {hiddenAbove > 0 && <Text color={slotColor(theme, "textDim")}>{`  ... (${hiddenAbove} more above) ...`}</Text>}
           {visible.map((row, i) => {
             const idx = scrollOffset + i;
             if (row.kind === "header") {
@@ -360,7 +360,7 @@ const ModelsDropdown: React.FC<Props> = ({
                       in the accent colour made the list read as a wall of
                       yellow with no way to find the cursor. Weight alone
                       separates a group from its rows. */}
-                  <Text dimColor bold>{row.label}</Text>
+                  <Text color={slotColor(theme, "textDim")} bold>{row.label}</Text>
                 </Box>
               );
             }
@@ -370,7 +370,7 @@ const ModelsDropdown: React.FC<Props> = ({
               // navigation for free.
               return (
                 <Box key={`hint:${row.provider}`}>
-                  <Text dimColor>{"  " + row.label}</Text>
+                  <Text color={slotColor(theme, "textDim")}>{"  " + row.label}</Text>
                 </Box>
               );
             }
@@ -398,23 +398,21 @@ const ModelsDropdown: React.FC<Props> = ({
               <Box key={`${row.group}:${row.provider}/${row.model}`}>
                 <Text
                   backgroundColor={isSelected ? selectionBg : undefined}
-                  color={isSelected ? accent : undefined}
+                  color={!isSelected && unusable ? slotColor(theme, "textDim") : isSelected ? accent : undefined}
                   bold={isSelected}
-                  dimColor={!isSelected && unusable}
                 >
                   {body}
                 </Text>
                 <Text
                   backgroundColor={isSelected ? selectionBg : undefined}
-                  color={!unusable ? stateColor : undefined}
-                  dimColor={unusable}
+                  color={unusable ? slotColor(theme, "textDim") : !unusable ? stateColor : undefined}
                 >
                   {state}
                 </Text>
               </Box>
             );
           })}
-          {hiddenBelow > 0 && <Text dimColor>{`  ... (${hiddenBelow} more below) ...`}</Text>}
+          {hiddenBelow > 0 && <Text color={slotColor(theme, "textDim")}>{`  ... (${hiddenBelow} more below) ...`}</Text>}
         </Box>
       )}
 
@@ -422,9 +420,9 @@ const ModelsDropdown: React.FC<Props> = ({
           chord everywhere in the UI rather than only in the composer. */}
       <Box marginTop={1}>
         <Text>{keyCap("ctrl+a", capStyle)}</Text>
-        <Text dimColor>{" connect provider   "}</Text>
+        <Text color={slotColor(theme, "textDim")}>{" connect provider   "}</Text>
         <Text>{keyCap("ctrl+f", capStyle)}</Text>
-        <Text dimColor>{" favorite"}</Text>
+        <Text color={slotColor(theme, "textDim")}>{" favorite"}</Text>
       </Box>
       </Box>
     </Box>

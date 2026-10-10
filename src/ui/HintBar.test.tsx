@@ -69,12 +69,14 @@ describe("HintBar", () => {
     // (\x1b[0m) is narrowed to the matching attribute-off code — \x1b[39m after
     // a foreground colour, \x1b[22m after dim — so assert on those, not on the
     // pre-render string. frame starts at 0, so the active dot is the first of
-    // the eight.
-    expect(frame).toContain(`${ansiFg(DARK_THEME.accent)}•${ANSI_FG_RESET}`);
-    // ...and the other seven track dots stay dim (contrast, not clutter). Ink
-    // also coalesces adjacent identical runs, so they arrive as one dim span
-    // rather than seven individually-wrapped glyphs.
-    expect(frame).toContain(`\x1b[2m${"·".repeat(7)}\x1b[22m`);
+    // the eight. The accent run is immediately followed by the track's
+    // textDim run, so Ink drops the closing reset and opens the next fg
+    // instead — assert on the accent run opening the dot, not on its close.
+    expect(frame).toContain(`${ansiFg(DARK_THEME.accent)}•`);
+    // ...and the other seven track dots stay dim — the theme's textDim grey, not
+    // terminal dim. Ink also coalesces adjacent identical runs, so they arrive
+    // as one dim span rather than seven individually-wrapped glyphs.
+    expect(frame).toContain(`${ansiFg(DARK_THEME.textDim)}${"·".repeat(7)}${ANSI_FG_RESET}`);
   });
 
   it("keeps the indicator field blank when idle", () => {
@@ -142,8 +144,8 @@ describe("HintBar", () => {
   it("paints the key-cap brighter than the label beside it", () => {
     const { lastFrame } = renderBar(<HintBar left={LEFT} />, true);
     const frame = lastFrame() ?? "";
-    // The cap carries an explicit bright foreground; the label is dim (\x1b[2m).
+    // The cap carries an explicit bright foreground; the label is dim (textDim).
     expect(frame).toContain(ansiFg(DARK_THEME.textBright));
-    expect(frame).toContain("\x1b[2m");
+    expect(frame).toContain(ansiFg(DARK_THEME.textDim));
   });
 });

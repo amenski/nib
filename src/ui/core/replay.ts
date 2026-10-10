@@ -17,14 +17,12 @@ import {
   SILENT_TOOLS,
 } from "../ToolCallFormatter.js";
 import { USER_ECHO_TAG, VERBATIM_TAG } from "../constants.js";
+import type { ThemeContextValue } from "../theme.js";
 
 const withBullet = (line: string): string => {
   const [first, ...rest] = line.split("\n");
   return [`● ${first}`, ...rest].join("\n");
 };
-
-const dim = (colorEnabled: boolean, s: string): string =>
-  colorEnabled ? `\x1b[2m${s}\x1b[0m` : s;
 
 /**
  * Build the scrollback lines for a resumed transcript. Silent (context-only)
@@ -43,8 +41,9 @@ const dim = (colorEnabled: boolean, s: string): string =>
  */
 const tag = (line: string): string => VERBATIM_TAG + line;
 
-export function buildReplayLines(messages: Message[], colorEnabled: boolean): string[] {
+export function buildReplayLines(messages: Message[], theme: ThemeContextValue): string[] {
   const out: string[] = [];
+  const dim = (s: string): string => theme.fg(theme.theme.textDim, s);
   // Tool-call ids whose call header was suppressed (silent tool) — their result
   // message must be suppressed too, so the replay stays consistent.
   const silentCallIds = new Set<string>();
@@ -55,7 +54,7 @@ export function buildReplayLines(messages: Message[], colorEnabled: boolean): st
       // per-turn system prompt is noise. Show summaries dimmed.
       if (msg.content.startsWith("[Previous conversation summary]")) {
         out.push("");
-        out.push(tag(dim(colorEnabled, msg.content)));
+        out.push(tag(dim(msg.content)));
         out.push("");
       }
       continue;
@@ -66,7 +65,7 @@ export function buildReplayLines(messages: Message[], colorEnabled: boolean): st
       // a dim summary rather than user input.
       if (msg.content.startsWith("[Previous conversation summary]")) {
         out.push("");
-        out.push(tag(dim(colorEnabled, msg.content)));
+        out.push(tag(dim(msg.content)));
         out.push("");
         continue;
       }
@@ -99,7 +98,7 @@ export function buildReplayLines(messages: Message[], colorEnabled: boolean): st
         content.startsWith("PERMISSION_DENIED") || content.startsWith("COMMAND_FAILED");
       for (const line of formatToolResultPreview(content)) {
         out.push(
-          tag(colorEnabled ? (isError ? `\x1b[31m${line}\x1b[0m` : `\x1b[2m${line}\x1b[0m`) : line),
+          tag(isError ? theme.fg(theme.theme.error, line) : theme.fg(theme.theme.textDim, line)),
         );
       }
       continue;

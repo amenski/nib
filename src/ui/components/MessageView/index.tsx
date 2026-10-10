@@ -18,6 +18,7 @@ interface Props {
 const MessageView = React.memo(function MessageView({ message, width }: Props) {
   const theme = useTheme();
   const promptFg = theme.colorEnabled ? ansi256(theme.theme.promptFg) : undefined;
+  const textDim = theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined;
   const content = message.content || "";
   const lines = content.split("\n");
   const maxLines = 200;
@@ -36,16 +37,16 @@ const MessageView = React.memo(function MessageView({ message, width }: Props) {
       )}
       {message.toolName && (
         <Box>
-          <Text dimColor>[{message.toolName}]</Text>
+          <Text color={textDim}>[{message.toolName}]</Text>
         </Box>
       )}
       {visible.map((line, i) => (
-        <Text key={i} color={roleColor} dimColor={dim} wrap="wrap">
+        <Text key={i} color={dim ? textDim : roleColor} wrap="wrap">
           {line || " "}
         </Text>
       ))}
       {truncated && (
-        <Text dimColor>... ({content.length - maxLines} more lines)</Text>
+        <Text color={textDim}>... ({content.length - maxLines} more lines)</Text>
       )}
     </Box>
   );

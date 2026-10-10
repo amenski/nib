@@ -34,6 +34,7 @@ const DropdownMenu = React.memo(function DropdownMenu({
 }: Props): React.ReactElement | null {
   const theme = useTheme();
   const resolvedTitleColor = titleColor ?? (theme.colorEnabled ? ansi256(theme.theme.accent) : undefined);
+  const resolvedDimColor = theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined;
   const visibleStart = calculateVisibleStart(activeIndex, items?.length, maxVisible);
   const visibleItems = items?.slice(visibleStart, visibleStart + maxVisible);
 
@@ -53,8 +54,8 @@ const DropdownMenu = React.memo(function DropdownMenu({
     return (
       <Box flexDirection="column" marginBottom={1} width={width}>
         {title ? <Text color={resolvedTitleColor} bold>{title}</Text> : null}
-        <Text dimColor>{emptyText}</Text>
-        {helpText ? <Text dimColor>{helpText}</Text> : null}
+        <Text color={resolvedDimColor}>{emptyText}</Text>
+        {helpText ? <Text color={resolvedDimColor}>{helpText}</Text> : null}
       </Box>
     );
   }
@@ -67,7 +68,7 @@ const DropdownMenu = React.memo(function DropdownMenu({
         </Box>
       ) : null}
       {visibleStart > 0 ? (
-        <Box marginLeft={2}><Text dimColor>… {visibleStart} above</Text></Box>
+        <Box marginLeft={2}><Text color={resolvedDimColor}>… {visibleStart} above</Text></Box>
       ) : null}
       <Box flexDirection="column">
         {visibleItems.map((item, idx) => {
@@ -85,18 +86,18 @@ const DropdownMenu = React.memo(function DropdownMenu({
                 </Text>
               </Box>
               <Box flexGrow={1}>
-                {item.description ? <Text dimColor>{item.description}</Text> : null}
+                {item.description ? <Text color={resolvedDimColor}>{item.description}</Text> : null}
               </Box>
             </Box>
           );
         })}
       </Box>
       {visibleStart + visibleItems.length < items.length ? (
-        <Box marginLeft={2}><Text dimColor>… {items.length - visibleStart - visibleItems.length} more</Text></Box>
+        <Box marginLeft={2}><Text color={resolvedDimColor}>… {items.length - visibleStart - visibleItems.length} more</Text></Box>
       ) : null}
       {helpText ? (
         <Box borderStyle={"single"} borderDimColor borderBottom={false} borderRight={false} borderTop={true} borderLeft={false} paddingX={1}>
-          <Text dimColor>{helpText}</Text>
+          <Text color={resolvedDimColor}>{helpText}</Text>
         </Box>
       ) : null}
     </Box>

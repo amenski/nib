@@ -46,7 +46,7 @@ const FileMentionMenu: React.FC<Props> = ({ width, items, activeIndex, query }) 
             <Text color={isActive ? accent : undefined} wrap="truncate-end" bold={isActive}>{item.label}</Text>
           </Box>
           {item.description ? (
-            <Box width={10} flexShrink={0}><Text dimColor>{item.description}</Text></Box>
+            <Box width={10} flexShrink={0}><Text color={theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined}>{item.description}</Text></Box>
           ) : null}
         </Box>
       )}

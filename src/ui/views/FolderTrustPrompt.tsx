@@ -55,7 +55,7 @@ export default function FolderTrustPrompt({ projectDir, summary, status, resolve
         <Text wrap="wrap">Folder: <Text bold>{projectDir}</Text></Text>
       </Box>
       <Box flexDirection="column" marginTop={1}>
-        <Text dimColor>Trusting will mark all of the following as trusted, right now:</Text>
+        <Text color={theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined}>Trusting will mark all of the following as trusted, right now:</Text>
         {summary.skills.length > 0 ? (
           <Text>  - <Text bold>{summary.skills.length}</Text> skill{summary.skills.length === 1 ? "" : "s"}</Text>
         ) : null}
@@ -66,7 +66,7 @@ export default function FolderTrustPrompt({ projectDir, summary, status, resolve
           <Text>  - <Text bold>{summary.hooks.length}</Text> hook{summary.hooks.length === 1 ? "" : "s"}</Text>
         ) : null}
       </Box>
-      <Text dimColor>
+      <Text color={theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined}>
         This is a one-time bulk approval for exactly what's here now — content added or changed later still asks again.
       </Text>
       <Box flexDirection="column" marginTop={1}>
@@ -77,7 +77,7 @@ export default function FolderTrustPrompt({ projectDir, summary, status, resolve
           {cursor === 1 ? "> " : "  "}No — ask me per item instead
         </Text>
       </Box>
-      <Text dimColor>↑↓ navigate · Enter choose · y/n · Esc cancel</Text>
+      <Text color={theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined}>↑↓ navigate · Enter choose · y/n · Esc cancel</Text>
     </Box>
   );
 }

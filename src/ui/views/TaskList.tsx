@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
 import type { TaskRecord } from "../../orchestrator/runner.js";
+import { useTheme } from "../contexts.js";
+import { ansi256 } from "../theme.js";
 
 interface Props {
   /** Live registry snapshot, polled while the view is open. */
@@ -11,11 +13,11 @@ interface Props {
   width: number;
 }
 
-const STATUS_COLOR: Record<TaskRecord["status"], string> = {
-  running: "cyan",
-  done: "green",
-  failed: "red",
-  aborted: "yellow",
+const STATUS_COLOR: Record<TaskRecord["status"], "secondary" | "success" | "error" | "warning"> = {
+  running: "secondary",
+  done: "success",
+  failed: "error",
+  aborted: "warning",
 };
 
 function ageOf(spawnedAt: number): string {
@@ -26,6 +28,7 @@ function ageOf(spawnedAt: number): string {
 }
 
 export default function TaskList({ getTasks, abortTask, onClose, width }: Props) {
+  const theme = useTheme();
   const [tasks, setTasks] = useState<TaskRecord[]>(() => getTasks());
   const [selectedIdx, setSelectedIdx] = useState(0);
 
@@ -69,14 +72,14 @@ export default function TaskList({ getTasks, abortTask, onClose, width }: Props)
   const running = tasks.filter((t) => t.status === "running").length;
 
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1} marginY={1} width={width}>
+    <Box flexDirection="column" borderStyle="round" borderColor={ansi256(theme.theme.secondary)} paddingX={1} marginY={1} width={width}>
       <Box marginBottom={1}>
-        <Text color="cyan" bold>Tasks</Text>
+        <Text color={ansi256(theme.theme.secondary)} bold>Tasks</Text>
         <Text> — {tasks.length} total{running > 0 ? `, ${running} running` : ""}</Text>
       </Box>
 
       {tasks.length === 0 ? (
-        <Text dimColor>No tasks this session.</Text>
+        <Text color={ansi256(theme.theme.textDim)}>No tasks this session.</Text>
       ) : (
         <Box flexDirection="column">
           {tasks.map((t, i) => {
@@ -85,12 +88,12 @@ export default function TaskList({ getTasks, abortTask, onClose, width }: Props)
             const depth = t.depth > 0 ? ` · depth ${t.depth}` : "";
             return (
               <Box key={t.id}>
-                <Text color={isSelected ? "cyanBright" : undefined} dimColor={!isSelected}>
+                <Text color={isSelected ? ansi256(theme.theme.secondary) : ansi256(theme.theme.textDim)}>
                   {isSelected ? "> " : "  "}
-                  {t.id} · {who}{depth} · <Text color={STATUS_COLOR[t.status]}>{t.status}</Text> · {ageOf(t.spawnedAt)}
+                  {t.id} · {who}{depth} · <Text color={ansi256(theme.theme[STATUS_COLOR[t.status]])}>{t.status}</Text> · {ageOf(t.spawnedAt)}
                   {t.description ? ` — ${t.description.slice(0, 60)}` : ""}
                   {t.status === "running" && isSelected ? (
-                    <Text color="yellow"> — press Enter to stop</Text>
+                    <Text color={ansi256(theme.theme.warning)}> — press Enter to stop</Text>
                   ) : null}
                 </Text>
               </Box>
@@ -100,7 +103,7 @@ export default function TaskList({ getTasks, abortTask, onClose, width }: Props)
       )}
 
       <Box flexDirection="column" marginTop={1}>
-        <Text dimColor>↑↓ navigate · Enter stop (running) · Esc close</Text>
+        <Text color={ansi256(theme.theme.textDim)}>↑↓ navigate · Enter stop (running) · Esc close</Text>
       </Box>
     </Box>
   );

@@ -55,7 +55,7 @@ export default function HookTrustPrompt({ entry, resolve }: Props) {
       <Box>
         <Text wrap="wrap">Command: <Text bold>{entry.command}</Text></Text>
       </Box>
-      <Text dimColor>This project hook runs a shell command with your privileges. Trust it?</Text>
+      <Text color={theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined}>This project hook runs a shell command with your privileges. Trust it?</Text>
       <Box flexDirection="column" marginTop={1}>
         <Text color={cursor === 0 ? accentColor : undefined}>
           {cursor === 0 ? "> " : "  "}Yes — trust forever
@@ -64,7 +64,7 @@ export default function HookTrustPrompt({ entry, resolve }: Props) {
           {cursor === 1 ? "> " : "  "}No — skip this session
         </Text>
       </Box>
-      <Text dimColor>↑↓ navigate · Enter choose · y/n · Esc cancel</Text>
+      <Text color={theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined}>↑↓ navigate · Enter choose · y/n · Esc cancel</Text>
     </Box>
   );
 }

@@ -3,17 +3,21 @@ import { buildReplayLines } from "./replay.js";
 import { USER_ECHO_TAG, VERBATIM_TAG } from "../constants.js";
 import type { Message } from "../../types.js";
 import { stripAnsi } from "../test-helpers.js";
+import { ThemeContextValue, DARK_THEME, ansiFg } from "../theme.js";
+
+const noColor = new ThemeContextValue(DARK_THEME, false);
+const withColor = new ThemeContextValue(DARK_THEME, true);
 
 describe("buildReplayLines", () => {
   it("renders a user turn with the echo gutter tag", () => {
     const msgs: Message[] = [{ role: "user", content: "fix the bug" }];
-    const lines = buildReplayLines(msgs, false);
+    const lines = buildReplayLines(msgs, noColor);
     expect(lines).toContain(VERBATIM_TAG + USER_ECHO_TAG + "fix the bug");
   });
 
   it("bullets assistant text", () => {
     const msgs: Message[] = [{ role: "assistant", content: "Done." }];
-    const lines = buildReplayLines(msgs, false);
+    const lines = buildReplayLines(msgs, noColor);
     expect(lines.some((l) => l.startsWith(VERBATIM_TAG + "● Done."))).toBe(true);
   });
 
@@ -26,7 +30,7 @@ describe("buildReplayLines", () => {
       },
       { role: "tool", toolCallId: "c1", content: "file-a\nfile-b" },
     ];
-    const lines = buildReplayLines(msgs, false).map(stripAnsi);
+    const lines = buildReplayLines(msgs, noColor).map(stripAnsi);
     expect(lines.some((l) => l.startsWith(VERBATIM_TAG + "⏺ Bash"))).toBe(true);
     expect(lines.some((l) => l.includes("file-a"))).toBe(true);
   });
@@ -36,7 +40,7 @@ describe("buildReplayLines", () => {
       { role: "user", content: "fix the bug" },
       { role: "assistant", content: "Done." },
     ];
-    const lines = buildReplayLines(msgs, false);
+    const lines = buildReplayLines(msgs, noColor);
     const nonBlank = lines.filter((l) => l !== "");
     expect(nonBlank.length).toBeGreaterThan(0);
     expect(nonBlank.every((l) => l.startsWith(VERBATIM_TAG))).toBe(true);
@@ -51,7 +55,7 @@ describe("buildReplayLines", () => {
       },
       { role: "tool", toolCallId: "r1", content: "secret file body" },
     ];
-    const lines = buildReplayLines(msgs, false).map(stripAnsi);
+    const lines = buildReplayLines(msgs, noColor).map(stripAnsi);
     expect(lines.some((l) => l.includes("secret file body"))).toBe(false);
     expect(lines.some((l) => l.includes("Read"))).toBe(false);
   });
@@ -62,7 +66,7 @@ describe("buildReplayLines", () => {
       { role: "user", content: "[Previous conversation summary]\nDid X and Y." },
       { role: "user", content: "now do Z" },
     ];
-    const lines = buildReplayLines(msgs, false);
+    const lines = buildReplayLines(msgs, noColor);
     // per-turn system prompt is not surfaced
     expect(lines.some((l) => l.includes("per-turn prompt"))).toBe(false);
     // summary is surfaced
@@ -71,7 +75,7 @@ describe("buildReplayLines", () => {
     expect(lines).toContain(VERBATIM_TAG + USER_ECHO_TAG + "now do Z");
   });
 
-  it("marks permission-denied tool results as errors (ANSI red) when color is on", () => {
+  it("marks permission-denied tool results as errors (theme error colour) when color is on", () => {
     const msgs: Message[] = [
       {
         role: "assistant",
@@ -80,7 +84,7 @@ describe("buildReplayLines", () => {
       },
       { role: "tool", toolCallId: "c1", content: "PERMISSION_DENIED: nope" },
     ];
-    const lines = buildReplayLines(msgs, true);
-    expect(lines.some((l) => l.includes("\x1b[31m") && l.includes("nope"))).toBe(true);
+    const lines = buildReplayLines(msgs, withColor);
+    expect(lines.some((l) => l.includes(ansiFg(DARK_THEME.error)) && l.includes("nope"))).toBe(true);
   });
 });

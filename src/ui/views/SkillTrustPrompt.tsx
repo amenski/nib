@@ -54,7 +54,7 @@ export default function SkillTrustPrompt({ skill, status, resolve }: Props) {
       <Box>
         <Text wrap="wrap">Source: <Text bold>{skill.sourcePath}</Text></Text>
       </Box>
-      <Text dimColor>This skill's instructions are injected into the system prompt. Trust it?</Text>
+      <Text color={theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined}>This skill's instructions are injected into the system prompt. Trust it?</Text>
       <Box flexDirection="column" marginTop={1}>
         <Text color={cursor === 0 ? accentColor : undefined}>
           {cursor === 0 ? "> " : "  "}Yes — trust forever
@@ -63,7 +63,7 @@ export default function SkillTrustPrompt({ skill, status, resolve }: Props) {
           {cursor === 1 ? "> " : "  "}No — skip this session
         </Text>
       </Box>
-      <Text dimColor>↑↓ navigate · Enter choose · y/n · Esc cancel</Text>
+      <Text color={theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined}>↑↓ navigate · Enter choose · y/n · Esc cancel</Text>
     </Box>
   );
 }

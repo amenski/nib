@@ -39,8 +39,7 @@ export default function TodoPanel({ todos, active }: Props) {
         return (
           <Text
             key={i}
-            color={t.status === "in_progress" && !dimAll ? accent : undefined}
-            dimColor={t.status !== "in_progress" || dimAll}
+            color={(t.status !== "in_progress" || dimAll) ? slotColor(theme, "textDim") : accent}
           >
             {glyph} {t.content}
           </Text>

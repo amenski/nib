@@ -52,7 +52,7 @@ function HintBar({ left, right = [], working = false }: HintBarProps) {
     return () => clearInterval(timer);
   }, [working, TICK_MS]);
 
-  const dim = (s: string) => (theme.colorEnabled ? `\x1b[2m${s}\x1b[0m` : s);
+  const dim = (s: string) => theme.fg(theme.theme.textDim, s);
   // The chord renders as a key-cap (filled chip) and the description stays dim
   // beside it, so the row reads as "this key does that" rather than a run of
   // equally-weighted words.

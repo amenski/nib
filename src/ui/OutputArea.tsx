@@ -109,7 +109,7 @@ const OutputLine = memo(function OutputLine({
   const summary = useMemo(() => (verbatim ? null : needsSummary(body)), [body, verbatim]);
 
   if (hasBullet) {
-    const bulletEl = <Text dimColor>{"● "}</Text>;
+    const bulletEl = <Text color={theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined}>{"● "}</Text>;
     if (summary) {
       return (
         <Box flexDirection="column">
@@ -117,7 +117,7 @@ const OutputLine = memo(function OutputLine({
             {bulletEl}
             <MarkdownText theme={theme}>{summarizeText(body)}</MarkdownText>
           </Box>
-          <Text dimColor>{summary}</Text>
+          <Text color={theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined}>{summary}</Text>
         </Box>
       );
     }
@@ -154,7 +154,7 @@ const OutputLine = memo(function OutputLine({
         {truncated !== null && (
           <Box>
             <Text color={gutter}>{"▌ "}</Text>
-            <Text dimColor>{truncated}</Text>
+            <Text color={theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined}>{truncated}</Text>
           </Box>
         )}
       </Box>
@@ -172,9 +172,9 @@ const OutputLine = memo(function OutputLine({
     return (
       <Box flexDirection="column">
         {msgLines.map((msg, i) => (
-          <Text key={i} dimColor>{i === 0 ? `› ${msg}` : `  ${msg}`}</Text>
+          <Text key={i} color={theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined}>{i === 0 ? `› ${msg}` : `  ${msg}`}</Text>
         ))}
-        {truncated !== null && <Text dimColor>{`  ${truncated}`}</Text>}
+        {truncated !== null && <Text color={theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined}>{`  ${truncated}`}</Text>}
       </Box>
     );
   }
@@ -183,7 +183,7 @@ const OutputLine = memo(function OutputLine({
     return (
       <Box flexDirection="column">
         <MarkdownText theme={theme}>{summarizeText(untagged)}</MarkdownText>
-        <Text dimColor>{summary}</Text>
+        <Text color={theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined}>{summary}</Text>
       </Box>
     );
   }

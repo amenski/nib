@@ -510,7 +510,7 @@ const PromptInput = React.memo(function PromptInput({
   // incremental diff can only skip rows that keep their index, so a row that
   // appears or disappears forces everything below it to repaint.
   const notice = attachedImages.length > 0
-    ? { text: `📎 ${attachedImages.length} image${attachedImages.length === 1 ? "" : "s"} attached (ctrl+x to clear)`, color: "yellow" as const }
+    ? { text: `📎 ${attachedImages.length} image${attachedImages.length === 1 ? "" : "s"} attached (ctrl+x to clear)`, color: theme.colorEnabled ? ansi256(theme.theme.warning) : undefined }
     : footerText !== ""
       ? { text: footerText, color: undefined }
       : null;
@@ -552,7 +552,7 @@ const PromptInput = React.memo(function PromptInput({
           repainting everything below them. */}
       <Box>
         {notice
-          ? <Text color={notice.color} dimColor={notice.color === undefined}>{notice.text}</Text>
+          ? <Text color={notice.color === undefined ? (theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined) : notice.color}>{notice.text}</Text>
           : statusLine ?? <Text> </Text>}
       </Box>
 

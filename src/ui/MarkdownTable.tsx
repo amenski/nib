@@ -11,7 +11,8 @@ interface MarkdownTableProps {
   children: string;
   width?: number;
   theme?: {
-    dim?: (text: string) => string;
+    fg: (color: number, text: string) => string;
+    theme: { textDim: number };
   };
 }
 
@@ -377,7 +378,7 @@ function MarkdownTable({ children, width, theme }: MarkdownTableProps) {
 
   if (!rendered) return <Text>{children}</Text>;
 
-  const dim = theme?.dim ?? ((s: string) => `\x1b[2m${s}\x1b[0m`);
+  const dim = theme ? (s: string) => theme.fg(theme.theme.textDim, s) : ((s: string) => `\x1b[2m${s}\x1b[0m`);
   const dimmed = dim(rendered);
 
   return <Text>{dimmed}</Text>;

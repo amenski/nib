@@ -80,13 +80,13 @@ export function buildWelcomeLines(theme: ThemeContextValue, opts: WelcomeOpts): 
     bg: theme.theme.accent,
     colorEnabled: theme.colorEnabled,
   });
-  const dimContext = theme.colorEnabled ? `\x1b[2m  ${context}\x1b[0m` : `  ${context}`;
+  const dimContext = theme.fg(theme.theme.textDim, `  ${context}`);
   const markLine = mark + dimContext;
 
   const lines = ["", markLine, ""];
   if (tip) {
     const tipText = `Tip: ${tip.label} — ${tip.description}`;
-    lines.push(theme.colorEnabled ? `\x1b[2m${tipText}\x1b[0m` : tipText);
+    lines.push(theme.fg(theme.theme.textDim, tipText));
   }
   lines.push("");
   return lines;

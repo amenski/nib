@@ -33,7 +33,7 @@ const SlashCommandMenu = React.memo(function SlashCommandMenu({
 
   return (
     <Box flexDirection="column" marginBottom={1} width={width}>
-      {visibleStart > 0 ? <Box marginLeft={2}><Text dimColor>▲</Text></Box> : null}
+      {visibleStart > 0 ? <Box marginLeft={2}><Text color={theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined}>▲</Text></Box> : null}
       {visibleItems.map((item, idx) => {
         const actualIndex = visibleStart + idx;
         const isActive = actualIndex === activeIndex;
@@ -46,16 +46,16 @@ const SlashCommandMenu = React.memo(function SlashCommandMenu({
               </Text>
             </Box>
             <Box flexGrow={1}>
-              <Text color={isActive ? accent : undefined} wrap="truncate-end" dimColor>
+              <Text color={isActive ? accent : undefined} wrap="truncate-end">
                 {item.description}
               </Text>
             </Box>
           </Box>
         );
       })}
-      {visibleStart + visibleItems.length < items.length ? <Box marginLeft={2}><Text dimColor>▼</Text></Box> : null}
+      {visibleStart + visibleItems.length < items.length ? <Box marginLeft={2}><Text color={theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined}>▼</Text></Box> : null}
       <Box marginLeft={2}>
-        <Text dimColor>({activeIndex + 1}/{items.length}) ↑↓ navigate · Enter select</Text>
+        <Text color={theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined}>({activeIndex + 1}/{items.length}) ↑↓ navigate · Enter select</Text>
       </Box>
     </Box>
   );

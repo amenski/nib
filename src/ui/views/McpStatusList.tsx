@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
 import { getMCPServerStatuses, getMCPServerTools, reconnectMCPServer, getServerConfigs, type McpServerStatus, type McpServerStatusEntry } from "../../mcp/connector.js";
+import { useTheme } from "../contexts.js";
+import { ansi256 } from "../theme.js";
 
 interface Props {
   onClose: () => void;
@@ -15,6 +17,7 @@ const STATUS_ICONS: Record<McpServerStatus, string> = {
 };
 
 export default function McpStatusList({ onClose, width }: Props) {
+  const theme = useTheme();
   const [statuses, setStatuses] = useState<McpServerStatusEntry[]>([]);
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [drillDown, setDrillDown] = useState<string | null>(null);
@@ -99,35 +102,35 @@ export default function McpStatusList({ onClose, width }: Props) {
   const drillDownTools = drillDown ? getMCPServerTools(drillDown) : [];
 
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1} marginY={1} width={width}>
+    <Box flexDirection="column" borderStyle="round" borderColor={ansi256(theme.theme.secondary)} paddingX={1} marginY={1} width={width}>
       {drillDown ? (
         <Box flexDirection="column">
           <Box marginBottom={1}>
-            <Text color="cyan" bold>MCP: {drillDown}</Text>
+            <Text color={ansi256(theme.theme.secondary)} bold>MCP: {drillDown}</Text>
             <Text> — {drillDownTools.length} tools</Text>
           </Box>
           {drillDownTools.length === 0 ? (
-            <Text dimColor>No tools registered.</Text>
+            <Text color={ansi256(theme.theme.textDim)}>No tools registered.</Text>
           ) : (
             <Box flexDirection="column">
               {drillDownTools.map((t: any) => (
                 <Box key={t.name}>
-                  <Text dimColor>  </Text>
+                  <Text color={ansi256(theme.theme.textDim)}>  </Text>
                   <Text>{t.name}</Text>
                 </Box>
               ))}
             </Box>
           )}
-          <Box marginTop={1}><Text dimColor>Esc to go back</Text></Box>
+          <Box marginTop={1}><Text color={ansi256(theme.theme.textDim)}>Esc to go back</Text></Box>
         </Box>
       ) : (
         <Box flexDirection="column">
           <Box marginBottom={1}>
-            <Text color="cyan" bold>MCP Servers</Text>
+            <Text color={ansi256(theme.theme.secondary)} bold>MCP Servers</Text>
           </Box>
 
           {servers.length === 0 ? (
-            <Text dimColor>No MCP servers configured.</Text>
+            <Text color={ansi256(theme.theme.textDim)}>No MCP servers configured.</Text>
           ) : (
             <Box flexDirection="column">
               {servers.map((s, i) => {
@@ -135,22 +138,22 @@ export default function McpStatusList({ onClose, width }: Props) {
                 const icon = STATUS_ICONS[s.status] ?? "?";
                 return (
                   <Box key={s.name}>
-                    <Text color={isSelected ? "cyanBright" : undefined} dimColor={!isSelected}>
+                    <Text color={isSelected ? ansi256(theme.theme.secondary) : ansi256(theme.theme.textDim)}>
                       {isSelected ? "> " : "  "}
                       {icon} {s.name} ({s.toolCount} tools)
                       {s.status === "failed" && isSelected ? (
-                        <Text color="yellow"> — press R to reconnect</Text>
+                        <Text color={ansi256(theme.theme.warning)}> — press R to reconnect</Text>
                       ) : s.status === "failed" ? (
-                        <Text dimColor color="yellow"> (failed)</Text>
+                        <Text color={ansi256(theme.theme.warning)}> (failed)</Text>
                       ) : null}
                       {s.pinChanged ? (
-                        <Text color="yellow">{isSelected ? " — " : " "}pinned-defs changed — re-approve</Text>
+                        <Text color={ansi256(theme.theme.warning)}>{isSelected ? " — " : " "}pinned-defs changed — re-approve</Text>
                       ) : null}
                       {s.status === "reconnecting" ? (
-                        <Text dimColor color="yellow"> reconnecting...</Text>
+                        <Text color={ansi256(theme.theme.warning)}> reconnecting...</Text>
                       ) : null}
                       {s.status === "starting" ? (
-                        <Text dimColor> starting...</Text>
+                        <Text color={ansi256(theme.theme.textDim)}> starting...</Text>
                       ) : null}
                     </Text>
                   </Box>
@@ -161,12 +164,12 @@ export default function McpStatusList({ onClose, width }: Props) {
 
           {pinReapprove ? (
             <Box flexDirection="column" marginTop={1}>
-              <Text color="yellow">Tool definitions for {pinReapprove} changed since last approval — re-approve? (y/n)</Text>
+              <Text color={ansi256(theme.theme.warning)}>Tool definitions for {pinReapprove} changed since last approval — re-approve? (y/n)</Text>
             </Box>
           ) : null}
 
           <Box flexDirection="column" marginTop={1}>
-            <Text dimColor>↑↓ navigate · Enter drill-down · R reconnect · Esc close</Text>
+            <Text color={ansi256(theme.theme.textDim)}>↑↓ navigate · Enter drill-down · R reconnect · Esc close</Text>
           </Box>
         </Box>
       )}

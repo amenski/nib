@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { Box, Text, useInput } from "ink";
 import type { SessionStore, PermissionAuditRecord, SessionPermissionMetrics } from "../../sessions/store.js";
 import { bashEnvelopeGrants } from "../../permissions/session-grant.js";
+import { useTheme } from "../contexts.js";
+import { ansi256 } from "../theme.js";
 
 interface Props {
   sessionStore: SessionStore;
@@ -85,6 +87,7 @@ function mergeAdjacentPairs(entries: HistoryEntry[]): DisplayEntry[] {
 }
 
 export default function PermissionHistoryList({ sessionStore, sessionId, onClose, width }: Props) {
+  const theme = useTheme();
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
   const [metrics, setMetrics] = useState<SessionPermissionMetrics | null>(null);
   const [loading, setLoading] = useState(true);
@@ -163,14 +166,14 @@ export default function PermissionHistoryList({ sessionStore, sessionId, onClose
   const selected = displayEntries[selectedIdx];
 
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1} marginY={1} width={width}>
+    <Box flexDirection="column" borderStyle="round" borderColor={ansi256(theme.theme.secondary)} paddingX={1} marginY={1} width={width}>
       <Box marginBottom={1}>
-        <Text color="cyan" bold>Permission History</Text>
-        {displayEntries.length > 0 && <Text dimColor> — {displayEntries.length} decision{displayEntries.length === 1 ? "" : "s"}</Text>}
+        <Text color={ansi256(theme.theme.secondary)} bold>Permission History</Text>
+        {displayEntries.length > 0 && <Text color={ansi256(theme.theme.textDim)}> — {displayEntries.length} decision{displayEntries.length === 1 ? "" : "s"}</Text>}
       </Box>
 
       {metrics && (
-        <Text dimColor>
+        <Text color={ansi256(theme.theme.textDim)}>
           Prompts {metrics.permissionPrompts} · approvals {metrics.permissionApprovals} · denials {metrics.permissionDenials}
           {" · grants "}{metrics.envelopeGrantsCreated}
           {" (reused "}{metrics.envelopeGrantReuses}
@@ -185,20 +188,20 @@ export default function PermissionHistoryList({ sessionStore, sessionId, onClose
           <Text color="#f59e0b">
             Session grant active: sandboxed Bash in {grant.trustedRoot} will run without asking.
           </Text>
-          <Text dimColor>
+          <Text color={ansi256(theme.theme.textDim)}>
             Writable: {grant.writeRoots.length > 0 ? grant.writeRoots.join(", ") : "nothing"}
             {" · "}denied and guarded commands still ask
           </Text>
-          <Text dimColor>
+          <Text color={ansi256(theme.theme.textDim)}>
             Revoking does not undo changes already made, and does not stop a command that is already running.
           </Text>
         </Box>
       )}
 
       {loading ? (
-        <Text dimColor>Loading…</Text>
+        <Text color={ansi256(theme.theme.textDim)}>Loading…</Text>
       ) : displayEntries.length === 0 ? (
-        <Text dimColor>No permission decisions recorded yet this session.</Text>
+        <Text color={ansi256(theme.theme.textDim)}>No permission decisions recorded yet this session.</Text>
       ) : (
         <Box flexDirection="column">
           {displayEntries.map((entry, i) => {
@@ -208,7 +211,7 @@ export default function PermissionHistoryList({ sessionStore, sessionId, onClose
             const time = entry.primary.at.slice(11, 19);
             return (
               <Box key={i}>
-                <Text color={isSelected ? "cyanBright" : undefined} dimColor={!isSelected}>
+                <Text color={isSelected ? ansi256(theme.theme.secondary) : ansi256(theme.theme.textDim)}>
                   {isSelected ? "> " : "  "}
                   {time} · {entry.primary.tool}
                 </Text>
@@ -220,16 +223,16 @@ export default function PermissionHistoryList({ sessionStore, sessionId, onClose
       )}
 
       {selected && (
-        <Box flexDirection="column" marginTop={1} borderStyle="single" borderColor="gray" paddingX={1}>
-          <Text dimColor>Subject: </Text>
+        <Box flexDirection="column" marginTop={1} borderStyle="single" borderColor={ansi256(theme.theme.textDim)} paddingX={1}>
+          <Text color={ansi256(theme.theme.textDim)}>Subject: </Text>
           <Text>{selected.primary.subject}</Text>
           {selected.primary.winningRule && (
-            <Text dimColor>
+            <Text color={ansi256(theme.theme.textDim)}>
               Rule: {selected.primary.winningRule.origin} · {selected.primary.winningRule.kind} · "{selected.primary.winningRule.pattern}" → {selected.primary.winningRule.action}
             </Text>
           )}
           {selected.secondary && (
-            <Text dimColor>
+            <Text color={ansi256(theme.theme.textDim)}>
               Agent outcome: {selected.secondary.decision}
               {selected.secondary.reason ? ` — ${selected.secondary.reason}` : ""}
             </Text>
@@ -238,7 +241,7 @@ export default function PermissionHistoryList({ sessionStore, sessionId, onClose
       )}
 
       <Box marginTop={1}>
-        <Text dimColor>↑↓ navigate · Esc close{grant ? " · r revoke session grant" : ""}</Text>
+        <Text color={ansi256(theme.theme.textDim)}>↑↓ navigate · Esc close{grant ? " · r revoke session grant" : ""}</Text>
       </Box>
     </Box>
   );

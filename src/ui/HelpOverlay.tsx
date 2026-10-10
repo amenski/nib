@@ -183,8 +183,8 @@ export default function HelpOverlay({ onClose }: HelpOverlayProps) {
 
   const currentSection: HelpSection[] = tab === "shortcuts" ? shortcutSections : [commandSection];
 
-  const dim = (s: string) => (theme.colorEnabled ? `\x1b[2m${s}\x1b[0m` : s);
-  const bright = (s: string) => (theme.colorEnabled ? `\x1b[97m${s}\x1b[0m` : s);
+  const dim = (s: string) => theme.fg(theme.theme.textDim, s);
+  const bright = (s: string) => theme.fg(theme.theme.textBright, s);
 
   return (
     <Box flexDirection="column" marginTop={1} marginBottom={1}>
@@ -201,7 +201,7 @@ export default function HelpOverlay({ onClose }: HelpOverlayProps) {
 
       {/* Tab navigation hint */}
       <Box>
-        <Text dimColor>{dim("  \u2190\u2192 switch tab     Esc close")}</Text>
+        <Text>{dim("  \u2190\u2192 switch tab     Esc close")}</Text>
       </Box>
 
       {/* Content */}
@@ -224,10 +224,10 @@ export default function HelpOverlay({ onClose }: HelpOverlayProps) {
                   {"  "}
                   <Text>{paddedAction}</Text>
                   {item.shortcut ? (
-                    <Text dimColor>{dim(`  ${item.shortcut}`)}</Text>
+                    <Text>{dim(`  ${item.shortcut}`)}</Text>
                   ) : null}
                   {item.description ? (
-                    <Text dimColor>{dim(`   ${item.description}`)}</Text>
+                    <Text>{dim(`   ${item.description}`)}</Text>
                   ) : null}
                 </Text>
               </Box>
@@ -238,7 +238,7 @@ export default function HelpOverlay({ onClose }: HelpOverlayProps) {
 
       {/* Footer */}
       <Box marginTop={1}>
-        <Text dimColor>{dim("\u2514" + "\u2500".repeat(40))}</Text>
+        <Text>{dim("\u2514" + "\u2500".repeat(40))}</Text>
       </Box>
     </Box>
   );

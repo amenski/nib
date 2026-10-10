@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { Box, Text, useInput } from "ink";
 import type { SessionListItem, SessionStore } from "../../sessions/store.js";
+import { useTheme } from "../contexts.js";
+import { ansi256 } from "../theme.js";
 
 interface Props {
   sessionStore: SessionStore;
@@ -11,6 +13,7 @@ interface Props {
 }
 
 export default function SessionList({ sessionStore, onResume, onClose, width, height }: Props) {
+  const theme = useTheme();
   const [sessions, setSessions] = useState<SessionListItem[]>([]);
   const [searchText, setSearchText] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -47,9 +50,9 @@ export default function SessionList({ sessionStore, onResume, onClose, width, he
 
   // Small, honest status glyphs: completed / interrupted / failed.
   const STATUS_MARK: Record<string, { glyph: string; color: string }> = {
-    completed: { glyph: "✓", color: "green" },
-    interrupted: { glyph: "…", color: "yellow" },
-    failed: { glyph: "✗", color: "red" },
+    completed: { glyph: "✓", color: ansi256(theme.theme.success) },
+    interrupted: { glyph: "…", color: ansi256(theme.theme.warning) },
+    failed: { glyph: "✗", color: ansi256(theme.theme.error) },
   };
 
   function formatDate(iso: string): string {
@@ -174,32 +177,32 @@ export default function SessionList({ sessionStore, onResume, onClose, width, he
   });
 
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1} marginY={1} width={width}>
+    <Box flexDirection="column" borderStyle="round" borderColor={ansi256(theme.theme.secondary)} paddingX={1} marginY={1} width={width}>
       {deleteConfirm ? (
         <Box flexDirection="column">
-          <Text color="red" bold>Delete session?</Text>
+          <Text color={ansi256(theme.theme.error)} bold>Delete session?</Text>
           <Text>Session {deleteConfirm.slice(0, 16)}...</Text>
-          <Box marginTop={1}><Text dimColor>Enter to confirm · Esc to cancel</Text></Box>
+          <Box marginTop={1}><Text color={ansi256(theme.theme.textDim)}>Enter to confirm · Esc to cancel</Text></Box>
         </Box>
       ) : renameTarget ? (
         <Box flexDirection="column">
           <Text bold>Rename session</Text>
-          <Text color="cyan">{renameText || <Text dimColor>type new name</Text>}<Text color="cyan" inverse> </Text></Text>
-          <Box marginTop={1}><Text dimColor>Enter to save · Esc to cancel</Text></Box>
+          <Text color={ansi256(theme.theme.secondary)}>{renameText || <Text color={ansi256(theme.theme.textDim)}>type new name</Text>}<Text color={ansi256(theme.theme.secondary)} inverse> </Text></Text>
+          <Box marginTop={1}><Text color={ansi256(theme.theme.textDim)}>Enter to save · Esc to cancel</Text></Box>
         </Box>
       ) : (
         <>
           <Box marginBottom={1}>
-            <Text color="cyan" bold>Sessions</Text>
-            {searchText && <Text dimColor> — matching "{searchText}"</Text>}
+            <Text color={ansi256(theme.theme.secondary)} bold>Sessions</Text>
+            {searchText && <Text color={ansi256(theme.theme.textDim)}> — matching "{searchText}"</Text>}
           </Box>
 
           {filtered.length === 0 ? (
-            <Text dimColor>No sessions found.</Text>
+            <Text color={ansi256(theme.theme.textDim)}>No sessions found.</Text>
           ) : (
             <Box flexDirection="column">
               {scrollOffset > 0 && (
-                <Text dimColor>{`  ... (${scrollOffset} more above) ...`}</Text>
+                <Text color={ansi256(theme.theme.textDim)}>{`  ... (${scrollOffset} more above) ...`}</Text>
               )}
               {visible.map((s, i) => {
                 const globalIdx = scrollOffset + i;
@@ -207,11 +210,11 @@ export default function SessionList({ sessionStore, onResume, onClose, width, he
                 const mark = STATUS_MARK[s.status] ?? STATUS_MARK.interrupted;
                 return (
                   <Box key={s.id}>
-                    <Text color={isSelected ? "cyanBright" : undefined} dimColor={!isSelected}>
+                    <Text color={isSelected ? ansi256(theme.theme.secondary) : ansi256(theme.theme.textDim)}>
                       {isSelected ? "> " : "  "}
                     </Text>
-                    <Text color={mark.color} dimColor={!isSelected}>{mark.glyph} </Text>
-                    <Text color={isSelected ? "cyanBright" : undefined} dimColor={!isSelected}>
+                    <Text color={!isSelected ? ansi256(theme.theme.textDim) : mark.color}>{mark.glyph} </Text>
+                    <Text color={isSelected ? ansi256(theme.theme.secondary) : ansi256(theme.theme.textDim)}>
                       {formatDate(s.updatedAt).padEnd(10)} {String(s.messageCount).padStart(3)}msgs{"  "}
                       {s.title || s.firstMessage || s.id.slice(0, 12)}
                     </Text>
@@ -219,14 +222,14 @@ export default function SessionList({ sessionStore, onResume, onClose, width, he
                 );
               })}
               {scrollOffset + pageSize < filtered.length && (
-                <Text dimColor>{`  ... (${filtered.length - scrollOffset - pageSize} more below) ...`}</Text>
+                <Text color={ansi256(theme.theme.textDim)}>{`  ... (${filtered.length - scrollOffset - pageSize} more below) ...`}</Text>
               )}
             </Box>
           )}
 
           <Box flexDirection="column" marginTop={1}>
-            <Text dimColor>↑↓ navigate · Enter resume · Ctrl+R rename · Del delete · Esc close</Text>
-            {searchText && <Text dimColor>Search: {searchText}</Text>}
+            <Text color={ansi256(theme.theme.textDim)}>↑↓ navigate · Enter resume · Ctrl+R rename · Del delete · Esc close</Text>
+            {searchText && <Text color={ansi256(theme.theme.textDim)}>Search: {searchText}</Text>}
           </Box>
         </>
       )}

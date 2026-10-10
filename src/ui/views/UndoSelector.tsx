@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Box, Text, useInput } from "ink";
 import type { CheckpointEntry } from "../../checkpoints/index.js";
+import { useTheme } from "../contexts.js";
+import { ansi256 } from "../theme.js";
 
 type Phase = "message" | "mode";
 
@@ -30,6 +32,7 @@ function formatDate(ts: string): string {
 }
 
 export default function UndoSelector({ checkpoints, onRestore, onClose, width, height }: Props) {
+  const theme = useTheme();
   const [phase, setPhase] = useState<Phase>("message");
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [scrollOffset, setScrollOffset] = useState(0);
@@ -110,53 +113,53 @@ export default function UndoSelector({ checkpoints, onRestore, onClose, width, h
   });
 
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1} marginY={1} width={width}>
+    <Box flexDirection="column" borderStyle="round" borderColor={ansi256(theme.theme.warning)} paddingX={1} marginY={1} width={width}>
       {phase === "mode" ? (
         <Box flexDirection="column">
           <Box marginBottom={1}>
-            <Text color="yellow" bold>Restore mode</Text>
+            <Text color={ansi256(theme.theme.warning)} bold>Restore mode</Text>
           </Box>
-          <Text dimColor>Restoring to: {formatMessage(filtered[safeIndex]?.message ?? "")}</Text>
+          <Text color={ansi256(theme.theme.textDim)}>Restoring to: {formatMessage(filtered[safeIndex]?.message ?? "")}</Text>
           <Box flexDirection="column" marginTop={1}>
             {modeOptions.map((opt, i) => (
-              <Text key={i} color={i === modeCursor ? "cyanBright" : undefined}>
+              <Text key={i} color={i === modeCursor ? ansi256(theme.theme.secondary) : undefined}>
                 {i === modeCursor ? "> " : "  "}
                 {i + 1}. {opt}
               </Text>
             ))}
           </Box>
           <Box marginTop={1}>
-            <Text color="yellow">
+            <Text color={ansi256(theme.theme.warning)}>
               Undo only affects this checkpoint: it may restore checkpointed workspace files and/or conversation.
               It cannot undo running processes, network calls, remote mutations, or files excluded from or not
               captured in the checkpoint (including later untracked data).
             </Text>
           </Box>
           <Box marginTop={1}>
-            <Text dimColor>↑↓ navigate · Enter select · Esc back</Text>
+            <Text color={ansi256(theme.theme.textDim)}>↑↓ navigate · Enter select · Esc back</Text>
           </Box>
         </Box>
       ) : restoring ? (
-        <Box><Text dimColor>Restoring...</Text></Box>
+        <Box><Text color={ansi256(theme.theme.textDim)}>Restoring...</Text></Box>
       ) : (
         <Box flexDirection="column">
           <Box marginBottom={1}>
-            <Text color="yellow" bold>Undo — select a checkpoint</Text>
+            <Text color={ansi256(theme.theme.warning)} bold>Undo — select a checkpoint</Text>
           </Box>
 
           {filtered.length === 0 ? (
-            <Text dimColor>No checkpoints found.</Text>
+            <Text color={ansi256(theme.theme.textDim)}>No checkpoints found.</Text>
           ) : (
             <Box flexDirection="column">
               {scrollOffset > 0 && (
-                <Text dimColor>  ... ({scrollOffset} above) ...</Text>
+                <Text color={ansi256(theme.theme.textDim)}>  ... ({scrollOffset} above) ...</Text>
               )}
               {visible.map((entry, i) => {
                 const globalIdx = scrollOffset + i;
                 const isSelected = globalIdx === safeIndex;
                 return (
                   <Box key={entry.hash}>
-                    <Text color={isSelected ? "cyanBright" : undefined} dimColor={!isSelected}>
+                    <Text color={isSelected ? ansi256(theme.theme.secondary) : ansi256(theme.theme.textDim)}>
                       {isSelected ? "> " : "  "}
                       {formatDate(entry.timestamp).padEnd(12)} {formatMessage(entry.message)}
                     </Text>
@@ -164,14 +167,14 @@ export default function UndoSelector({ checkpoints, onRestore, onClose, width, h
                 );
               })}
               {scrollOffset + pageSize < filtered.length && (
-                <Text dimColor>  ... ({filtered.length - scrollOffset - pageSize} more) ...</Text>
+                <Text color={ansi256(theme.theme.textDim)}>  ... ({filtered.length - scrollOffset - pageSize} more) ...</Text>
               )}
             </Box>
           )}
 
           <Box flexDirection="column" marginTop={1}>
-            <Text dimColor>↑↓ navigate · Enter select · Esc close · Type to search</Text>
-            {searchText && <Text dimColor>Search: {searchText}</Text>}
+            <Text color={ansi256(theme.theme.textDim)}>↑↓ navigate · Enter select · Esc close · Type to search</Text>
+            {searchText && <Text color={ansi256(theme.theme.textDim)}>Search: {searchText}</Text>}
           </Box>
         </Box>
       )}

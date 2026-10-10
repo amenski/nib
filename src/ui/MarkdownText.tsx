@@ -100,7 +100,7 @@ function CodeBlockBlock({
   const language = detectLanguage(info);
   const langLabel = language !== "text" ? language : (info || "code");
 
-  const dim = theme ? (s: string) => theme.dim(s) : ((s: string) => `\x1b[2m${s}\x1b[0m`);
+  const dim = theme ? (s: string) => theme.fg(theme.theme.textDim, s) : ((s: string) => `\x1b[2m${s}\x1b[0m`);
   const fg = theme?.fg;
 
   if (!theme || !theme.colorEnabled || language === "text") {
@@ -115,7 +115,7 @@ function CodeBlockBlock({
 
   return (
     <Text>
-      <Text dimColor>{dim(`  ── ${langLabel} ──`)}</Text>
+      <Text>{dim(`  ── ${langLabel} ──`)}</Text>
       {"\n"}
       {content.length > 0 && (
         <SyntaxHighlighter
@@ -177,8 +177,8 @@ function MarkdownText({ children, theme }: MarkdownTextProps) {
   // ── Code fence opener alone (no content yet — streaming) ──
   if (text.startsWith("```")) {
     const lang = text.length > 3 ? text.slice(3).trim() : "";
-    const dim = theme ? (s: string) => theme.dim(s) : ((s: string) => `\x1b[2m${s}\x1b[0m`);
-    return <Text dimColor>{dim(lang ? `  ── ${lang} ──` : "  ── code ──")}</Text>;
+    const dim = theme ? (s: string) => theme.fg(theme.theme.textDim, s) : ((s: string) => `\x1b[2m${s}\x1b[0m`);
+    return <Text>{dim(lang ? `  ── ${lang} ──` : "  ── code ──")}</Text>;
   }
 
   // ── Table: multi-line pipe-separated with separator row ──
@@ -211,8 +211,8 @@ function MarkdownText({ children, theme }: MarkdownTextProps) {
 
   // ── Horizontal rule: ---, ***, ___ (3+ chars) ──
   if (/^[-*_]{3,}$/.test(text.trim())) {
-    const dim = theme ? (s: string) => theme.dim(s) : ((s: string) => `\x1b[2m${s}\x1b[0m`);
-    return <Text dimColor>{dim("─".repeat(48))}</Text>;
+    const dim = theme ? (s: string) => theme.fg(theme.theme.textDim, s) : ((s: string) => `\x1b[2m${s}\x1b[0m`);
+    return <Text>{dim("─".repeat(48))}</Text>;
   }
 
   // ── Blockquote: > text (one or more lines) ──
@@ -220,13 +220,13 @@ function MarkdownText({ children, theme }: MarkdownTextProps) {
   // a span closed across its lines); each line gets its own ▎ marker, and a
   // line without ">" is a lazy continuation shown as-is.
   if (text.startsWith(">")) {
-    const dim = theme ? (s: string) => theme.dim(s) : ((s: string) => `\x1b[2m${s}\x1b[0m`);
+    const dim = theme ? (s: string) => theme.fg(theme.theme.textDim, s) : ((s: string) => `\x1b[2m${s}\x1b[0m`);
     return (
       <Text>
         {text.split("\n").map((raw, i) => (
           <Fragment key={i}>
             {i > 0 && "\n"}
-            <Text dimColor>{dim("▎")}</Text>{" "}
+            <Text>{dim("▎")}</Text>{" "}
             <Inline text={raw.startsWith(">") ? raw.replace(/^>\s?/, "") : raw} theme={theme} />
           </Fragment>
         ))}
@@ -240,13 +240,13 @@ function MarkdownText({ children, theme }: MarkdownTextProps) {
   const ulFirst = firstLine.match(/^([-*])\s+(.+)$/);
   if (ulFirst && !text.startsWith("**")) {
     const items = splitListItems(text, /^([-*])\s+(.+)$/) ?? [];
-    const dim = theme ? (s: string) => theme.dim(s) : ((s: string) => `\x1b[2m${s}\x1b[0m`);
+    const dim = theme ? (s: string) => theme.fg(theme.theme.textDim, s) : ((s: string) => `\x1b[2m${s}\x1b[0m`);
     return (
       <Text>
         {items.map((item, i) => (
           <Fragment key={i}>
             {i > 0 && "\n"}
-            <Text dimColor>{dim(" •")}</Text>{" "}
+            <Text>{dim(" •")}</Text>{" "}
             <Inline text={item.content} theme={theme} />
           </Fragment>
         ))}
@@ -258,13 +258,13 @@ function MarkdownText({ children, theme }: MarkdownTextProps) {
   const olFirst = firstLine.match(/^(\d+)\.\s+(.+)$/);
   if (olFirst) {
     const items = splitListItems(text, /^(\d+)\.\s+(.+)$/) ?? [];
-    const dim = theme ? (s: string) => theme.dim(s) : ((s: string) => `\x1b[2m${s}\x1b[0m`);
+    const dim = theme ? (s: string) => theme.fg(theme.theme.textDim, s) : ((s: string) => `\x1b[2m${s}\x1b[0m`);
     return (
       <Text>
         {items.map((item, i) => (
           <Fragment key={i}>
             {i > 0 && "\n"}
-            <Text dimColor>{dim(` ${item.marker}.`)}</Text>{" "}
+            <Text>{dim(` ${item.marker}.`)}</Text>{" "}
             <Inline text={item.content} theme={theme} />
           </Fragment>
         ))}

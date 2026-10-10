@@ -140,15 +140,15 @@ export default function SkillList({ skills, onSelect, onClose, width, height }: 
     <Box flexDirection="column" borderStyle="round" borderColor={borderColor} paddingX={1} marginY={1} width={width}>
       <Box marginBottom={1}>
         <Text color={accent} bold>Skills</Text>
-        {searchText && <Text dimColor> — matching "{searchText}"</Text>}
+        {searchText && <Text color={slotColor(theme, "textDim")}> — matching "{searchText}"</Text>}
       </Box>
 
       {filtered.length === 0 ? (
-        <Text dimColor>{skills.length === 0 ? "No skills available." : "No skills match."}</Text>
+        <Text color={slotColor(theme, "textDim")}>{skills.length === 0 ? "No skills available." : "No skills match."}</Text>
       ) : (
         <Box flexDirection="column">
           {scrollOffset > 0 && (
-            <Text dimColor>{`  ... (${scrollOffset} more above) ...`}</Text>
+            <Text color={slotColor(theme, "textDim")}>{`  ... (${scrollOffset} more above) ...`}</Text>
           )}
           {visible.map((s, i) => {
             const globalIdx = scrollOffset + i;
@@ -177,18 +177,18 @@ export default function SkillList({ skills, onSelect, onClose, width, height }: 
             );
           })}
           {scrollOffset + pageSize < filtered.length && (
-            <Text dimColor>{`  ... (${filtered.length - scrollOffset - pageSize} more below) ...`}</Text>
+            <Text color={slotColor(theme, "textDim")}>{`  ... (${filtered.length - scrollOffset - pageSize} more below) ...`}</Text>
           )}
         </Box>
       )}
 
       <Box flexDirection="column" marginTop={1}>
         <Text>
-          {keyCap("↑↓", capStyle)}<Text dimColor>{" move   "}</Text>
-          {keyCap("enter", capStyle)}<Text dimColor>{" select   "}</Text>
-          {keyCap("esc", capStyle)}<Text dimColor>{" close"}</Text>
+          {keyCap("↑↓", capStyle)}<Text color={slotColor(theme, "textDim")}>{" move   "}</Text>
+          {keyCap("enter", capStyle)}<Text color={slotColor(theme, "textDim")}>{" select   "}</Text>
+          {keyCap("esc", capStyle)}<Text color={slotColor(theme, "textDim")}>{" close"}</Text>
         </Text>
-        {searchText && <Text dimColor>Search: {searchText}</Text>}
+        {searchText && <Text color={slotColor(theme, "textDim")}>Search: {searchText}</Text>}
       </Box>
     </Box>
   );

@@ -132,7 +132,7 @@ function ExplanationBlock({ explain }: { explain?: PermissionRequest["explain"] 
     return (
       <Box marginTop={1}>
         <Text color={accent}>✳ </Text>
-        <Text dimColor>Explaining…</Text>
+        <Text color={slotColor(theme, "textDim")}>Explaining…</Text>
       </Box>
     );
   }
@@ -140,7 +140,7 @@ function ExplanationBlock({ explain }: { explain?: PermissionRequest["explain"] 
   return (
     <Box flexDirection="column" marginTop={1}>
       <Text color={accent}>✳ Explanation</Text>
-      <Text dimColor>{explain.text}</Text>
+      <Text color={slotColor(theme, "textDim")}>{explain.text}</Text>
     </Box>
   );
 }
@@ -249,7 +249,7 @@ function GrantConsent({ envelope }: { envelope: BashEnvelope }) {
   return (
     <Box flexDirection="column" marginTop={1}>
       {grantConsentLines(envelope).map((line) => (
-        <Text key={line} color={line.startsWith("⚠") ? warningColor : undefined} dimColor={!line.startsWith("⚠")}>
+        <Text key={line} color={line.startsWith("⚠") ? warningColor : slotColor(theme, "textDim")}>
           {line}
         </Text>
       ))}
@@ -272,10 +272,10 @@ export default function PermissionPrompt({ request, cursor, onChoose, onCancel }
       <Text bold>{request.toolName}</Text>
       <Text>{request.command}</Text>
       {scopeLine(request) ? <Text color={slotColor(theme, "warning")}>{scopeLine(request)}</Text> : null}
-      {request.defaultRule?.kind === "glob" ? <Text dimColor>Pattern: {request.defaultRule.pattern}</Text> : null}
-      {request.description ? <Text dimColor>{request.description}</Text> : null}
+      {request.defaultRule?.kind === "glob" ? <Text color={slotColor(theme, "textDim")}>Pattern: {request.defaultRule.pattern}</Text> : null}
+      {request.description ? <Text color={slotColor(theme, "textDim")}>{request.description}</Text> : null}
       <Box marginTop={1}>
-        <Text dimColor>Effects: </Text>
+        <Text color={slotColor(theme, "textDim")}>Effects: </Text>
         <Text color={slotColor(theme, risk.slot)}>{capabilitySummary(request.capabilityPlan, request.workingDir).join("; ")}</Text>
       </Box>
       {request.envelope ? <GrantConsent envelope={request.envelope} /> : null}
@@ -292,7 +292,7 @@ export default function PermissionPrompt({ request, cursor, onChoose, onCancel }
         ))}
       </Box>
       <Box marginTop={1}>
-        <Text dimColor>1-{options.length} select · ↑↓ navigate · Esc cancel{explainHint(request.explain)}</Text>
+        <Text color={slotColor(theme, "textDim")}>1-{options.length} select · ↑↓ navigate · Esc cancel{explainHint(request.explain)}</Text>
       </Box>
     </Box>
   );
@@ -320,14 +320,14 @@ export function DestructiveConfirmPrompt({ request, cursor, onChoose, onCancel }
       <Text bold>{request.toolName}</Text>
       <Text color={errorColor}>{request.command}</Text>
       {scopeLine(request) ? <Text color={slotColor(theme, "warning")}>{scopeLine(request)}</Text> : null}
-      {request.defaultRule?.kind === "glob" ? <Text dimColor>Pattern: {request.defaultRule.pattern}</Text> : null}
-      {request.description ? <Text dimColor>{request.description}</Text> : null}
+      {request.defaultRule?.kind === "glob" ? <Text color={slotColor(theme, "textDim")}>Pattern: {request.defaultRule.pattern}</Text> : null}
+      {request.description ? <Text color={slotColor(theme, "textDim")}>{request.description}</Text> : null}
       <Box marginTop={1}>
-        <Text dimColor>Effects: </Text>
+        <Text color={slotColor(theme, "textDim")}>Effects: </Text>
         <Text color={errorColor}>{capabilitySummary(request.capabilityPlan, request.workingDir).join("; ")}</Text>
       </Box>
       <Box marginTop={1}>
-        <Text dimColor>{request.allowPersistentApproval === false
+        <Text color={slotColor(theme, "textDim")}>{request.allowPersistentApproval === false
           ? "This command can cause irreversible data loss. Only one-time approval is available."
           : "This command can cause irreversible data loss. Approving \"always\" whitelists only this exact command, never the whole category."}
         </Text>
@@ -345,7 +345,7 @@ export function DestructiveConfirmPrompt({ request, cursor, onChoose, onCancel }
         ))}
       </Box>
       <Box marginTop={1}>
-        <Text dimColor>1-{options.length} select · ↑↓ navigate · Esc cancel{explainHint(request.explain)}</Text>
+        <Text color={slotColor(theme, "textDim")}>1-{options.length} select · ↑↓ navigate · Esc cancel{explainHint(request.explain)}</Text>
       </Box>
     </Box>
   );
@@ -393,7 +393,7 @@ export function ScopeChoicePrompt({
       {isWrite ? (
         <Text color={errorColor}>Whole folder grants write access to {folderDir} and everything beneath it — the agent can modify or overwrite any file there.</Text>
       ) : (
-        <Text dimColor>Whole folder covers {folderDir} and everything beneath it.</Text>
+        <Text color={slotColor(theme, "textDim")}>Whole folder covers {folderDir} and everything beneath it.</Text>
       )}
       <Box flexDirection="column" marginTop={1}>
         {SCOPE_OPTIONS.map((opt, i) => (
@@ -404,7 +404,7 @@ export function ScopeChoicePrompt({
         ))}
       </Box>
       <Box marginTop={1}>
-        <Text dimColor>1-2 select · ↑↓ navigate · Esc cancel</Text>
+        <Text color={slotColor(theme, "textDim")}>1-2 select · ↑↓ navigate · Esc cancel</Text>
       </Box>
     </Box>
   );
@@ -444,7 +444,7 @@ export function ExternalScopeChoicePrompt({
       <Box marginBottom={1}>
         <Text bold>Grant this folder only, or its subfolders too?</Text>
       </Box>
-      <Text dimColor>This folder only covers files directly in {display}. Include subfolders covers {display} and everything beneath it.</Text>
+      <Text color={slotColor(theme, "textDim")}>This folder only covers files directly in {display}. Include subfolders covers {display} and everything beneath it.</Text>
       <Box flexDirection="column" marginTop={1}>
         {EXTERNAL_SCOPE_OPTIONS.map((opt, i) => (
           <Text key={opt.scope} color={i === cursor ? accentColor : undefined}>
@@ -454,7 +454,7 @@ export function ExternalScopeChoicePrompt({
         ))}
       </Box>
       <Box marginTop={1}>
-        <Text dimColor>1-2 select · ↑↓ navigate · Esc cancel</Text>
+        <Text color={slotColor(theme, "textDim")}>1-2 select · ↑↓ navigate · Esc cancel</Text>
       </Box>
     </Box>
   );

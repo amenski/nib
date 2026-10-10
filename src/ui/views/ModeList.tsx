@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
 import type { ModeConfig, ModeLoader } from "../../modes/loader.js";
+import { useTheme } from "../contexts.js";
+import { ansi256 } from "../theme.js";
 
 interface Props {
   modeLoader: ModeLoader;
@@ -18,6 +20,7 @@ interface Props {
  * scrollback. Enter switches to the selected mode; Esc closes.
  */
 export default function ModeList({ modeLoader, currentSlug, onSelect, onClose, width }: Props) {
+  const theme = useTheme();
   const [modes, setModes] = useState<ModeConfig[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
 
@@ -48,13 +51,13 @@ export default function ModeList({ modeLoader, currentSlug, onSelect, onClose, w
   });
 
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1} marginY={1} width={width}>
+    <Box flexDirection="column" borderStyle="round" borderColor={ansi256(theme.theme.secondary)} paddingX={1} marginY={1} width={width}>
       <Box marginBottom={1}>
-        <Text color="cyan" bold>Modes</Text>
+        <Text color={ansi256(theme.theme.secondary)} bold>Modes</Text>
       </Box>
 
       {modes.length === 0 ? (
-        <Text dimColor>No modes available.</Text>
+        <Text color={ansi256(theme.theme.textDim)}>No modes available.</Text>
       ) : (
         <Box flexDirection="column">
           {modes.map((m, i) => {
@@ -62,13 +65,13 @@ export default function ModeList({ modeLoader, currentSlug, onSelect, onClose, w
             const isCurrent = m.slug === currentSlug;
             return (
               <Box key={m.slug}>
-                <Text color={isSelected ? "cyanBright" : undefined} dimColor={!isSelected}>
+                <Text color={isSelected ? ansi256(theme.theme.secondary) : ansi256(theme.theme.textDim)}>
                   {isSelected ? "> " : "  "}
                 </Text>
-                <Text color={isSelected ? "cyanBright" : undefined} dimColor={!isSelected}>
+                <Text color={isSelected ? ansi256(theme.theme.secondary) : ansi256(theme.theme.textDim)}>
                   {m.slug}
-                  {isCurrent && <Text color="green"> (current)</Text>}
-                  <Text dimColor> — {m.description || m.roleDefinition.slice(0, 60)}</Text>
+                  {isCurrent && <Text color={ansi256(theme.theme.success)}> (current)</Text>}
+                  <Text color={ansi256(theme.theme.textDim)}> — {m.description || m.roleDefinition.slice(0, 60)}</Text>
                 </Text>
               </Box>
             );
@@ -77,7 +80,7 @@ export default function ModeList({ modeLoader, currentSlug, onSelect, onClose, w
       )}
 
       <Box marginTop={1}>
-        <Text dimColor>↑↓ navigate · Enter switch · Esc close</Text>
+        <Text color={ansi256(theme.theme.textDim)}>↑↓ navigate · Enter switch · Esc close</Text>
       </Box>
     </Box>
   );

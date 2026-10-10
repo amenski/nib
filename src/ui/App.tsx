@@ -395,7 +395,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
     }
     if (ctx.initialNotice) {
       const lines = ctx.initialNotice.split("\n");
-      setOutputLines((prev) => [...prev, ...lines.map((l) => (theme.colorEnabled ? `\x1b[2m${l}\x1b[0m` : l))]);
+      setOutputLines((prev) => [...prev, ...lines.map((l) => theme.fg(theme.theme.textDim, l))]);
     }
     // A resumed session with prior turns offers a load/compact choice before its
     // transcript is replayed into the scrollback. The chooser handlers do the
@@ -531,7 +531,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
       const rows = body.split("\n").map((l) => `[job ${shortId}] ${l}`);
       setOutputLines((prev) => [
         ...prev,
-        ...rows.map((l) => (theme.colorEnabled ? `\x1b[2m${l}\x1b[0m` : l)),
+        ...rows.map((l) => theme.fg(theme.theme.textDim, l)),
       ]);
     };
     const offOutput = jobManager.onOutput((jobId, chunk) => {
@@ -582,7 +582,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
       const rows = body.split("\n").map((l) => `[${label}] ${l}`);
       setOutputLines((prev) => [
         ...prev,
-        ...rows.map((l) => (theme.colorEnabled ? `\x1b[2m${l}\x1b[0m` : l)),
+        ...rows.map((l) => theme.fg(theme.theme.textDim, l)),
       ]);
     };
     ctx.setSubagentProgress?.((event) => {
@@ -1051,7 +1051,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
         const summary = summarizeReasoning(buffer);
         if (summary === null) return;
         reasoningRef.current.flushed = true;
-        scheduleOutput(theme.colorEnabled ? `\x1b[2m✱ ${summary}\x1b[0m` : `✱ ${summary}`);
+        scheduleOutput(theme.fg(theme.theme.textDim, `✱ ${summary}`));
       }
 
       const callbacks = {
@@ -1119,11 +1119,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           if (content.trim() !== "" && _name !== "update_todo_list") {
             const isError = !!result.error || content.startsWith("PERMISSION_DENIED") || content.startsWith("COMMAND_FAILED");
             for (const line of formatToolResultPreview(content)) {
-              if (theme.colorEnabled) {
-                scheduleOutput(isError ? `\x1b[31m${line}\x1b[0m` : `\x1b[2m${line}\x1b[0m`);
-              } else {
-                scheduleOutput(line);
-              }
+              scheduleOutput(theme.fg(isError ? theme.theme.error : theme.theme.textDim, line));
             }
           }
           needTextSeparator = true;
@@ -1140,7 +1136,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           flushStream();
           if (activeLineRef.current) scheduleOutput(activeLineRef.current);
           setActiveLineBoth("");
-          scheduleOutput(theme.colorEnabled ? `\x1b[2m⚠ ${msg}\x1b[0m` : `⚠ ${msg}`);
+          scheduleOutput(theme.fg(theme.theme.textDim, `⚠ ${msg}`));
         },
         onRetry: () => {},
         onCompacted: () => {},
@@ -1192,7 +1188,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
             line = formatSubagentFinishLine({ depth: event.depth, elapsedMs: took });
           }
           if (line === null) return;
-          scheduleOutput(theme.colorEnabled ? `\x1b[2m${line}\x1b[0m` : line);
+          scheduleOutput(theme.fg(theme.theme.textDim, line));
         },
         onLoopDetected: (m: string) => {
           scheduleOutput(`[${m}]`);
@@ -1370,7 +1366,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
         const elapsedS = Math.max(1, Math.round((Date.now() - turnStart) / 1000));
         const footer = `✳ Worked for ${elapsedS}s`;
         pushOutput("");
-        pushOutput(theme.colorEnabled ? `\x1b[2m${footer}\x1b[0m` : footer);
+        pushOutput(theme.fg(theme.theme.textDim, footer));
         pushOutput("");
 
         // Persist on both completion and abort. The agent's messages are only
@@ -2303,7 +2299,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
                 const confirmation = restoreCode
                   ? `Restored checkpoint ${shortHash} — files and conversation`
                   : `Restored checkpoint ${shortHash} — conversation only`;
-                pushOutput(theme.colorEnabled ? `\x1b[2m${confirmation}\x1b[0m` : confirmation);
+                pushOutput(theme.fg(theme.theme.textDim, confirmation));
                 if (result.promptDraft) {
                   draftNonceRef.current += 1;
                   setPromptDraft({ nonce: draftNonceRef.current, text: result.promptDraft });

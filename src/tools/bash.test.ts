@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { registerBash, runBashTimed, resolveTimeoutToBackground } from "./bash.js";
-import { jobManager } from "./jobs.js";
+import { jobManager, registerJobs } from "./jobs.js";
+import { SANDBOX_BLOCKED_HINT } from "./sandbox-hint.js";
 import { ToolRegistry } from "./registry.js";
 import type { ToolContext } from "./types.js";
-import { basename } from "node:path";
+import { basename, join } from "node:path";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { createSessionTempDir } from "../sandbox/session-temp.js";
 import { parseUntrustedMarker } from "./untrusted-content.js";
 
@@ -259,5 +262,98 @@ describe("run_bash handler trusted-root cwd handling (item 8.6)", () => {
     );
     expect(out.content).toBe("");
     expect(out.error).toContain("Working directory escapes the sandbox workspace root");
+  });
+});
+
+describe("sandbox refusal hint (2026-10-10)", () => {
+  it("tells the model in advance, in both sandboxed-shell tool descriptions", () => {
+    const registry = new ToolRegistry();
+    registerBash(registry);
+    registerJobs(registry);
+    const byName = new Map(registry.getAllDefs().map((d) => [d.name, d]));
+    for (const name of ["run_bash", "run_bash_background"]) {
+      expect(byName.get(name)?.description, name).toContain("read_file, list_files or glob");
+      expect(byName.get(name)?.description, name).toContain("OS sandbox is active");
+    }
+  });
+
+  itOnDarwin("appends nib's note outside the wrapper when the sandbox refuses a read", async () => {
+    const registry = new ToolRegistry();
+    registerBash(registry);
+    const tmp = createSessionTempDir();
+    const workspace = mkdtempSync(join(tmpdir(), "nib-hint-ws-"));
+    // A file under $HOME but outside the workspace: the read boundary denies
+    // exactly that, and `cat` reports the refusal as a plain EPERM.
+    const blocked = join(homedir(), `.nib-sandbox-hint-probe-${process.pid}.txt`);
+    writeFileSync(blocked, "secret\n");
+    try {
+      const ctx: ToolContext = {
+        workingDir: workspace,
+        sessionId: "hint",
+        signal: new AbortController().signal,
+        sandboxLevel: "workspace-write",
+        writeRoots: [],
+        sessionTempDir: tmp.path,
+      };
+      const out = await registry.execute(
+        { id: "c1", name: "run_bash", arguments: { command: `cat "${blocked}"` } },
+        ctx,
+      );
+
+      const content = out.content ?? "";
+      // The refusal really happened, through the real Seatbelt profile...
+      expect(content).toContain("Operation not permitted");
+      // ...and nib's own sentence follows it, outside the untrusted wrapper:
+      // the delimited region must stay command output only, so the note is the
+      // last thing in the result.
+      expect(content.trimEnd().endsWith(SANDBOX_BLOCKED_HINT)).toBe(true);
+      // ...and it sits after the wrapper's end marker, so the delimited region
+      // itself carries nothing of nib's.
+      const lines = content.split("\n");
+      const endMarker = lines.findIndex((l) => parseUntrustedMarker(l)?.role === "end");
+      const hintLine = lines.findIndex((l) => l.includes(SANDBOX_BLOCKED_HINT));
+      expect(endMarker).toBeGreaterThan(-1);
+      expect(hintLine).toBeGreaterThan(endMarker);
+
+      // A command that was not refused gets no note.
+      const ok = await registry.execute({ id: "c2", name: "run_bash", arguments: { command: "echo fine" } }, ctx);
+      expect(ok.content).not.toContain(SANDBOX_BLOCKED_HINT);
+    } finally {
+      rmSync(blocked, { force: true });
+      rmSync(workspace, { recursive: true, force: true });
+      tmp.cleanup();
+    }
+  });
+
+  itOnDarwin("gives a checked sandboxed background job the same note", async () => {
+    const tmp = createSessionTempDir();
+    const workspace = mkdtempSync(join(tmpdir(), "nib-hint-job-"));
+    const blocked = join(homedir(), `.nib-sandbox-hint-job-${process.pid}.txt`);
+    writeFileSync(blocked, "secret\n");
+    try {
+      const started = jobManager.start(`cat "${blocked}"`, workspace, 20_000, {
+        sandboxLevel: "workspace-write",
+        trustedRoot: workspace,
+        writeRoots: [],
+        sessionTempDir: tmp.path,
+      });
+      expect(started.ok).toBe(true);
+      const jobId = (started as { ok: true; id: string }).id;
+      await waitFor(() => jobManager.check(jobId)?.status !== "running");
+
+      const registry = new ToolRegistry();
+      registerJobs(registry);
+      const out = await registry.execute(
+        { id: "c1", name: "check_job", arguments: { job_id: jobId } },
+        mockCtx,
+      );
+      expect(out.content).toContain("Operation not permitted");
+      expect(out.content).toContain(SANDBOX_BLOCKED_HINT);
+    } finally {
+      jobManager.killAll();
+      rmSync(blocked, { force: true });
+      rmSync(workspace, { recursive: true, force: true });
+      tmp.cleanup();
+    }
   });
 });

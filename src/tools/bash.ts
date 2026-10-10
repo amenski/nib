@@ -14,6 +14,7 @@ import {
 import { containmentFailureError, spawnContained, type ReadinessOutcome, type SandboxFailureReason } from "../sandbox/launcher.js";
 import { envelopeChangedError } from "../permissions/session-grant.js";
 import { wrapUntrusted, sanitizeControlChars } from "./untrusted-content.js";
+import { SANDBOX_TOOL_NOTE, sandboxBlockedHint } from "./sandbox-hint.js";
 
 const RUN_BASH_TIMEOUT_MS = 120_000;
 // run_bash keeps the most recent 512KB of output (the old exec maxBuffer
@@ -221,6 +222,9 @@ export function runBashTimed(
             timeoutMs: DEFAULT_TIMEOUT_MS,
             stdout,
             stderr,
+            // The adopted child is the same process this launch sandboxed, so
+            // check_job can still tell a later refusal was the sandbox's.
+            sandboxed: isSandboxedLevel(sandboxLevel),
           });
           if (adopted.ok) {
             resolve({
@@ -307,12 +311,17 @@ const runBashHandler: ToolHandler = async (args, ctx, exec) => {
       return { content: wrapUntrusted(envelopeChangedError()), error: "SANDBOX_ENVELOPE_CHANGED" };
     }
   }
-  return runBashTimed(command, cwd, root, RUN_BASH_TIMEOUT_MS, resolveTimeoutToBackground(ctx.timeoutToBackground), ctx.sandboxLevel, ctx.writeRoots, ctx.sessionTempDir, exec?.approvedGitConfigWrite, exec?.onSandboxFailure);
+  const out = await runBashTimed(command, cwd, root, RUN_BASH_TIMEOUT_MS, resolveTimeoutToBackground(ctx.timeoutToBackground), ctx.sandboxLevel, ctx.writeRoots, ctx.sessionTempDir, exec?.approvedGitConfigWrite, exec?.onSandboxFailure);
+  // A refusal the child hit reads as a plain EPERM in its own output; say what
+  // it means and which tools can reach the path. Appended after the wrapper —
+  // the delimited region must stay command output only.
+  const hint = sandboxBlockedHint(`${out.content}\n${out.error ?? ""}`, isSandboxedLevel(ctx.sandboxLevel));
+  return hint ? { ...out, content: `${out.content}\n${hint}` } : out;
 };
 
 const runBashDef: ToolDef = {
   name: "run_bash",
-  description: "Execute a shell command. Returns stdout and stderr. Commands that exceed the 120s timeout are moved to the background and return a job id to poll with check_job (unless they look interactive, e.g. editors/sleep, or timeoutToBackground is disabled).",
+  description: `Execute a shell command. Returns stdout and stderr. Commands that exceed the 120s timeout are moved to the background and return a job id to poll with check_job (unless they look interactive, e.g. editors/sleep, or timeoutToBackground is disabled). ${SANDBOX_TOOL_NOTE}`,
   parameters: {
     type: "object",
     properties: {

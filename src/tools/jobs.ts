@@ -12,6 +12,7 @@ import {
 } from "../sandbox/seatbelt.js";
 import { containmentFailureError, spawnContained, type ReadinessOutcome } from "../sandbox/launcher.js";
 import { wrapUntrusted, sanitizeControlChars } from "./untrusted-content.js";
+import { SANDBOX_TOOL_NOTE, sandboxBlockedHint } from "./sandbox-hint.js";
 
 // Background jobs can produce unbounded output (dev servers, tail -f); holding
 // it all in memory would leak. Each stream keeps the most recent 1MB and flags
@@ -42,6 +43,10 @@ export interface Job {
    *  the run_bash_background tool — plan §3 decision E: no global telemetry).
    *  Timeout-migrated jobs are tracked but never stream. */
   stream: boolean;
+  /** Whether this job's process runs under a Seatbelt profile. Recorded per
+   *  job so check_job can tell a sandbox refusal ("Operation not permitted")
+   *  from an ordinary EPERM the command hit on its own. */
+  sandboxed: boolean;
 }
 
 export interface JobStatusReport {
@@ -54,6 +59,8 @@ export interface JobStatusReport {
   stdoutTruncated: boolean;
   stderrTruncated: boolean;
   runningMs: number;
+  /** See Job.sandboxed — carried on the report so the handler can annotate. */
+  sandboxed: boolean;
 }
 
 // Timeout handles live on the side (not on Job) so the plan's Job shape stays
@@ -147,6 +154,7 @@ export class JobManager {
       stdoutTruncated: job.stdoutTruncated,
       stderrTruncated: job.stderrTruncated,
       runningMs: Date.now() - job.startTime,
+      sandboxed: job.sandboxed,
     };
   }
 
@@ -218,6 +226,7 @@ export class JobManager {
       endTime: null,
       timeoutMs,
       stream: opts?.stream ?? false,
+      sandboxed: isSandboxedLevel(opts?.sandboxLevel),
     };
     this.jobs.set(id, job);
     this.track(job, readiness);
@@ -234,7 +243,7 @@ export class JobManager {
    */
   adopt(
     proc: ChildProcess,
-    opts: { command: string; cwd: string; timeoutMs: number; stdout?: string; stderr?: string },
+    opts: { command: string; cwd: string; timeoutMs: number; stdout?: string; stderr?: string; sandboxed?: boolean },
   ): { ok: true; id: string } | { ok: false; error: string } {
     this.cleanup();
     const runningCount = [...this.jobs.values()].filter((j) => j.status === "running").length;
@@ -260,6 +269,7 @@ export class JobManager {
       endTime: null,
       timeoutMs: opts.timeoutMs,
       stream: false,
+      sandboxed: opts.sandboxed === true,
     };
     // run_bash's foreground buffers are already capped below MAX_STREAM_CHARS,
     // but cap defensively in case a future caller passes more.
@@ -491,6 +501,10 @@ const checkJobHandler: ToolHandler = async (args) => {
   else lines.push("stderr: (none)");
   if (report.stdoutTruncated) lines.push("(stdout truncated — kept last 1MB)");
   if (report.stderrTruncated) lines.push("(stderr truncated — kept last 1MB)");
+  // nib's own note, outside the untrusted wrapper, and only for a job that
+  // really ran under the sandbox.
+  const hint = sandboxBlockedHint(`${report.stdout}\n${report.stderr}`, report.sandboxed);
+  if (hint) lines.push(hint);
   return { content: lines.join("\n") };
 };
 
@@ -511,7 +525,7 @@ const killJobHandler: ToolHandler = async (args) => {
 
 const runBackgroundDef: ToolDef = {
   name: "run_bash_background",
-  description: "Start a shell command in the background. Returns a job ID immediately; use check_job to poll status and read accumulated stdout/stderr, and kill_job to terminate it. For commands that run longer than the normal 120s run_bash timeout (dev servers, builds, tests).",
+  description: `Start a shell command in the background. Returns a job ID immediately; use check_job to poll status and read accumulated stdout/stderr, and kill_job to terminate it. For commands that run longer than the normal 120s run_bash timeout (dev servers, builds, tests). ${SANDBOX_TOOL_NOTE}`,
   parameters: {
     type: "object",
     properties: {

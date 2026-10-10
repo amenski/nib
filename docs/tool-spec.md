@@ -183,6 +183,20 @@ Full-file write; creates parent directories.
 - **Overflow**: output beyond 512 KB keeps the **last** 512 KB and appends
   `(output truncated — kept last 512KB)`; the process keeps running (the
   120 s timeout still bounds it).
+- **Sandbox refusal note** (2026-10-10): when this call ran under an OS sandbox
+  (`ctx.sandboxLevel`) and its output contains `Operation not permitted`, nib
+  appends its own sentence — `[nib] The OS sandbox blocked that path. Files in
+  your home directory outside the workspace can be read with read_file,
+  list_files or glob — a shell command cannot reach them.` (`src/tools/
+  sandbox-hint.ts`). It goes **after** the untrusted block, because it is nib's
+  text and the delimited region must stay command output only. It is detected
+  from the *output*, not the exit code, so a refusal that was swallowed
+  (`… 2>/dev/null`, `… || true`) is still named — that is the case that
+  motivated it. The same sentence is baked into the `run_bash` and
+  `run_bash_background` **descriptions**, byte-stable and free of
+  interpolation so it stays in the cached prefix (about 35 tokens); the model
+  is told in advance as well as after the fact. No note is added for an
+  unsandboxed spawn, where the same errno is the command's own.
 
 ### Background jobs (`run_bash_background`, `check_job`, `kill_job`)
 For commands that outlive 120 s (dev servers, builds, test runs):
@@ -191,7 +205,10 @@ For commands that outlive 120 s (dev servers, builds, test runs):
   returns a job ID immediately; default timeout 300,000 ms. Max 10
   concurrent jobs (`MAX_JOBS`, `src/tools/jobs.ts`).
 - `check_job(job_id)` — status (`running | done | failed | killed`), exit
-  code, and accumulated stdout/stderr.
+  code, and accumulated stdout/stderr. A job that ran under the sandbox carries
+  the same refusal note as `run_bash` when its output contains
+  `Operation not permitted` — recorded per job (`Job.sandboxed`), so an
+  unsandboxed job's own EPERM is never blamed on the sandbox.
 - `kill_job(job_id)` — kills the whole process tree; no-op if the job
   already finished.
 

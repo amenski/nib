@@ -1,6 +1,6 @@
 ## 2. Context Management — Beyond Token Counting
 
-**Status:** current · verified 2026-09-14 · covers `src/compaction/{budget,compactor,context-editing}.ts`
+**Status:** current · verified 2026-10-10 · covers `src/compaction/{budget,compactor,context-editing}.ts`
 
 ### Problem
 
@@ -118,22 +118,28 @@ session (the auto path reinserts the stable preamble for the same reason).
 3. **Resume-time:** the session-resume offer summarizes before replay.
 4. `compaction.auto: false` disables only the automatic path.
 
-### Request-time tool-result editing
+### Request-time tool-result editing — off by default (2026-10-10)
 
-Tool outputs are the #1 source of token bloat:
+Tool outputs are the #1 source of token bloat, so Nib has an editing pass that
+replaces the contents of older tool results in a request-only copy: the three
+newest consumed tool uses/results stay verbatim, every result from the
+immediately preceding tool batch is protected too, and assistant tool-call
+records stay in order (strict provider tool-call/result pairing).
 
-When an assembled provider request reaches 100,000 estimated input tokens,
-Nib creates a request-only copy that replaces the contents of older tool
-results with an explicit cleared placeholder. The three newest consumed tool
-uses/results remain verbatim, and every result from the immediately preceding
-tool batch is protected too, so a newly produced result is always complete on
-the immediately following provider request. Assistant tool-call records stay
-in order, preserving strict provider tool-call/result pairing.
+**It is disabled unless `AgentOptions.contextEditing` is set, and nothing in
+production sets it.** The edit costs more than it saves: the provider's prefix
+cache ends at the first changed message, so rewriting the 4th-newest result on
+every request made the three newest results re-pay uncached each time —
+measured in onramp 2026-10-10, 1.16M of a session's 1.49M missed tokens (78%),
+~76% cache hits against Claude Code's 99%, while cached input is ~50× cheaper
+than uncached ($0.003 vs $0.15 per million). The module and its unit tests are
+kept intact for a batched (`clear_at_least`-style) re-enable.
 
-This is not compaction: `messages`, `newMessages`, the UI output, and the
-append-only session transcript retain complete tool output. `/context` reports
-both the 100,000-token editing trigger and the separate model-relative
-compaction threshold.
+This is not compaction either way: `messages`, `newMessages`, the UI output,
+and the append-only session transcript always retain complete tool output, and
+compaction (`contextWindow × 0.7`) is the only size control in force. `/context`
+reports `Context editing off (compaction only)` alongside the compaction
+threshold.
 
 ---
 

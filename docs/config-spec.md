@@ -444,11 +444,16 @@ one skill leaves all others unaffected.
   manual `/compact` command and the resume-time compaction offer still
   summarize on demand.
 
-Request-time context editing is separate from compaction and has no setting:
-at 100,000 estimated assembled input tokens, Nib clears the contents of
-older tool results in the provider-bound copy, while retaining the three newest
-consumed tool uses/results. Every result from the immediately preceding tool
-batch also remains complete, and the local/session transcript is unchanged.
+Request-time context editing has no setting and is **off by default**
+(2026-10-10): it rewrote the 4th-newest tool result on every request once it
+engaged, and the provider's prefix cache ends at the first changed message, so
+the three newest results were re-paid uncached each time — measured at 78% of a
+session's cache misses, against an input price where a cache hit is ~50×
+cheaper. `AgentOptions.contextEditing` gates the call site and nothing in
+production sets it; the code path (100,000 estimated tokens, three newest
+consumed tool uses/results plus the preceding batch kept complete, local
+transcript untouched) is retained for a batched re-enable. Compaction is the
+only size control in force.
 
 ## 12. `workflow`
 

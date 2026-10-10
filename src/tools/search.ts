@@ -112,7 +112,7 @@ const searchHandler: ToolHandler = async (args) =>
 
 const searchDef: ToolDef = {
   name: "search",
-  description: "Search for a regex pattern in files under a directory using grep.",
+  description: "Search for a regex pattern in files under a directory using grep. Prefer this over grep in run_bash.",
   parameters: {
     type: "object",
     properties: {

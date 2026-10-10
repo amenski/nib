@@ -90,7 +90,7 @@ export function describeToolCall(name: string, args: Record<string, unknown>): s
       const o = typeof args.offset === "number" ? args.offset : null;
       const l = typeof args.limit === "number" ? args.limit : null;
       const range =
-        o !== null && l !== null ? `:${o}-${o + l}`
+        o !== null && l !== null ? `:${o}-${o + l - 1}`
         : o !== null ? `:${o}`
         : "";
       return `read_file ${short(p)}${range}`;

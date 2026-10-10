@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatToolResultPreview } from "./ToolCallFormatter.js";
+import { formatToolResultPreview, describeToolCall } from "./ToolCallFormatter.js";
 import { wrapUntrusted } from "../tools/untrusted-content.js";
 
 describe("formatToolResultPreview", () => {
@@ -38,5 +38,11 @@ describe("formatToolResultPreview", () => {
     const lines = formatToolResultPreview("alpha\nbeta");
     expect(lines[0]).toBe("  ⎿  alpha");
     expect(lines).toContain("     beta");
+  });
+});
+
+describe("read_file range in the call description (2026-10-10)", () => {
+  it("shows the last line actually read, not one past it", () => {
+    expect(describeToolCall("read_file", { path: "/a/b.ts", offset: 4, limit: 3 })).toContain(":4-6");
   });
 });

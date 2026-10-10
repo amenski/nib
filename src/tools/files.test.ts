@@ -66,3 +66,58 @@ describe("read_file", () => {
     expect(result.content).toContain("Error reading file");
   });
 });
+
+describe("read_file line ranges (2026-10-10)", () => {
+  // read_file only took a path, so reading part of a file meant `sed -n` in
+  // run_bash — 354 Bash reads vs 105 read_file calls in one onramp session.
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "nib-readrange-"));
+  afterAll(() => fs.rmSync(root, { recursive: true, force: true }));
+  const registry = new ToolRegistry();
+  registerFiles(registry);
+  const makeCtx = (): ToolContext => ({ workingDir: root, sessionId: "test", signal: new AbortController().signal, fileMtimes: new Map() });
+  const read = (args: Record<string, unknown>, ctx = makeCtx()) =>
+    registry.execute({ id: "1", name: "read_file", arguments: args }, ctx);
+  const file = (name: string, lines: number) => {
+    const p = path.join(root, name);
+    fs.writeFileSync(p, Array.from({ length: lines }, (_, i) => `line ${i + 1}`).join("\n"));
+    return p;
+  };
+
+  it("returns the requested range with real line numbers and a footer", async () => {
+    const p = file("ten.txt", 10);
+    const ctx = makeCtx();
+    const r = await read({ path: p, offset: 4, limit: 3 }, ctx);
+    expect(r.content).toContain("4: line 4");
+    expect(r.content).toContain("6: line 6");
+    expect(r.content).not.toContain("3: line 3");
+    expect(r.content).not.toContain("7: line 7");
+    expect(r.content).toContain("(lines 4–6 of 10. Use offset/limit to read more.)");
+    expect(ctx.fileMtimes!.has(p)).toBe(true);
+  });
+
+  it("returns a whole short file unchanged, with no footer", async () => {
+    const r = await read({ path: file("three.txt", 3) });
+    expect(r.content).toContain("3: line 3");
+    expect(r.content).not.toContain("Use offset/limit");
+  });
+
+  it("reports an offset past the end with the line count", async () => {
+    const p = file("five.txt", 5);
+    const r = await read({ path: p, offset: 9 });
+    expect(r.content).toBe(`Error reading file: ${p} has 5 lines; offset 9 is past the end.`);
+  });
+
+  it("caps at 2000 lines and says how to read on", async () => {
+    const p = file("big.txt", 2500);
+    const r = await read({ path: p, limit: 5000 });
+    expect(r.content).toContain("2000: line 2000");
+    expect(r.content).not.toContain("2001: line 2001");
+    expect(r.content).toContain("(lines 1–2000 of 2500. Use offset/limit to read more.)");
+  });
+
+  it("ignores non-integer or non-positive values", async () => {
+    const r = await read({ path: file("four.txt", 4), offset: 0, limit: -2 });
+    expect(r.content).toContain("1: line 1");
+    expect(r.content).toContain("4: line 4");
+  });
+});

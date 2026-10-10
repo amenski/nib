@@ -6,6 +6,12 @@ import { ToolRegistry } from "./registry.js";
 import { sniffImageMime } from "./image-format.js";
 import { wrapUntrusted, sanitizeControlChars } from "./untrusted-content.js";
 
+const MAX_READ_LINES = 2000;
+
+function positiveInt(v: unknown): number | undefined {
+  return typeof v === "number" && Number.isInteger(v) && v >= 1 ? v : undefined;
+}
+
 const readFileHandler: ToolHandler = async (args, ctx) => {
   const path = args.path as string;
   try {
@@ -26,9 +32,21 @@ const readFileHandler: ToolHandler = async (args, ctx) => {
       return { content: `Error reading file: ${path} is a ${kind} file, not text.${hint}` };
     }
     const content = buffer.toString("utf8");
-    const lines = sanitizeControlChars(content).split("\n").slice(0, 2000);
-    let result = lines.map((l, i) => `${i + 1}: ${l}`).join("\n");
-    if (lines.length >= 2000) result += "\n(file truncated at 2000 lines)";
+    // offset/limit (1-based first line, line count, max 2000): read a range
+    // instead of the whole file. Without it the model read slices through
+    // `sed -n` in run_bash (354 such reads vs 105 read_file in one session).
+    const all = sanitizeControlChars(content).split("\n");
+    const offset = positiveInt(args.offset) ?? 1;
+    const limit = Math.min(positiveInt(args.limit) ?? MAX_READ_LINES, MAX_READ_LINES);
+    if (offset > all.length) {
+      return { content: `Error reading file: ${path} has ${all.length} lines; offset ${offset} is past the end.` };
+    }
+    const lines = all.slice(offset - 1, offset - 1 + limit);
+    let result = lines.map((l, i) => `${offset + i}: ${l}`).join("\n");
+    const last = offset + lines.length - 1;
+    if (offset > 1 || last < all.length) {
+      result += `\n(lines ${offset}–${last} of ${all.length}. Use offset/limit to read more.)`;
+    }
     // Markers around the whole numbered block — the truncation footer is part
     // of the payload (same convention as web_fetch's). Error text below stays
     // unwrapped: it is the tool's own voice. Terminal-control escapes (T14)
@@ -42,10 +60,15 @@ const readFileHandler: ToolHandler = async (args, ctx) => {
 
 const readFileDef: ToolDef = {
   name: "read_file",
-  description: "Read a file from the filesystem. Returns content with line numbers.",
+  description:
+    "Read a file from the filesystem. Returns content with line numbers. For a large file, or when you only need part of one, pass offset and limit to read just that range. Prefer this over cat/sed/head in run_bash.",
   parameters: {
     type: "object",
-    properties: { path: { type: "string", description: "Absolute file path" } },
+    properties: {
+      path: { type: "string", description: "Absolute file path" },
+      offset: { type: "integer", description: "First line to read, 1-based (default 1)" },
+      limit: { type: "integer", description: "Number of lines to read (default and maximum 2000)" },
+    },
     required: ["path"],
   },
 };

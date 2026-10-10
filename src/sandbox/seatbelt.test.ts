@@ -8,6 +8,8 @@ import { homedir, tmpdir } from "node:os";
 import {
   buildSeatbeltProfile,
   configureSandbox,
+  gradleExecutableDenyLines,
+  GRADLE_NATIVE_LOCK_ALLOW,
   sandboxPrefix,
   toolchainSecretDenyLines,
   toolchainWriteRoots,
@@ -1027,10 +1029,12 @@ describe("git integrity (macOS)", () => {
     const trusted = buildSeatbeltProfile("workspace-write", ws, undefined, true);
     expect(trusted).toContain(configAllow);
     expect(trusted).toContain(hooksNodeAllow);
-    // Exactly the deny set's `.sample` allow plus the two granted ones — no
-    // allow for hook files, and none for credentials.
+    // Exactly the toolchain's one carve-out, the deny set's `.sample` allow,
+    // plus the two granted ones — no allow for hook files, and none for
+    // credentials.
     const trustedAllows = trusted.split("\n").filter((l) => l.startsWith("(allow file-write* (regex"));
     expect(trustedAllows).toEqual([
+      GRADLE_NATIVE_LOCK_ALLOW,
       `(allow file-write* (regex "^.*/\\.git(/.*)?/hooks/[^/]+\\.sample$"))`,
       configAllow,
       hooksNodeAllow,
@@ -1359,6 +1363,99 @@ describe("toolchain access (2026-10-10)", () => {
 
   it("hides the registry of Gradle daemons running outside the sandbox", () => {
     expect(toolchainSecretDenyLines("/H")).toContain('(deny file-read* file-write* (subpath "/H/.gradle/daemon"))');
+  });
+
+  describe("Gradle executables (2026-10-10)", () => {
+    const HASH = ".gradle/wrapper/dists/gradle-8.14.4-bin/92wwslzcyst3phie3o264zltu";
+    const DIST = `${HASH}/gradle-8.14.4`;
+
+    /** A fake home with an installed distribution, its lock/marker siblings, native and jdks. */
+    function fakeGradleHome(withNativeAndJdks = true): { home: string; cleanup: () => void } {
+      const h = fakeHome([`${DIST}/lib`, ...(withNativeAndJdks ? [".gradle/native", ".gradle/jdks"] : [])]);
+      writeFileSync(join(h.home, `${HASH}/gradle-8.14.4-bin.zip.lck`), "");
+      writeFileSync(join(h.home, `${HASH}/gradle-8.14.4-bin.zip.ok`), "");
+      return h;
+    }
+
+    it("denies the extracted distribution, native and jdks, leaving the lock/marker siblings writable", () => {
+      const h = fakeGradleHome();
+      try {
+        const lines = gradleExecutableDenyLines(h.home);
+        expect(lines).toContain(`(deny file-write* (subpath "${join(h.home, DIST)}"))`);
+        expect(lines).toContain(`(deny file-write* (subpath "${join(h.home, ".gradle/native")}"))`);
+        expect(lines).toContain(`(deny file-write* (subpath "${join(h.home, ".gradle/jdks")}"))`);
+        // The zip and its .lck/.ok are files, not `gradle-*` directories, so
+        // `./gradlew` can still write the lock it needs to start.
+        expect(lines.some((l) => l.includes(".zip"))).toBe(false);
+      } finally {
+        h.cleanup();
+      }
+    });
+
+    it("emits nothing for a home with no installed distributions or native/jdks dirs", () => {
+      const h = fakeHome([".gradle"]);
+      try {
+        expect(gradleExecutableDenyLines(h.home)).toEqual([]);
+      } finally {
+        h.cleanup();
+      }
+    });
+
+    // Gated like the macOS tests: these rules only exist on a machine with
+    // Gradle installed (CI, which does not run Seatbelt at all, has none).
+    // `buildSeatbeltProfile` reads the real `homedir()`.
+    const installed = gradleExecutableDenyLines(homedir()).length > 0;
+    const nativeInstalled = existsSync(join(homedir(), ".gradle/native"));
+
+    it.skipIf(!nativeInstalled)("re-allows the native lock files after the native deny, only under workspace-write", () => {
+      const p = buildSeatbeltProfile("workspace-write", "/private/tmp/ws", [join(homedir(), ".gradle")]).split("\n");
+      const deny = p.findIndex((l) => l.startsWith("(deny file-write*") && l.includes("/.gradle/native\""));
+      const allow = p.indexOf(GRADLE_NATIVE_LOCK_ALLOW);
+      expect(deny).toBeGreaterThan(-1);
+      // Last match wins: the allow must follow the deny it carves out of.
+      expect(allow).toBeGreaterThan(deny);
+      // Strict-sandbox has no write set for the deny to carve out of, so the
+      // allow must not widen that level.
+      expect(buildSeatbeltProfile("strict-sandbox", "/private/tmp/ws")).not.toContain(GRADLE_NATIVE_LOCK_ALLOW);
+    });
+
+    it.skipIf(!installed)("emits the Gradle denies after every write-root allow (last match wins)", () => {
+      // The production launch authorizes the toolchain cache roots (that is why
+      // `~/.gradle` is writable at all, via `resolveWriteRoots` with a session
+      // temp dir); this reproduces just that grant.
+      const gradleWriteRoot = join(homedir(), ".gradle");
+      const p = buildSeatbeltProfile("workspace-write", "/private/tmp/ws", [gradleWriteRoot]).split("\n");
+      const gradleWriteAllow = p.indexOf(`(allow file-write* (subpath "${gradleWriteRoot}"))`);
+      const firstGradleDeny = p.findIndex((l) => l.includes("wrapper/dists") && l.startsWith("(deny file-write*"));
+      expect(gradleWriteAllow).toBeGreaterThan(-1);
+      expect(firstGradleDeny).toBeGreaterThan(gradleWriteAllow);
+    });
+
+    itOnDarwin("the kernel enforces it: distribution and native unwritable, the lock still writable", () => {
+      const h = fakeGradleHome();
+      try {
+        const profile = ["(version 1)", "(allow default)", ...gradleExecutableDenyLines(h.home)].join("\n");
+        const run = (cmd: string) => {
+          try {
+            return execFileSync("/usr/bin/sandbox-exec", ["-p", profile, "/bin/sh", "-c", cmd], {
+              encoding: "utf8",
+              stdio: "pipe",
+            });
+          } catch (e) {
+            return `FAILED ${(e as { stderr?: string }).stderr ?? ""}`;
+          }
+        };
+        expect(run(`touch "${h.home}/${DIST}/lib/poisoned"`)).toContain("FAILED");
+        expect(run(`touch "${h.home}/.gradle/native/poisoned"`)).toContain("FAILED");
+        // Renaming the directory aside is the same persistence vector — the
+        // subpath deny covers the node, not only its contents.
+        expect(run(`mv "${h.home}/${DIST}" "${h.home}/${HASH}/moved"`)).toContain("FAILED");
+        // The lock/marker siblings stay writable: `./gradlew` cannot start otherwise.
+        expect(run(`echo x >> "${h.home}/${HASH}/gradle-8.14.4-bin.zip.lck"`)).not.toContain("FAILED");
+      } finally {
+        h.cleanup();
+      }
+    });
   });
 
   it("adds configured readRoots to the read boundary", () => {

@@ -941,14 +941,28 @@ the sandbox by an IDE or terminal), connect, and have that daemon run build
 code unsandboxed. `~/.gradle/daemon` is now read- and write-denied and
 contained JVMs get `-Dorg.gradle.daemon.registry.base=$TMPDIR/gradle-daemon`;
 measured with an outside daemon running: the contained build used its own
-daemon and the registry read was denied. **Still open:** `~/.gradle` is
-writable as a whole, including `wrapper/dists` (the Gradle distribution),
-`native` and `jdks` — code a later *unsandboxed* `./gradlew` or IDE build
-executes, so tampering there persists outside the sandbox (stronger than the
-accepted cache-tampering class). A write-deny on `wrapper` broke `./gradlew`
-(it opens `dists/**/*.zip.lck` for write) and a regex re-allow of the `.lck`
-files was still denied in the probe; unresolved — narrowing needs a working
-lock-file exception or a sandbox-private wrapper/dist location.
+daemon and the registry read was denied. **Closed later the same day
+(2026-10-10):** the extract-then-execute half. `~/.gradle` stays writable as a
+whole (the cache-tampering class above), so the three children that are *run*
+by a later unsandboxed build are re-denied inside it —
+`wrapper/dists/<dist>/<hash>/gradle-<version>` (enumerated when the profile is
+built, precisely because the hashed level also names the sibling
+`*.zip.lck` / `*.zip.ok` files `./gradlew` must write and a regex cannot
+separate the two), `native`, and `jdks`. Measured live through the real Bash
+path with a session temp dir: writes into `gradle-8.14.4/lib`, `native/*` and
+`jdks/` are refused, the distribution lock/marker siblings stay writable, and a
+full sandboxed `./gradlew test --offline --rerun-tasks` still passes (onramp,
+207 tests, 0 failures). `native` needed one carve-out, also measured: denying
+it outright fails the build before it starts ("Could not initialize native
+services") because Gradle takes an exclusive lock on a 0-byte `<lib>.lock`
+beside each library — a regex re-allow of `~/.gradle/native/**/*.lock`
+(after the deny, last match wins, workspace-write only) restores startup while
+the libraries themselves stay unwritable. **Remaining residual:** the rest of
+`~/.gradle` (caches, `.tmp`, `/completion`, `notifications`, …) and the
+downloaded `*.zip` distributions stay writable — the accepted cache class, not
+executed code. Replacing a distribution zip and deleting its `.ok` marker only
+makes Gradle re-extract, which the deny above refuses, so that path fails
+loudly rather than persisting.
 
 **Seatbelt failure evidence (gate 5).** The managed runner supplies the
 previously missing refusing environment: control exit 0 and marker present;

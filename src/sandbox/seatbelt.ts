@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, readdirSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import type { ProfileLevel } from "../permissions/index.js";
@@ -226,6 +226,75 @@ export function toolchainSecretDenyLines(home: string): string[] {
 }
 
 /**
+ * Gradle's own *executables* under `$HOME`, which {@link TOOLCHAIN_WRITE_ROOTS}
+ * makes writable as a whole (`~/.gradle` is granted because `./gradlew` needs
+ * the lock files beside each distribution). Three of its children are load-
+ * bearing for a LATER, unsandboxed build:
+ *
+ *   - `wrapper/dists/<dist>/<hash>/gradle-<version>` — the extracted
+ *     distribution `./gradlew` execs;
+ *   - `native` — extracted native libraries the daemon loads;
+ *   - `jdks` — toolchains Gradle auto-provisions and later builds compile with.
+ *
+ * Writing them is persistence into later builds: unlike a poisoned package
+ * cache, these files are *run*, not merely read. The extracted distribution
+ * directories are enumerated at profile-build time rather than expressed as a
+ * regex, because the hashed `<hash>` level is not regex-expressible without
+ * also matching the sibling `*.zip.lck` / `*.zip.ok` files Gradle must write —
+ * a regex re-allow for those was measured to stay denied (2026-10-10). Left
+ * writable by construction here: the lock/marker siblings sit outside every
+ * `gradle-*` directory, so `./gradlew` still starts.
+ *
+ * `native` needs one exception, measured rather than assumed (2026-10-10):
+ * denying the tree outright makes Gradle fail before the build with "Could not
+ * initialize native services" — it takes an exclusive lock on a 0-byte
+ * `<lib>.lock` beside each extracted library, and `FileChannel.lock` needs that
+ * file writable. {@link GRADLE_NATIVE_LOCK_ALLOW} re-allows exactly those lock
+ * files after the deny, so the libraries themselves stay unwritable while the
+ * daemon can still start; a full sandboxed `./gradlew test` then passes with
+ * the deny active.
+ */
+export function gradleExecutableDenyLines(home: string): string[] {
+  return gradleExecutableDirs(home).map((p) => `(deny file-write* (subpath "${sbplQuote(p)}"))`);
+}
+
+/**
+ * The one write the `native` deny must leave open: Gradle's native services
+ * lock a 0-byte `<lib>.lock` beside each extracted library, which
+ * `FileChannel.lock` requires writable. Those files are lock targets, not
+ * loaded code, so re-allowing them costs nothing — emitted only under
+ * workspace-write, where a write set exists for the deny to carve out of.
+ * Strict-sandbox emits no allow at all, which its tests pin.
+ */
+export const GRADLE_NATIVE_LOCK_ALLOW = `(allow file-write* (regex "^.*/\\.gradle/native/.*\\.lock$"))`;
+
+function gradleExecutableDirs(home: string): string[] {
+  const gradle = join(home, ".gradle");
+  const dirs: string[] = [];
+  const dists = join(gradle, "wrapper", "dists");
+  try {
+    for (const dist of readdirSync(dists, { withFileTypes: true })) {
+      if (!dist.isDirectory()) continue;
+      const distDir = join(dists, dist.name);
+      for (const hash of readdirSync(distDir, { withFileTypes: true })) {
+        if (!hash.isDirectory()) continue;
+        const hashDir = join(distDir, hash.name);
+        for (const entry of readdirSync(hashDir, { withFileTypes: true })) {
+          if (entry.isDirectory() && entry.name.startsWith("gradle-")) dirs.push(join(hashDir, entry.name));
+        }
+      }
+    }
+  } catch {
+    // No wrapper distributions installed — nothing to deny.
+  }
+  for (const name of ["native", "jdks"]) {
+    const dir = join(gradle, name);
+    if (existsSync(dir)) dirs.push(dir);
+  }
+  return dirs;
+}
+
+/**
  * Git integrity rules — the mechanical half of the `.git` always-denied set.
  *
  * permission-profile.md §8 recorded this as a policy-layer-only residual: the
@@ -391,7 +460,14 @@ export function buildSeatbeltProfile(
   if (level === "workspace-write" && allowLocalNetwork) lines.push(...LOOPBACK_NETWORK_ALLOWS);
   // Toolchain credentials/startup config: after every read and write allow.
   const home = realpathNearestAncestor(homedir());
-  if (isUsableHomeDeny(home)) lines.push(...toolchainSecretDenyLines(home));
+  if (isUsableHomeDeny(home)) {
+    lines.push(...toolchainSecretDenyLines(home));
+    // Same reason: Gradle's extracted distributions/native/JDKs are writable
+    // through the `~/.gradle` cache grant, so they must be re-denied after it.
+    lines.push(...gradleExecutableDenyLines(home));
+    // The `native` deny's one carve-out (see {@link GRADLE_NATIVE_LOCK_ALLOW}).
+    if (level === "workspace-write") lines.push(GRADLE_NATIVE_LOCK_ALLOW);
+  }
   // Git integrity last: last-matching-rule-wins means a deny only bites if it
   // follows the write-root grants above.
   lines.push(...GIT_INTEGRITY_DENIES);

@@ -73,8 +73,9 @@ describe("theme colour sourcing", () => {
       bg: DARK_THEME.warning,
       colorEnabled: true,
     });
-    // 208 = amber. If `warning` regresses to ANSI.yellow (3) this fails.
-    expect(out).toContain("\x1b[48;5;208m");
+    // 214 = Claude Code's warning amber. If `warning` regresses to ANSI.yellow
+    // (3) this fails.
+    expect(out).toContain("\x1b[48;5;214m");
     expect(DARK_THEME.warning).toBeGreaterThan(15);
     expect(DARK_THEME.surface).toBeGreaterThan(15);
   });

@@ -207,44 +207,46 @@ export const DARK_THEME: ThemeDefinition = {
   name: "dark",
   type: "dark",
 
-  primary: ANSI.blue,
-  secondary: ANSI.cyan,
-  // accent doubles as the secondary gutter/ask emphasis — a bright blue that
-  // stays legible on a black background (see theme-spec.md "Gutter & prompt
+  // Claude Code's dark palette, each RGB mapped to its nearest xterm-256 code
+  // (slots are 256-color). Source values in comments; syntax colors below are
+  // nib's own — Claude Code's palette has no syntax slots.
+  primary: 173, // claude orange rgb(215,119,87)
+  secondary: 147, // suggestion rgb(177,185,249)
+  // accent doubles as the secondary gutter/ask emphasis — Claude Code's
+  // permission lavender, legible on black (see theme-spec.md "Gutter & prompt
   // contrast"). Distinct from promptFg so the two accents don't collide.
-  accent: 33,
-  error: ANSI.red,
-  warning: ANSI.orange,
-  success: ANSI.green,
-  info: ANSI.sky,
+  accent: 147, // permission rgb(177,185,249)
+  error: 204, // rgb(255,107,128)
+  warning: 214, // rgb(255,193,7)
+  success: 71, // rgb(78,186,101)
+  info: 68, // ide rgb(71,130,200)
 
-  text: ANSI.white,
-  textDim: ANSI.grey103,
-  textBright: ANSI.brightWhite,
-  textInverse: ANSI.black,
-  link: ANSI.sky,
+  text: 231, // rgb(255,255,255)
+  textDim: 246, // inactive rgb(153,153,153)
+  textBright: 231,
+  textInverse: 16,
+  link: 147, // suggestion rgb(177,185,249)
 
-  background: ANSI.black,
-  surface: ANSI.grey23,
-  border: ANSI.grey47,
+  background: 16,
+  surface: 237, // userMessageBackground rgb(55,55,55)
+  border: 102, // promptBorder rgb(136,136,136)
   // Selection is used as a BACKGROUND slab, so it must be a dark tint that
   // separates from `background` while staying readable under bright text.
-  // Low-ANSI blue (4) is a saturated block that swamps the row.
-  selection: 24,
+  selection: 24, // selectionBg rgb(38,79,120)
 
-  // Bright blue gutter/prompt accent, readable on black.
-  promptFg: 39,
+  // Gutter/prompt accent: Claude Code's orange, readable on black.
+  promptFg: 173,
   promptBg: undefined,
 
   statusBar: {
-    text: ANSI.white,
-    dim: ANSI.grey103,
-    background: ANSI.grey23,
-    separator: ANSI.grey55,
-    modeFg: ANSI.cyan,
-    modelFg: ANSI.brightWhite,
-    warningFg: ANSI.orange,
-    errorFg: ANSI.red,
+    text: 231,
+    dim: 246,
+    background: 237,
+    separator: 239, // subtle rgb(80,80,80)
+    modeFg: 66, // planMode rgb(72,150,140)
+    modelFg: 231,
+    warningFg: 214,
+    errorFg: 204,
   },
 
   syntax: {
@@ -269,7 +271,7 @@ export const DARK_THEME: ThemeDefinition = {
     decorator: ANSI.teal,
   },
 
-  spinner: ANSI.cyan,
+  spinner: 173, // claude orange
 };
 
 export const LIGHT_THEME: ThemeDefinition = {

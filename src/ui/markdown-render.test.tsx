@@ -61,3 +61,17 @@ describe("MarkdownText block rendering", () => {
     expect(frame).not.toContain("> line");
   });
 });
+
+describe("MarkdownText inline code colour", () => {
+  it("colours inline code with the theme accent instead of terminal dim", async () => {
+    // Inline code rendered as dimColor (SGR 2), which most terminals draw as a
+    // faint grey that is hard to read. Claude Code colours code spans with its
+    // permission lavender — nib's `accent` slot.
+    const { ThemeContextValue, DARK_THEME, ansiFg } = await import("./theme.js");
+    const theme = new ThemeContextValue(DARK_THEME, true);
+    const { lastFrame } = render(<MarkdownText theme={theme}>{"see `~/.nib/settings.json` now"}</MarkdownText>);
+    const frame = lastFrame() ?? "";
+    expect(frame).toContain(`${ansiFg(DARK_THEME.accent)}~/.nib/settings.json`);
+    expect(frame).not.toContain("\x1b[2m~/.nib");
+  });
+});

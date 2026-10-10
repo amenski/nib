@@ -115,7 +115,7 @@ const OutputLine = memo(function OutputLine({
         <Box flexDirection="column">
           <Box>
             {bulletEl}
-            <MarkdownText>{summarizeText(body)}</MarkdownText>
+            <MarkdownText theme={theme}>{summarizeText(body)}</MarkdownText>
           </Box>
           <Text dimColor>{summary}</Text>
         </Box>
@@ -124,7 +124,7 @@ const OutputLine = memo(function OutputLine({
     return (
       <Box>
         {bulletEl}
-        <MarkdownText>{body}</MarkdownText>
+        <MarkdownText theme={theme}>{body}</MarkdownText>
       </Box>
     );
   }
@@ -182,13 +182,13 @@ const OutputLine = memo(function OutputLine({
   if (summary) {
     return (
       <Box flexDirection="column">
-        <MarkdownText>{summarizeText(untagged)}</MarkdownText>
+        <MarkdownText theme={theme}>{summarizeText(untagged)}</MarkdownText>
         <Text dimColor>{summary}</Text>
       </Box>
     );
   }
 
-  return <MarkdownText>{untagged}</MarkdownText>;
+  return <MarkdownText theme={theme}>{untagged}</MarkdownText>;
 });
 
 // ── Main OutputArea ──

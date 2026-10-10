@@ -26,6 +26,7 @@ import {
 } from "./core/markdown-inline.js";
 import SyntaxHighlighter, { detectLanguage, type Language } from "./SyntaxHighlighter.js";
 import MarkdownTable, { isTableBlock } from "./MarkdownTable.js";
+import type { SyntaxColors } from "./theme.js";
 
 // Re-exported so callers/tests importing from "./MarkdownText.js" keep working
 // after the parser moved to core/markdown-inline.ts.
@@ -43,8 +44,9 @@ interface MarkdownTextProps {
       textDim: number;
       textBright: number;
       textInverse: number;
+      accent: number;
     };
-    syntax: (key: string, text: string) => string;
+    syntax: (key: keyof SyntaxColors, text: string) => string;
     dim: (text: string) => string;
     fg: (color: number, text: string) => string;
   };
@@ -58,7 +60,13 @@ function SegmentText({ segment, theme }: { segment: Segment; theme?: MarkdownTex
   if (segment.formats.includes("bold")) props.bold = true;
   if (segment.formats.includes("italic")) props.italic = true;
   if (segment.formats.includes("strike")) props.strikethrough = true;
-  if (segment.formats.includes("code")) props.dimColor = true;
+  if (segment.formats.includes("code")) {
+    // Claude Code colours code spans with its permission lavender (nib's
+    // `accent`). Terminal dim is only the no-theme fallback: most terminals
+    // draw it as a faint grey that is hard to read.
+    if (theme?.colorEnabled) return <Text {...props}>{theme.fg(theme.theme.accent, segment.text)}</Text>;
+    props.dimColor = true;
+  }
 
   return <Text {...props}>{segment.text}</Text>;
 }
@@ -92,7 +100,7 @@ function CodeBlockBlock({
   const language = detectLanguage(info);
   const langLabel = language !== "text" ? language : (info || "code");
 
-  const dim = theme?.dim ?? ((s: string) => `\x1b[2m${s}\x1b[0m`);
+  const dim = theme ? (s: string) => theme.dim(s) : ((s: string) => `\x1b[2m${s}\x1b[0m`);
   const fg = theme?.fg;
 
   if (!theme || !theme.colorEnabled || language === "text") {
@@ -169,7 +177,7 @@ function MarkdownText({ children, theme }: MarkdownTextProps) {
   // ── Code fence opener alone (no content yet — streaming) ──
   if (text.startsWith("```")) {
     const lang = text.length > 3 ? text.slice(3).trim() : "";
-    const dim = theme?.dim ?? ((s: string) => `\x1b[2m${s}\x1b[0m`);
+    const dim = theme ? (s: string) => theme.dim(s) : ((s: string) => `\x1b[2m${s}\x1b[0m`);
     return <Text dimColor>{dim(lang ? `  ── ${lang} ──` : "  ── code ──")}</Text>;
   }
 
@@ -203,7 +211,7 @@ function MarkdownText({ children, theme }: MarkdownTextProps) {
 
   // ── Horizontal rule: ---, ***, ___ (3+ chars) ──
   if (/^[-*_]{3,}$/.test(text.trim())) {
-    const dim = theme?.dim ?? ((s: string) => `\x1b[2m${s}\x1b[0m`);
+    const dim = theme ? (s: string) => theme.dim(s) : ((s: string) => `\x1b[2m${s}\x1b[0m`);
     return <Text dimColor>{dim("─".repeat(48))}</Text>;
   }
 
@@ -212,7 +220,7 @@ function MarkdownText({ children, theme }: MarkdownTextProps) {
   // a span closed across its lines); each line gets its own ▎ marker, and a
   // line without ">" is a lazy continuation shown as-is.
   if (text.startsWith(">")) {
-    const dim = theme?.dim ?? ((s: string) => `\x1b[2m${s}\x1b[0m`);
+    const dim = theme ? (s: string) => theme.dim(s) : ((s: string) => `\x1b[2m${s}\x1b[0m`);
     return (
       <Text>
         {text.split("\n").map((raw, i) => (
@@ -232,7 +240,7 @@ function MarkdownText({ children, theme }: MarkdownTextProps) {
   const ulFirst = firstLine.match(/^([-*])\s+(.+)$/);
   if (ulFirst && !text.startsWith("**")) {
     const items = splitListItems(text, /^([-*])\s+(.+)$/) ?? [];
-    const dim = theme?.dim ?? ((s: string) => `\x1b[2m${s}\x1b[0m`);
+    const dim = theme ? (s: string) => theme.dim(s) : ((s: string) => `\x1b[2m${s}\x1b[0m`);
     return (
       <Text>
         {items.map((item, i) => (
@@ -250,7 +258,7 @@ function MarkdownText({ children, theme }: MarkdownTextProps) {
   const olFirst = firstLine.match(/^(\d+)\.\s+(.+)$/);
   if (olFirst) {
     const items = splitListItems(text, /^(\d+)\.\s+(.+)$/) ?? [];
-    const dim = theme?.dim ?? ((s: string) => `\x1b[2m${s}\x1b[0m`);
+    const dim = theme ? (s: string) => theme.dim(s) : ((s: string) => `\x1b[2m${s}\x1b[0m`);
     return (
       <Text>
         {items.map((item, i) => (

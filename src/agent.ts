@@ -147,6 +147,8 @@ export interface AgentOptions {
    * given.
    */
   maxTurns?: number;
+  /** Request-time trimming of old tool results (compaction/context-editing.ts). Default off — see the call site. */
+  contextEditing?: boolean;
   /** Context-window ceiling used as budgetMax for per-turn token rows. Defaults to 128000, the codebase-wide fallback. */
   contextWindow?: number;
   skills?: SkillDef[];
@@ -478,11 +480,16 @@ export async function runAgent(
     // The volatile prefix is already present in assembledMessages, so only
     // tool-schema overhead is added here. This request-only copy deliberately
     // leaves messages/newMessages/session history complete and unedited.
-    const requestMessages = editToolResultsForRequest(
-      assembledMessages,
-      estimateOverheadTokens(tools),
-      freshToolResults,
-    );
+    // Request-time trimming of old tool results is OFF unless asked for. It
+    // rewrote the 4th-newest result into a placeholder on every request once
+    // it engaged, and the provider's prefix cache ends at the first changed
+    // message — measured 2026-10-10 in onramp: 78% of a session's cache misses
+    // (1.16M of 1.49M tokens) came from that slide. With cached input ~50x
+    // cheaper than uncached (DeepSeek), keeping results verbatim and leaving
+    // size control to compaction is cheaper. A batched variant can re-enable it.
+    const requestMessages = options.contextEditing
+      ? editToolResultsForRequest(assembledMessages, estimateOverheadTokens(tools), freshToolResults)
+      : assembledMessages;
     for await (const event of provider.streamChat(requestMessages, tools, { signal: options.signal, effort, thinkingEnabled })) {
       switch (event.type) {
         case "text_delta":

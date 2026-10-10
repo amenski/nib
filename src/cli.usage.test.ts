@@ -97,7 +97,7 @@ describe("/context headless (handleSlashCore)", () => {
       vi.fn(), () => 0,
     );
 
-    expect(logs).toContain("Context editing @ 100000  (clears old consumed results; keeps 3 + fresh batch)");
+    expect(logs).toContain("Context editing      off  (compaction only)");
     expect(logs.some((line) => line.startsWith("Compaction @"))).toBe(true);
   });
 });

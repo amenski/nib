@@ -11,7 +11,6 @@ import { getProviderCapabilities, imageSupportWarning } from "./providers/regist
 import { runAgent } from "./agent.js";
 import { buildRepoMap, captureGitStatus, loadProjectResearch } from "./prompt.js";
 import { compactionCutoffTokens, estimateTokens, estimateTokensDetailed, estimateOverheadTokens } from "./compaction/budget.js";
-import { CONTEXT_EDITING_TRIGGER_TOKENS, RECENT_TOOL_RESULTS_TO_KEEP } from "./compaction/context-editing.js";
 import { fireNotify, type NotifySpawnOptions } from "./notify.js";
 import { HookRunner, fireNotificationHooks } from "./hooks/index.js";
 import { executeTool, TOOL_DEFS, registry, setSessionId, setCheckpointManager, setSignal, setSessionStore, setSetMode, setTimeoutToBackground, setSandboxLevel, setSessionTempDir, setWritePolicyLevel, setWriteRoots, setWebSearchConfig } from "./tools/index.js";
@@ -1585,7 +1584,7 @@ export async function handleSlashCore(
       console.log(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`);
       console.log(`Total Used        ${String(totalUsed).padStart(6)}  (${pct(totalUsed).padStart(5)}%)`);
       console.log(`Remaining         ${String(remaining).padStart(6)}  (${pct(remaining).padStart(5)}%)`);
-      console.log(`Context editing @ ${String(CONTEXT_EDITING_TRIGGER_TOKENS).padStart(6)}  (clears old consumed results; keeps ${RECENT_TOOL_RESULTS_TO_KEEP} + fresh batch)`);
+      console.log(`Context editing   ${"off".padStart(6)}  (compaction only)`);
       console.log(`Compaction @      ${String(Math.round(compactionCutoff)).padStart(6)}  (${String(Math.round((compactionCutoff / cw) * 100)).padStart(3)}%)`);
       return;
     }

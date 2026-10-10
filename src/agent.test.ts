@@ -226,6 +226,9 @@ describe("runAgent", () => {
       executeTool: async () => ({ content: fullContent }),
       onToolResult,
       history,
+      // Trimming is off by default (see the call site in agent.ts); these
+      // tests pin the trimming logic itself, for when it is re-enabled.
+      contextEditing: true,
     });
 
     expect(onToolResult).toHaveBeenCalledWith("read", { content: fullContent });
@@ -268,6 +271,7 @@ describe("runAgent", () => {
         tools: [],
         executeTool: async () => ({ content: fullContent }),
         history,
+        contextEditing: true,
       });
 
       // The request copy is edited...
@@ -326,6 +330,7 @@ describe("runAgent", () => {
       provider,
       tools: [],
       executeTool: async (call) => ({ content: freshContent[call.id as keyof typeof freshContent] ?? "call_5 output" }),
+      contextEditing: true,
     });
 
     for (const id of batch) {
@@ -342,6 +347,50 @@ describe("runAgent", () => {
       .toBe("call_5 output");
     expect(result.messages.filter((m) => m.role === "tool").map((m) => m.content))
       .toEqual([...batch.map((id) => freshContent[id as keyof typeof freshContent]), "call_5 output"]);
+  });
+
+  it("sends the request untouched by default: appends only, no placeholder, over the trigger", async () => {
+    // 399,980 characters of history is what the trimming tests above use to
+    // exceed the 100K-estimated-token trigger, so an enabled editor would
+    // rewrite the `old` result on the very first request. Off by default, both
+    // requests carry it verbatim and the second is the first plus the new
+    // exchange — which is what keeps the provider's prefix cache intact. That
+    // is the reason it is off: measured 2026-10-10 in onramp, the rewrite
+    // accounted for 78% of a session's cache misses.
+    const oldContent = "O".repeat(399_980);
+    const fullContent = `${"A".repeat(15_000)}${"Z".repeat(15_000)}`;
+    const { provider, receivedMessages } = makeProvider([
+      [
+        { type: "tool_call_start", id: "call_1", name: "read" },
+        { type: "tool_call_delta", id: "call_1", arguments: '{"path":"large.txt"}' },
+        { type: "done", finishReason: "tool_calls" },
+      ],
+      textTurn("done"),
+    ]);
+    const history: Message[] = [
+      { role: "user", content: "old task" },
+      { role: "assistant", content: null, toolCalls: [{ id: "old", name: "read", arguments: {} }] },
+      { role: "tool", toolCallId: "old", toolName: "read", content: oldContent },
+      ...["recent_1", "recent_2", "recent_3"].flatMap((id) => [
+        { role: "assistant" as const, content: null, toolCalls: [{ id, name: "read", arguments: {} }] },
+        { role: "tool" as const, toolCallId: id, toolName: "read", content: `${id} output` },
+      ]),
+    ];
+
+    await runAgent("read large.txt", {
+      provider,
+      tools: [],
+      executeTool: async () => ({ content: fullContent }),
+      history,
+    });
+
+    const [first, second] = receivedMessages;
+    expect(first.find((m) => m.role === "tool" && m.toolCallId === "old")?.content).toBe(oldContent);
+    expect(second.find((m) => m.role === "tool" && m.toolCallId === "old")?.content).toBe(oldContent);
+    expect(second.some((m) => m.content === CLEARED_TOOL_RESULT_PLACEHOLDER)).toBe(false);
+    // Appends only: every message the first request sent sits unchanged, in
+    // place, at the head of the second.
+    expect(second.slice(0, first.length)).toEqual(first);
   });
 
   it("keeps current-turn messages persistable when pre-request compaction shrinks history", async () => {

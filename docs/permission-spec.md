@@ -80,8 +80,13 @@ exactly that directory (`withCompanion`). This is what makes exploring a
 sibling repository one prompt instead of one per folder; the scope is bounded
 by construction — a start at `$HOME`, an ancestor of it, or `/` falls back to
 the previous narrower scopes (exact for search/glob, one directory level for
-the rest). Per tool, as always: a `search` grant is not a `read_file` grant.
-Writes are unaffected — an external write approval is still exact.
+the rest). The search for the root runs on realpaths (only they see a symlinked
+parent) and the result is translated back into the caller's spelling, which is
+what subjects are matched in; when the two disagree — a symlink whose target
+sits deeper than the path reaching it — the walk cannot say what the lexical
+path covers, so it grants nothing and the narrow scope stands. Per tool, as
+always: a `search` grant is not a `read_file` grant. Writes are unaffected — an
+external write approval is still exact.
 
 The guard that fires for those calls is the dynamic out-of-workspace rule
 (§7), tagged `externalRead: true` on the rule so `narrowToExact` leaves the

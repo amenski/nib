@@ -687,6 +687,39 @@ describe("PermissionEngine.resolve", () => {
       expect(reloaded.resolve("search", { dir: other }).action).toBe("ask");
     });
 
+    it("grants a symlinked project under the caller's spelling, not the realpath", () => {
+      const real = join(dir, "real", "proj");
+      mkdirSync(join(real, "sub"), { recursive: true });
+      mkdirSync(join(real, ".git"));
+      const link = join(dir, "link");
+      symlinkSync(real, link, "dir");
+
+      const built = engine.buildDefaultRule("read_file", { path: join(link, "sub", "x.ts") });
+      // The pattern must match the call it came from — subjects are matched
+      // lexically, so a realpath'd pattern would match nothing, and a pattern
+      // for some other level would grant the wrong scope.
+      expect(built.pattern).toBe(`${link}/**`);
+      engine.approveForSession(built);
+      expect(engine.resolve("read_file", { path: join(link, "other", "y.ts") }).action).toBe("allow");
+    });
+
+    it("refuses a spelling whose symlink target sits deeper than the path reaching it", () => {
+      // short/ → deep/a/b/c/proj, with the repository root at deep/a/b/c: two
+      // levels up from the subject is a real directory that is NOT that root,
+      // so the two coordinate spaces disagree. No grant is built, and in
+      // particular nothing walks up to a directory covering more than the
+      // approved path (the lockstep version reached this directory's parent).
+      const target = join(dir, "deep", "a", "b", "c", "proj");
+      mkdirSync(join(target, "sub"), { recursive: true });
+      mkdirSync(join(dir, "deep", "a", "b", "c", ".git"));
+      const short = join(dir, "short");
+      symlinkSync(target, short, "dir");
+
+      const built = engine.buildDefaultRule("read_file", { path: join(short, "sub", "x.ts") });
+      expect(built.pattern).not.toContain("**");
+      expect(built.pattern).toBe(`${join(short, "sub")}/*`);
+    });
+
     it("with no .git, covers the start directory only — its parent still asks", () => {
       const notes = join(dir, "notes");
       mkdirSync(join(notes, "a", "b"), { recursive: true });

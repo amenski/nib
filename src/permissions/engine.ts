@@ -670,18 +670,34 @@ export class PermissionEngine {
     // than widen. A path *under* home is the normal case.
     if (realStart === "/" || atOrAbove(realStart, realHome)) return undefined;
 
-    // The walk runs on the realpath (only it can see a symlinked parent), but
-    // the result is reported in the caller's spelling: subjects are matched
-    // lexically (normalizePath resolves "./x" without touching the filesystem),
-    // so a pattern in realpath form — /private/etc against a caller's /etc —
-    // would never match the call it was built from.
-    let root = lexical;
-    for (let dir = realStart; dir !== "/" && !atOrAbove(dir, realHome); dir = dirname(dir)) {
-      if (existsSync(join(dir, ".git"))) return root;
-      root = dirname(root);
+    // One walk, in realpath space: the only space where a symlinked parent is
+    // visible, and the only one where the `.git` probe means anything.
+    let realRoot = realStart;
+    while (!existsSync(join(realRoot, ".git"))) {
+      const parent = dirname(realRoot);
+      if (parent === realRoot || atOrAbove(parent, realHome)) {
+        // No repository above the start: the start directory is the project.
+        realRoot = realStart;
+        break;
+      }
+      realRoot = parent;
     }
-    // No repository above the start: the start directory is the project.
-    return lexical;
+
+    // Translate back to the caller's spelling, because subjects are matched
+    // lexically (normalizePath resolves "./x" without touching the filesystem)
+    // — a realpath pattern (/private/etc) would never match the /etc call it
+    // came from. ONE offset, applied once: stepping a second path in lockstep
+    // through the same loop instead lets a symlink that expands more components
+    // than its spelling has move the result somewhere else entirely — an
+    // ancestor of it, /, or $HOME — and the grant would then cover that.
+    const lexicalRoot = resolve(lexical, relative(realStart, realRoot));
+    if (lexicalRoot === "/" || atOrAbove(lexicalRoot, homedir())) return undefined;
+    // …and the spelling is only the same directory when it resolves back to it.
+    // A divergence (a symlink whose target sits deeper than the path reaching
+    // it) leaves us unable to say what the lexical path covers, so no grant is
+    // built and the caller keeps its previous, narrower scope.
+    if (this.realpathNearestAncestor(lexicalRoot) !== realRoot) return undefined;
+    return lexicalRoot;
   }
 
   /**

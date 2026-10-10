@@ -1327,7 +1327,12 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
             : undefined;
 
           return new Promise<boolean | "envelope-grant">((resolve) => {
-            const defaultRule = ctx.permissions.buildDefaultRule(toolName, args);
+            // A guarded/destructive winner stores the exact subject, so the
+            // rule shown (and stored) is built the same way — otherwise the
+            // prompt would offer a project-wide scope the approval cannot keep.
+            const defaultRule = ctx.permissions.buildDefaultRule(toolName, args, {
+              exactOnly: narrowsApproval(winningRule),
+            });
             const folderRule = ctx.permissions.folderScopeRule(toolName, args);
             const externalTreeRule = ctx.permissions.externalTreeRule(toolName, args);
             setAskPrompt({
@@ -1973,12 +1978,10 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
   function approveAskPrompt(decision: "session" | "always", scopedRule: PermissionRule | null): void {
     if (!askPrompt) return;
     // When a builtin rule (guarded or destructive) triggered the prompt, use
-    // buildDefaultRule for the specific path/command — NOT the winningRule's
-    // glob/prefix pattern. Otherwise the stored exact-match rule would carry
-    // a pattern like "**/.env*" that never matches a real path (the original
-    // kind is switched to "exact", but the pattern was left as the glob).
-    // buildDefaultRule already sets kind "exact" on the canonical form, so
-    // narrowToExact becomes a safety no-op rather than a bug-fix requirement.
+    // buildDefaultRule's exact form for the specific path/command — NOT the
+    // winningRule's glob/prefix pattern, and not a broadened scope. Otherwise
+    // the stored "exact" rule would carry a pattern like "**/.env*" that never
+    // matches a real path, and pressing "always" would grant nothing.
     const isBuiltinOrigin = askPrompt.winningRule?.origin === "builtin-destructive" || askPrompt.winningRule?.origin === "builtin-guarded";
     const matchedBuiltin = isBuiltinOrigin ? askPrompt.winningRule : undefined;
     // A prompt only ever surfaces for a match that resolved to "ask" — so
@@ -1988,12 +1991,26 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
     // the same call forever. Always build the narrow allow rule for the
     // specific call instead; matchedBuiltin still forces exact narrowing
     // below when the winner was a builtin guarded/destructive rule.
-    const rule = scopedRule ?? ctx.permissions.buildDefaultRule(askPrompt.toolName, askPrompt.args);
+    const rule = scopedRule ?? ctx.permissions.buildDefaultRule(askPrompt.toolName, askPrompt.args, {
+      exactOnly: narrowsApproval(askPrompt.winningRule),
+    });
     if (decision === "session") {
       ctx.permissions.approveForSession(rule, matchedBuiltin);
     } else {
       ctx.permissions.approveAlways(rule, matchedBuiltin);
     }
+  }
+
+  /**
+   * True when this ask's winner is a builtin guarded/destructive match whose
+   * approval the engine narrows to the exact subject. The out-of-workspace
+   * read guard is excluded: it is guarded, but its approval is meant to
+   * broaden to the enclosing project (engine.ts narrowToExact).
+   */
+  function narrowsApproval(winningRule?: PermissionRule): boolean {
+    const origin = winningRule?.origin;
+    if (origin !== "builtin-destructive" && origin !== "builtin-guarded") return false;
+    return winningRule?.externalRead !== true;
   }
 
   /**

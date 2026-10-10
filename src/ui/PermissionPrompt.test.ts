@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildPermissionRequest, capabilitySummary, grantConsentLines, permissionHeader, permissionOptions, riskLevel, type PermissionRequest } from "./PermissionPrompt.js";
+import { buildPermissionRequest, capabilitySummary, grantConsentLines, permissionHeader, permissionOptions, riskLevel, scopeLine, type PermissionRequest } from "./PermissionPrompt.js";
 import type { PermissionRule } from "../permissions/index.js";
 import type { BashEnvelope } from "../permissions/session-grant.js";
 import { extractCapabilityPlan, unknownCapabilityPlan } from "../permissions/capabilities.js";
@@ -19,6 +19,37 @@ function envelope(overrides: Partial<BashEnvelope> = {}): BashEnvelope {
     ...overrides,
   };
 }
+
+describe("scopeLine", () => {
+  const rule = (pattern: string): PermissionRule => ({ tool: "search", kind: "glob", pattern, action: "allow", origin: "config" });
+
+  it("names the external project's directory, without the tree suffix", () => {
+    // The default rule is now a tree glob; the line must read as a directory,
+    // not as ".../reputation_mgmt/**".
+    const line = scopeLine({ toolName: "search", command: "", defaultRule: rule("/data/notes/**") });
+    expect(line).toBe("Access external directory /data/notes");
+  });
+
+  it("shortens a home-relative project path", () => {
+    const home = process.env.HOME ?? "/root";
+    const line = scopeLine({ toolName: "search", command: "", defaultRule: rule(`${home}/Documents/prg_proj/rep/**`) });
+    expect(line).toBe("Access external directory ~/Documents/prg_proj/rep");
+  });
+
+  it("still describes an in-workspace directory glob", () => {
+    expect(scopeLine({ toolName: "read_file", command: "", defaultRule: rule("./src/**") })).toBe("Access directory ./src");
+  });
+
+  it("says nothing for an exact rule (there is no scope to describe)", () => {
+    expect(
+      scopeLine({
+        toolName: "read_file",
+        command: "",
+        defaultRule: { tool: "read_file", kind: "exact", pattern: "/data/notes/.env", action: "allow", origin: "config" },
+      }),
+    ).toBeNull();
+  });
+});
 
 describe("riskLevel", () => {
   it("is high for any destructive-origin winning rule, regardless of tool", () => {
@@ -77,6 +108,51 @@ describe("permissionOptions", () => {
     });
 
     expect(options.map((option) => option.decision)).toEqual(["once", "session", "always", "deny"]);
+  });
+
+  it("names the project on an external read ask, because that is what the grant covers", () => {
+    const options = permissionOptions({
+      toolName: "search",
+      command: "/Users/x/Documents/prg_proj/reputation_mgmt",
+      allowPersistentApproval: true,
+      defaultRule: {
+        tool: "search",
+        kind: "glob",
+        pattern: "/Users/x/Documents/prg_proj/reputation_mgmt/**",
+        action: "allow",
+        origin: "config",
+      },
+    });
+
+    expect(options.map((option) => option.label)).toEqual([
+      "Yes, just once",
+      "Yes, read anything in reputation_mgmt for this session",
+      "Yes, and always allow reading reputation_mgmt",
+      "No",
+    ]);
+  });
+
+  it("keeps the plain labels for a narrowly-scoped ask", () => {
+    // Only a project-wide external read grant is described as one: an exact
+    // rule (a guarded subject) or an in-workspace scope must not claim more
+    // than it stores.
+    const exact = permissionOptions({
+      toolName: "read_file",
+      command: "/data/notes/.env",
+      allowPersistentApproval: true,
+      defaultRule: { tool: "read_file", kind: "exact", pattern: "/data/notes/.env", action: "allow", origin: "config" },
+    });
+    expect(exact.map((option) => option.label)).toEqual([
+      "Yes, just once", "Yes, for this session", "Yes, always allow", "No",
+    ]);
+
+    const internal = permissionOptions({
+      toolName: "read_file",
+      command: "./.env",
+      allowPersistentApproval: true,
+      defaultRule: { tool: "read_file", kind: "exact", pattern: "./.env", action: "allow", origin: "config" },
+    });
+    expect(internal[1]!.label).toBe("Yes, for this session");
   });
 });
 

@@ -1,5 +1,6 @@
 import { join, relative, isAbsolute, resolve, dirname, basename } from "node:path";
 import { existsSync, readFileSync, renameSync, statSync, realpathSync } from "node:fs";
+import { homedir } from "node:os";
 import { randomBytes } from "node:crypto";
 import type { PermissionAction, PermissionRule, PermissionSubject } from "./rules.js";
 import { buildSubject, patternMatches, specificity, serializeRulePattern, extractHostname, extractToolSubject } from "./rules.js";
@@ -32,6 +33,17 @@ export interface ResolveResult {
 
 /** Internal shape used by the private resolution helpers, before isGuarded is derived at the resolve() boundary. */
 type InternalResolveResult = Omit<ResolveResult, "isGuarded">;
+
+/** True when `path` is `dir` itself or sits under it (both absolute, lexical). */
+function pathWithin(dir: string, path: string): boolean {
+  const rel = relative(dir, path);
+  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+}
+
+/** True when `dir` is `home` itself or one of its ancestors. */
+function atOrAbove(dir: string, home: string): boolean {
+  return dir === home || pathWithin(dir, home);
+}
 
 interface OnDiskRule {
   tool: string;
@@ -98,7 +110,19 @@ export class PermissionEngine {
 
   /** Read-only file tools eligible for the "grant whole folder" broadening offer. */
   private static readonly READ_TOOLS = new Set([
-    "read_file", "list_files", "glob",
+    "read_file", "list_files", "glob", "search",
+  ]);
+
+  /**
+   * READ_TOOLS whose subject IS a directory rather than a file inside one, so
+   * the directory itself is the base of their scope. Narrower than
+   * DIR_SCOPED_TOOLS above, which is a security set (the tools the
+   * out-of-workspace containment check applies to) — list_files reads like a
+   * file tool there (its builtin allow is the "./**" glob) but its subject is
+   * a directory here.
+   */
+  private static readonly DIRECTORY_SUBJECT_TOOLS = new Set([
+    "search", "glob", "list_files",
   ]);
 
   /**
@@ -307,7 +331,10 @@ export class PermissionEngine {
     const isInside = rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
     if (isInside) return undefined;
 
-    return { tool: toolName, kind: "any", pattern: "", action: "ask", origin: "builtin-guarded" };
+    // The `externalRead` tag is what lets a human's approval of this call
+    // broaden to the enclosing project (buildPathRule) instead of being
+    // narrowed back to the one directory — see narrowToExact.
+    return { tool: toolName, kind: "any", pattern: "", action: "ask", origin: "builtin-guarded", externalRead: true };
   }
 
   /**
@@ -513,6 +540,17 @@ export class PermissionEngine {
       return { action: tier, winningRule: bestTierRule, wasUnresolved: false };
     }
 
+    // A secret-adjacent guard is not out-specified by a *broad* grant. "Read
+    // anything in this project" does not answer "may the agent read this
+    // project's .env", so a guarded ask yields to an exact allow for that path
+    // and to nothing wider. Specificity alone can't express this: a tree glob
+    // long enough to name a project outscores a short guard pattern such as
+    // "**/.env*".
+    const guarded = tierMatches.filter((r) => r.origin === "builtin-guarded");
+    if (guarded.length > 0 && !allowMatches.some((r) => r.kind === "exact")) {
+      return { action: tier, winningRule: this.highestSpecificity(guarded)!, wasUnresolved: false };
+    }
+
     const maxTierSpecificity = Math.max(...tierMatches.map(specificity));
     const bestAllow = this.highestSpecificity(allowMatches);
     const bestAllowSpecificity = bestAllow ? specificity(bestAllow) : -Infinity;
@@ -529,14 +567,21 @@ export class PermissionEngine {
   }
 
   /**
-   * Builds the narrowest possible allow rule for a specific call — an exact
-   * match on its canonical path or literal subject text. Used by the UI layer
-   * when the user approves a call for session/always and no winningRule already
-   * exists to approve (e.g. the call fell through to defaultMode with zero
-   * matching rules), so approval never defaults to something broader than what
-   * was actually asked.
+   * The allow rule an approval of this call stores. Narrowest-first: an exact
+   * match on the canonical path or literal subject text, broadened only where
+   * the plan says a grant may be (see buildPathRule — an external read covers
+   * its enclosing project, a write does not). Used by the UI layer for
+   * session/always, and to show the scope the prompt is actually storing.
+   *
+   * `exactOnly` builds the un-broadened rule instead, for a call whose winner
+   * is a builtin guarded/destructive match: those approvals are narrowed to the
+   * exact subject (narrowToExact), so this is the rule that will be stored.
    */
-  buildDefaultRule(toolName: string, args?: Record<string, unknown>): PermissionRule {
+  buildDefaultRule(
+    toolName: string,
+    args?: Record<string, unknown>,
+    opts?: { exactOnly?: boolean },
+  ): PermissionRule {
     const a = args ?? {};
     if (toolName === "run_bash" || toolName === "run_bash_background") {
       const command = String(a.command ?? "");
@@ -598,30 +643,83 @@ export class PermissionEngine {
     // Normalize the path the same way relativizeSubject does, so the stored
     // rule matches future calls regardless of how the LLM spells the path.
     const normalized = this.normalizePath(rawPath);
-    return this.buildPathRule(toolName, normalized);
+    return this.buildPathRule(toolName, normalized, opts?.exactOnly === true);
+  }
+
+  /**
+   * The directory an external read approval should cover: the enclosing
+   * project root — the nearest ancestor carrying a `.git` entry — or the
+   * start directory itself when there is none.
+   *
+   * One prompt per subfolder is what this replaces: the previous scope for an
+   * external read was the literal approved directory (search/glob) or one
+   * level of it (read_file/list_files), so exploring a sibling repository
+   * meant a prompt for every folder the agent walked into (onramp session
+   * 2026-10-10T1117-ecdc: the same project asked five times).
+   *
+   * Bounded on purpose. The walk stops at the user's home directory and never
+   * returns it, an ancestor of it, or the filesystem root — so the grant is a
+   * project, never "your home directory". Returns undefined for those starts,
+   * and callers then keep their previous, narrower scope.
+   */
+  private externalReadRoot(startDir: string): string | undefined {
+    const lexical = resolve(startDir);
+    const realHome = this.realpathNearestAncestor(homedir());
+    const realStart = this.realpathNearestAncestor(lexical);
+    // $HOME itself, an ancestor of it, or "/" is not a project — refuse rather
+    // than widen. A path *under* home is the normal case.
+    if (realStart === "/" || atOrAbove(realStart, realHome)) return undefined;
+
+    // The walk runs on the realpath (only it can see a symlinked parent), but
+    // the result is reported in the caller's spelling: subjects are matched
+    // lexically (normalizePath resolves "./x" without touching the filesystem),
+    // so a pattern in realpath form — /private/etc against a caller's /etc —
+    // would never match the call it was built from.
+    let root = lexical;
+    for (let dir = realStart; dir !== "/" && !atOrAbove(dir, realHome); dir = dirname(dir)) {
+      if (existsSync(join(dir, ".git"))) return root;
+      root = dirname(root);
+    }
+    // No repository above the start: the start directory is the project.
+    return lexical;
   }
 
   /**
    * Builds an allow rule for a file path. Broadens to a directory-scope glob
    * so one approval covers related files, not just the exact path the LLM
    * happened to spell:
-   *   - External read paths   → parent-directory glob (one level)
+   *   - External read paths   → the enclosing project's tree (root/**)
    *   - External write paths  → exact match (a write approval never broadens)
    *   - Internal directories   → recursive glob (./dir/**)
    *   - Internal files         → exact match
    */
-  private buildPathRule(toolName: string, normalized: string): PermissionRule {
-    // External path (doesn't start with "./") → parent directory non-recursive glob
+  private buildPathRule(toolName: string, normalized: string, exactOnly = false): PermissionRule {
+    // A builtin guarded/destructive prompt stores the exact subject and
+    // nothing wider (narrowToExact) — so the rule built for it must be the
+    // exact subject too. Broadening first and narrowing the pattern afterwards
+    // leaves an "exact" rule whose pattern is a glob string, which matches no
+    // real path: pressing "always" on a .env prompt then grants nothing.
+    if (exactOnly) {
+      return { tool: toolName, kind: "exact", pattern: normalized, action: "allow", origin: "config" };
+    }
+    // External path (doesn't start with "./"): a read grant covers the sibling
+    // project it lives in, a write grant stays exact.
     if (!normalized.startsWith("./")) {
       if (PermissionEngine.WRITE_TOOLS.has(toolName)) {
         return { tool: toolName, kind: "exact", pattern: normalized, action: "allow", origin: "config" };
       }
-      // search/glob's subject IS the directory itself (not a file within
-      // it), so the parent-directory glob below would grant the wrong
-      // scope — the directory's siblings, not its own contents. An exact
-      // match on the normalized dir path matches a future search/glob call
-      // on that same directory (the subject search/glob resolve to is the
-      // dir path itself, not something under it).
+      if (PermissionEngine.READ_TOOLS.has(toolName)) {
+        // The subject is the directory itself for a dir-subject tool, the
+        // containing directory for a file — the same base externalTreeRule
+        // uses, resolved up to the enclosing project.
+        const startDir = PermissionEngine.DIRECTORY_SUBJECT_TOOLS.has(toolName) ? normalized : dirname(normalized);
+        const root = this.externalReadRoot(startDir);
+        if (root) {
+          return { tool: toolName, kind: "glob", pattern: join(root, "**"), action: "allow", origin: "config" };
+        }
+      }
+      // No bounded project root (a file straight in $HOME, say): the previous,
+      // narrower scopes stand — exact for search/glob, one level for the rest.
       if (PermissionEngine.DIR_SCOPED_TOOLS.has(toolName)) {
         return { tool: toolName, kind: "exact", pattern: normalized, action: "allow", origin: "config" };
       }
@@ -725,6 +823,10 @@ export class PermissionEngine {
     if (normalized.startsWith("./")) return undefined;
 
     const base = isDirScoped ? normalized : dirname(normalized);
+    // When buildPathRule already grants this project's whole tree — the normal
+    // case for a read outside the workspace — the offer would ask the user to
+    // widen to the scope the approval is about to cover anyway.
+    if (this.externalReadRoot(base) !== undefined) return undefined;
     return { tool: toolName, kind: "glob", pattern: join(base, "**"), action: "allow", origin: "config" };
   }
 
@@ -746,7 +848,9 @@ export class PermissionEngine {
     }
     if (this.isInvalidApprovalRule(rule)) return;
     const narrowed = matchedBuiltin ? this.narrowToExact(rule, matchedBuiltin) : rule;
-    this.sessionRules.push({ ...narrowed, origin: "session" });
+    for (const stored of this.withCompanion({ ...narrowed, origin: "session" })) {
+      this.sessionRules.push(stored);
+    }
   }
 
   /**
@@ -771,9 +875,20 @@ export class PermissionEngine {
       }
       return;
     }
-    const configRule: PermissionRule = { ...narrowed, origin: "config" };
-    this.configRules.push(configRule);
+    for (const rule of this.withCompanion({ ...narrowed, origin: "config" })) {
+      this.configRules.push(rule);
+    }
     this.persist();
+  }
+
+  /**
+   * The rule(s) an approval stores: the grant itself, plus the base-directory
+   * companion a recursive grant needs (treeBaseRule) so both paths — session
+   * and always — store the same shape.
+   */
+  private withCompanion(rule: PermissionRule): PermissionRule[] {
+    const base = this.treeBaseRule(rule);
+    return base ? [rule, base] : [rule];
   }
 
   /**
@@ -784,8 +899,31 @@ export class PermissionEngine {
    * "exact") for builtin-triggered prompts — but kept as defense-in-depth.
    */
   private narrowToExact(rule: PermissionRule, matchedBuiltin: PermissionRule): PermissionRule {
+    // The out-of-workspace read guard is the one guarded rule an approval
+    // broadens: its whole point is "this call is outside the trust boundary,
+    // ask once" — narrowing the answer back to the one directory is what made
+    // exploring a sibling project cost a prompt per folder. Static secret
+    // guards are untouched by this (the tag is set only there).
+    if (matchedBuiltin.externalRead) return rule;
     if (matchedBuiltin.origin !== "builtin-destructive" && matchedBuiltin.origin !== "builtin-guarded") return rule;
     return { ...rule, kind: "exact" };
+  }
+
+  /**
+   * The companion rule a recursive grant needs: `<base>/**` does not match
+   * `<base>` itself — the same asymmetry guarded.ts works around with explicit
+   * "directory-itself variants" — while search/glob/list_files resolve their
+   * subject to exactly that directory. Without it, the very call just approved
+   * (a glob of the sibling project's root) would ask again. External patterns
+   * only: an in-workspace tree grant needs no companion, since reads inside the
+   * workspace are already free.
+   */
+  private treeBaseRule(rule: PermissionRule): PermissionRule | undefined {
+    if (rule.kind !== "glob" || !rule.pattern.endsWith("/**")) return undefined;
+    if (!PermissionEngine.READ_TOOLS.has(rule.tool)) return undefined;
+    if (rule.pattern.startsWith("./")) return undefined;
+    const base = rule.pattern.slice(0, -3);
+    return base === "" || base === "/" ? undefined : { ...rule, kind: "exact", pattern: base };
   }
 
   private persist(): void {

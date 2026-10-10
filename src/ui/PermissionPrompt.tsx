@@ -1,5 +1,6 @@
 import React from "react";
 import { Box, Text } from "ink";
+import { basename } from "node:path";
 import type { PermissionRule } from "../permissions/index.js";
 import type { Capability, CapabilityPlan } from "../permissions/capabilities.js";
 import type { BashEnvelope } from "../permissions/session-grant.js";
@@ -165,15 +166,32 @@ function explainHint(explain?: PermissionRequest["explain"]): string {
   return explain ? "" : " · Ctrl+E explain";
 }
 
+/**
+ * The project an external read approval covers, named for the option labels —
+ * the basename of the tree the grant stores — or undefined when this ask
+ * stores no such grant. `defaultRule` is the rule an approval stores, so its
+ * shape is what the labels can honestly promise.
+ */
+function externalReadScope(request: PermissionRequest): string | undefined {
+  const rule = request.defaultRule;
+  if (!rule || rule.kind !== "glob" || !rule.pattern.endsWith("/**")) return undefined;
+  if (rule.pattern.startsWith("./")) return undefined;
+  if (!READ_TOOLS.has(request.toolName)) return undefined;
+  const base = rule.pattern.slice(0, -3);
+  return base ? basename(base) : undefined;
+}
+
 /** Human-readable scope line shown above the risk label when a broader pattern
- *  is being approved (e.g. a directory glob rather than an exact file). */
-function scopeLine(request: PermissionRequest): string | null {
+ *  is being approved (e.g. a directory glob rather than an exact file) —
+ *  including the full path of an external project, since the option labels
+ *  only have room for its name. */
+export function scopeLine(request: PermissionRequest): string | null {
   const rule = request.defaultRule;
   if (!rule || rule.kind !== "glob") return null;
 
   if (!rule.pattern.startsWith("./")) {
-    // External path → parent directory
-    const dir = rule.pattern.replace(/\/\*$/, "");
+    // External path → the enclosing project's tree
+    const dir = rule.pattern.replace(/\/\*\*?$/, "");
     const home = process.env.HOME;
     const display = home ? dir.replace(home, "~") : dir;
     return `Access external directory ${display}`;
@@ -208,7 +226,17 @@ export function permissionOptions(request: PermissionRequest): { decision: Permi
   if (request.allowPersistentApproval === false) {
     return [OPTIONS[0], OPTIONS[3]];
   }
-  return OPTIONS;
+  // An external read approval covers the whole enclosing project, so the
+  // session/always labels name it instead of saying "for this session" about a
+  // scope the user would read as one directory.
+  const scope = externalReadScope(request);
+  if (!scope) return OPTIONS;
+  return [
+    OPTIONS[0],
+    { decision: "session", label: `Yes, read anything in ${scope} for this session` },
+    { decision: "always", label: `Yes, and always allow reading ${scope}` },
+    OPTIONS[3],
+  ];
 }
 
 /** Home directory, or null — `process.env.HOME` is absent in some environments. */

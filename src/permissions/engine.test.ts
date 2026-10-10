@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { existsSync, readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { projectSettingsPath } from "../config/paths.js";
 import { homedir, tmpdir } from "node:os";
 import { PermissionEngine, type PermissionRule } from "./engine.js";
@@ -516,15 +516,86 @@ describe("PermissionEngine.resolve", () => {
     });
   });
 
+  describe("external read scope: one prompt per project", () => {
+    it("the default rule covers the whole enclosing project", () => {
+      engine.approveForSession(engine.buildDefaultRule("read_file", { path: "/data/notes/a.md" }));
+      expect(engine.resolve("read_file", { path: "/data/notes/b.md" }).action).toBe("allow");
+      expect(engine.resolve("read_file", { path: "/data/notes/dxf-viewer/sessions.md" }).action).toBe("allow");
+    });
+
+    it("does not cover a sibling project", () => {
+      engine.approveForSession(engine.buildDefaultRule("read_file", { path: "/data/notes/a.md" }));
+      expect(engine.resolve("read_file", { path: "/data/other/a.md" }).action).toBe("ask");
+    });
+
+    it("covers the project root itself for a dir-subject tool", () => {
+      // `<base>/**` does not match `<base>`, but search/glob/list_files resolve
+      // their subject to exactly that directory — the approval stores the base
+      // as a companion rule so the call just approved does not ask again.
+      engine.approveForSession(
+        engine.buildDefaultRule("search", { dir: "/data/notes" }),
+        rule({ tool: "search", kind: "any", origin: "builtin-guarded", action: "ask", externalRead: true }),
+      );
+      expect(engine.resolve("search", { dir: "/data/notes" }).action).toBe("allow");
+      expect(engine.resolve("search", { dir: "/data/notes/deep" }).action).toBe("allow");
+    });
+
+    it("is per tool: a search grant is not a glob or read_file grant", () => {
+      engine.approveForSession(
+        engine.buildDefaultRule("search", { dir: "/data/notes" }),
+        rule({ tool: "search", kind: "any", origin: "builtin-guarded", action: "ask", externalRead: true }),
+      );
+      expect(engine.resolve("glob", { cwd: "/data/notes" }).action).toBe("ask");
+      expect(engine.resolve("read_file", { path: "/data/notes/a.md" }).action).toBe("ask");
+    });
+
+    it("an external write approval is still exact", () => {
+      const built = engine.buildDefaultRule("edit", { path: "/data/notes/a.md" });
+      expect(built).toEqual({ tool: "edit", kind: "exact", pattern: "/data/notes/a.md", action: "allow", origin: "config" });
+      engine.approveForSession(built);
+      expect(engine.resolve("edit", { path: "/data/notes/b.md" }).action).toBe("ask");
+    });
+
+    it("a read grant does not cover a secret-adjacent file in the project", () => {
+      engine.approveForSession(engine.buildDefaultRule("read_file", { path: "/data/notes/a.md" }));
+      const secret = engine.resolve("read_file", { path: "/data/notes/.env" });
+      expect(secret.action).toBe("ask");
+      expect(secret.isGuarded).toBe(true);
+      // The guard yields to an exact grant for that path, so the user can
+      // still approve one secret file deliberately — and only that file. The
+      // exactOnly form is what the UI builds for a guarded winner (App.tsx
+      // narrowsApproval); narrowToExact is the engine-side safety net.
+      engine.approveForSession(
+        engine.buildDefaultRule("read_file", { path: "/data/notes/.env" }, { exactOnly: true }),
+        secret.winningRule,
+      );
+      expect(engine.resolve("read_file", { path: "/data/notes/.env" }).action).toBe("allow");
+      // A grant for one secret file is not a grant for its neighbours — the
+      // "**/.env*" guard still catches them.
+      expect(engine.resolve("read_file", { path: "/data/notes/.env.local" }).action).toBe("ask");
+    });
+  });
+
   describe("externalTreeRule: offer subfolders for an external read approval", () => {
-    it("returns a recursive tree glob for an external read path", () => {
-      expect(engine.externalTreeRule("read_file", { path: "/data/notes/a.md" })).toEqual({
+    it("returns undefined when the default grant already covers the project", () => {
+      // The default scope for an external read IS the project tree, so the
+      // stage-two offer would ask the user to widen to what they are already
+      // approving.
+      expect(engine.externalTreeRule("read_file", { path: "/data/notes/a.md" })).toBeUndefined();
+      expect(engine.externalTreeRule("glob", { cwd: "/data/notes" })).toBeUndefined();
+    });
+
+    it("still offers it where no bounded project root exists", () => {
+      // A file straight in $HOME has no enclosing project: the default stays
+      // one level, and the offer is the only way to widen it.
+      expect(engine.externalTreeRule("read_file", { path: join(homedir(), "notes.md") })).toEqual({
         tool: "read_file",
         kind: "glob",
-        pattern: "/data/notes/**",
+        pattern: `${homedir()}/**`,
         action: "allow",
         origin: "config",
       });
+      expect(engine.externalTreeRule("glob", { cwd: homedir() })?.pattern).toBe(`${homedir()}/**`);
     });
 
     it("returns undefined for an internal path", () => {
@@ -542,27 +613,129 @@ describe("PermissionEngine.resolve", () => {
       expect(engine.externalTreeRule("read_file")).toBeUndefined();
       expect(engine.externalTreeRule("run_bash", { command: "npm test" })).toBeUndefined();
     });
+  });
 
-    it("uses the subject directory itself as the base for glob (a dir-scoped tool)", () => {
-      expect(engine.externalTreeRule("glob", { cwd: "/data/notes" })?.pattern).toBe("/data/notes/**");
+  describe("externalReadRoot: the enclosing project, bounded", () => {
+    let dir: string;
+
+    beforeEach(() => {
+      dir = mkdtempSync(join(tmpdir(), "nib-external-root-"));
     });
 
-    it("approving the tree rule for the session covers files nested arbitrarily deep", () => {
-      const treeRule = engine.externalTreeRule("read_file", { path: "/data/notes/a.md" })!;
-      engine.approveForSession(treeRule);
-      expect(engine.resolve("read_file", { path: "/data/notes/dxf-viewer/sessions.md" }).action).toBe("allow");
-      expect(engine.resolve("read_file", { path: "/data/notes/a/b/c.md" }).action).toBe("allow");
+    afterEach(() => {
+      rmSync(dir, { recursive: true, force: true });
     });
 
-    it("the tree rule does not cover a sibling directory outside it", () => {
-      engine.approveForSession(engine.externalTreeRule("read_file", { path: "/data/notes/a.md" })!);
-      expect(engine.resolve("read_file", { path: "/data/other/a.md" }).action).toBe("ask");
+    it("walks up to the nearest .git and covers everything under it", () => {
+      const proj = join(dir, "proj");
+      mkdirSync(join(proj, "a", "b"), { recursive: true });
+      mkdirSync(join(proj, ".git"));
+
+      const engine = new PermissionEngine(undefined, "/workspace");
+      engine.approveForSession(engine.buildDefaultRule("search", { dir: join(proj, "a") }), rule({
+        tool: "search", kind: "any", origin: "builtin-guarded", action: "ask", externalRead: true,
+      }));
+
+      expect(engine.resolve("search", { dir: join(proj, "a", "b") }).action).toBe("allow");
+      expect(engine.resolve("search", { dir: proj }).action).toBe("allow");
+      // A project beside it is a different project.
+      const other = join(dir, "other");
+      mkdirSync(other);
+      expect(engine.resolve("search", { dir: other }).action).toBe("ask");
     });
 
-    it("the default rule still covers one directory level only", () => {
-      engine.approveForSession(engine.buildDefaultRule("read_file", { path: "/data/notes/a.md" }));
-      expect(engine.resolve("read_file", { path: "/data/notes/b.md" }).action).toBe("allow");
-      expect(engine.resolve("read_file", { path: "/data/notes/dxf-viewer/sessions.md" }).action).toBe("ask");
+    it("an always approval persists the project's tree, and survives a reload", () => {
+      // The project is beside the workspace, not inside it: a subject inside
+      // the working tree never reaches the external guard at all.
+      const ws = join(dir, "ws");
+      mkdirSync(ws);
+      const proj = join(dir, "proj");
+      mkdirSync(join(proj, "a"), { recursive: true });
+      mkdirSync(join(proj, ".git"));
+      const engine = new PermissionEngine(undefined, ws);
+
+      const args = { dir: join(proj, "a") };
+      const initial = engine.resolve("search", args);
+      expect(initial.action).toBe("ask");
+      // The dynamic out-of-workspace guard, tagged so the approval broadens.
+      expect(initial.winningRule?.externalRead).toBe(true);
+
+      engine.approveAlways(engine.buildDefaultRule("search", args), initial.winningRule);
+      expect(engine.resolve("search", { dir: join(proj, "a", "b") }).action).toBe("allow");
+
+      const settings = JSON.parse(readFileSync(projectSettingsPath(ws), "utf-8"));
+      expect(settings.permissions.rules).toContainEqual(
+        expect.objectContaining({ tool: "search", pattern: `${proj}/**`, action: "allow" }),
+      );
+      // Not narrowed back to the exact directory it was approved from.
+      expect(settings.permissions.rules).not.toContainEqual(
+        expect.objectContaining({ pattern: join(proj, "a") }),
+      );
+
+      // Reloaded with the loader's own kind inference (a "*" means glob).
+      const reloaded = new PermissionEngine(
+        {
+          rules: settings.permissions.rules.map((r: { tool: string; pattern: string; action: string }) => ({
+            ...r, kind: r.pattern.includes("*") ? "glob" : "exact", origin: "config",
+          })),
+        },
+        ws,
+      );
+      expect(reloaded.resolve("search", { dir: join(proj, "a", "b") }).action).toBe("allow");
+      const other = join(dir, "other");
+      mkdirSync(other);
+      expect(reloaded.resolve("search", { dir: other }).action).toBe("ask");
+    });
+
+    it("with no .git, covers the start directory only — its parent still asks", () => {
+      const notes = join(dir, "notes");
+      mkdirSync(join(notes, "a", "b"), { recursive: true });
+
+      const engine = new PermissionEngine(undefined, "/workspace");
+      engine.approveForSession(engine.buildDefaultRule("search", { dir: join(notes, "a") }), rule({
+        tool: "search", kind: "any", origin: "builtin-guarded", action: "ask", externalRead: true,
+      }));
+
+      expect(engine.resolve("search", { dir: join(notes, "a", "b") }).action).toBe("allow");
+      expect(engine.resolve("search", { dir: notes }).action).toBe("ask");
+      expect(engine.resolve("search", { dir: dir }).action).toBe("ask");
+    });
+  });
+
+  describe("external read: the $HOME and filesystem-root limits (fake HOME)", () => {
+    let fakeHome: string;
+    let realHome: string | undefined;
+
+    beforeEach(() => {
+      realHome = process.env.HOME;
+      fakeHome = mkdtempSync(join(tmpdir(), "nib-fake-home-"));
+      process.env.HOME = fakeHome;
+    });
+
+    afterEach(() => {
+      if (realHome === undefined) delete process.env.HOME;
+      else process.env.HOME = realHome;
+      rmSync(fakeHome, { recursive: true, force: true });
+    });
+
+    it("a file directly in $HOME keeps the one-level scope, never a tree of home", () => {
+      const built = engine.buildDefaultRule("read_file", { path: join(fakeHome, "notes.md") });
+      expect(built.pattern).toBe(`${fakeHome}/*`);
+    });
+
+    it("$HOME itself, an ancestor of it, and / never yield a tree rule", () => {
+      for (const path of [fakeHome, dirname(fakeHome), "/"]) {
+        const built = engine.buildDefaultRule("read_file", { path: join(path === "/" ? "/" : path, "x.md") });
+        expect(built.pattern, path).not.toContain("**");
+      }
+    });
+
+    it("a directory under $HOME that is a project still gets its own tree", () => {
+      const proj = join(fakeHome, "proj");
+      mkdirSync(join(proj, "a"), { recursive: true });
+      mkdirSync(join(proj, ".git"));
+      const built = engine.buildDefaultRule("read_file", { path: join(proj, "a", "x.md") });
+      expect(built.pattern).toBe(`${proj}/**`);
     });
   });
 
@@ -687,10 +860,27 @@ describe("PermissionEngine.resolve", () => {
       expect(engine.resolve("run_bash_background", { command: "rm -rf ~/projects" }).action).toBe("deny");
     });
 
-    it("broadens an external path to a parent-directory glob", () => {
+    it("broadens an external read path to its enclosing project's tree", () => {
+      // /etc has no .git, so the start directory is its own project. The
+      // pattern keeps the caller's spelling: subjects are matched lexically, so
+      // a realpath'd /private/etc would never match the call it came from.
       const built = engine.buildDefaultRule("read_file", { path: "/etc/nginx/nginx.conf" });
       expect(built.kind).toBe("glob");
-      expect(built.pattern).toBe("/etc/nginx/*");
+      expect(built.pattern).toBe("/etc/nginx/**");
+    });
+
+    it("exactOnly stores the subject itself, with no broadening at all", () => {
+      // What a guarded/destructive prompt approves: the engine narrows those to
+      // the exact subject, so the rule built for the prompt must already be
+      // that — a broadened pattern narrowed afterwards matches no real path.
+      expect(engine.buildDefaultRule("read_file", { path: "/etc/nginx/.env" }, { exactOnly: true })).toEqual({
+        tool: "read_file",
+        kind: "exact",
+        pattern: "/etc/nginx/.env",
+        action: "allow",
+        origin: "config",
+      });
+      expect(engine.buildDefaultRule("search", { dir: "/etc/nginx" }, { exactOnly: true }).pattern).toBe("/etc/nginx");
     });
 
     it("broadens an existing internal directory to a recursive glob", () => {
@@ -1355,14 +1545,14 @@ describe("BUG FIX: external search/glob approval takes effect", () => {
     const engine = new PermissionEngine(undefined, workDir);
     const built = engine.buildDefaultRule("search", { dir: "/abs/external/dir" });
     expect(built.pattern).not.toBe("");
-    expect(built.pattern).toBe("/abs/external/dir");
+    expect(built.pattern).toBe("/abs/external/dir/**");
   });
 
   it("buildDefaultRule('glob', {cwd}) produces a non-empty pattern for an external dir", () => {
     const engine = new PermissionEngine(undefined, workDir);
     const built = engine.buildDefaultRule("glob", { cwd: "/abs/external/dir" });
     expect(built.pattern).not.toBe("");
-    expect(built.pattern).toBe("/abs/external/dir");
+    expect(built.pattern).toBe("/abs/external/dir/**");
   });
 
   it("session-approving an external search allows a subsequent identical search", () => {

@@ -20,6 +20,15 @@ export interface PermissionRule {
   origin: RuleOrigin;
   /** Approval-only hint; never serialized. Unsafe approvals stay session-only. */
   persistable?: boolean;
+  /**
+   * Set on the dynamic out-of-workspace guard (PermissionEngine.
+   * outOfWorkspaceGuardedRule) and nowhere else: it marks this "ask" as the
+   * one guarded rule a human's approval may broaden. Static secret guards
+   * (.env, ~/.ssh, credentials*) keep their exact narrowing, so approving a
+   * read in a sibling project cannot blanket-approve a secret category
+   * (see engine.ts narrowToExact). Always built, never serialized.
+   */
+  externalRead?: boolean;
 }
 
 export interface PermissionSubject {

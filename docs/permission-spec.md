@@ -70,6 +70,24 @@ session/always" rule on the hostname for the same reason.
 session-only: choosing "always allow" stores the approved query narrowly and
 does not disable the guarded first-use prompt for other queries.
 
+**External reads scope to the enclosing project.** Approving a read outside the
+working directory stores a grant for the project that path lives in — the
+nearest ancestor carrying a `.git` entry, or the start directory itself when
+there is none — as a `glob` on `<project>/**` (`buildPathRule`). The
+`search`/`glob`/`list_files` grant also stores the project root itself, because
+`<base>/**` does not match `<base>` and those tools resolve their subject to
+exactly that directory (`withCompanion`). This is what makes exploring a
+sibling repository one prompt instead of one per folder; the scope is bounded
+by construction — a start at `$HOME`, an ancestor of it, or `/` falls back to
+the previous narrower scopes (exact for search/glob, one directory level for
+the rest). Per tool, as always: a `search` grant is not a `read_file` grant.
+Writes are unaffected — an external write approval is still exact.
+
+The guard that fires for those calls is the dynamic out-of-workspace rule
+(§7), tagged `externalRead: true` on the rule so `narrowToExact` leaves the
+grant broad. That tag exists on this one rule and nowhere else: static secret
+guards still narrow approvals to the exact subject.
+
 ## 5. `run_bash` command normalization
 
 Raw `command` text is never compared directly:
@@ -137,7 +155,10 @@ it from the raw command text.
    **unless** some `allow` rule is *strictly* more specific than every rule
    in that tier, in which case the allow rule wins — a deliberate, narrow
    escape hatch for a user overriding their own earlier broad deny/ask with
-   a later narrower allow.
+   a later narrower allow. Two cases are excluded from that escape hatch: an
+   `any`-kind tier rule (below), and a **guarded** ask, which only an *exact*
+   allow out-specifies — a broad grant never answers a secret-path prompt
+   (§7).
 4. Ties (identical specificity, same tier) break by rule order (global
    config → project config → session, in append order within each).
 
@@ -230,6 +251,16 @@ sees this," not "this never runs": a guarded match is exempt from the
 posture bypass exactly like an unresolved bash segment, so it can never be
 silently auto-allowed regardless of posture or `defaultMode: allowAll`.
 
+**A guarded ask is not out-specified by a broad grant.** Step 3's
+narrow-allow escape hatch (§5) requires an **exact** allow for that path:
+a `glob` or `prefix` allow — an ordinary folder grant, or the project tree an
+external read approval stores — leaves the guarded ask in force
+(`resolveTier`). Without this, "read anything in this project" would silently
+answer "may I read this project's `.env`", because a tree glob long enough to
+name a project outscores a short guard pattern like `**/.env*`. Approving that
+one secret path deliberately still works: the exact rule it stores out-
+specifies the guard.
+
 **Known gap**: the secret-path guard only covers the file-reading tools. A
 `run_bash` command that reads a secret file as an argument (`cat .env`) is
 not covered — see security-spec.md.
@@ -251,7 +282,16 @@ Both session and always approval of a destructive- or guarded-origin match
 force the approved rule to `kind: "exact"` on the literal subject text —
 approving one instance never broadens to the whole category. Enforced at
 the engine API level (`PermissionEngine.narrowToExact`), not left to UI
-discipline.
+discipline. The one exception is the dynamic out-of-workspace read guard,
+tagged `externalRead` — its approval is meant to broaden to the enclosing
+project (§4).
+
+The rule *passed in* for such an approval must already be exact, so callers
+build it with `buildDefaultRule(tool, args, { exactOnly: true })` (App.tsx
+does this whenever the winning rule narrows). Broadening first and narrowing
+the pattern afterwards leaves an "exact" rule whose pattern is a glob string,
+which matches no real path — pressing "always" on a `.env` prompt would then
+grant nothing, forever re-prompting.
 
 ## 9. Posture (Shift+Tab)
 

@@ -1328,6 +1328,35 @@ describe("runAgent", () => {
       expect(onRetry).not.toHaveBeenCalled();
     });
 
+    it("keeps a batch's tool results contiguous when a non-last call fails", async () => {
+      // Two calls in one assistant message; the first fails. The reflection
+      // note used to be pushed between the two results, and the provider SDK
+      // then rejects the next request with "Tool result is missing for tool
+      // call call_2" — the turn died right after the tool call.
+      const { provider, receivedMessages } = makeProvider([
+        [
+          { type: "tool_call_start", id: "call_1", name: "run_bash" },
+          { type: "tool_call_delta", id: "call_1", arguments: '{"command":"false"}' },
+          { type: "tool_call_start", id: "call_2", name: "run_bash" },
+          { type: "tool_call_delta", id: "call_2", arguments: '{"command":"true"}' },
+          { type: "done", finishReason: "tool_calls" },
+        ],
+        textTurn("recovered"),
+      ]);
+
+      await runAgent("run both", {
+        provider,
+        tools: [],
+        executeTool: async (tc) => (tc.id === "call_1" ? { content: "", error: "Exit code: 1" } : { content: "ok" }),
+        errorReflector: new ErrorReflector(),
+      });
+
+      const sent = receivedMessages[1];
+      const at = sent.findIndex((m) => m.role === "assistant" && m.toolCalls?.length === 2);
+      expect(sent.slice(at + 1, at + 3).map((m) => (m.role === "tool" ? m.toolCallId : m.role))).toEqual(["call_1", "call_2"]);
+      expect(sent[at + 3]).toMatchObject({ role: "user", content: expect.stringContaining("Try a different approach") });
+    });
+
     describe("F5 delta: run_bash failure → retry loop engagement", () => {
       const bashFailTurn = (id: string, command: string): TurnScript => [
         { type: "tool_call_start", id, name: "run_bash" },

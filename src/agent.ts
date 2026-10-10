@@ -894,6 +894,13 @@ export async function runAgent(
       return { denied: false, exec };
     };
 
+    // Non-tool notes a call raises (reflection, warnings, image attachments)
+    // are held here and appended once the whole batch has its results. Pushed
+    // straight into `messages`, a note for a non-last call landed between the
+    // batch's tool results, and the provider SDK rejected the next request with
+    // "Tool result is missing for tool call …" — the turn died mid-task.
+    const batchNotes: Message[] = [];
+
     // Shared per-call body for both execution paths — exactly the
     // sequential loop's behavior, including permission audit rows, askUser,
     // failedStreak escalation, repeat-call detection, and the reflection
@@ -948,7 +955,7 @@ export async function runAgent(
       if (tc.name === "ask_user_question" && !result.error) {
         const qKey = JSON.stringify(tc.arguments);
         if (askedQuestions.has(qKey)) {
-          messages.push({
+          batchNotes.push({
             role: "system",
             content: "You already asked this exact question and received an answer. Do not ask it again.",
           });
@@ -958,7 +965,7 @@ export async function runAgent(
 
       if (result.error && errorReflector?.canRetry(tc.name, result.error)) {
         appendFreshToolResult(tc.id, tc.name, historyContent);
-        messages.push({
+        batchNotes.push({
           role: "user",
           content: errorReflector.formatError(tc.name, result.error, result.content),
         });
@@ -978,9 +985,10 @@ export async function runAgent(
       // a tool that produces one hands it back via `attachments` and the loop
       // re-emits them here as a synthetic user message — the only message role
       // that carries image bytes (see providers/aisdk.ts mapMessages). Emitted
-      // after the tool result so the image follows the call that produced it.
+      // after the batch's tool results (via batchNotes), so the image follows
+      // the call that produced it without splitting the batch.
       if (!result.error && result.attachments?.length) {
-        messages.push({
+        batchNotes.push({
           role: "user",
           content: `Image attached by ${tc.name}.`,
           imageUrls: result.attachments,
@@ -995,7 +1003,7 @@ export async function runAgent(
       }
 
       if (result.error && callCount >= 3 && !warnedRepeat) {
-        messages.push({
+        batchNotes.push({
           role: "system",
           content: `You have called ${tc.name} with identical arguments ${callCount} times. All calls failed with: ${result.error}. Change your approach.`,
         });
@@ -1007,7 +1015,7 @@ export async function runAgent(
       }
 
       if (failedStreak >= 5 && !warnedFailures) {
-        messages.push({
+        batchNotes.push({
           role: "system",
           content: "5 consecutive tool calls have failed. Review your approach before continuing.",
         });
@@ -1080,6 +1088,8 @@ export async function runAgent(
         if (ended) break;
       }
     }
+
+    messages.push(...batchNotes);
 
     // Per-call hooks fired inside processCall; the batch-level event fires
     // once the batch is done (hooks-spec.md §2).

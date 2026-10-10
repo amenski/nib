@@ -80,7 +80,7 @@ import type { AskQuestionItem } from "../tools/types.js";
 import { setAskQuestion } from "../tools/index.js";
 import { ModelsDropdown, EffortSelector } from "./components/index.js";
 import ThemeDropdown, { persistThemeChoice } from "./components/ThemeDropdown/index.js";
-import { USER_ECHO_TAG, COMMAND_ECHO_TAG, BULLET_TAG, ANSI_CLEAR_SCREEN } from "./constants.js";
+import { USER_ECHO_TAG, COMMAND_ECHO_TAG, BULLET_TAG, ANSWER_CONT_TAG, ANSI_CLEAR_SCREEN } from "./constants.js";
 import { seedPromptHistory } from "./core/prompt-history.js";
 import { loadPromptHistory, appendPromptHistory } from "./core/history-store.js";
 import { summarizeReasoning } from "./core/reasoning-echo.js";
@@ -993,7 +993,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
       // separate element beside <MarkdownText>.
       let atBlockStart = true;
       const withBullet = (line: string): string =>
-        atBlockStart && line !== "" ? BULLET_TAG + line : line;
+        line === "" ? line : atBlockStart ? BULLET_TAG + line : ANSWER_CONT_TAG + line;
 
       // Feed for the streaming state machine (core/stream-blocks.ts): the
       // chunk stream is buffered into complete lines, held while a span or
@@ -1178,7 +1178,12 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           depth: number;
         }) => {
           flushReasoning();
-          flushStream();
+          // No flushStream() here. A background sub-agent's progress arrives
+          // whenever it likes — often while the main agent is mid-sentence — and
+          // flushing committed the half-streamed line, so the rest of the
+          // sentence started a new row ("…It froze" / " before my rm."). The
+          // progress line is scheduled to the transcript above the live active
+          // line; the main paragraph commits whole at its own boundary.
           let line: string | null;
           if (event.kind === "start") {
             subagentStart = Date.now();

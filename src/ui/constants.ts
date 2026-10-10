@@ -28,6 +28,16 @@ export const COMMAND_ECHO_TAG = "\u0001\u0004";
 export const BULLET_TAG = "\u0001\u0005";
 
 /**
+ * Sentinel prefixed onto every LATER committed line of an assistant answer
+ * block (the first carries BULLET_TAG). OutputArea renders it behind a
+ * two-column gutter so the block's paragraphs, and their wrapped rows, line up
+ * under the text after "● " instead of starting at column 0 — which made a
+ * wrapped sentence look like a stray line break. Not BEL (\u0007): raw display
+ * mode writes committed lines, tags included, straight to the terminal.
+ */
+export const ANSWER_CONT_TAG = "\u0001\u0002";
+
+/**
  * Sentinel prefixed onto a committed line to mark it "verbatim" -- never run
  * through OutputArea's progressive-disclosure summarizer (needsSummary /
  * summarizeText). Progressive disclosure is right for a huge tool result

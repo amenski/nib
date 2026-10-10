@@ -997,3 +997,37 @@ describe("a max_turns stop", () => {
     expect(ctx.mutable.conversationHistory).toEqual(history);
   });
 });
+
+describe("a streamed sentence stays one line", () => {
+  // Raw model text with no newline must never be committed in two pieces —
+  // the user saw "…It froze" / " before my rm." split onto separate rows.
+  async function streamWith(between?: (cb: any) => void): Promise<string> {
+    const ctx = makeCtx(async (_input: string, cb: any) => {
+      cb.onText("The block froze early. It froze");
+      between?.(cb);
+      cb.onText(" before my rm. Definitive check:");
+      cb.onToolStart("run_bash", { command: "ls" });
+      cb.onToolResult("run_bash", { content: "ok" });
+      return { stopReason: "done", messages: [], newMessages: [] };
+    });
+    const inst = render(<App ctx={ctx} />);
+    mounted.push(inst);
+    inst.stdin.write("go");
+    await flush();
+    inst.stdin.write("\r");
+    await flush();
+    await flush();
+    return stripAnsi(inst.lastFrame() ?? "");
+  }
+
+  it("commits a chunk boundary inside a sentence as one line", async () => {
+    expect(await streamWith()).toContain("It froze before my rm.");
+  });
+
+  it("is not split by a background sub-agent's progress mid-sentence", async () => {
+    const frame = await streamWith((cb) =>
+      cb.onSubagentProgress?.({ kind: "tool", name: "run_bash", args: { command: "pwd" }, depth: 1 }),
+    );
+    expect(frame).toContain("It froze before my rm.");
+  });
+});

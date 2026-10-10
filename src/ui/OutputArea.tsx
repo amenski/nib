@@ -15,7 +15,7 @@ import { Box, Static, Text } from "ink";
 import MarkdownText from "./MarkdownText.js";
 import { useTheme } from "./contexts.js";
 import { ansi256 } from "./theme.js";
-import { USER_ECHO_TAG, COMMAND_ECHO_TAG, BULLET_TAG, VERBATIM_TAG } from "./constants.js";
+import { USER_ECHO_TAG, COMMAND_ECHO_TAG, BULLET_TAG, ANSWER_CONT_TAG, VERBATIM_TAG } from "./constants.js";
 import { formatEcho } from "./core/echo-format.js";
 import type { TabDefinition } from "./types.js";
 
@@ -104,12 +104,15 @@ const OutputLine = memo(function OutputLine({
   // beside <MarkdownText> rather than being string-prepended to the markdown
   // — prepending "● " would defeat block-level markdown regexes anchored at
   // the start of the line (e.g. a heading or list item).
+  // A later line of the same answer block (ANSWER_CONT_TAG) gets the same
+  // two-column gutter, blank instead of "●", so the block reads as one column.
   const hasBullet = untagged.startsWith(BULLET_TAG);
-  const body = hasBullet ? untagged.slice(BULLET_TAG.length) : untagged;
+  const isCont = !hasBullet && untagged.startsWith(ANSWER_CONT_TAG);
+  const body = hasBullet ? untagged.slice(BULLET_TAG.length) : isCont ? untagged.slice(ANSWER_CONT_TAG.length) : untagged;
   const summary = useMemo(() => (verbatim ? null : needsSummary(body)), [body, verbatim]);
 
-  if (hasBullet) {
-    const bulletEl = <Text color={theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined}>{"● "}</Text>;
+  if (hasBullet || isCont) {
+    const bulletEl = <Text color={theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined}>{hasBullet ? "● " : "  "}</Text>;
     if (summary) {
       return (
         <Box flexDirection="column">

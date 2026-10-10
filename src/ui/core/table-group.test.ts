@@ -86,3 +86,12 @@ describe("splitCommittable", () => {
     expect(commit).toEqual(queue);
   });
 });
+
+describe("answer-block tags (2026-10-10)", () => {
+  it("groups table rows behind BULLET_TAG / ANSWER_CONT_TAG and keeps the first row's tag", async () => {
+    const { BULLET_TAG, ANSWER_CONT_TAG } = await import("../constants.js");
+    const tagged = [BULLET_TAG + TABLE[0], ANSWER_CONT_TAG + TABLE[1], ANSWER_CONT_TAG + TABLE[2]];
+    expect(groupTableLines(tagged)).toEqual([BULLET_TAG + TABLE.join("\n")]);
+    expect(splitCommittable(tagged, false)).toEqual({ commit: [], hold: tagged });
+  });
+});

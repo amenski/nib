@@ -783,8 +783,15 @@ export async function runAgent(
                 );
               }
             }
+            // sandbox.autoAllowBash: an eligible call under a live envelope is
+            // granted without a prompt — it takes the same "envelope-grant"
+            // path a user's session choice would.
             const allowed =
-              reused !== null ? true : await options.askUser(tc.name, tc.arguments, envelope);
+              reused !== null
+                ? true
+                : envelope?.autoGrant
+                  ? ("envelope-grant" as const)
+                  : await options.askUser(tc.name, tc.arguments, envelope);
             if (allowed === "posture") {
               // Auto-approve posture upgraded the ask to allow without
               // showing a prompt — recorded distinctly from an interactive
@@ -825,7 +832,9 @@ export async function runAgent(
                 });
                 await audit(
                   "allow-by-envelope-grant",
-                  "session grant granted for the current sandbox envelope",
+                  envelope.autoGrant
+                    ? "session grant auto-granted for the current sandbox envelope (sandbox.autoAllowBash)"
+                    : "session grant granted for the current sandbox envelope",
                   "granted",
                 );
               }

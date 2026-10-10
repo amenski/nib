@@ -51,6 +51,14 @@ export interface BashEnvelope {
   writeRoots: string[];
   /** Nib's private scratch directory, when the launch has one. Display only. */
   sessionTempDir?: string;
+  /**
+   * `sandbox.autoAllowBash` (global-only, default on): grant this envelope on
+   * the first eligible ask without prompting, as Claude Code and Codex do for
+   * sandboxed commands. Eligibility is unchanged — guarded, denied, background
+   * and config-authored asks still prompt — and the grant is still recorded,
+   * so reuse, invalidation and revoke-on-containment-failure all apply.
+   */
+  autoGrant?: boolean;
 }
 
 export interface BashEnvelopeGrant extends BashEnvelope {

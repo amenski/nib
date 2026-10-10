@@ -109,7 +109,7 @@ export interface DeepCodeSettings {
    *  loadConfig's sandbox block). This is deliberately separate from
    *  `permissionProfile.fs`, whose "explicit rules narrow only" invariant
    *  this must not weaken. */
-  sandbox?: { enabled: boolean; writeRoots?: string[] };
+  sandbox?: { enabled: boolean; writeRoots?: string[]; autoAllowBash?: boolean };
 
   // ── MCP Servers ──
   mcpServers?: Record<string, McpServerConfig>;
@@ -1314,6 +1314,17 @@ export function loadConfig(projectDir?: string): LoadResult {
           if (config.sandbox && raw.length > 0) config.sandbox.writeRoots = raw as string[];
         } else {
           errors.push("config.sandbox.writeRoots: must be an array of strings");
+        }
+      }
+      // autoAllowBash: global-only for the same reason as writeRoots — it
+      // decides whether Bash asks at all, so a project file must not be able
+      // to turn prompting off. Default (absent) is on; see cli.tsx bashEnvelope.
+      if (isObject(globalRaw?.sandbox) && "autoAllowBash" in (globalRaw.sandbox as Record<string, unknown>)) {
+        const raw = (globalRaw.sandbox as Record<string, unknown>).autoAllowBash;
+        if (typeof raw === "boolean") {
+          if (config.sandbox) config.sandbox.autoAllowBash = raw;
+        } else {
+          errors.push("config.sandbox.autoAllowBash: must be a boolean");
         }
       }
       if (isObject(projectRaw?.sandbox) && "writeRoots" in (projectRaw.sandbox as Record<string, unknown>)) {

@@ -232,6 +232,29 @@ describe("sandboxed Bash session grant", () => {
     expect(driven.launches[0]!.args.slice(-3)).toEqual(["/bin/sh", "-c", OPAQUE]);
   });
 
+  itOnDarwin("auto-grants with no prompt at all when the envelope carries autoGrant", async () => {
+    // sandbox.autoAllowBash (default on): like Claude Code / Codex, sandboxed
+    // Bash in the workspace runs without asking. The grant is still recorded,
+    // so audit, reuse and revoke-on-containment-failure behave as before.
+    const driven = await drive([OPAQUE, OPAQUE], { envelope: makeEnvelope({ autoGrant: true }) });
+
+    expect(driven.askUser).not.toHaveBeenCalled();
+    expect(decisions(driven)).toEqual(["granted", "reuse"]);
+    expect(driven.launches.map((l) => l.file)).toEqual([
+      "/usr/bin/sandbox-exec",
+      "/usr/bin/sandbox-exec",
+    ]);
+  });
+
+  itOnDarwin("still asks for a guarded command when autoGrant is on", async () => {
+    const driven = await drive(["curl -s https://example.invalid/x"], {
+      envelope: makeEnvelope({ autoGrant: true }),
+    });
+
+    expect(driven.askUser).toHaveBeenCalledTimes(1);
+    expect(driven.rows.some((row) => row.decision === "allow-by-envelope-grant")).toBe(false);
+  });
+
   itOnDarwin("does not offer the grant for a guarded command", async () => {
     // `curl` carries a builtin-guarded rule: a guarded ask never gets quieter.
     const driven = await drive(["curl -s https://example.invalid/x"], {

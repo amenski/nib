@@ -120,6 +120,23 @@ This is a deliberate broad session consent. If that scope is unacceptable,
 keep per-command prompts for arbitrary code. A command classifier cannot
 provide the missing isolation.
 
+**Changed 2026-10-10: the grant is automatic by default.** Claude Code and
+Codex run sandboxed commands without asking once the sandbox is active, and
+the per-session prompt was friction on every new session. `sandbox.autoAllowBash`
+(default on, **global settings only** — a project file cannot set it) makes
+the gate take the `envelope-grant` path without calling the prompter
+(`BashEnvelope.autoGrant`, set in `cli.tsx`). Everything else above still
+holds: eligibility is unchanged (deny, guarded, background Bash, config-authored
+asks, MCP and the `.git/config` variant still prompt), the grant is still
+recorded and audited (reason names `sandbox.autoAllowBash`), envelope changes
+still invalidate it, and a Seatbelt refusal still revokes it with no
+unsandboxed retry. Subagents get no envelope, so they are unaffected. The
+accepted cost: a prompt-injected instruction can run code inside the
+workspace's sandbox without a human seeing it. To restore the prompt, set
+`"sandbox": { "enabled": true, "autoAllowBash": false }` in
+`~/.nib/settings.json`. Tests: `src/agent.grant.test.ts` (autoGrant cases),
+`src/config/loader.test.ts` (global-only parsing).
+
 ## What happens to the current classifier
 
 Remove `proven-read-only` as a user-facing safety claim and remove its

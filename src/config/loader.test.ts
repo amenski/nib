@@ -901,6 +901,37 @@ describe("loadConfig sandbox (permission-profile.md §8, phase (e))", () => {
   });
 });
 
+describe("loadConfig sandbox.autoAllowBash (global-only)", () => {
+  function writeGlobalSettings(obj: unknown): void {
+    writeFileSync(join(homeDir, "settings.json"), JSON.stringify(obj), "utf-8");
+  }
+
+  it("is unset by default (cli.tsx treats unset as on)", () => {
+    const { config } = loadConfig(projectDir);
+    expect(config.sandbox?.autoAllowBash).toBeUndefined();
+  });
+
+  it("honors autoAllowBash: false from the global settings file", () => {
+    writeGlobalSettings({ sandbox: { enabled: true, autoAllowBash: false } });
+    const { config, errors } = loadConfig(projectDir);
+    expect(errors).toEqual([]);
+    expect(config.sandbox?.autoAllowBash).toBe(false);
+  });
+
+  it("ignores autoAllowBash in a PROJECT file — a project cannot change whether Bash asks", () => {
+    writeGlobalSettings({ sandbox: { enabled: true, autoAllowBash: false } });
+    writeProjectSettings({ sandbox: { enabled: true, autoAllowBash: true } });
+    const { config } = loadConfig(projectDir);
+    expect(config.sandbox?.autoAllowBash).toBe(false);
+  });
+
+  it("rejects a non-boolean autoAllowBash", () => {
+    writeGlobalSettings({ sandbox: { enabled: true, autoAllowBash: "yes" } });
+    const { errors } = loadConfig(projectDir);
+    expect(errors.some((e) => e.includes("config.sandbox.autoAllowBash: must be a boolean"))).toBe(true);
+  });
+});
+
 describe("loadConfig sandbox.writeRoots (global-only)", () => {
   function writeGlobalSettings(obj: unknown): void {
     writeFileSync(join(homeDir, "settings.json"), JSON.stringify(obj), "utf-8");

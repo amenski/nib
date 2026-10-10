@@ -620,6 +620,10 @@ async function main() {
           // limits that apply, not the roots that were requested.
           writeRoots: profileWriteSet(bashSandboxLevel, process.cwd(), writeRoots, sessionTemp.path),
           sessionTempDir: sessionTemp.path,
+          // Default on, like Claude Code / Codex: eligible sandboxed Bash runs
+          // without a prompt. `sandbox.autoAllowBash: false` (global settings
+          // only) restores the per-session ask.
+          autoGrant: configResult.config.sandbox?.autoAllowBash !== false,
         }
       : undefined;
 

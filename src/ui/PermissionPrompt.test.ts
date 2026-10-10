@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildPermissionRequest, capabilitySummary, grantConsentLines, permissionOptions, riskLevel, type PermissionRequest } from "./PermissionPrompt.js";
+import { buildPermissionRequest, capabilitySummary, grantConsentLines, permissionHeader, permissionOptions, riskLevel, type PermissionRequest } from "./PermissionPrompt.js";
 import type { PermissionRule } from "../permissions/index.js";
 import type { BashEnvelope } from "../permissions/session-grant.js";
 import { extractCapabilityPlan, unknownCapabilityPlan } from "../permissions/capabilities.js";
@@ -148,5 +148,17 @@ describe("capabilitySummary", () => {
     const expected = "Unknown effects — full risk; this tool's capabilities could not be determined.";
     expect(capabilitySummary(unknownCapabilityPlan("apply_patch", "patch is missing"))).toEqual([expected]);
     expect(capabilitySummary()).toEqual([expected]);
+  });
+});
+
+describe("permissionHeader", () => {
+  it("names the background task when a sub-agent asked", () => {
+    expect(permissionHeader({ ...req("run_bash"), origin: { subagent: "count the test files" } })).toBe(
+      "△ Permission required · background task: count the test files",
+    );
+  });
+
+  it("is unchanged for a root-run ask", () => {
+    expect(permissionHeader(req("run_bash"))).toBe("△ Permission required");
   });
 });

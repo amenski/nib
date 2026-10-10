@@ -80,12 +80,24 @@ decisions. The old `autoApprove` Bash bypass should be consolidated with this
 grant rather than leaving two ways to bypass prompts; no existing setting
 should silently acquire the broader grant.
 
-**Subagent decision:** the grant belongs to the interactive root agent and is
-not inherited by subagents. Subagents may still use existing first-party read
-tools and exact permissions; an opaque Bash call without its own interactive
-approval stays denied in headless execution. This avoids silently extending
-one broad consent to autonomous delegated work. Revisit only with an explicit
-subagent consent design.
+**Subagent decision (revised 2026-10-10):** an *automatic* grant is inherited
+by subagents; a human's is not. Subagents run under the parent's session id, so
+they reuse or create the same grant — but only when that grant came from
+`sandbox.autoAllowBash`, which is a standing setting, not an answer to a
+specific prompt. A human who granted a session envelope consented to the calls
+they were shown; extending that to autonomous delegated work is what this rule
+forbids, so `cli.tsx` hands a sub-run the envelope only when it is
+auto-granted (`OrchestratorOptions.getBashEnvelope`), and with the setting off
+a subagent keeps the original behavior: no envelope, no grant, ask per call.
+The grant's own limits are unchanged for subagents (an ordinary or
+syntactically unresolved foreground `run_bash` only — an explicit deny, a
+guarded ask, `run_bash_background`, a persistent rule, an MCP call, or the
+`.git/config` variant still needs its own decision), and a subagent's ask now
+names its task: `△ Permission required · background task: <description>`.
+
+Subagents may also use existing first-party read tools and exact permissions;
+an opaque Bash call without its own interactive approval stays denied in
+headless execution.
 
 ## Consent text and limits
 
@@ -130,11 +142,15 @@ holds: eligibility is unchanged (deny, guarded, background Bash, config-authored
 asks, MCP and the `.git/config` variant still prompt), the grant is still
 recorded and audited (reason names `sandbox.autoAllowBash`), envelope changes
 still invalidate it, and a Seatbelt refusal still revokes it with no
-unsandboxed retry. Subagents get no envelope, so they are unaffected. The
+unsandboxed retry. Subagents inherit this auto-grant (and only this one — see
+the subagent decision above), so a delegated run's Bash is as quiet as the main
+agent's; a live sub-run is visible as `⧗ N background tasks · /tasks` in the
+status bar. The
 accepted cost: a prompt-injected instruction can run code inside the
 workspace's sandbox without a human seeing it. To restore the prompt, set
 `"sandbox": { "enabled": true, "autoAllowBash": false }` in
 `~/.nib/settings.json`. Tests: `src/agent.grant.test.ts` (autoGrant cases),
+`src/orchestrator/orchestrator.test.ts` (sub-agent grant + ask label),
 `src/config/loader.test.ts` (global-only parsing).
 
 ## What happens to the current classifier

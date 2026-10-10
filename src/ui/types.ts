@@ -271,7 +271,7 @@ export interface AgentBridgeCallbacks {
    * third argument (docs/permission-ux-redesign.md) — the agent records that
    * one and stores the grant, so the UI writes no row for it.
    */
-  askUser: (toolName: string, args: Record<string, unknown>, envelope?: BashEnvelope) => Promise<boolean | "posture" | "envelope-grant">;
+  askUser: (toolName: string, args: Record<string, unknown>, envelope?: BashEnvelope, origin?: { subagent: string }) => Promise<boolean | "posture" | "envelope-grant">;
   /** Mid-turn steering mailbox: polled once per decision point by the agent
    *  loop; returns the next queued message or null (the queue head is consumed). */
   pollSteeringMessage?: () => string | null;

@@ -275,6 +275,8 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
     /** Canonical, data-only effect declaration shown by the permission prompt. */
     capabilityPlan?: ReturnType<typeof extractCapabilityPlan>;
     workingDir?: string;
+    /** Set when a background sub-agent asked — shown in the prompt header. */
+    origin?: { subagent: string };
     cursor: number;
   } | null>(null);
   // AbortController for an in-flight Ctrl+E explanation stream, so a new
@@ -587,6 +589,13 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
       ]);
     };
     ctx.setSubagentProgress?.((event) => {
+      // The status bar's "N background tasks" segment is derived from the live
+      // registry, but nothing repaints the bar when that registry changes: the
+      // bar is otherwise refreshed by turn events, and a detached sub-run
+      // outlives its turn. Repaint on the two state transitions.
+      if (event.kind === "start" || event.kind === "end") {
+        setStatusLine(ctx.buildStatusBar());
+      }
       if (event.kind === "text") {
         const label = `agent ${event.agent ?? "sub"}`;
         const key = `${label}:${event.depth}`;
@@ -1228,6 +1237,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           toolName: string,
           args: Record<string, unknown>,
           envelope?: BashEnvelope,
+          origin?: { subagent: string },
         ) => {
           if (
             [
@@ -1321,6 +1331,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
               envelope: grantEnvelope,
               capabilityPlan: extractCapabilityPlan(toolName, args, process.cwd()),
               workingDir: process.cwd(),
+              origin,
               cursor: 0,
             });
           });
@@ -1856,6 +1867,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
       workingDir: prompt.workingDir,
       allowPersistentApproval: !prompt.oneTimeOnly,
       envelope: prompt.envelope,
+      origin: prompt.origin,
       explain: prompt.explain,
     };
   }

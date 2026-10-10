@@ -1,6 +1,6 @@
 import type { Provider } from "../providers/types.js";
 import type { Message, ToolCall, ToolDef, ToolOutput } from "../types.js";
-import type { ToolHandler, ToolContext } from "../tools/types.js";
+import type { ToolHandler, ToolContext, ToolExecOptions } from "../tools/types.js";
 import { ToolRegistry } from "../tools/registry.js";
 import { runAgent, type AgentResult } from "../agent.js";
 import { Compactor } from "../compaction/compactor.js";
@@ -58,7 +58,7 @@ export interface OrchestratorOptions {
    * PERMISSION_DENIED on every ask-tier action it attempts, since agent.ts's
    * headless branch (no askUser) denies rather than asks.
    */
-  askUser?: (toolName: string, args: Record<string, unknown>, envelope?: BashEnvelope) => Promise<boolean | "posture" | "envelope-grant">;
+  askUser?: (toolName: string, args: Record<string, unknown>, envelope?: BashEnvelope, origin?: { subagent: string }) => Promise<boolean | "posture" | "envelope-grant">;
   /**
    * Surfaces a sub-agent's tool activity to the parent UI while it runs.
    * Without this the parent renders nothing between the `new_task` header and
@@ -72,6 +72,17 @@ export interface OrchestratorOptions {
    * an in-flight sub-agent instead of leaving it running to completion.
    */
   getSignal?: () => AbortSignal | undefined;
+  /**
+   * Resolved at sub-agent spawn time: the parent turn's sandboxed-Bash
+   * envelope, when sub-agents may use it. Sub-agents already run under the
+   * parent's `sessionId`, so a grant approved for this envelope is the same
+   * grant the parent reuses — but that is only sound for an *automatic* grant
+   * (`sandbox.autoAllowBash`). The wiring in cli.tsx therefore returns the
+   * envelope only when `autoGrant` is set; an envelope a human approved at a
+   * prompt is that user's consent for the call they were shown, never for a
+   * later sub-agent's calls. Left unset in headless runs (no envelope exists).
+   */
+  getBashEnvelope?: () => BashEnvelope | undefined;
   /** Lifecycle hooks dispatcher (docs/hooks-spec.md) — SubagentStart/Stop
    *  fire around each sub-agent run. */
   hooks?: HookRunner;
@@ -97,9 +108,10 @@ export class Orchestrator {
     permissions?: PermissionEngine;
     profile?: ProfileEvaluator;
     getSignal?: () => AbortSignal | undefined;
+    getBashEnvelope?: () => BashEnvelope | undefined;
     hooks?: HookRunner;
   };
-  private askUser?: (toolName: string, args: Record<string, unknown>, envelope?: BashEnvelope) => Promise<boolean | "posture" | "envelope-grant">;
+  private askUser?: (toolName: string, args: Record<string, unknown>, envelope?: BashEnvelope, origin?: { subagent: string }) => Promise<boolean | "posture" | "envelope-grant">;
   private onSubagentProgress?: (event: SubagentProgress) => void;
   private onTaskResult?: (taskId: string, message: string) => void;
 
@@ -129,7 +141,7 @@ export class Orchestrator {
    * must be told about the current turn's bridge rather than holding a stale
    * closure. Headless mode leaves this unset, which auto-denies.
    */
-  setAskUser(askUser: ((toolName: string, args: Record<string, unknown>, envelope?: BashEnvelope) => Promise<boolean | "posture" | "envelope-grant">) | undefined): void {
+  setAskUser(askUser: ((toolName: string, args: Record<string, unknown>, envelope?: BashEnvelope, origin?: { subagent: string }) => Promise<boolean | "posture" | "envelope-grant">) | undefined): void {
     this.askUser = askUser;
   }
 
@@ -237,6 +249,11 @@ export class Orchestrator {
       const description = args.description as string;
       const agentName = args.agent as string | undefined;
 
+      // The one-line label a permission prompt shows for this sub-agent's asks
+      // (AgentOptions.askOrigin): the description's first line, capped so it
+      // stays a header rather than a paragraph.
+      const originLabel = (description.split("\n")[0] ?? "").trim().slice(0, 60);
+
       // An `agent` parameter resolves the sub-run's persona/toolset/model from
       // the definition (feature-plans.md §F4); absent, today's behavior is
       // unchanged (call-provided mode, parent model).
@@ -308,13 +325,17 @@ export class Orchestrator {
       // stays audit-silent, exactly like the parent.
       const subAuditStore = ctx.sessionStore ? subagentAuditStore(ctx.sessionStore) : undefined;
 
-      const subExecuteTool = (call: ToolCall): Promise<ToolOutput> => {
+      const subExecuteTool = (call: ToolCall, exec?: ToolExecOptions): Promise<ToolOutput> => {
         if (call.name === "new_task") {
           return this.createHandler(depth + 1)(call.arguments, { ...ctx, todoStore: subStore, sessionStore: subAuditStore });
         }
         // sessionStore: subAuditStore — only permission/token rows may pass
         // through to the parent session; sub-agent plans stay ephemeral.
-        return this.options.registry.execute(call, { ...ctx, todoStore: subStore, sessionStore: subAuditStore });
+        // `exec` is forwarded unchanged: the Bash handler's `envelopeHash`
+        // check (the launch must match the profile the grant was approved
+        // against) and its containment-failure channel live there, and a
+        // sub-agent call reaches the handler by exactly this route.
+        return this.options.registry.execute(call, { ...ctx, todoStore: subStore, sessionStore: subAuditStore }, exec);
       };
 
       // Async contract (async-subagents.md §1-3): spawn returns immediately and
@@ -354,6 +375,14 @@ export class Orchestrator {
               permissions: this.options.permissions,
               permissionProfile: this.options.profile,
               askUser: this.askUser,
+              // The prompt names the task, so a user can tell a background
+              // sub-agent's ask from the main conversation's. First line only,
+              // capped: a description is a paragraph and the header is one line.
+              askOrigin: originLabel ? { subagent: originLabel } : undefined,
+              // Present only when the parent's grant is automatic — see
+              // OrchestratorOptions.getBashEnvelope for why a human-approved
+              // envelope is never inherited.
+              bashEnvelope: this.options.getBashEnvelope?.(),
               maxTurns: this.options.maxSubTurns,
               mode: subMode,
               // The defined agent's instructions prepend the sub-agent's system

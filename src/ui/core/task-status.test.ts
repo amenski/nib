@@ -11,15 +11,15 @@ const rec = (id: string, status: TaskRecord["status"]): TaskRecord => ({
 });
 
 describe("buildTaskSegments (async-subagents.md §4 — status-line task segment)", () => {
-  it("shows a single running task by id", () => {
+  it("shows a count and points at /tasks for a single running task", () => {
     expect(buildTaskSegments([rec("task-1", "running")])).toEqual([
-      { id: "tasks", text: "● task task-1 running", dimColor: true },
+      { id: "tasks", text: "⧗ 1 background task · /tasks", dimColor: true },
     ]);
   });
 
-  it("collapses several running tasks to a count", () => {
+  it("pluralizes for several running tasks", () => {
     expect(buildTaskSegments([rec("task-1", "running"), rec("task-2", "running")])).toEqual([
-      { id: "tasks", text: "● 2 tasks running", dimColor: true },
+      { id: "tasks", text: "⧗ 2 background tasks · /tasks", dimColor: true },
     ]);
   });
 
@@ -32,7 +32,7 @@ describe("buildTaskSegments (async-subagents.md §4 — status-line task segment
 
   it("still shows the segment when other tasks are terminal", () => {
     expect(buildTaskSegments([rec("task-1", "done"), rec("task-2", "running")])).toEqual([
-      { id: "tasks", text: "● task task-2 running", dimColor: true },
+      { id: "tasks", text: "⧗ 1 background task · /tasks", dimColor: true },
     ]);
   });
 });

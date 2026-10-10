@@ -435,6 +435,10 @@ async function main() {
     // (permission-profile.md §6) — same object threading as today.
     profile: permissionProfile,
     getSignal: () => shared.abort.signal,
+    // Only an automatic grant is inherited (see OrchestratorOptions.getBashEnvelope):
+    // it came from the setting, not from a human answering a prompt for one call.
+    // Read lazily — `bashEnvelope` is built further down this function.
+    getBashEnvelope: () => (bashEnvelope?.autoGrant ? bashEnvelope : undefined),
     hooks,
   });
   orchestrator.register(registry);

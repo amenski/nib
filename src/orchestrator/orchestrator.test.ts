@@ -9,6 +9,7 @@ import { ToolRegistry } from "../tools/registry.js";
 import { ModeLoader } from "../modes/loader.js";
 import { AgentLoader } from "../agents/index.js";
 import { PermissionEngine } from "../permissions/index.js";
+import { bashEnvelopeGrants, type BashEnvelope } from "../permissions/session-grant.js";
 import { SessionStore, slugify } from "../sessions/store.js";
 import { executeTool as realExecuteTool, registry as realRegistry } from "../tools/index.js";
 import { todoStore } from "../tools/todo.js";
@@ -286,11 +287,14 @@ describe("Orchestrator", () => {
 
     // The sub-agent's ask-tier run_bash surfaced to the CURRENT bridge, not the
     // stale one captured at registration. The third argument is the sandbox
-    // envelope a session grant could cover: `undefined` here is the structural
-    // subagent exclusion — an orchestrator sub-run is never handed one, so it
-    // can neither reuse nor create a grant (docs/permission-ux-redesign.md).
+    // envelope a session grant could cover — `undefined` here because no
+    // `getBashEnvelope` was wired, and a sub-run is handed one only when it is
+    // an automatic grant (docs/permission-ux-redesign.md). The fourth names the
+    // asking background task, so the prompt can say whose call it is.
     await deliveries.delivered();
-    expect(currentAsk).toHaveBeenCalledWith("run_bash", { command: "npm test" }, undefined);
+    expect(currentAsk).toHaveBeenCalledWith("run_bash", { command: "npm test" }, undefined, {
+      subagent: "run tests",
+    });
     expect(staleAsk).not.toHaveBeenCalled();
   });
 
@@ -846,5 +850,128 @@ describe("Orchestrator", () => {
       expect(history[0].source).toBe("subagent");
       expect(parentJsonlTypes().filter((t) => t === "message")).toHaveLength(2);
     });
+  });
+});
+
+describe("sub-agent Bash grant and ask origin (2026-10-10)", () => {
+  /** The session a sub-run inherits from `ctx` — the key the grant store uses. */
+  const SESSION = ctx.sessionId!;
+
+  const envelope = (autoGrant: boolean): BashEnvelope => ({
+    profileHash: "sub-agent-grant-profile",
+    level: "workspace-write",
+    trustedRoot: "/workspace",
+    writeRoots: [],
+    sessionTempDir: "/tmp/nib-sub-scratch",
+    autoGrant,
+  });
+
+  // The grant store is a module singleton keyed by session id: without this, a
+  // grant written by one test would be reused by the next and hide its prompt.
+  beforeEach(() => bashEnvelopeGrants.revoke(SESSION, "run_bash"));
+  afterEach(() => bashEnvelopeGrants.revoke(SESSION, "run_bash"));
+
+  /** Delegates one sub-agent that runs `command` through Bash, and reports what it did. */
+  async function delegate(
+    command: string,
+    wire: { getBashEnvelope?: () => BashEnvelope | undefined },
+    description = "review it",
+  ): Promise<{ runBash: ReturnType<typeof vi.fn>; askUser: ReturnType<typeof vi.fn> }> {
+    const { registry, runBash } = makeRegistry();
+    const { provider } = makeProvider([
+      toolCallTurn("c1", "run_bash", JSON.stringify({ command })),
+      textTurn("sub-agent done"),
+    ]);
+    const deliveries = trackDeliveries();
+    // The scripted prompter answers yes, so an ask is observable as a call and
+    // the command still runs.
+    const askUser = vi.fn(async () => true);
+    const orchestrator = new Orchestrator({
+      provider: () => provider,
+      registry,
+      modeLoader: new ModeLoader(),
+      permissions: new PermissionEngine(undefined, "/workspace"),
+      askUser,
+      onTaskResult: deliveries.onResult,
+      ...wire,
+    });
+    orchestrator.register(registry);
+
+    await registry.execute({ id: "t1", name: "new_task", arguments: { description, mode: "code" } }, ctx);
+    await deliveries.delivered();
+    return { runBash, askUser };
+  }
+
+  it("runs an ordinary command through the parent's automatic grant without prompting", async () => {
+    const { runBash, askUser } = await delegate("git status", { getBashEnvelope: () => envelope(true) });
+
+    expect(runBash).toHaveBeenCalled();
+    expect(askUser).not.toHaveBeenCalled();
+  });
+
+  it("still asks when the envelope in hand is not an automatic grant", async () => {
+    // A human answered a prompt for one call; that consent never covered a
+    // sub-agent's later calls, so the envelope is not inherited (cli.tsx only
+    // hands over an `autoGrant` one — this is the gate's own guarantee).
+    const { runBash, askUser } = await delegate("git status", { getBashEnvelope: () => envelope(false) });
+
+    expect(askUser).toHaveBeenCalled();
+    expect(runBash).toHaveBeenCalled();
+  });
+
+  it("still asks when no envelope is offered at all", async () => {
+    const { askUser } = await delegate("git status", {});
+
+    expect(askUser).toHaveBeenCalled();
+  });
+
+  it("names the asking background task to the prompter", async () => {
+    const { askUser } = await delegate("git status", {});
+
+    expect(askUser).toHaveBeenCalled();
+    expect(askUser.mock.calls[0][3]).toEqual({ subagent: "review it" });
+  });
+
+  it("labels with the description's first line, capped at 60 characters", async () => {
+    const { askUser } = await delegate("git status", {}, `${"x".repeat(80)}\nand a second line`);
+
+    expect(askUser.mock.calls[0][3]).toEqual({ subagent: "x".repeat(60) });
+  });
+});
+
+describe("sub-agent guarded Bash (2026-10-10)", () => {
+  it("still asks for a guarded command under an automatic grant", async () => {
+    // A guarded command is never covered by an envelope grant: the grant is
+    // consent for contained ordinary commands, and the guarded tier exists
+    // precisely because the command's effects are not knowable.
+    const { registry } = makeRegistry();
+    const { provider } = makeProvider([
+      toolCallTurn("c1", "run_bash", JSON.stringify({ command: "curl https://example.com" })),
+      textTurn("sub-agent done"),
+    ]);
+    const deliveries = trackDeliveries();
+    const askUser = vi.fn(async () => true);
+    const orchestrator = new Orchestrator({
+      provider: () => provider,
+      registry,
+      modeLoader: new ModeLoader(),
+      permissions: new PermissionEngine(undefined, "/workspace"),
+      askUser,
+      onTaskResult: deliveries.onResult,
+      getBashEnvelope: () => ({
+        profileHash: "guarded-grant-profile",
+        level: "workspace-write",
+        trustedRoot: "/workspace",
+        writeRoots: [],
+        sessionTempDir: "/tmp/nib-sub-scratch",
+        autoGrant: true,
+      }),
+    });
+    orchestrator.register(registry);
+
+    await registry.execute({ id: "t1", name: "new_task", arguments: { description: "fetch it", mode: "code" } }, ctx);
+    await deliveries.delivered();
+
+    expect(askUser).toHaveBeenCalled();
   });
 });

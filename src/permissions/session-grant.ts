@@ -147,8 +147,10 @@ export function isEligibleForGrant(input: {
   const { envelope } = input;
   // No OS boundary to bind the consent to (non-macOS, no level, `unrestricted`).
   if (envelope === undefined || !isSandboxedLevel(envelope.level)) return false;
-  // Foreground Bash only: background jobs never consume a grant, subagent runs
-  // are never handed an envelope, and no other tool has a containment story.
+  // Foreground Bash only: background jobs never consume a grant, and no other
+  // tool has a containment story. A sub-agent run is handed an envelope only
+  // when it is an automatic one (`OrchestratorOptions.getBashEnvelope`), so
+  // `envelope` here is always the containment the launch really runs under.
   if (input.toolName !== "run_bash") return false;
   if (input.isGuarded) return false;
   // A rule the user wrote — in config, or accepted from an earlier prompt — is a

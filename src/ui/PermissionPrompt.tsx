@@ -29,6 +29,12 @@ export interface PermissionRequest {
    * so the profile's limits are what the prompt must state.
    */
   envelope?: BashEnvelope;
+  /**
+   * Present when the call comes from a background sub-agent, named by its
+   * task description. Shown in the header so a prompt that appears while the
+   * user is doing something else says who is asking.
+   */
+  origin?: { subagent: string };
   /** AI explanation (Ctrl+E) — informational only, never gates the decision. */
   explain?: { status: "loading" | "done" | "error"; text: string };
 }
@@ -40,6 +46,15 @@ interface Props {
   cursor: number;
   onChoose: (decision: PermissionDecision) => void;
   onCancel: () => void;
+}
+
+/**
+ * The prompt's header line. Pure and exported so the sub-agent label is
+ * testable without rendering: an ask that arrived while the user was elsewhere
+ * must say who is asking, and a root-run ask must read exactly as before.
+ */
+export function permissionHeader(request: PermissionRequest): string {
+  return `△ Permission required${request.origin ? ` · background task: ${request.origin.subagent}` : ""}`;
 }
 
 export interface RiskInfo {
@@ -267,7 +282,7 @@ export default function PermissionPrompt({ request, cursor, onChoose, onCancel }
   return (
     <Box flexDirection="column" borderStyle="round" borderColor={warningColor} paddingX={1} marginY={1}>
       <Box marginBottom={1}>
-        <Text color={warningColor} bold>△ Permission required</Text>
+        <Text color={warningColor} bold>{permissionHeader(request)}</Text>
       </Box>
       <Text bold>{request.toolName}</Text>
       <Text>{request.command}</Text>

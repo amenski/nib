@@ -189,13 +189,21 @@ export interface AgentOptions {
    * "envelope-grant" when the user chose the session-wide sandboxed-Bash grant
    * that `envelope` describes (docs/permission-ux-redesign.md). `envelope` is
    * passed only on an ask the grant may satisfy — a prompter that never offers
-   * the option simply ignores it.
+   * the option simply ignores it. `origin` is present when the ask comes from a
+   * sub-agent rather than the root run, so the prompt can say whose call it is.
    */
   askUser?: (
     toolName: string,
     args: Record<string, unknown>,
     envelope?: BashEnvelope,
+    origin?: { subagent: string },
   ) => Promise<boolean | "posture" | "envelope-grant">;
+  /**
+   * Set by the orchestrator on a sub-agent's run: the label the permission
+   * prompt shows so a user can tell a background task's ask from the main
+   * conversation's. Undefined for the root run.
+   */
+  askOrigin?: { subagent: string };
   /**
    * The containment this run's foreground Bash calls would execute under —
    * present exactly when this session has an active sandbox envelope
@@ -794,12 +802,20 @@ export async function runAgent(
             // sandbox.autoAllowBash: an eligible call under a live envelope is
             // granted without a prompt — it takes the same "envelope-grant"
             // path a user's session choice would.
-            const allowed =
-              reused !== null
-                ? true
-                : envelope?.autoGrant
-                  ? ("envelope-grant" as const)
-                  : await options.askUser(tc.name, tc.arguments, envelope);
+            //
+            // The sub-agent label is passed only when it exists: a root run's
+            // call keeps the three-argument shape every prompter was written
+            // against.
+            let allowed: boolean | "posture" | "envelope-grant";
+            if (reused !== null) {
+              allowed = true;
+            } else if (envelope?.autoGrant) {
+              allowed = "envelope-grant";
+            } else if (options.askOrigin !== undefined) {
+              allowed = await options.askUser(tc.name, tc.arguments, envelope, options.askOrigin);
+            } else {
+              allowed = await options.askUser(tc.name, tc.arguments, envelope);
+            }
             if (allowed === "posture") {
               // Auto-approve posture upgraded the ask to allow without
               // showing a prompt — recorded distinctly from an interactive

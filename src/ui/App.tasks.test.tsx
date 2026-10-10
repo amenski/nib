@@ -125,7 +125,7 @@ afterEach(() => {
 });
 
 describe("async sub-run status segment (async-subagents.md §4)", () => {
-  it("shows `● task <id> running` while the run works and clears once its result arrives", async () => {
+  it("shows the background-task count while the run works and clears once its result arrives", async () => {
     const h = makeHarness();
     let release!: (v: TaskOutcome) => void;
     let turns = 0;
@@ -157,7 +157,7 @@ describe("async sub-run status segment (async-subagents.md §4)", () => {
 
     // The spawning turn ended; the sub-run still works — the bar reports it.
     let frame = stripAnsi(inst.lastFrame() ?? "");
-    expect(frame).toContain("● task task-1 running");
+    expect(frame).toContain("⧗ 1 background task · /tasks");
 
     // The run completes; its result wakes a turn and the segment clears.
     release({ status: "done", summary: "finished" });

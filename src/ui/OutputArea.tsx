@@ -115,7 +115,14 @@ const OutputLine = memo(function OutputLine({
   const summary = useMemo(() => (verbatim ? null : needsSummary(body)), [body, verbatim]);
 
   if (hasBullet || isCont) {
-    const bulletEl = <Text color={theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined}>{hasBullet ? "● " : "  "}</Text>;
+    // Fixed two columns that never shrink: as a plain flex child, a long
+    // paragraph beside it made the layout shrink the gutter to one column, so
+    // some paragraphs (and wrapped list rows) sat at column 1 and others at 2.
+    const bulletEl = (
+      <Box width={2} flexShrink={0}>
+        <Text color={theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined}>{hasBullet ? "● " : "  "}</Text>
+      </Box>
+    );
     if (summary) {
       return (
         <Box flexDirection="column">

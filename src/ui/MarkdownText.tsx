@@ -26,6 +26,7 @@ import {
 } from "./core/markdown-inline.js";
 import SyntaxHighlighter, { detectLanguage, type Language } from "./SyntaxHighlighter.js";
 import MarkdownTable, { isTableBlock } from "./MarkdownTable.js";
+import { wrapSegments } from "./core/wrap-segments.js";
 import type { SyntaxColors } from "./theme.js";
 
 // Re-exported so callers/tests importing from "./MarkdownText.js" keep working
@@ -79,9 +80,31 @@ function SegmentText({ segment, theme }: { segment: Segment; theme?: MarkdownTex
   return <Text {...props}>{segment.text}</Text>;
 }
 
-/** Render a parsed inline string (which may contain embedded newlines). */
-function Inline({ text, theme }: { text: string; theme?: MarkdownTextProps["theme"] }) {
+/**
+ * Render a parsed inline string (which may contain embedded newlines). With a
+ * `width`, the segments are pre-wrapped (core/wrap-segments.ts) so Ink never
+ * re-wraps them — its own wrap leaves a stray leading space on rows that break
+ * beside a styled span. `indent` pads continuation rows (a list item's text
+ * hangs under its first word, not under the marker).
+ */
+function Inline({ text, theme, width, indent = 0 }: { text: string; theme?: MarkdownTextProps["theme"]; width?: number; indent?: number }) {
   const segs = parseInline(text);
+  if (width !== undefined && width > indent) {
+    const rows = wrapSegments(segs, width - indent);
+    const pad = " ".repeat(indent);
+    return (
+      <>
+        {rows.map((row, r) => (
+          <Fragment key={r}>
+            {r > 0 && `\n${pad}`}
+            {row.map((seg, i) => (
+              <SegmentText key={i} segment={seg} theme={theme} />
+            ))}
+          </Fragment>
+        ))}
+      </>
+    );
+  }
   return (
     <>
       {segs.map((seg, i) => (
@@ -255,7 +278,7 @@ function MarkdownText({ children, theme, width }: MarkdownTextProps) {
           <Fragment key={i}>
             {i > 0 && "\n"}
             <Text>{dim(" •")}</Text>{" "}
-            <Inline text={item.content} theme={theme} />
+            <Inline text={item.content} theme={theme} width={width} indent={3} />
           </Fragment>
         ))}
       </Text>
@@ -273,7 +296,7 @@ function MarkdownText({ children, theme, width }: MarkdownTextProps) {
           <Fragment key={i}>
             {i > 0 && "\n"}
             <Text>{dim(` ${item.marker}.`)}</Text>{" "}
-            <Inline text={item.content} theme={theme} />
+            <Inline text={item.content} theme={theme} width={width} indent={item.marker.length + 3} />
           </Fragment>
         ))}
       </Text>
@@ -283,7 +306,7 @@ function MarkdownText({ children, theme, width }: MarkdownTextProps) {
   // ── Default: inline formatting only ──
   return (
     <Text>
-      <Inline text={text} theme={theme} />
+      <Inline text={text} theme={theme} width={width} />
     </Text>
   );
 }

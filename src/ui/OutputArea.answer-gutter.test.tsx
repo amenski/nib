@@ -57,3 +57,17 @@ describe("table width inside the gutter (2026-10-10)", () => {
     expect(visualLength(top)).toBe(80);
   });
 });
+
+describe("gutter never shrinks (2026-10-10)", () => {
+  it("keeps every row of a long paragraph that opens with bold at column 2", async () => {
+    const { ANSWER_CONT_TAG: CONT } = await import("./constants.js");
+    // Reproduced from a real reply: this shape rendered at column 1 because the
+    // two-space gutter shrank beside the long paragraph.
+    const para =
+      "**The two real defects I found and fixed:** the flow test was mid-rewrite and broken (undefined `withApp`, a hardcoded `390` assert, and `/api/content/26` mocked as `[]` — so \"Open editor\" crashed the editor while the URL assert still passed, a false green). And the helpers registered cleanup *after* `chromium.launch()`.";
+    const { lastFrame } = render(<OutputArea lines={[CONT + para]} activeLine="" busy={false} staticEpoch={0} />);
+    const rows = stripAnsi(lastFrame() ?? "").split("\n").filter((r) => r.trim() !== "");
+    expect(rows.length).toBeGreaterThan(2);
+    for (const r of rows) expect(r).toMatch(/^ {2}\S/);
+  });
+});

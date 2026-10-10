@@ -1,6 +1,6 @@
 # Theme Spec
 
-**Status:** current · verified 2026-08-13 · covers `src/ui/theme.ts`, `src/ui/components/ThemeDropdown/` · open items: none
+**Status:** current · verified 2026-10-10 · covers `src/ui/theme.ts`, `src/ui/components/ThemeDropdown/` · open items: 2 fixed-hex islands (§5)
 
 ## 1. Overview
 
@@ -61,6 +61,18 @@ blue/indigo `▌` on light. Status colors (error/warn/success) source from
 `theme.error/warning/success`. `NO_COLOR` / non-TTY still degrades to no
 color via the `colorEnabled` gate.
 
+**Faint text swept the same way (2026-10-10).** Ink's `dimColor` prop emits
+SGR 2, which most terminals render as a barely-readable grey, and several side
+screens also used fixed ANSI named colors (`"cyan"`, `"yellow"`, …). Every
+`src/ui` component now renders those through theme slots: `dimColor` →
+`color={ansi256(theme.theme.textDim)}`, raw `\x1b[2m` → `theme.fg(textDim, …)`,
+named colors → their slot (cyan→`secondary`, yellow→`warning`, red→`error`,
+green→`success`, magenta→`accent`), including `<Box borderColor>` values.
+Deliberately unchanged: the no-theme fallbacks in `MarkdownText`/`MarkdownTable`
+(they render without a theme on purpose) and the non-component producers
+(`ui/types.ts` `StatusSegment.dimColor`, `ui/core/task-status.ts`), whose data
+field is still resolved through the themed renderer in `StatusBar`.
+
 ## 4. Rejected approaches
 
 - PR #132's thinner 13-token `ThemeTokens` model and `resolver.ts` —
@@ -69,10 +81,17 @@ color via the `colorEnabled` gate.
 
 ## 5. Known minor issues
 
-- `src/ui/views/AskUserQuestionPrompt.tsx:152` — `focused === "other" ?
-  "cyan" : "cyan"` is a no-op ternary (both branches identical); the
-  focused state was meant to change the border color. Unverified whether
-  fixed since discovery.
+- **Fixed truecolor hex remains in two places** (not converted by the
+  2026-10-10 sweep, which covered named ANSI colors only): the
+  `DECISION_COLOR` map in `src/ui/views/PermissionHistoryList.tsx:17` (~10
+  hex values — red/green/amber/cyan reads) and
+  `src/ui/components/ThemeDropdown/index.tsx:175` (`activeColor="#229ac3"`).
+  §3's argument applies to both: a fixed RGB cannot be legible on a white and
+  a black background. They map cleanly onto `error`/`success`/`warning`/
+  `secondary` if the semantic palette is not wanted as-is.
+- `src/ui/views/AskUserQuestionPrompt.tsx` — the `focused === "other" ? "cyan"
+  : "cyan"` no-op ternary recorded here is now fixed (the focused border uses
+  the accent slot, the unfocused one the normal border color).
 
 ## 6. Verified against
 

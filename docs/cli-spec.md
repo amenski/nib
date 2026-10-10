@@ -56,7 +56,7 @@ meant to be shareable). See config-spec.md §Credentials.
 | `-c`, `--continue` | Continue the most recent session for the current project directory. |
 | `--model <provider/model>` | Override the configured model (split on the first `/`). |
 | `--mode <slug>` | Start in the given mode. Headless (`-p`): unknown slug rejected with a clean error (`src/exec-runner.ts`). Interactive: unknown slug silently falls back to the default `general` mode. |
-| `-d`, `--debug` | Write redacted request/response JSONL. |
+| `-d`, `--debug` | Write redacted request/response/error JSONL to `<project>/.nib/debug/<session>.jsonl`. Applies to the TUI and to `-p` (a headless run without a resumed session names the file `headless-<timestamp>`). |
 | `--add-dir <path>` | Add an explicitly trusted writable directory; repeat for multiple directories. Relative paths resolve from the startup directory and apply to file edits and sandboxed shell writes. |
 | `-h`, `--help` | Show help and the epilog, exit 0. |
 | `-v`, `--version` | Print the current version (from `package.json` via `src/version.ts`), exit 0. |

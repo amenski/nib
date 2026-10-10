@@ -125,6 +125,13 @@ observations appended ──► diagnostics check ──► compaction check (0.
 stop: done | aborted | max_turns
 ```
 
+All three stops persist the turn — the messages a turn produced are written to
+the session even when it was interrupted (`aborted`) or cut short (`max_turns`),
+so the next message continues from work already done rather than repeating it.
+A provider-stream failure is the fourth case, and it travels differently: the
+turn's messages ride out on the thrown error (`newMessages` / `messages`) and
+App persists them from its catch, since the loop unwinds before it can return.
+
 ### Sequence (Mermaid)
 
 ```mermaid

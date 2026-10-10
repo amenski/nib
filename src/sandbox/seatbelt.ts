@@ -92,6 +92,140 @@ const READ_ONLY_CORE = [
 const HOME_READ_ALLOWS = [".gitconfig", ".config/git", ".npm", ".cache"] as const;
 
 /**
+ * Toolchain installs under `$HOME` a sandboxed build must read: a JDK from
+ * SDKMAN (`java` dies loading `libjli.dylib` otherwise), Rust, bun, Dart/
+ * Flutter packages, Maven/Gradle caches, the Android SDK, CocoaPods, and the
+ * version managers. Read-only here; absent entries are skipped like
+ * {@link HOME_READ_ALLOWS}. `~/.android` is deliberately absent — it holds
+ * `adbkey`, a private key. Added 2026-10-10 after Gradle failed in a real
+ * session; credentials inside these folders are re-denied by
+ * {@link TOOLCHAIN_SECRET_DENIES}.
+ */
+const TOOLCHAIN_READ_ALLOWS = [
+  ".sdkman", ".gradle", ".m2", ".rustup", ".cargo", ".bun", ".local/bin", ".pub-cache",
+  ".cocoapods", "Library/Android/sdk", "Library/Caches/CocoaPods",
+  ".nvm", ".volta", ".pyenv", ".rbenv", ".asdf", "go", "fvm",
+] as const;
+
+/**
+ * Build caches a sandboxed build must also write (`./gradlew` cannot start
+ * without lock files in `~/.gradle`). `[toolchainDir, writeRoot]`: the root is
+ * granted only when its toolchain directory exists, so a missing toolchain
+ * adds nothing to the profile. Accepted risk (user decision 2026-10-10): a
+ * child can tamper with cached packages a later build uses — the same class
+ * as the `~/.npm` cache. Binaries (`~/.cargo/bin`, `~/.pub-cache/bin`) stay
+ * read-only: writing those is direct persistence.
+ */
+const TOOLCHAIN_WRITE_ROOTS: ReadonlyArray<readonly [string, string]> = [
+  [".gradle", ".gradle"],
+  [".m2", ".m2/repository"],
+  [".cargo", ".cargo/registry"],
+  [".cargo", ".cargo/git"],
+  [".pub-cache", ".pub-cache/hosted"],
+  [".pub-cache", ".pub-cache/git"],
+  [".bun", ".bun/install/cache"],
+  ["Library/Caches/CocoaPods", "Library/Caches/CocoaPods"],
+];
+
+/**
+ * Build config the tools must READ on every run but a child must never
+ * WRITE: write-denied only, after every allow (SBPL is last-matching-rule-
+ * wins). Gradle refuses to start when an existing `gradle.properties` is
+ * unreadable (measured 2026-10-10), so these stay readable even though they
+ * often hold repository credentials — user decision. Writing them, or an
+ * init script, would run code on every later build: persistence.
+ */
+const TOOLCHAIN_CONFIG_WRITE_DENIES = [
+  ".gradle/gradle.properties", ".gradle/init.d", ".gradle/init.gradle", ".gradle/init.gradle.kts",
+  ".m2/settings.xml", ".m2/settings-security.xml",
+] as const;
+
+/**
+ * Denied for read AND write. Registry tokens are read only by publish/login,
+ * so an ordinary build never needs them. `~/.gradle/daemon` holds the
+ * registry (ports + auth tokens) of Gradle daemons running OUTSIDE the
+ * sandbox — an IDE's, a terminal's; with loopback allowed a child could read
+ * it, connect, and have that daemon run build code unsandboxed. Sandboxed
+ * Gradle gets a private registry instead ({@link withSandboxChildEnv}).
+ * Measured 2026-10-10: with an outside daemon running, the contained build
+ * used its own daemon and the outside registry read was denied.
+ */
+const TOOLCHAIN_SECRET_DENIES = [
+  ".cargo/credentials", ".cargo/credentials.toml",
+  ".pub-cache/credentials.json",
+  ".gradle/daemon",
+] as const;
+
+/** Write roots for the toolchain caches whose toolchain directory exists under `home`. */
+export function toolchainWriteRoots(home: string = homedir()): string[] {
+  const roots: string[] = [];
+  for (const [toolchain, root] of TOOLCHAIN_WRITE_ROOTS) {
+    if (existsSync(join(home, toolchain))) roots.push(join(home, root));
+  }
+  return roots;
+}
+
+/**
+ * Startup options from the global-only `sandbox.readRoots` and
+ * `sandbox.allowLocalNetwork` settings, set once (cli.tsx, exec-runner.ts)
+ * before any profile is built so every launch — Bash, jobs, MCP, hooks — and
+ * the session-grant hash see the same profile.
+ */
+let extraReadRoots: string[] = [];
+let allowLocalNetwork = true;
+export function configureSandbox(opts: { readRoots?: string[]; allowLocalNetwork?: boolean }): void {
+  extraReadRoots = (opts.readRoots ?? []).map((p) =>
+    p === "~" || p.startsWith("~/") ? join(homedir(), p.slice(1)) : resolve(p),
+  );
+  allowLocalNetwork = opts.allowLocalNetwork !== false;
+}
+
+/**
+ * Loopback networking for workspace-write children (default on, user decision
+ * 2026-10-10): Gradle's client reaches its build daemon over 127.0.0.1 and
+ * coordinates file locks over a loopback UDP socket, so a build cannot start
+ * without it. Measured: with these lines a direct connect to an external IP is
+ * still denied by the profile while 127.0.0.1 is reachable. Risk accepted: a
+ * child can reach any service listening on localhost (databases, Docker's
+ * API, a local proxy that itself has egress). Opt out with
+ * `sandbox.allowLocalNetwork: false`.
+ */
+const LOOPBACK_NETWORK_ALLOWS = [
+  `(allow network-bind (local ip "localhost:*"))`,
+  `(allow network-inbound (local ip "localhost:*"))`,
+  `(allow network-outbound (remote ip "localhost:*"))`,
+];
+
+/**
+ * JVM flags for a contained child, appended to any JAVA_TOOL_OPTIONS the user
+ * already has:
+ *   - a private Gradle daemon registry in the session temp dir, because
+ *     `~/.gradle/daemon` is denied ({@link TOOLCHAIN_SECRET_DENIES}) — the
+ *     contained build starts and finds only its own daemons;
+ *   - with loopback allowed, Java forced onto IPv4: its default dual-stack
+ *     sockets reach Seatbelt in a form the `localhost` rule does not match
+ *     (measured: Gradle's daemon connect to 127.0.0.1 is denied without it).
+ */
+export function withSandboxChildEnv(env: NodeJS.ProcessEnv | undefined): NodeJS.ProcessEnv | undefined {
+  const base = env ?? process.env;
+  const flags: string[] = [];
+  if (base.TMPDIR) flags.push(`-Dorg.gradle.daemon.registry.base=${join(base.TMPDIR, "gradle-daemon")}`);
+  if (allowLocalNetwork) flags.push("-Djava.net.preferIPv4Stack=true");
+  const existing = base.JAVA_TOOL_OPTIONS;
+  const missing = flags.filter((f) => !existing?.includes(f));
+  if (missing.length === 0) return env;
+  return { ...base, JAVA_TOOL_OPTIONS: [existing, ...missing].filter(Boolean).join(" ") };
+}
+
+/** Deny lines for the toolchain config/secret lists under `home`. */
+export function toolchainSecretDenyLines(home: string): string[] {
+  return [
+    ...TOOLCHAIN_CONFIG_WRITE_DENIES.map((name) => `(deny file-write* (subpath "${sbplQuote(join(home, name))}"))`),
+    ...TOOLCHAIN_SECRET_DENIES.map((name) => `(deny file-read* file-write* (subpath "${sbplQuote(join(home, name))}"))`),
+  ];
+}
+
+/**
  * Git integrity rules — the mechanical half of the `.git` always-denied set.
  *
  * permission-profile.md §8 recorded this as a policy-layer-only residual: the
@@ -254,6 +388,10 @@ export function buildSeatbeltProfile(
   for (const root of roots) {
     lines.push(`(allow file-write* (subpath "${sbplQuote(root)}"))`);
   }
+  if (level === "workspace-write" && allowLocalNetwork) lines.push(...LOOPBACK_NETWORK_ALLOWS);
+  // Toolchain credentials/startup config: after every read and write allow.
+  const home = realpathNearestAncestor(homedir());
+  if (isUsableHomeDeny(home)) lines.push(...toolchainSecretDenyLines(home));
   // Git integrity last: last-matching-rule-wins means a deny only bites if it
   // follows the write-root grants above.
   lines.push(...GIT_INTEGRITY_DENIES);
@@ -317,6 +455,8 @@ function readBoundaryLines(trustedRoot: string, authorizedRoots: string[]): stri
   allowRead(trustedRoot);
   for (const root of authorizedRoots) allowRead(root);
   for (const name of HOME_READ_ALLOWS) allowRead(join(home, name));
+  for (const name of TOOLCHAIN_READ_ALLOWS) allowRead(join(home, name));
+  for (const root of extraReadRoots) allowRead(root);
   return lines;
 }
 
@@ -479,7 +619,14 @@ export function profileWriteSet(
   sessionTempDir?: string,
 ): string[] {
   if (level !== "workspace-write") return [];
-  return resolveWriteRoots(level, seatbeltWorkspaceRoot(trustedRoot), writeRoots, sessionTempDir);
+  // Toolchain caches join the Seatbelt write-set only — not resolveWriteRoots,
+  // which also bounds nib's own file tools; those have no reason to edit
+  // ~/.gradle. Kept in this list so the consent text names them.
+  const roots = resolveWriteRoots(level, seatbeltWorkspaceRoot(trustedRoot), writeRoots, sessionTempDir);
+  for (const root of toolchainWriteRoots(realpathNearestAncestor(homedir()))) {
+    if (!roots.includes(root)) roots.push(root);
+  }
+  return roots;
 }
 
 /**

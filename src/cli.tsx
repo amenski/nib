@@ -16,7 +16,7 @@ import { fireNotify, type NotifySpawnOptions } from "./notify.js";
 import { HookRunner, fireNotificationHooks } from "./hooks/index.js";
 import { executeTool, TOOL_DEFS, registry, setSessionId, setCheckpointManager, setSignal, setSessionStore, setSetMode, setTimeoutToBackground, setSandboxLevel, setSessionTempDir, setWritePolicyLevel, setWriteRoots, setWebSearchConfig } from "./tools/index.js";
 import { createSessionTempDir } from "./sandbox/session-temp.js";
-import { buildSandboxProfile, isSandboxedLevel, profileWriteSet, sandboxEnvelopeHash } from "./sandbox/seatbelt.js";
+import { buildSandboxProfile, configureSandbox, isSandboxedLevel, profileWriteSet, sandboxEnvelopeHash } from "./sandbox/seatbelt.js";
 import type { BashEnvelope } from "./permissions/session-grant.js";
 import { filterToolDefs } from "./tools/filter.js";
 import { jobManager } from "./tools/jobs.js";
@@ -595,6 +595,9 @@ async function main() {
   // are session-scoped and already resolved from startup cwd. Threaded into
   // ctx so Seatbelt and file-tool containment consult the same set.
   const writeRoots = [...(configResult.config.sandbox?.writeRoots ?? []), ...additionalWriteRoots];
+  // Global-only sandbox.readRoots / allowLocalNetwork: set before any profile
+  // is built so every launch and the session-grant hash agree.
+  configureSandbox({ readRoots: configResult.config.sandbox?.readRoots, allowLocalNetwork: configResult.config.sandbox?.allowLocalNetwork });
   setWriteRoots(writeRoots);
 
   // The session grant's envelope (docs/permission-ux-redesign.md): the profile

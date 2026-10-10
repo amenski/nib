@@ -932,6 +932,34 @@ describe("loadConfig sandbox.autoAllowBash (global-only)", () => {
   });
 });
 
+describe("loadConfig sandbox.readRoots / allowLocalNetwork (global-only)", () => {
+  function writeGlobalSettings(obj: unknown): void {
+    writeFileSync(join(homeDir, "settings.json"), JSON.stringify(obj), "utf-8");
+  }
+
+  it("honors both from the global settings file", () => {
+    writeGlobalSettings({ sandbox: { enabled: true, readRoots: ["~/tools"], allowLocalNetwork: false } });
+    const { config, errors } = loadConfig(projectDir);
+    expect(errors).toEqual([]);
+    expect(config.sandbox?.readRoots).toEqual(["~/tools"]);
+    expect(config.sandbox?.allowLocalNetwork).toBe(false);
+  });
+
+  it("ignores both in a PROJECT file — a project cannot widen reads or network", () => {
+    writeProjectSettings({ sandbox: { enabled: true, readRoots: ["/etc"], allowLocalNetwork: true } });
+    const { config } = loadConfig(projectDir);
+    expect(config.sandbox?.readRoots).toBeUndefined();
+    expect(config.sandbox?.allowLocalNetwork).toBeUndefined();
+  });
+
+  it("rejects wrong types", () => {
+    writeGlobalSettings({ sandbox: { enabled: true, readRoots: "x", allowLocalNetwork: "yes" } });
+    const { errors } = loadConfig(projectDir);
+    expect(errors.some((e) => e.includes("config.sandbox.readRoots: must be an array of strings"))).toBe(true);
+    expect(errors.some((e) => e.includes("config.sandbox.allowLocalNetwork: must be a boolean"))).toBe(true);
+  });
+});
+
 describe("loadConfig sandbox.writeRoots (global-only)", () => {
   function writeGlobalSettings(obj: unknown): void {
     writeFileSync(join(homeDir, "settings.json"), JSON.stringify(obj), "utf-8");

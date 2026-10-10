@@ -7,7 +7,11 @@ import { join } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import {
   buildSeatbeltProfile,
+  configureSandbox,
   sandboxPrefix,
+  toolchainSecretDenyLines,
+  toolchainWriteRoots,
+  withSandboxChildEnv,
   seatbeltWorkspaceRoot,
   validateCwdWithinTrustedRoot,
 } from "./seatbelt.js";
@@ -99,11 +103,31 @@ describe("buildSeatbeltProfile", () => {
     expect(p).not.toContain("(allow file-write* (subpath");
   });
 
-  it("workspace-write: strict core plus the workspace write-set, without direct egress", () => {
+  it("workspace-write: strict core plus the workspace write-set, outbound to loopback only", () => {
+    // Default (sandbox.allowLocalNetwork unset): Gradle's daemon needs
+    // 127.0.0.1, so loopback is allowed — but no outbound rule names any
+    // host other than localhost.
     const p = buildSeatbeltProfile("workspace-write", "/private/tmp/ws");
     expect(p).toContain('(allow file-write* (subpath "/private/tmp/ws"))');
-    expect(p).not.toContain("network-outbound");
+    expect(p).toContain('(allow network-outbound (remote ip "localhost:*"))');
+    expect(p.split("\n").filter((l) => l.includes("network-outbound"))).toEqual([
+      '(allow network-outbound (remote ip "localhost:*"))',
+    ]);
     expect(p).toContain("(deny default)");
+  });
+
+  it("workspace-write with allowLocalNetwork: false emits no network rule at all", () => {
+    configureSandbox({ allowLocalNetwork: false });
+    try {
+      const p = buildSeatbeltProfile("workspace-write", "/private/tmp/ws");
+      expect(p).not.toContain("network-");
+    } finally {
+      configureSandbox({});
+    }
+  });
+
+  it("strict-sandbox never gets loopback, whatever the setting", () => {
+    expect(buildSeatbeltProfile("strict-sandbox", "/private/tmp/ws")).not.toContain("network-");
   });
 
   it("workspace-write: carries the battery-proven write carve-outs (literal /tmp, $TMPDIR, ~/.npm)", () => {
@@ -370,6 +394,10 @@ describe("seatbelt enforcement (macOS)", () => {
   }, 25_000);
 
   itOnDarwin("workspace-write: network attempts are denied (server never reached)", async () => {
+    // The listener is on loopback, which the default profile now allows —
+    // this proves the opt-out mode; external-IP denial under the default is
+    // covered in egress.test.ts.
+    configureSandbox({ allowLocalNetwork: false });
     const { server, port, connections } = await startHttpServer();
     try {
       const result = await runCommand(FETCH_OK(port), process.cwd(), "workspace-write");
@@ -377,6 +405,7 @@ describe("seatbelt enforcement (macOS)", () => {
       expect(connections()).toBe(0);
     } finally {
       server.close();
+      configureSandbox({});
     }
   }, 25_000);
 
@@ -1249,5 +1278,99 @@ describe("sandbox wiring into run_bash and background jobs", () => {
     });
     expect(started.ok).toBe(false);
     if (!started.ok) expect(started.error).toContain("Working directory escapes the sandbox workspace root");
+  });
+});
+
+describe("toolchain access (2026-10-10)", () => {
+  function fakeHome(dirs: string[]): { home: string; cleanup: () => void } {
+    const home = realpathSync(mkdtempSync(join(tmpdir(), "nib-fakehome-")));
+    for (const d of dirs) mkdirSync(join(home, d), { recursive: true });
+    return { home, cleanup: () => rmSync(home, { recursive: true, force: true }) };
+  }
+
+  it("grants cache write roots only for toolchains that exist", () => {
+    const h = fakeHome([".gradle", ".cargo"]);
+    try {
+      expect(toolchainWriteRoots(h.home)).toEqual([
+        join(h.home, ".gradle"),
+        join(h.home, ".cargo/registry"),
+        join(h.home, ".cargo/git"),
+      ]);
+    } finally {
+      h.cleanup();
+    }
+  });
+
+  it("keeps build config readable but unwritable, and registry tokens unreadable", () => {
+    const lines = toolchainSecretDenyLines("/H");
+    expect(lines).toContain('(deny file-write* (subpath "/H/.gradle/gradle.properties"))');
+    expect(lines).toContain('(deny file-write* (subpath "/H/.gradle/init.d"))');
+    expect(lines).toContain('(deny file-write* (subpath "/H/.m2/settings.xml"))');
+    expect(lines).toContain('(deny file-read* file-write* (subpath "/H/.cargo/credentials.toml"))');
+    expect(lines).toContain('(deny file-read* file-write* (subpath "/H/.pub-cache/credentials.json"))');
+  });
+
+  it("emits the credential denies after the write allows (last match wins)", () => {
+    const p = buildSeatbeltProfile("workspace-write", "/private/tmp/ws").split("\n");
+    const firstDeny = p.findIndex((l) => l.includes(".gradle/gradle.properties"));
+    expect(firstDeny).toBeGreaterThan(-1);
+    // Git's .sample allow is a deliberate later exception; every write-root
+    // allow comes before the toolchain denies.
+    const writeRootAllows = p.filter((l) => l.startsWith("(allow file-write* (subpath"));
+    expect(p.indexOf(writeRootAllows[writeRootAllows.length - 1]!)).toBeLessThan(firstDeny);
+  });
+
+  itOnDarwin("the kernel enforces it: properties readable not writable, tokens unreadable", () => {
+    const h = fakeHome([".gradle", ".cargo"]);
+    try {
+      writeFileSync(join(h.home, ".gradle/gradle.properties"), "nexusUser=x\n");
+      writeFileSync(join(h.home, ".cargo/credentials.toml"), "token=secret\n");
+      const profile = ["(version 1)", "(allow default)", ...toolchainSecretDenyLines(h.home)].join("\n");
+      const run = (cmd: string) => {
+        try {
+          return execFileSync("/usr/bin/sandbox-exec", ["-p", profile, "/bin/sh", "-c", cmd], { encoding: "utf8", stdio: "pipe" });
+        } catch (e) {
+          return `FAILED ${(e as { stderr?: string }).stderr ?? ""}`;
+        }
+      };
+      expect(run(`cat "${h.home}/.gradle/gradle.properties"`)).toContain("nexusUser=x");
+      expect(run(`echo y >> "${h.home}/.gradle/gradle.properties"`)).toContain("FAILED");
+      expect(run(`mkdir "${h.home}/.gradle/init.d"`)).toContain("FAILED");
+      expect(run(`cat "${h.home}/.cargo/credentials.toml"`)).toContain("FAILED");
+    } finally {
+      h.cleanup();
+    }
+  });
+
+  it("gives contained JVMs a private Gradle daemon registry and IPv4, appending to existing options", () => {
+    expect(withSandboxChildEnv({ PATH: "/bin" })?.JAVA_TOOL_OPTIONS).toBe("-Djava.net.preferIPv4Stack=true");
+    expect(withSandboxChildEnv({ TMPDIR: "/s", JAVA_TOOL_OPTIONS: "-Xmx1g" })?.JAVA_TOOL_OPTIONS).toBe(
+      "-Xmx1g -Dorg.gradle.daemon.registry.base=/s/gradle-daemon -Djava.net.preferIPv4Stack=true",
+    );
+    configureSandbox({ allowLocalNetwork: false });
+    try {
+      expect(withSandboxChildEnv({ TMPDIR: "/s" })?.JAVA_TOOL_OPTIONS).toBe(
+        "-Dorg.gradle.daemon.registry.base=/s/gradle-daemon",
+      );
+    } finally {
+      configureSandbox({});
+    }
+  });
+
+  it("hides the registry of Gradle daemons running outside the sandbox", () => {
+    expect(toolchainSecretDenyLines("/H")).toContain('(deny file-read* file-write* (subpath "/H/.gradle/daemon"))');
+  });
+
+  it("adds configured readRoots to the read boundary", () => {
+    const h = fakeHome(["extra"]);
+    configureSandbox({ readRoots: [join(h.home, "extra")] });
+    try {
+      expect(buildSeatbeltProfile("workspace-write", "/private/tmp/ws")).toContain(
+        `(allow file-read* (subpath "${join(h.home, "extra")}"))`,
+      );
+    } finally {
+      configureSandbox({});
+      h.cleanup();
+    }
   });
 });

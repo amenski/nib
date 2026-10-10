@@ -4,6 +4,7 @@ import { runAgent } from "./agent.js";
 import { buildRepoMap } from "./prompt.js";
 import { executeTool, registry, setSessionId, setSignal, setTimeoutToBackground, setSandboxLevel, setSessionTempDir, setWritePolicyLevel, setWriteRoots, setWebSearchConfig } from "./tools/index.js";
 import { createSessionTempDir } from "./sandbox/session-temp.js";
+import { configureSandbox } from "./sandbox/seatbelt.js";
 import { filterToolDefs } from "./tools/filter.js";
 import { todoStore } from "./tools/todo.js";
 import { initPresets, createProvider, getPreset } from "./providers/presets.js";
@@ -147,6 +148,9 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
     // Merge global sandbox.writeRoots with the startup-resolved --add-dir
     // roots. Project TOFU stripping can narrow only the config contribution;
     // explicit CLI roots remain session-scoped trusted roots.
+    // Global-only sandbox.readRoots / allowLocalNetwork: set before any profile
+    // is built so every launch and the session-grant hash agree.
+    configureSandbox({ readRoots: configResult.config.sandbox?.readRoots, allowLocalNetwork: configResult.config.sandbox?.allowLocalNetwork });
     setWriteRoots(writeRoots);
 
     // Read-boundary disclosure (see workspaceOutsideHomeWarning): the TUI

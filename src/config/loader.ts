@@ -109,7 +109,7 @@ export interface DeepCodeSettings {
    *  loadConfig's sandbox block). This is deliberately separate from
    *  `permissionProfile.fs`, whose "explicit rules narrow only" invariant
    *  this must not weaken. */
-  sandbox?: { enabled: boolean; writeRoots?: string[]; autoAllowBash?: boolean };
+  sandbox?: { enabled: boolean; writeRoots?: string[]; readRoots?: string[]; autoAllowBash?: boolean; allowLocalNetwork?: boolean };
 
   // ── MCP Servers ──
   mcpServers?: Record<string, McpServerConfig>;
@@ -1325,6 +1325,25 @@ export function loadConfig(projectDir?: string): LoadResult {
           if (config.sandbox) config.sandbox.autoAllowBash = raw;
         } else {
           errors.push("config.sandbox.autoAllowBash: must be a boolean");
+        }
+      }
+      // readRoots / allowLocalNetwork: global-only like writeRoots — they widen
+      // what a sandboxed child may read or connect to, so a project file must
+      // not be able to set them. allowLocalNetwork absent = on (seatbelt.ts).
+      if (isObject(globalRaw?.sandbox) && "readRoots" in (globalRaw.sandbox as Record<string, unknown>)) {
+        const raw = (globalRaw.sandbox as Record<string, unknown>).readRoots;
+        if (Array.isArray(raw) && raw.every((p) => typeof p === "string")) {
+          if (config.sandbox && raw.length > 0) config.sandbox.readRoots = raw as string[];
+        } else {
+          errors.push("config.sandbox.readRoots: must be an array of strings");
+        }
+      }
+      if (isObject(globalRaw?.sandbox) && "allowLocalNetwork" in (globalRaw.sandbox as Record<string, unknown>)) {
+        const raw = (globalRaw.sandbox as Record<string, unknown>).allowLocalNetwork;
+        if (typeof raw === "boolean") {
+          if (config.sandbox) config.sandbox.allowLocalNetwork = raw;
+        } else {
+          errors.push("config.sandbox.allowLocalNetwork: must be a boolean");
         }
       }
       if (isObject(projectRaw?.sandbox) && "writeRoots" in (projectRaw.sandbox as Record<string, unknown>)) {

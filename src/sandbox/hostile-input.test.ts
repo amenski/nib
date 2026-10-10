@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { createServer, type Server } from "node:http";
@@ -10,7 +10,7 @@ import { ToolRegistry } from "../tools/registry.js";
 import { registerFiles } from "../tools/files.js";
 import { parseUntrustedMarker } from "../tools/untrusted-content.js";
 import type { ToolContext } from "../tools/types.js";
-import type { SandboxLevel } from "./seatbelt.js";
+import { configureSandbox, type SandboxLevel } from "./seatbelt.js";
 
 // ── hostile input fixtures: untrusted code and content (release gate 4) ──
 //
@@ -242,6 +242,12 @@ describe("hostile repository: content reaching the model", () => {
 });
 
 describe("hostile repository: its hook code on an ordinary git commit (macOS)", () => {
+  // The "network" leg uses a loopback listener, which the default profile now
+  // allows (sandbox.allowLocalNetwork); run in the opt-out mode so it still
+  // proves containment. External-IP denial under the default: egress.test.ts.
+  beforeAll(() => configureSandbox({ allowLocalNetwork: false }));
+  afterAll(() => configureSandbox({}));
+
   itOnDarwin("a post-commit hook cannot read the canary, write .git/hooks, or reach the network", async () => {
     const listener = await startListener();
     const f = fixture();
@@ -358,6 +364,12 @@ async function depReport(f: DepFixture): Promise<HookReport> {
 }
 
 describe("hostile dependency: an install script on `npm install` (macOS)", () => {
+  // The "network" leg uses a loopback listener, which the default profile now
+  // allows (sandbox.allowLocalNetwork); run in the opt-out mode so it still
+  // proves containment. External-IP denial under the default: egress.test.ts.
+  beforeAll(() => configureSandbox({ allowLocalNetwork: false }));
+  afterAll(() => configureSandbox({}));
+
   itOnDarwin("a local dependency's postinstall cannot read the canary, write .git/hooks, or reach the network", async () => {
     const listener = await startListener();
     const f = depFixture();

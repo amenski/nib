@@ -1,7 +1,7 @@
 import type { ChildProcess } from "node:child_process";
 import { spawn } from "node:child_process";
 import type { SandboxLevel, SandboxSpawn } from "./seatbelt.js";
-import { sandboxPrefix } from "./seatbelt.js";
+import { sandboxPrefix, withSandboxChildEnv } from "./seatbelt.js";
 
 /**
  * The containment-readiness protocol (docs/permission-ux-redesign.md).
@@ -199,7 +199,7 @@ export function spawnContained(
     cwd: options.cwd,
     detached: options.detached,
     stdio: [...stdio, "pipe"],
-    env: options.env,
+    env: withSandboxChildEnv(options.env),
   });
   return { proc, readiness: readReadiness(proc) };
 }

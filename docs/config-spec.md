@@ -205,16 +205,38 @@ terminal (`deny-by-profile` audit decision, permission-spec.md §11).
 
 ### `sandbox` (OS sandbox layer)
 
-`"sandbox": { "enabled": true }` (boolean, **default `false`**) launches
-the agent's bash child processes (`run_bash` and background jobs) under a
-macOS Seatbelt profile that mechanically enforces the `permissionProfile`
-level: `strict-sandbox` = read-only filesystem + no network;
-`workspace-write` = read anywhere, write only the spawn's workspace root,
-network on. The flag is inert without a profile level below
-`unrestricted`, and on non-macOS platforms (a startup warning says so) —
-the policy layer (`ProfileEvaluator`) still enforces the boundary
-everywhere. Full semantics and the two-layer network rationale:
-permission-profile.md §8.
+`"sandbox": { "enabled": true }` (boolean, **default `true`** since
+`ae9aca3`) launches the agent's child processes (`run_bash`, background
+jobs, MCP servers, hooks) under a macOS Seatbelt profile that mechanically
+enforces the `permissionProfile` level: `strict-sandbox` = read-only
+filesystem, no network; `workspace-write` = write only the workspace, the
+private session temp dir and the toolchain caches below; reads blocked
+under `$HOME` except the workspace and named exceptions; no direct network
+except loopback. Inert on non-macOS platforms (a startup warning says so)
+— the policy layer (`ProfileEvaluator`) still enforces the boundary
+everywhere. Semantics: permission-profile.md §8,
+docs/security-architecture-plan.md.
+
+Keys below are **global-only** (`~/.nib/settings.json`); a project file's
+value is ignored, because each one widens what a sandboxed child may do or
+whether Bash asks at all. Each needs `enabled` alongside it.
+
+| Key | Default | Effect |
+|---|---|---|
+| `writeRoots` | `[]` | Extra writable (and readable) directories. |
+| `readRoots` | `[]` | Extra read-only directories under `$HOME`. |
+| `autoAllowBash` | `true` | Run eligible sandboxed Bash without the session prompt (permission-ux-redesign.md). |
+| `allowLocalNetwork` | `true` | Loopback (`localhost`) networking for `workspace-write` children; Java is forced to IPv4 so it matches. Needed by Gradle's daemon. |
+
+Built-in toolchain access (`src/sandbox/seatbelt.ts`, added 2026-10-10):
+installs under `$HOME` such as `.sdkman`, `.gradle`, `.m2`, `.rustup`,
+`.cargo`, `.bun`, `.pub-cache`, `.cocoapods`, `Library/Android/sdk` and the
+version managers are readable when present; the build caches
+(`.gradle`, `.m2/repository`, `.cargo/registry|git`, `.pub-cache/hosted|git`,
+`.bun/install/cache`, `Library/Caches/CocoaPods`) are writable. Gradle/Maven
+config (`gradle.properties`, `init.d`, `settings.xml`) stays readable but is
+never writable; cargo/pub registry tokens and `~/.gradle/daemon` (outside daemons' ports and tokens) are neither — contained JVMs get a private daemon registry under `$TMPDIR`. `~/.android` (holds
+`adbkey`) is not included.
 
 ## 4. `refresh` (repaint cadence)
 

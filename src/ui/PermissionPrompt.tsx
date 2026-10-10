@@ -219,8 +219,8 @@ export function grantConsentLines(envelope: BashEnvelope): string[] {
       ? `Writable: ${roots.join(", ")} — not the machine's shared temporary directories, and not the package-manager cache.`
       : "Writable: nothing — this profile grants no write access at all.",
     "It can run project scripts and start child processes.",
-    "Direct network connections from those children are denied; macOS name resolution may still occur outside the child.",
-    "Reads are only partly contained: files outside your home directory can still be readable, and files inside the project — including .env — can be read by a script even though the file tools guard them.",
+    "Direct network connections from those children are denied, except to services on this Mac (localhost) unless sandbox.allowLocalNetwork is off; macOS name resolution may still occur outside the child.",
+    "Reads are only partly contained: files outside your home directory can still be readable, toolchain folders in it (SDKMAN, Gradle, Maven, Cargo, pub, CocoaPods) are readable — including Gradle/Maven credentials files — and files inside the project, including .env, can be read by a script even though the file tools guard them.",
   ];
 
   // Decision 8: the outside-$HOME warning is repeated here, because consent is

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { createServer as createNetServer } from "node:net";
@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import { runBashTimed } from "../tools/bash.js";
 import { MCPClient } from "../mcp/client.js";
-import type { SandboxLevel } from "./seatbelt.js";
+import { configureSandbox, type SandboxLevel } from "./seatbelt.js";
 
 // ── egress probes (macOS) — release gate 4 ──
 //
@@ -132,6 +132,13 @@ function workspace(): { ws: string; cleanup: () => void } {
 }
 
 describe("network egress (macOS) — release gate 4", () => {
+  // Every probe here uses a LOOPBACK listener as its stand-in destination, and
+  // the default profile now allows loopback (sandbox.allowLocalNetwork, for
+  // Gradle's daemon). These rows therefore prove the opt-out mode; the
+  // default's external-IP denial is proven by the describe at the end.
+  beforeAll(() => configureSandbox({ allowLocalNetwork: false }));
+  afterAll(() => configureSandbox({}));
+
   itOnDarwin("Node fetch reaches a loopback listener uncontained, and never when contained", async () => {
     const listener = await startListener();
     const f = workspace();
@@ -421,4 +428,47 @@ describe("network egress (macOS) — release gate 4", () => {
       f.cleanup();
     }
   }, 60_000);
+});
+
+describe("network egress with loopback allowed (macOS, default)", () => {
+  // Default profile: loopback is reachable, every other destination is denied
+  // by Seatbelt itself. The errno is the signal here: the sandbox refuses the
+  // connect with EPERM before a packet is sent, whereas an uncontained connect
+  // to TEST-NET-1 (192.0.2.1, RFC 5737, never routed) times out or is
+  // unreachable — never EPERM. Nothing leaves the machine in either run.
+  const PROBE = (proto: "tcp" | "udp") =>
+    proto === "tcp"
+      ? `node -e 'const s=require("net").connect({host:"192.0.2.1",port:80});s.setTimeout(2000,()=>{console.log("ERR TIMEOUT");process.exit(0)});s.on("connect",()=>{console.log("CONNECTED");process.exit(0)});s.on("error",e=>{console.log("ERR "+e.code);process.exit(0)})'`
+      : `node -e 'const s=require("dgram").createSocket("udp4");s.send(Buffer.from("x"),53,"192.0.2.1",e=>{console.log(e?"ERR "+e.code:"SENT");process.exit(0)})'`;
+
+  for (const proto of ["tcp", "udp"] as const) {
+    itOnDarwin(`a ${proto} send to a non-loopback address is refused by the sandbox (EPERM)`, async () => {
+      const f = workspace();
+      try {
+        const control = await runShell(PROBE(proto), f.ws);
+        expect(control).not.toContain("ERR EPERM");
+        const contained = await runShell(PROBE(proto), f.ws, "workspace-write");
+        expect(contained).toContain("ERR EPERM");
+      } finally {
+        f.cleanup();
+      }
+    }, 25_000);
+  }
+
+  itOnDarwin("a loopback listener is reachable (what Gradle's daemon needs)", async () => {
+    const listener = await startListener();
+    const f = workspace();
+    try {
+      const before = listener.connections();
+      await runShell(
+        `node -e 'const s=require("net").connect({host:"127.0.0.1",port:${listener.port}},()=>{s.end();process.exit(0)});s.on("error",()=>process.exit(0))'`,
+        f.ws,
+        "workspace-write",
+      );
+      await waitFor(() => listener.connections() > before);
+    } finally {
+      f.cleanup();
+      listener.close();
+    }
+  }, 25_000);
 });

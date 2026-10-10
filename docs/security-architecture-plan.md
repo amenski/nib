@@ -916,6 +916,40 @@ demonstrates it.
 
 ### Recorded residuals
 
+**Opened deliberately 2026-10-10 — toolchain access and loopback (user
+decisions).** Gradle could not run inside `workspace-write`: `java` died
+loading `libjli.dylib` from `~/.sdkman` (read boundary), `./gradlew` needs
+`~/.gradle` writable, refuses to start when an existing
+`gradle.properties` is unreadable, and its client reaches the build daemon
+over 127.0.0.1. Accepted, each measured in both directions:
+(1) toolchain installs under `$HOME` are readable and their build caches
+writable — a child can tamper with cached packages a later build uses, the
+`~/.npm` class of risk; (2) `gradle.properties` / `settings.xml` are
+readable, so repository credentials in them are exposed to sandboxed code,
+but they and Gradle init scripts are write-denied (no persistence through
+them); cargo/pub registry tokens stay read- and write-denied; (3) loopback
+networking is allowed by default (`sandbox.allowLocalNetwork`), so a child
+can reach any local service, including a local proxy that has egress —
+external addresses are still refused with EPERM before a packet is sent
+(`egress.test.ts`, "loopback allowed"). Java children get
+`-Djava.net.preferIPv4Stack=true` because the dual-stack connect to
+127.0.0.1 was denied without it. The loopback-listener egress rows now run
+with `allowLocalNetwork: false`, so they prove the opt-out mode.
+Closed the same day (security review): with loopback on, a child could read
+`~/.gradle/daemon/*/registry.bin` (port + token of daemons started OUTSIDE
+the sandbox by an IDE or terminal), connect, and have that daemon run build
+code unsandboxed. `~/.gradle/daemon` is now read- and write-denied and
+contained JVMs get `-Dorg.gradle.daemon.registry.base=$TMPDIR/gradle-daemon`;
+measured with an outside daemon running: the contained build used its own
+daemon and the registry read was denied. **Still open:** `~/.gradle` is
+writable as a whole, including `wrapper/dists` (the Gradle distribution),
+`native` and `jdks` — code a later *unsandboxed* `./gradlew` or IDE build
+executes, so tampering there persists outside the sandbox (stronger than the
+accepted cache-tampering class). A write-deny on `wrapper` broke `./gradlew`
+(it opens `dists/**/*.zip.lck` for write) and a regex re-allow of the `.lck`
+files was still denied in the probe; unresolved — narrowing needs a working
+lock-file exception or a sandbox-private wrapper/dist location.
+
 **Seatbelt failure evidence (gate 5).** The managed runner supplies the
 previously missing refusing environment: control exit 0 and marker present;
 direct contained exit 71 and marker absent; `runBashTimed` marker absent with

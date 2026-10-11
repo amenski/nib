@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatToolResultPreview, describeToolCall, formatStyledToolHeader } from "./ToolCallFormatter.js";
+import { formatToolResultPreview, describeToolCall, formatStyledToolHeader, PREVIEW_LINE_MAX } from "./ToolCallFormatter.js";
 import { wrapUntrusted } from "../tools/untrusted-content.js";
 
 describe("formatToolResultPreview", () => {
@@ -38,6 +38,23 @@ describe("formatToolResultPreview", () => {
     const lines = formatToolResultPreview("alpha\nbeta");
     expect(lines[0]).toBe("  ⎿  alpha");
     expect(lines).toContain("     beta");
+  });
+
+  it("caps a single enormous line", () => {
+    // A preview renders as pre-styled text, which skips OutputArea's
+    // progressive disclosure — so one minified-JSON line would otherwise print
+    // thousands of columns.
+    const lines = formatToolResultPreview("x".repeat(5000));
+    const body = lines[0].replace(/^ {2}⎿ {2}/, "");
+    expect(body.length).toBe(PREVIEW_LINE_MAX);
+    expect(body.endsWith("…")).toBe(true);
+  });
+
+  it("leaves a line at the cap untouched", () => {
+    const lines = formatToolResultPreview("y".repeat(PREVIEW_LINE_MAX));
+    const body = lines[0].replace(/^ {2}⎿ {2}/, "");
+    expect(body).toBe("y".repeat(PREVIEW_LINE_MAX));
+    expect(body).not.toContain("…");
   });
 });
 

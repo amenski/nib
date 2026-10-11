@@ -15,7 +15,7 @@ import { Box, Static, Text } from "ink";
 import MarkdownText from "./MarkdownText.js";
 import { useTheme, useTerminalInfo } from "./contexts.js";
 import { ansi256 } from "./theme.js";
-import { USER_ECHO_TAG, COMMAND_ECHO_TAG, BULLET_TAG, ANSWER_CONT_TAG, VERBATIM_TAG, TOOL_HEADER_TAG, ANSWER_BULLET, PROMPT_CHEVRON } from "./constants.js";
+import { USER_ECHO_TAG, COMMAND_ECHO_TAG, BULLET_TAG, ANSWER_CONT_TAG, VERBATIM_TAG, TOOL_HEADER_TAG, TOOL_RESULT_TAG, TOOL_RESULT_GUTTER, ANSWER_BULLET, PROMPT_CHEVRON } from "./constants.js";
 import { formatEcho } from "./core/echo-format.js";
 import type { TabDefinition } from "./types.js";
 
@@ -127,6 +127,24 @@ const OutputLine = memo(function OutputLine({
   // pattern was being italicised away as an emphasis span.
   if (untagged.startsWith(TOOL_HEADER_TAG)) {
     return <Text>{untagged.slice(TOOL_HEADER_TAG.length)}</Text>;
+  }
+
+  // A tool-result preview: the fixed gutter sits in its own box so a line wider
+  // than the terminal wraps inside the text box and hangs under the text. The
+  // colour escape that wraps the whole line is re-opened on the body.
+  if (untagged.startsWith(TOOL_RESULT_TAG)) {
+    const text = untagged.slice(TOOL_RESULT_TAG.length);
+    const m = text.match(new RegExp(`^((?:\\x1b\\[[0-9;]*m)*)([\\s\\S]{${TOOL_RESULT_GUTTER}})([\\s\\S]*)$`));
+    if (!m) return <Text>{text}</Text>;
+    const [, open, gutter, rest] = m;
+    return (
+      <Box>
+        <Box width={TOOL_RESULT_GUTTER} flexShrink={0}>
+          <Text>{`${open}${gutter}\x1b[0m`}</Text>
+        </Box>
+        <Text>{`${open}${rest}`}</Text>
+      </Box>
+    );
   }
 
   if (hasBullet || isCont) {

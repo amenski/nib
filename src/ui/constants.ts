@@ -66,11 +66,24 @@ export const ANSWER_CONT_TAG = "\u0001\u0002";
 export const VERBATIM_TAG = "\u0001\u0006";
 
 /**
- * Sentinel prefixed onto a tool-call header line (and a sub-agent's nested
- * lines). OutputArea renders these as plain styled text instead of running
- * them through MarkdownText: a header's arguments are shell/path text where an
+ * Sentinel prefixed onto a tool-call header line and a sub-agent's nested
+ * lines. OutputArea renders these as plain styled text instead of running them
+ * through MarkdownText: a header's arguments are shell/path text where an
  * inline marker is literal, so a glob pattern was being italicised away as an
  * emphasis span. The colouring is baked into the string by the emitter (a dim
  * glyph, a bold name, plain arguments).
  */
 export const TOOL_HEADER_TAG = "\u0001\u000e";
+
+/**
+ * Sentinel prefixed onto a tool-result preview line ("  ⎿  first" / "     next").
+ * Like TOOL_HEADER_TAG it renders as pre-styled text, not markdown: the markdown
+ * wrapper drops a run of spaces at the start of a row, which stripped the
+ * gutter and the payload's own indentation. It also gives OutputArea the
+ * fixed 5-column gutter to hang a wrapped line's overflow under, instead of
+ * letting it fall back to column 0.
+ */
+export const TOOL_RESULT_TAG = "\u0001\u000f";
+
+/** Columns of the "  ⎿  " opener / "     " gutter before a preview line's text. */
+export const TOOL_RESULT_GUTTER = 5;

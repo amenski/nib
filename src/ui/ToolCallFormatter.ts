@@ -94,6 +94,9 @@ export function formatStyledToolHeader(
   return arg ? `${glyph} ${label}(${arg})` : `${glyph} ${label}`;
 }
 
+/** Per-line cap for a result preview (see formatToolResultPreview). */
+export const PREVIEW_LINE_MAX = 240;
+
 /**
  * Claude Code-style collapsed result preview:
  *   ⎿  first line
@@ -107,7 +110,11 @@ export function formatToolResultPreview(content: string, maxLines = 3): string[]
   const shown = allLines.slice(0, maxLines);
   const out: string[] = [];
   shown.forEach((line, i) => {
-    out.push(i === 0 ? `  ⎿  ${line}` : `     ${line}`);
+    // Cap each line: a preview is rendered as pre-styled text (TOOL_HEADER_TAG),
+    // which skips OutputArea's progressive disclosure — so one minified-JSON
+    // line would otherwise print thousands of columns.
+    const capped = line.length > PREVIEW_LINE_MAX ? line.slice(0, PREVIEW_LINE_MAX - 1) + "…" : line;
+    out.push(i === 0 ? `  ⎿  ${capped}` : `     ${capped}`);
   });
   const hidden = allLines.length - shown.length;
   if (hidden > 0) out.push(`     … +${hidden} line${hidden === 1 ? "" : "s"}`);

@@ -80,7 +80,7 @@ import type { AskQuestionItem } from "../tools/types.js";
 import { setAskQuestion } from "../tools/index.js";
 import { ModelsDropdown, EffortSelector } from "./components/index.js";
 import ThemeDropdown, { persistThemeChoice } from "./components/ThemeDropdown/index.js";
-import { USER_ECHO_TAG, COMMAND_ECHO_TAG, BULLET_TAG, ANSWER_CONT_TAG, TOOL_HEADER_TAG, ANSI_CLEAR_SCREEN } from "./constants.js";
+import { USER_ECHO_TAG, COMMAND_ECHO_TAG, BULLET_TAG, ANSWER_CONT_TAG, TOOL_HEADER_TAG, TOOL_RESULT_TAG, ANSI_CLEAR_SCREEN } from "./constants.js";
 import { seedPromptHistory } from "./core/prompt-history.js";
 import { loadPromptHistory, appendPromptHistory } from "./core/history-store.js";
 import { summarizeReasoning } from "./core/reasoning-echo.js";
@@ -94,6 +94,7 @@ import {
   type SubagentDisplayState,
 } from "./core/subagent-progress-format.js";
 import { groupTableLines, splitCommittable } from "./core/table-group.js";
+import { needsComposerGap } from "./core/composer-gap.js";
 import {
   formatStyledToolHeader,
   formatToolResultPreview,
@@ -1153,7 +1154,14 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           if (content.trim() !== "" && _name !== "update_todo_list") {
             const isError = !!result.error || content.startsWith("PERMISSION_DENIED") || content.startsWith("COMMAND_FAILED");
             for (const line of formatToolResultPreview(content)) {
-              scheduleOutput(theme.fg(isError ? theme.theme.error : theme.theme.textDim, line));
+              // TOOL_RESULT_TAG: render the preview as pre-styled text rather
+              // than markdown. Without it the line went through Inline →
+              // wrapSegments, which drops leading runs of spaces at the start
+              // of a row — so the "     " gutter on continuation lines, and the
+              // source's own indentation, were both stripped (the first line's
+              // "  ⎿  " survived only because it does not begin with spaces). The tag
+              // also lets OutputArea hang a wrapped line's overflow under the text.
+              scheduleOutput(TOOL_RESULT_TAG + theme.fg(isError ? theme.theme.error : theme.theme.textDim, line));
             }
           }
           needTextSeparator = true;
@@ -2386,10 +2394,11 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           skills={ctx.skills ?? []}
           onSelect={(name) => {
             setShowSkillList(false);
-            // Through the input gate, not straight to handleSlashCommand: mid-turn
-            // this loads into the running turn, and idle it loads without
-            // starting one — the same rules a typed `/skill` gets.
-            submitFromInput({ text: `/skill ${name}` });
+            // Fill the input with `/skill <name> ` and wait for Enter (Claude
+            // Code behaviour): the user can append a task before submitting, and
+            // the unchanged typed-`/skill` path then decides bare-load vs run.
+            draftNonceRef.current += 1;
+            setPromptDraft({ nonce: draftNonceRef.current, text: `/skill ${name} ` });
           }}
           onClose={() => setShowSkillList(false)}
           width={term.columns}
@@ -2601,6 +2610,13 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           onOpenModePicker={() => setShowModeList(true)}
           completer={ctx.completer}
           onDraftChange={onPromptDraftChange}
+          gapAbove={needsComposerGap({
+            // The todo checklist and the queued-follow-up stack both render
+            // between the transcript and the composer, flush against the prompt.
+            panelAbove: todos.length > 0 || queuedItems.length > 0,
+            liveTail: activeLine !== "" && !busy,
+            lastOutputLine: outputLines[outputLines.length - 1],
+          })}
           modelPill={ctx.buildModelPill?.()}
           statusLine={
             <StatusBar

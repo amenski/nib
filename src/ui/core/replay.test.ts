@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { buildReplayLines } from "./replay.js";
-import { USER_ECHO_TAG, VERBATIM_TAG, BULLET_TAG, ANSWER_CONT_TAG } from "../constants.js";
+import { USER_ECHO_TAG, VERBATIM_TAG, BULLET_TAG, ANSWER_CONT_TAG, TOOL_HEADER_TAG, TOOL_RESULT_TAG } from "../constants.js";
 import type { Message } from "../../types.js";
 import { stripAnsi } from "../test-helpers.js";
 import { ThemeContextValue, DARK_THEME, ansiFg } from "../theme.js";
@@ -42,7 +42,7 @@ describe("buildReplayLines", () => {
       { role: "tool", toolCallId: "c1", content: "file-a\nfile-b" },
     ];
     const lines = buildReplayLines(msgs, noColor).map(stripAnsi);
-    expect(lines.some((l) => l.startsWith(VERBATIM_TAG + "⏺ Bash"))).toBe(true);
+    expect(lines.some((l) => l.startsWith(VERBATIM_TAG + TOOL_HEADER_TAG + "⏺ Bash"))).toBe(true);
     expect(lines.some((l) => l.includes("file-a"))).toBe(true);
   });
 
@@ -84,6 +84,46 @@ describe("buildReplayLines", () => {
     expect(lines.some((l) => l.includes("Did X and Y."))).toBe(true);
     // real user turn keeps its gutter
     expect(lines).toContain(VERBATIM_TAG + USER_ECHO_TAG + "now do Z");
+  });
+
+  it("tags tool headers and previews so a resumed transcript keeps its indentation", () => {
+    // The whole point of replay is that a resumed transcript is
+    // indistinguishable from one that just streamed. Untagged, a preview line
+    // went through the markdown renderer, which drops a run of spaces at the
+    // start of a row — so the "     " gutter and the payload's own indent
+    // vanished here while the same output streamed live kept them.
+    const msgs: Message[] = [
+      {
+        role: "assistant",
+        content: null,
+        toolCalls: [{ id: "c1", name: "run_bash", arguments: { command: "ls" } }],
+      },
+      { role: "tool", toolCallId: "c1", content: "head\n      const x = 1;" },
+    ];
+    const lines = buildReplayLines(msgs, noColor);
+
+    // The header carries the tag (behind VERBATIM_TAG, which is outermost).
+    expect(lines).toContain(VERBATIM_TAG + TOOL_HEADER_TAG + "⏺ Bash(ls)");
+    // So does every preview line — the opener, the indented payload, the rest.
+    const preview = lines.find((l) => l.includes("head"));
+    expect(preview).toBe(VERBATIM_TAG + TOOL_RESULT_TAG + "  ⎿  head");
+    expect(lines).toContain(VERBATIM_TAG + TOOL_RESULT_TAG + "           const x = 1;");
+  });
+
+  it("keeps an error preview's colour under the tag", () => {
+    // The tag is prepended, not substituted: an error result must stay red.
+    const msgs: Message[] = [
+      {
+        role: "assistant",
+        content: null,
+        toolCalls: [{ id: "c1", name: "run_bash", arguments: { command: "boom" } }],
+      },
+      { role: "tool", toolCallId: "c1", content: "COMMAND_FAILED: nope" },
+    ];
+    const lines = buildReplayLines(msgs, withColor);
+    const line = lines.find((l) => l.includes("nope"));
+    expect(line?.startsWith(VERBATIM_TAG + TOOL_RESULT_TAG)).toBe(true);
+    expect(line).toContain(ansiFg(DARK_THEME.error));
   });
 
   it("marks permission-denied tool results as errors (theme error colour) when color is on", () => {

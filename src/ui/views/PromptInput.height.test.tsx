@@ -133,4 +133,21 @@ describe("PromptInput frame height", () => {
     const frame = strip(setup().lastFrame() ?? "");
     expect(frame.split("\n").length).toBeGreaterThanOrEqual(4);
   });
+
+  it("gapAbove adds exactly one blank row above the input", () => {
+    // The host applies this only when the transcript has not already left a
+    // blank row there (see core/composer-gap.ts). One row — not two: an
+    // unconditional margin doubled the gap under "✳ Worked for Ns", which
+    // already ends with a blank line of its own.
+    const without = strip(setup().lastFrame() ?? "").split("\n");
+    const withGap = strip(setup({ gapAbove: true }).lastFrame() ?? "").split("\n");
+
+    expect(withGap.length).toBe(without.length + 1);
+    const inputRow = withGap.findIndex((r) => r.includes("❯"));
+    expect(inputRow).toBeGreaterThan(1);
+    // Exactly one blank row between the top rule and whatever precedes it.
+    expect(withGap[inputRow - 1]).toMatch(/^─+$/);
+    expect(withGap[inputRow - 2]).toBe("");
+    expect(withGap[inputRow - 3]).not.toBe("");
+  });
 });

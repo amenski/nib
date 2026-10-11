@@ -180,6 +180,41 @@ describe("/skill loads, and runs only with the user's words", () => {
     expect(h.runAgentTurnCore).not.toHaveBeenCalled();
   });
 
+  it("picking a skill from /skills fills the input and waits for Enter", async () => {
+    const h = makeHarness(["update-docs"]);
+    const inst = render(<App ctx={h.ctx} />);
+    mounted.push(inst);
+
+    // Open the picker, then Enter on the highlighted skill.
+    inst.stdin.write("/skills");
+    await flush();
+    inst.stdin.write("\r");
+    await flush();
+    inst.stdin.write("\r"); // select "update-docs"
+    await flush();
+    await flush();
+
+    // Nothing has loaded yet: no slash call, no turn, no history entry.
+    expect(h.slashCalls).toEqual([]);
+    expect(h.runAgentTurnCore).not.toHaveBeenCalled();
+    expect(h.ctx.mutable.conversationHistory).toHaveLength(0);
+
+    // The input now holds the pending command, waiting for the user's task.
+    const frame = stripAnsi(inst.lastFrame() ?? "");
+    expect(frame).toContain("/skill update-docs");
+    expect(frame).not.toContain("Skill update-docs loaded");
+
+    // Enter runs the unchanged typed path: bare name loads, no turn starts.
+    inst.stdin.write("\r");
+    await flush();
+    await flush();
+    await flush();
+
+    expect(h.slashCalls).toEqual(["/skill update-docs"]);
+    expect(h.runAgentTurnCore).not.toHaveBeenCalled();
+    expect(h.ctx.mutable.conversationHistory[0].content).toContain("update-docs BODY");
+  });
+
 });
 
 /**
@@ -252,10 +287,11 @@ describe("mid-turn /skill", () => {
   });
 
   it("the /skills picker takes the same path as a typed /skill", async () => {
-    // Picking used to call handleSlashCommand directly, bypassing the gate: it
-    // pushed the load into conversationHistory while the turn ran, and the
-    // turn's completion assigned its own messages over that array — the skill
-    // was silently lost, and the turn it started raced the live one.
+    // Picking fills the input with `/skill <name> `; Enter then submits it
+    // through the same gate a typed `/skill` gets. Mid-turn that gate injects
+    // the skill into the running turn instead of queueing it (the old direct
+    // handleSlashCommand call pushed into conversationHistory while the turn
+    // ran, and the turn's completion overwrote it — the skill was lost).
     const polled: (string | null)[] = [];
     const h = makeHarness(["update-docs"], midTurnRunner(polled));
     const inst = render(<App ctx={h.ctx} />);
@@ -270,7 +306,9 @@ describe("mid-turn /skill", () => {
     await flush();
     inst.stdin.write("\r");
     await flush();
-    inst.stdin.write("\r"); // Enter on the highlighted skill
+    inst.stdin.write("\r"); // Enter on the highlighted skill -> fills the input
+    await flush();
+    inst.stdin.write("\r"); // Enter on the input -> submits the filled command
     const deadline = Date.now() + 5000;
     while (polled.length === 0 && Date.now() < deadline) await flush();
 

@@ -16,7 +16,7 @@ import {
   formatToolResultPreview,
   SILENT_TOOLS,
 } from "../ToolCallFormatter.js";
-import { USER_ECHO_TAG, VERBATIM_TAG, BULLET_TAG, ANSWER_CONT_TAG } from "../constants.js";
+import { USER_ECHO_TAG, VERBATIM_TAG, BULLET_TAG, ANSWER_CONT_TAG, TOOL_HEADER_TAG, TOOL_RESULT_TAG } from "../constants.js";
 import type { ThemeContextValue } from "../theme.js";
 
 /**
@@ -92,7 +92,10 @@ export function buildReplayLines(messages: Message[], theme: ThemeContextValue):
           continue;
         }
         out.push("");
-        out.push(tag(formatToolCallHeader(call.name, call.arguments)));
+        // TOOL_HEADER_TAG, exactly as the live path tags it (App.tsx's
+        // onToolStart), so a replayed header is not run through the markdown
+        // renderer: arguments are shell/path text where a marker is literal.
+        out.push(tag(TOOL_HEADER_TAG + formatToolCallHeader(call.name, call.arguments)));
       }
       continue;
     }
@@ -104,8 +107,16 @@ export function buildReplayLines(messages: Message[], theme: ThemeContextValue):
       const isError =
         content.startsWith("PERMISSION_DENIED") || content.startsWith("COMMAND_FAILED");
       for (const line of formatToolResultPreview(content)) {
+        // TOOL_RESULT_TAG, as the live path tags its preview lines (App.tsx's
+        // onToolResult). Without it a replayed preview was markdown-parsed, and
+        // the markdown wrapper drops a run of spaces at the start of a row — so
+        // the "     " gutter and the payload's own indentation were stripped on
+        // every resumed session, while the same output streamed live kept them.
         out.push(
-          tag(isError ? theme.fg(theme.theme.error, line) : theme.fg(theme.theme.textDim, line)),
+          tag(
+            TOOL_RESULT_TAG +
+              (isError ? theme.fg(theme.theme.error, line) : theme.fg(theme.theme.textDim, line)),
+          ),
         );
       }
       continue;

@@ -71,11 +71,17 @@ interface Props {
    * the submission instead of preempting it with an auto-started turn.
    */
   onDraftChange?: (text: string) => void;
+  /**
+   * Draw one blank row above the composer. The host sets this only when the
+   * transcript (or a panel) has not already left a blank row there, so the gap
+   * is never doubled — see core/composer-gap.ts.
+   */
+  gapAbove?: boolean;
 }
 
 const PromptInput = React.memo(function PromptInput({
   screenWidth, promptHistory, busy, placeholder, statusLine, modelPill,
-  promptDraft, onSubmit, onInterrupt, onExitShortcut, onModelPickerOpen, onCyclePosture, onOpenModePicker, completer, onDraftChange,
+  promptDraft, onSubmit, onInterrupt, onExitShortcut, onModelPickerOpen, onCyclePosture, onOpenModePicker, completer, onDraftChange, gapAbove,
 }: Props): React.ReactElement {
   const theme = useTheme();
   const undoRedoRef = useRef(createPromptUndoRedoState());
@@ -521,7 +527,7 @@ const PromptInput = React.memo(function PromptInput({
       : null;
 
   return (
-    <Box flexDirection="column" width={screenWidth}>
+    <Box flexDirection="column" width={screenWidth} marginTop={gapAbove ? 1 : 0}>
       {/* The INPUT is the raised element — a bright rounded box — because that
           is where attention belongs. Everything else (status, hints) sits flat
           and dim outside it. The model pill rides on the input's right edge:

@@ -169,6 +169,12 @@ export interface ThemeDefinition {
   // ── Text colors ──
   text: number;
   textDim: number;
+  /**
+   * A tool-result preview's text: quieter than `text` so it sits behind the
+   * answer, but readable. `textDim` (Claude Code's `inactive` grey) was too
+   * faint for output the user actually reads.
+   */
+  toolOutput: number;
   textBright: number;
   textInverse: number;
   link: number;
@@ -232,6 +238,7 @@ export const DARK_THEME: ThemeDefinition = {
 
   text: 231, // rgb(255,255,255)
   textDim: 246, // inactive rgb(153,153,153)
+  toolOutput: 250, // rgb(188,188,188)
   textBright: 231,
   textInverse: 16,
   link: 147, // suggestion rgb(177,185,249)

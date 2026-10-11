@@ -897,9 +897,10 @@ describe("turns that end without an answer", () => {
 });
 
 describe("tool result preview colour", () => {
-  it("draws the ⎿ preview in the theme's dim grey, not terminal dim", async () => {
-    // Terminal dim (SGR 2) renders as a faint grey that is hard to read; the
-    // preview now uses the theme's textDim (Claude Code's inactive grey, 246).
+  it("draws the ⎿ preview in the theme's toolOutput grey, not terminal dim", async () => {
+    // Terminal dim (SGR 2) renders as a faint grey that is hard to read, and the
+    // theme's textDim (246) was still too faint for output people read; the
+    // preview uses the lighter toolOutput slot (250).
     const { DARK_THEME, ansiFg } = await import("./theme.js");
     const ctx = makeCtx(async (_input: string, cb: any) => {
       cb.onToolStart("run_bash", { command: "echo hi" });
@@ -916,7 +917,8 @@ describe("tool result preview colour", () => {
     await flush();
     const frame = inst.lastFrame() ?? "";
     const line = frame.split("\n").find((l) => l.includes("preview-line")) ?? "";
-    expect(line).toContain(ansiFg(DARK_THEME.textDim));
+    expect(line).toContain(ansiFg(DARK_THEME.toolOutput));
+    expect(line).not.toContain(ansiFg(DARK_THEME.textDim));
     expect(line).not.toContain("\x1b[2m");
   });
 });

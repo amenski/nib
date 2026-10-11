@@ -115,7 +115,7 @@ export function buildReplayLines(messages: Message[], theme: ThemeContextValue):
         out.push(
           tag(
             TOOL_RESULT_TAG +
-              (isError ? theme.fg(theme.theme.error, line) : theme.fg(theme.theme.textDim, line)),
+              (isError ? theme.fg(theme.theme.error, line) : theme.fg(theme.theme.toolOutput, line)),
           ),
         );
       }

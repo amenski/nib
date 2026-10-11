@@ -1161,7 +1161,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
               // source's own indentation, were both stripped (the first line's
               // "  ⎿  " survived only because it does not begin with spaces). The tag
               // also lets OutputArea hang a wrapped line's overflow under the text.
-              scheduleOutput(TOOL_RESULT_TAG + theme.fg(isError ? theme.theme.error : theme.theme.textDim, line));
+              scheduleOutput(TOOL_RESULT_TAG + theme.fg(isError ? theme.theme.error : theme.theme.toolOutput, line));
             }
           }
           needTextSeparator = true;

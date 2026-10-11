@@ -6,12 +6,14 @@ import type { Message } from "../../types.js";
  * force-loaded skill body, or a tool-failure nudge.
  *
  * Each pattern is matched against a real injection site:
- *   compaction summary  — compactor.ts / cli.tsx: "[Previous conversation summary]"
+ *   compaction summary  — compactor.ts / cli.tsx: "[Previous conversation summary]";
+ *                         sessions/store.ts (resume overlay): "[Earlier in this conversation]"
  *   force-loaded skill  — ui/core/skill-load.ts:  "[skill: <name>]"
  *   error reflection    — selfreflection/index.ts: "Your <tool> call failed: …"
  */
 const SYNTHETIC_USER_PATTERNS: RegExp[] = [
   /^\[Previous conversation summary\]/,
+  /^\[Earlier in this conversation\]/,
   /^\[skill:/,
   /^Your \S+ call failed:/,
 ];

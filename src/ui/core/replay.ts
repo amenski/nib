@@ -48,6 +48,15 @@ const answerBlockLines = (content: string): string[] =>
  */
 const tag = (line: string): string => VERBATIM_TAG + line;
 
+/**
+ * A compaction summary, in either of its two stored forms: the live compactor's
+ * "[Previous conversation summary]" and the persisted resume overlay's
+ * "[Earlier in this conversation]" (sessions/store.ts formatCompactionText).
+ */
+const isCompactionSummary = (content: string): boolean =>
+  content.startsWith("[Previous conversation summary]") ||
+  content.startsWith("[Earlier in this conversation]");
+
 export function buildReplayLines(messages: Message[], theme: ThemeContextValue): string[] {
   const out: string[] = [];
   const dim = (s: string): string => theme.fg(theme.theme.textDim, s);
@@ -59,7 +68,7 @@ export function buildReplayLines(messages: Message[], theme: ThemeContextValue):
     if (msg.role === "system") {
       // A compaction summary is the only system message worth surfacing; the
       // per-turn system prompt is noise. Show summaries dimmed.
-      if (msg.content.startsWith("[Previous conversation summary]")) {
+      if (isCompactionSummary(msg.content)) {
         out.push("");
         out.push(tag(dim(msg.content)));
         out.push("");
@@ -70,7 +79,7 @@ export function buildReplayLines(messages: Message[], theme: ThemeContextValue):
     if (msg.role === "user") {
       // A persisted compaction overlay is stored as a user message; render it as
       // a dim summary rather than user input.
-      if (msg.content.startsWith("[Previous conversation summary]")) {
+      if (isCompactionSummary(msg.content)) {
         out.push("");
         out.push(tag(dim(msg.content)));
         out.push("");

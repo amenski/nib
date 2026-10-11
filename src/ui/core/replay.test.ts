@@ -86,6 +86,22 @@ describe("buildReplayLines", () => {
     expect(lines).toContain(VERBATIM_TAG + USER_ECHO_TAG + "now do Z");
   });
 
+  it("shows a persisted compaction overlay dimmed, not as a highlighted user echo", () => {
+    // sessions/store.ts stores the resume overlay as a user message headed
+    // "[Earlier in this conversation]". Unrecognised, it was drawn as the
+    // user's own prompt: a screenful of highlighted text on every resume.
+    const msgs: Message[] = [
+      { role: "user", content: "[Earlier in this conversation]\nTask: ship it\n\nDecisions:\n- use X" },
+      { role: "user", content: "now do Z" },
+    ];
+    const lines = buildReplayLines(msgs, withColor);
+    const summary = lines.find((l) => l.includes("Task: ship it"));
+    expect(summary).toBeDefined();
+    expect(summary!.includes(USER_ECHO_TAG)).toBe(false);
+    expect(summary).toContain(ansiFg(DARK_THEME.textDim));
+    expect(lines).toContain(VERBATIM_TAG + USER_ECHO_TAG + "now do Z");
+  });
+
   it("tags tool headers and previews so a resumed transcript keeps its indentation", () => {
     // The whole point of replay is that a resumed transcript is
     // indistinguishable from one that just streamed. Untagged, a preview line

@@ -32,6 +32,14 @@ describe("seedPromptHistory", () => {
     expect(seedPromptHistory(msgs)).toEqual(["real prompt"]);
   });
 
+  it("drops the persisted compaction overlay a resumed session starts with", () => {
+    const msgs: Message[] = [
+      user("[Earlier in this conversation]\nTask: ship it"),
+      user("real prompt"),
+    ];
+    expect(seedPromptHistory(msgs)).toEqual(["real prompt"]);
+  });
+
   it("drops a force-loaded skill body", () => {
     const msgs: Message[] = [
       user("[skill: commit]\nThe following skill was loaded…"),

@@ -54,7 +54,7 @@ import FolderTrustPrompt from "./ui/views/FolderTrustPrompt.js";
 import type { Message } from "./types.js";
 import type { ModelCapabilities, ProviderBalance } from "./providers/types.js";
 import { resolveTheme, ThemeContextValue, ANSI, ansiFg, ANSI_RESET } from "./ui/theme.js";
-import { chip, meter } from "./ui/core/chips.js";
+import { meter } from "./ui/core/chips.js";
 import { buildTaskSegments } from "./ui/core/task-status.js";
 import { ANSI_CLEAR_SCREEN } from "./ui/constants.js";
 import { resolveRefreshProfile, REFRESH_PROFILE_NAMES, describeRefreshSource } from "./ui/core/refresh-rates.js";
@@ -851,10 +851,6 @@ async function main() {
     // changes mid-session (mode, posture, effort, context fill). The level is
     // visible in `nib doctor` and /permissions (decided 2026-08-14).
 
-    // The model is NOT here — it rides as a chip on the input box's right edge
-    // (see buildModelPill), because it is a property of the message you are
-    // about to send rather than ambient session state.
-
     // Thinking mode, labelled the same way the welcome screen labels it
     // ("thinking high" / "thinking on" / "thinking off") so the two agree — a
     // bare "high" in the bar did not say what was high. Plain dim text rather
@@ -865,6 +861,11 @@ async function main() {
     if (thinkingEnabled && getActiveModelCaps()?.effort) {
       segments.push(dim(nextId(), `thinking ${shared.activeEffort ?? "on"}`));
     }
+
+    // The model sits just before the context meter: the two describe the same
+    // thing (what the next message runs on and how full its window is), and the
+    // bar drops segments from the end, so the model outlasts ctx on a narrow row.
+    segments.push(dim(nextId(), modelDisplayName()));
 
     const ctxPercent = getContextPercent();
     if (ctxPercent !== null) {
@@ -903,10 +904,6 @@ async function main() {
   }
 
   /**
-   * The model chip shown on the input box's right edge. Pre-rendered ANSI (not
-   * a node) so it stays inside the single input row — see PromptInput.modelPill.
-   */
-  /**
    * The active model's display name, with the same fallback the status bar
    * uses. `shared.activeModel` is undefined until a model is explicitly
    * chosen, so reading it directly renders "unknown" on a fresh session even
@@ -915,14 +912,6 @@ async function main() {
   function modelDisplayName(): string {
     const modelId = shared.activeModel ?? getPreset(shared.providerName)?.defaultModel ?? "unknown";
     return getActiveModelCaps()?.displayName ?? modelId;
-  }
-
-  function buildModelPill(): string {
-    return chip(modelDisplayName(), {
-      fg: resolvedTheme.theme.textBright,
-      bg: resolvedTheme.theme.border,
-      colorEnabled,
-    });
   }
 
   // Tool schemas + repo map ride on every request but are absent from
@@ -1046,7 +1035,6 @@ async function main() {
       renewAbortController: () => { shared.abort = new AbortController(); },
       completer: (line: string) => completer(line, knownModeSlugs, commands.map((c) => c.name)),
       buildStatusBar,
-      buildModelPill,
       modelDisplayName,
       statusLineManager,
       getPromptStr: () => (colorEnabled ? `\u001B[34m\u258C\u001B[0m \u001B[34m\u203A\u001B[0m ` : "nib > "),

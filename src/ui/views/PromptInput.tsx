@@ -44,12 +44,6 @@ interface Props {
    * frame keeps its only animating line (the hint bar) at the very bottom.
    */
   statusLine?: React.ReactNode;
-  /**
-   * Pre-rendered model chip shown on the input box's right edge. A string of
-   * ANSI rather than a node so it stays inside the single input row — a
-   * bordered Box would be three rows and break the constant height.
-   */
-  modelPill?: string;
   promptDraft?: { nonce: number; text: string } | null;
   onSubmit: (submission: PromptSubmission) => void;
   onInterrupt?: () => void;
@@ -80,7 +74,7 @@ interface Props {
 }
 
 const PromptInput = React.memo(function PromptInput({
-  screenWidth, promptHistory, busy, placeholder, statusLine, modelPill,
+  screenWidth, promptHistory, busy, placeholder, statusLine,
   promptDraft, onSubmit, onInterrupt, onExitShortcut, onModelPickerOpen, onCyclePosture, onOpenModePicker, completer, onDraftChange, gapAbove,
 }: Props): React.ReactElement {
   const theme = useTheme();
@@ -530,11 +524,9 @@ const PromptInput = React.memo(function PromptInput({
     <Box flexDirection="column" width={screenWidth} marginTop={gapAbove ? 1 : 0}>
       {/* The INPUT is the raised element — a bright rounded box — because that
           is where attention belongs. Everything else (status, hints) sits flat
-          and dim outside it. The model pill rides on the input's right edge:
-          it is a property of what you are about to send, so it belongs with the
-          composer rather than in the ambient status row. Only the rules above
-          and below are drawn (Claude Code's prompt): no side borders, so the
-          text column is not inset twice. */}
+          and dim outside it. Only the rules above and below are drawn (Claude
+          Code's prompt): no side borders, so the text column is not inset
+          twice. */}
       <Box
         width={screenWidth}
         borderStyle="round"
@@ -551,14 +543,6 @@ const PromptInput = React.memo(function PromptInput({
             {renderBufferWithCursor(buffer, placeholder, pasteSpans)}
           </Text>
         </Box>
-        {/* flexShrink=0: the pill is fixed chrome, so long input must wrap
-            within the text column rather than squeezing the pill and pushing it
-            onto its own line. */}
-        {modelPill && (
-          <Box flexShrink={0}>
-            <Text>{modelPill}</Text>
-          </Box>
-        )}
       </Box>
 
       {/* Status row: flat, outside the box, one line. A notice borrows this row

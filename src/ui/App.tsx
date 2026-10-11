@@ -2617,7 +2617,6 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
             liveTail: activeLine !== "" && !busy,
             lastOutputLine: outputLines[outputLines.length - 1],
           })}
-          modelPill={ctx.buildModelPill?.()}
           statusLine={
             <StatusBar
               segments={

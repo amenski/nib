@@ -2,11 +2,9 @@
  * Nib StatusBar — the session status line above the hint bar.
  *
  * Segments are built by the caller (see buildStatusBar in cli.tsx) and
- * typically include: active mode/posture, effort level, context usage
- * (meter + %), and session cost — plus gitStatus and the optional session
- * timer rendered directly by this component. Provider/model rides as a
- * chip on the input box instead (buildModelPill in cli.tsx), since it's a
- * property of the next message rather than ambient session state.
+ * typically include: active mode/posture, effort level, the active model,
+ * context usage (meter + %), and session cost — plus gitStatus and the
+ * optional session timer rendered directly by this component.
  *
  * All colors are theme-driven via ThemeContext.
  */

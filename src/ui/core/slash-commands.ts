@@ -1,5 +1,5 @@
 export type SlashCommandKind =
-  | "model" | "mode" | "effort" | "theme" | "new" | "resume" | "continue" | "undo" | "mcp" | "tasks" | "permissions" | "usage" | "exit" | "help" | "clear" | "skills" | "plan" | "raw" | "doctor" | "context" | "compact";
+  | "model" | "mode" | "effort" | "new" | "resume" | "continue" | "undo" | "mcp" | "tasks" | "permissions" | "usage" | "exit" | "help" | "clear" | "skills" | "plan" | "raw" | "doctor" | "context" | "compact";
 
 export interface SlashCommandItem {
   kind: SlashCommandKind;
@@ -13,7 +13,6 @@ export const BUILTIN_SLASH_COMMANDS: SlashCommandItem[] = [
   { kind: "model", name: "model", label: "/model", description: "Select model" },
   { kind: "mode", name: "mode", label: "/mode", description: "Switch persona (general/code)" },
   { kind: "effort", name: "effort", label: "/effort", description: "Set reasoning effort" },
-  { kind: "theme", name: "theme", label: "/theme", description: "Switch color theme (live preview)" },
   { kind: "new", name: "new", label: "/new", description: "Start a fresh conversation" },
   { kind: "resume", name: "resume", label: "/resume", description: "Pick a previous session" },
   { kind: "continue", name: "continue", label: "/continue", description: "Continue the active session" },

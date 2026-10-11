@@ -14,7 +14,6 @@ const ROUTED_KINDS: ReadonlySet<SlashCommandKind> = new Set<SlashCommandKind>([
   "model",
   "mode",
   "effort",
-  "theme",
   "new",
   "resume",
   "continue",
@@ -34,30 +33,12 @@ const ROUTED_KINDS: ReadonlySet<SlashCommandKind> = new Set<SlashCommandKind>([
   "compact",
 ]);
 
-describe("/theme slash command registration", () => {
-  it("registers a /theme command", () => {
+describe("/theme is hidden while there is a single theme", () => {
+  it("is not registered, so the menu, palette and prefix filter never show it", () => {
     const cmds = getSlashCommands();
-    const theme = cmds.find((c) => c.name === "theme");
-    expect(theme).toBeDefined();
-    expect(theme!.kind).toBe("theme");
-    expect(theme!.label).toBe("/theme");
-    expect(theme!.description).toMatch(/theme/i);
-  });
-
-  it("is discoverable by prefix filtering", () => {
-    const hits = filterSlashCommands(getSlashCommands(), "/the");
-    expect(hits.map((h) => h.name)).toContain("theme");
-  });
-
-  it("resolves as an exact command", () => {
-    const exact = findExactSlashCommand(getSlashCommands(), "/theme");
-    expect(exact?.kind).toBe("theme");
-  });
-
-  it("keeps /model registered alongside /theme (sibling picker)", () => {
-    const names = getSlashCommands().map((c) => c.name);
-    expect(names).toContain("model");
-    expect(names).toContain("theme");
+    expect(cmds.map((c) => c.name)).not.toContain("theme");
+    expect(filterSlashCommands(cmds, "/the").map((h) => h.name)).not.toContain("theme");
+    expect(findExactSlashCommand(cmds, "/theme")).toBeNull();
   });
 });
 

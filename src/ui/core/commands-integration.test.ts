@@ -15,7 +15,7 @@ const items = getSlashCommands();
 // are handler aliases not present in the builtin menu list, included here
 // because App's handleSlashCommand routes them and opensModal must agree.
 const MODAL = [
-  "model", "mode", "theme", "effort", "resume", "continue", "sessions",
+  "model", "mode", "effort", "resume", "continue", "sessions",
   "skills", "modes", "undo", "mcp", "tasks", "permissions", "usage", "help", "doctor", "context",
 ];
 
@@ -28,11 +28,11 @@ describe("slash-command layer (integration)", () => {
     for (const item of items) {
       expect(findExactSlashCommand(items, `/${item.name}`)).toBe(item);
     }
-    // Sanity: the builtin set is the 21 we expect.
+    // Sanity: the builtin set is the 20 we expect.
     expect(items.map((i) => i.name).sort()).toEqual(
       [
         "clear", "compact", "context", "continue", "doctor", "effort", "exit", "help", "mcp", "mode", "model",
-        "new", "permissions", "plan", "raw", "resume", "skills", "tasks", "theme", "undo", "usage",
+        "new", "permissions", "plan", "raw", "resume", "skills", "tasks", "undo", "usage",
       ].sort(),
     );
   });

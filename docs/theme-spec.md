@@ -2,6 +2,19 @@
 
 **Status:** current · verified 2026-10-10 · covers `src/ui/theme.ts`, `src/ui/components/ThemeDropdown/` · open items: 2 fixed-hex islands (§5)
 
+## 0. Current state (2026-10-11)
+
+**One built-in theme: `dark`, Claude Code's dark palette (256-colour).** The
+other presets (`light`, `high-contrast`, `dracula`, `monokai`, `github-*`,
+`ansi-*`) were removed and the `/theme` command is hidden: it is not in
+`BUILTIN_SLASH_COMMANDS`, the help overlay or the README, and `App` no longer
+handles it. `ThemeDropdown` stays in the tree, dormant. `resolveTheme` still
+accepts any saved `theme.mode`/`theme.name` and falls back to `dark`, so an
+old settings file keeps working. Sections 2 and 3 below describe the
+multi-preset design that existed before this and are kept for history.
+Exact Claude Code RGB would need truecolor, which macOS Terminal.app lacks, so
+the palette stays 256-colour.
+
 ## 1. Overview
 
 Nib's theme system lives in `src/ui/theme.ts`: a fully offline,

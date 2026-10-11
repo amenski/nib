@@ -60,53 +60,31 @@ describe("detectSystemThemeFrom", () => {
   });
 });
 
-describe("extra theme presets", () => {
-  const presets: Array<{ name: string; type: "light" | "dark" | "custom" }> = [
-    { name: "dracula", type: "dark" },
-    { name: "monokai", type: "dark" },
-    { name: "github-dark", type: "dark" },
-    { name: "github-light", type: "light" },
-    { name: "ansi-dark", type: "dark" },
-    { name: "ansi-light", type: "light" },
-  ];
+describe("single built-in theme", () => {
+  it("registers only dark", () => {
+    expect(Object.keys(BUILTIN_THEMES)).toEqual(["dark"]);
+  });
 
-  for (const { name, type } of presets) {
-    it(`registers "${name}" in BUILTIN_THEMES with the right type`, () => {
-      const preset = BUILTIN_THEMES[name];
-      expect(preset).toBeDefined();
-      expect(preset.name).toBe(name);
-      expect(preset.type).toBe(type);
-    });
-
-    it(`resolves "${name}" by name`, () => {
-      const resolved = resolveTheme({ mode: "dark", name });
-      expect(resolved.name).toBe(name);
-      expect(resolved.type).toBe(type);
+  // A settings file saved while the other presets existed must keep working:
+  // every removed name, and light/auto mode, lands on dark.
+  for (const name of ["light", "high-contrast", "dracula", "monokai", "github-dark", "github-light", "ansi-dark", "ansi-light", "does-not-exist"]) {
+    it(`resolves a saved name "${name}" to dark`, () => {
+      expect(resolveTheme({ mode: "dark", name }).name).toBe("dark");
     });
   }
 
-  it("lets name take precedence over mode", () => {
-    // mode "dark" would otherwise pick DARK_THEME; the named preset wins.
-    const resolved = resolveTheme({ mode: "dark", name: "github-light" });
-    expect(resolved.name).toBe("github-light");
-    expect(resolved.type).toBe("light");
+  it("resolves light mode to dark", () => {
+    expect(resolveTheme({ mode: "light" }).name).toBe("dark");
   });
 
-  it("merges overrides on top of a named preset", () => {
+  it("merges overrides on top of dark", () => {
     const resolved = resolveTheme({
       mode: "dark",
-      name: "dracula",
       overrides: { accent: 200, syntax: { keyword: 111 } as any },
     });
-    expect(resolved.name).toBe("dracula");
     expect(resolved.accent).toBe(200);
-    // Overridden syntax slot merges; untouched slots stay from the preset.
     expect(resolved.syntax.keyword).toBe(111);
-    expect(resolved.syntax.string).toBe(BUILTIN_THEMES.dracula.syntax.string);
-  });
-
-  it("falls back gracefully for an unknown name (mode wins)", () => {
-    const resolved = resolveTheme({ mode: "light", name: "does-not-exist" });
-    expect(resolved.name).toBe("light");
+    // Untouched slots stay from the base theme.
+    expect(resolved.syntax.string).toBe(BUILTIN_THEMES.dark.syntax.string);
   });
 });

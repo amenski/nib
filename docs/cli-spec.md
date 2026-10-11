@@ -108,7 +108,7 @@ Typed at the prompt inside the TUI. Three surfaces:
 
 1. **Autocomplete menu** — `BUILTIN_SLASH_COMMANDS`
    (`src/ui/core/slash-commands.ts`): `/skills`, `/model`, `/mode`,
-   `/effort`, `/theme`, `/new`, `/resume`, `/continue`, `/undo`, `/mcp`,
+   `/effort`, `/new`, `/resume`, `/continue`, `/undo`, `/mcp`,
    `/tasks`, `/permissions`, `/usage`, `/plan`, `/raw`, `/clear`, `/compact`,
    `/context`, `/doctor`, `/help`, `/exit`.
 2. **Text dispatcher** — `handleSlashCore` (`src/cli.tsx:987`): `/help`,
@@ -116,7 +116,7 @@ Typed at the prompt inside the TUI. Three surfaces:
    (only the first token is the skill name — the rest is the instruction the
    App runs as the turn, skill-spec.md §7), `/clear`, `/compact`, `/modes`,
    `/mode [slug]`, `/model [provider/model]`, `/effort [value]`, `/sessions`.
-3. **TUI handlers** (`src/ui/App.tsx` `handleSlashCommand`): `/theme`,
+3. **TUI handlers** (`src/ui/App.tsx` `handleSlashCommand`):
    `/new`, `/resume`, `/continue`, `/sessions` (alias for the session
    list), `/undo`, `/mcp`, `/tasks`, `/permissions`, `/usage`, `/plan`,
    `/raw`, `/exit`.
@@ -127,7 +127,7 @@ Typed at the prompt inside the TUI. Three surfaces:
 **Menu picks while a turn runs.** Selecting from the autocomplete menu is not
 blocked by a running turn: every item routes to App (`onSubmit` /
 `onModelPickerOpen`), which opens a modal command now (`MODAL_COMMANDS`,
-`src/ui/core/modal-commands.ts` — `/model`, `/theme`, `/effort`, …) or queues
+`src/ui/core/modal-commands.ts` — `/model`, `/effort`, …) or queues
 the rest behind the turn. The menu used to refuse every pick with "wait for
 response or press esc", which locked the user out of `/model` even though
 typing it mid-turn already worked.

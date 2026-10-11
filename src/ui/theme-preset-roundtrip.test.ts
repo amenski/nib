@@ -38,7 +38,7 @@ describe("named preset config → resolveTheme round-trip", () => {
     expect(config.theme?.name).toBe("dracula");
   });
 
-  it("resolveTheme honors the loaded preset (name wins over mode)", () => {
+  it("resolveTheme falls back to dark for a saved preset that no longer exists", () => {
     persistThemeChoice("dracula", home);
     const { config } = loadConfig(projectDir);
     const resolved = resolveTheme({
@@ -46,7 +46,7 @@ describe("named preset config → resolveTheme round-trip", () => {
       name: config.theme?.name,
       overrides: config.theme?.overrides,
     });
-    expect(resolved).toBe(BUILTIN_THEMES.dracula);
+    expect(resolved).toBe(BUILTIN_THEMES.dark);
   });
 
   it("splitThemeSelection routes a preset selection into `name`", () => {
@@ -55,12 +55,12 @@ describe("named preset config → resolveTheme round-trip", () => {
     expect(splitThemeSelection("light")).toEqual({ mode: "light" });
   });
 
-  it("a persisted mode word (auto/light/dark) resolves via mode, not name", () => {
+  it("a persisted mode word (auto/light/dark) resolves via mode, not name, to dark", () => {
     persistThemeChoice("light", home);
     const { config } = loadConfig(projectDir);
     expect(config.theme?.mode).toBe("light");
     expect(config.theme?.name).toBeUndefined();
     const { mode, name } = splitThemeSelection("light");
-    expect(resolveTheme({ mode, name })).toBe(BUILTIN_THEMES.light);
+    expect(resolveTheme({ mode, name })).toBe(BUILTIN_THEMES.dark);
   });
 });

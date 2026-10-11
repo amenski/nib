@@ -36,7 +36,6 @@ const SLASH_COMMANDS: { command: string; description: string }[] = [
   { command: "/mode <slug>", description: "Switch persona (general/code)" },
   { command: "/modes", description: "List available modes" },
   { command: "/model", description: "Show/switch provider/model" },
-  { command: "/theme", description: "Switch color theme (live preview)" },
   { command: "/plan", description: "Toggle plan mode (propose before implementing)" },
   { command: "/resume", description: "Pick a previous session" },
   { command: "/continue", description: "Continue the active session" },

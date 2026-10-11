@@ -117,7 +117,6 @@ current built-ins. See the [mode specification](./docs/mode-spec.md).
 | `/model`, `/effort` | pick model · set reasoning effort |
 | `/new`, `/resume`, `/continue` | session management |
 | `/undo` | rewind code and/or conversation |
-| `/theme` | switch color theme (live preview) |
 | `/permissions` | this session's permission history |
 | `/skills`, `/mcp`, `/tasks` | list skills · inspect MCP servers · inspect/stop sub-agent tasks |
 | `Ctrl+D` twice | quit |

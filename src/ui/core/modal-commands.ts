@@ -8,7 +8,6 @@
 const MODAL_COMMANDS = new Set([
   "model",
   "mode",
-  "theme",
   "effort",
   "resume",
   "continue",

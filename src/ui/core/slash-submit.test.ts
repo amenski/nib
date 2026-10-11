@@ -6,7 +6,7 @@ const items = getSlashCommands();
 
 describe("resolveSlashSubmit", () => {
   it("routes a bare known command through its kind handler", () => {
-    expect(resolveSlashSubmit("/theme", items, false)).toMatchObject({ action: "routeKind" });
+    expect(resolveSlashSubmit("/model", items, false)).toMatchObject({ action: "routeKind" });
     expect(resolveSlashSubmit("/clear", items, false)).toMatchObject({ action: "routeKind" });
     expect(resolveSlashSubmit("/permissions", items, false)).toMatchObject({ action: "routeKind" });
     expect(resolveSlashSubmit("/plan", items, false)).toMatchObject({ action: "routeKind" });

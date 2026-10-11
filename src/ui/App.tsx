@@ -1640,11 +1640,6 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
       setShowModelDropdown(true);
       return;
     }
-    if (trimmed === "/theme") {
-      themeBeforePreviewRef.current = themeController.current;
-      setShowThemeDropdown(true);
-      return;
-    }
     if (trimmed === "/effort") {
       // Only open the picker for models that declare an effort knob; otherwise
       // fall through to the CLI handler, which prints the informative message.

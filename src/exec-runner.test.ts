@@ -66,6 +66,7 @@ vi.mock("./providers/presets.js", () => ({
   getPreset: (name: string) => name === "deepseek" ? {
     defaultModel: "deepseek-v4-pro",
     models: {
+      "deepseek-flash": { effort: { values: ["low", "high", "max"], default: "high" } },
       "deepseek-v4-flash": { effort: { values: ["low", "high", "max"], default: "high" } },
       "deepseek-v4-pro": { effort: { values: ["low", "high", "max"], default: "high" } },
     },
@@ -350,7 +351,7 @@ describe("runExecMode first-run failures are clean (B1)", () => {
 
     expect(code).toBe(0);
     expect(getByModeSpy).toHaveBeenCalledWith(["read"]);
-    expect(createProviderSpy).toHaveBeenCalledWith("deepseek", expect.objectContaining({ modelOverride: "deepseek-v4-flash" }));
+    expect(createProviderSpy).toHaveBeenCalledWith("deepseek", expect.objectContaining({ modelOverride: "deepseek-flash" }));
     expect(lastStreamOptions?.effort).toBe("low");
   });
 

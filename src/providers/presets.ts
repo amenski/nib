@@ -116,7 +116,7 @@ export function createProvider(name: string, options?: ProviderOptions): Provide
       defaultModel: model,
       models: {},
     };
-    return createAISDKProvider(preset, model, apiKey);
+    return createAISDKProvider(preset, model, apiKey, name);
   }
 
   const preset = BUILTIN_PRESETS[name];
@@ -147,5 +147,6 @@ export function createProvider(name: string, options?: ProviderOptions): Provide
     effectivePreset,
     options?.modelOverride ?? preset.defaultModel,
     apiKey,
+    name,
   );
 }

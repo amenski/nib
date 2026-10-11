@@ -214,6 +214,12 @@ export interface AppContext {
   /** One-time notice (e.g. "Resumed <id>") shown in the scrollback on mount. */
   initialNotice?: string;
   /**
+   * A background startup check whose result is emitted into the scrollback when
+   * it resolves — the live model-list probe, which must not block startup. The
+   * App awaits it once at mount and prints a single dim line when it returns one.
+   */
+  startupNotices?: () => Promise<string | undefined>;
+  /**
    * Prior transcript of a resumed session (from the store), replayed into the
    * scrollback on mount. Empty/undefined for a fresh session. The model already
    * sees these via `mutable.conversationHistory`; this is purely for display.

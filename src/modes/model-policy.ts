@@ -17,7 +17,7 @@ export function parseModelId(modelId: string | undefined, fallbackProvider: stri
   return { provider: modelId.slice(0, slash), model: modelId.slice(slash + 1) };
 }
 
-export const GENERAL_MODEL_ID = "deepseek/deepseek-v4-flash";
+export const GENERAL_MODEL_ID = "deepseek/deepseek-flash";
 export const GENERAL_REASONING_EFFORT = "low";
 
 /**

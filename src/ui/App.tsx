@@ -405,6 +405,16 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
       const lines = ctx.initialNotice.split("\n");
       setOutputLines((prev) => [...prev, ...lines.map((l) => theme.fg(theme.theme.textDim, l))]);
     }
+    // A background startup check (the live model-list probe) must not hold up
+    // this first render, so it runs detached and appends one dim line if it
+    // resolves with something to say — the same dim rendering onDiagnostic uses.
+    if (ctx.startupNotices) {
+      ctx.startupNotices()
+        .then((line) => {
+          if (line) pushOutput(theme.fg(theme.theme.textDim, line));
+        })
+        .catch(() => {});
+    }
     // A resumed session with prior turns offers a load/compact choice before its
     // transcript is replayed into the scrollback. The chooser handlers do the
     // actual replay (see handleResumeLoad / handleResumeCompact).

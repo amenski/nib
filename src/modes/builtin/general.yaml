@@ -5,5 +5,5 @@ roleDefinition: >
   and read the codebase when it's relevant. You cannot edit files or run
   commands — switch to Code mode for implementation work.
 groups: [read]
-model: deepseek/deepseek-v4-flash
+model: deepseek/deepseek-flash
 reasoningEffort: low

@@ -39,6 +39,7 @@ export type StreamEvent =
   | { type: "tool_call_start"; id: string; name: string }
   | { type: "tool_call_delta"; id: string; arguments: string }
   | { type: "usage"; inputTokens: number; outputTokens: number; cachedInputTokens?: number }
+  | { type: "model_alias"; provider: string; requested: string; served: string }
   | { type: "done"; finishReason: string };
 
 /**

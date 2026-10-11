@@ -42,7 +42,9 @@ import { containmentWarning, hasActiveSandboxContainment, loadConfig, resolveHom
 import { projectSettingsPath } from "./config/paths.js";
 import { checkSettingsTrust, trustSettings, stripExecutionKeys } from "./config/settings-trust.js";
 import { checkFolderTrust, trustFolder, buildFolderContentSummary, hasGatedContent } from "./config/folder-trust.js";
-import { readCredentialsFile } from "./config/credentials.js";
+import { readCredentialsFile, getCredential } from "./config/credentials.js";
+import { readActiveSnapshot } from "./providers/catalog-update.js";
+import { getLiveModels, checkModelListed } from "./providers/live-models.js";
 import { enableDebug } from "./debug/logger.js";
 import { connectMCPServers, disconnectAllMCPServers } from "./mcp/connector.js";
 import App from "./ui/App.js";
@@ -475,7 +477,7 @@ async function main() {
     model: initialModel || ((parsed.mode === "general" || !parsed.mode) &&
       (!configResult.config.provider || configResult.config.provider === "deepseek") &&
       (!detected || detected === "deepseek")
-      ? "deepseek-v4-flash"
+      ? parseModelId(GENERAL_MODEL_ID, providerName)!.model
       : getPreset(providerName)?.defaultModel || "deepseek-v4-pro"),
     mode: parsed.mode || "general",
     modelExplicit: rawInitialModel !== undefined,
@@ -1142,6 +1144,18 @@ async function main() {
       },
       showResumeOnStart: showResumeChooserOnStart,
       initialNotice,
+      // Background (non-blocking) live model-list check: when the provider no
+      // longer lists the active model, the App prints one dim line after mount.
+      // Skipped for a provider with no key or a non-openai-compatible API.
+      startupNotices: async () => {
+        const preset = getPreset(shared.providerName);
+        if (!preset || preset.api !== "openai-compatible") return undefined;
+        const apiKey = resolveLiveModelsKey(shared.providerName);
+        if (!apiKey) return undefined;
+        const model = shared.activeModel ?? preset.defaultModel;
+        const models = await getLiveModels({ provider: shared.providerName, baseUrl: preset.baseUrl, apiKey });
+        return liveModelStartupNotice(shared.providerName, model, models);
+      },
       initialMessages: sessionLoaded ? sessionMessages : undefined,
       compactResumed: async (): Promise<Message[] | null> => {
         // Explicit user request from the resume chooser — bypass the auto
@@ -1245,6 +1259,61 @@ function detectProvider(configEnv: Record<string, string | undefined> | undefine
   ];
   for (const p of envProviders) { if (process.env[p.key]) return p.name; }
   return null;
+}
+
+/**
+ * The key `createProvider` would use for a built-in preset: the preset's
+ * keyEnv env var, else the credential stored by `nib auth`. "" when neither
+ * exists — the caller treats that as "cannot ask the provider".
+ */
+function resolveLiveModelsKey(providerName: string): string {
+  const preset = getPreset(providerName);
+  if (!preset) return "";
+  return (preset.keyEnv ? process.env[preset.keyEnv] : undefined) || getCredential(providerName) || "";
+}
+
+/** The 2-space-indent, 18-column-label prefix shared by the `nib doctor` rows. */
+function doctorLabel(label: string): string {
+  return `  ${label.padEnd(18)}`;
+}
+
+/**
+ * `  catalog           models.dev snapshot from 2026-08-23 (49 days, bundled)`
+ * — the bundled/cached models.dev snapshot's date and age, with an update hint
+ * once it is older than 30 days. `(date unknown)` when the source carries no
+ * parseable date.
+ */
+function formatCatalogLine(origin: "bundled" | "cached", generatedAt?: string): string {
+  const prefix = doctorLabel("catalog");
+  const parsed = generatedAt ? Date.parse(generatedAt) : NaN;
+  if (!generatedAt || Number.isNaN(parsed)) return `${prefix}(date unknown)`;
+  const days = Math.floor((Date.now() - parsed) / 86_400_000);
+  const stale = days > 30 ? " — run `nib models update`" : "";
+  return `${prefix}models.dev snapshot from ${generatedAt.slice(0, 10)} (${days} days, ${origin})${stale}`;
+}
+
+/**
+ * The `models` doctor row: live list unavailable / active model no longer
+ * listed / N live models with the active one present. `models` is null when the
+ * provider could not be asked (no key, not openai-compatible, offline).
+ */
+function formatLiveModelsLine(providerName: string, model: string, models: string[] | null): string {
+  const prefix = doctorLabel("models");
+  if (models === null) return `${prefix}${providerName}: live list unavailable (offline)`;
+  if (checkModelListed(models, model) === "missing") {
+    return `${prefix}${providerName}: ${model} no longer listed — Available: ${models.join(", ")} (/model)`;
+  }
+  return `${prefix}${providerName}: ${models.length} live models, ${model} present`;
+}
+
+/**
+ * The one-line startup notice when the provider no longer lists the active
+ * model, else undefined. Only "missing" warns — an unavailable list ("unknown")
+ * must never alarm. Shared shape with `formatLiveModelsLine`'s missing branch.
+ */
+function liveModelStartupNotice(providerName: string, model: string, models: string[] | null): string | undefined {
+  if (!models || checkModelListed(models, model) !== "missing") return undefined;
+  return `${providerName} no longer lists ${model} — Available: ${models.join(", ")} (/model)`;
 }
 
 function getProviderLabels(): Record<string, string> {
@@ -1468,6 +1537,25 @@ export async function runDoctor(): Promise<void> {
   const configResult = loadConfig();
   const issues = [...configResult.errors, ...configResult.warnings];
   console.log(`  config            ${issues.length === 0 ? "valid" : `${issues.length} issue(s):\n${issues.map(i => `                    - ${i}`).join("\n")}`}`);
+  // Catalog + live model list. Both are best-effort: neither can throw (the
+  // snapshot read swallows errors, getLiveModels resolves offline to null), so
+  // a failed check prints the "unavailable" line and never changes the exit.
+  {
+    const active = readActiveSnapshot();
+    console.log(formatCatalogLine(active.origin, active.snapshot.source?.generatedAt));
+    const parsedDoctor = parseModelId(
+      configResult.config.model || configResult.config.env?.MODEL,
+      configResult.config.provider || detectProvider(configResult.config.env) || "deepseek",
+    );
+    const doctorProvider = parsedDoctor?.provider ?? "deepseek";
+    const doctorPreset = getPreset(doctorProvider);
+    const doctorModel = parsedDoctor?.model ?? doctorPreset?.defaultModel ?? "unknown";
+    const doctorKey = resolveLiveModelsKey(doctorProvider);
+    const doctorModels = doctorPreset?.api === "openai-compatible" && doctorKey
+      ? await getLiveModels({ provider: doctorProvider, baseUrl: doctorPreset.baseUrl, apiKey: doctorKey })
+      : null;
+    console.log(formatLiveModelsLine(doctorProvider, doctorModel, doctorModels));
+  }
   const searxngUrl = configResult.config.webSearch?.searxngUrl;
   if (searxngUrl) {
     const health = await probeSearXngHealth(searxngUrl);
@@ -1597,6 +1685,20 @@ export async function handleSlashCore(
       const source = describeRefreshSource(refresh);
       console.log(`provider   ${shared.providerName}`);
       console.log(`model      ${shared.activeModel ?? getPreset(shared.providerName)?.defaultModel ?? "unknown"}`);
+      // Catalog + live model list, in the same order and column style as
+      // `nib doctor`. Best-effort: a failed check prints the "unavailable"
+      // line rather than an error.
+      {
+        const doctorPreset = getPreset(shared.providerName);
+        const doctorModel = shared.activeModel ?? doctorPreset?.defaultModel ?? "unknown";
+        const doctorKey = resolveLiveModelsKey(shared.providerName);
+        const doctorModels = doctorPreset?.api === "openai-compatible" && doctorKey
+          ? await getLiveModels({ provider: shared.providerName, baseUrl: doctorPreset.baseUrl, apiKey: doctorKey })
+          : null;
+        const activeSnapshot = readActiveSnapshot();
+        console.log(formatCatalogLine(activeSnapshot.origin, activeSnapshot.snapshot.source?.generatedAt));
+        console.log(formatLiveModelsLine(shared.providerName, doctorModel, doctorModels));
+      }
       console.log(`effort     ${shared.activeEffort ?? "(none)"}`);
       console.log(`refresh    ${refresh.name} ${source}`);
       console.log(`           flush ${refresh.flushMs}ms · indicator ${refresh.indicatorMs}ms · options: ${REFRESH_PROFILE_NAMES.join(" | ")}`);

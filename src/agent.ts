@@ -550,6 +550,14 @@ export async function runAgent(
           turnTokens += event.inputTokens + event.outputTokens;
           options.onUsage?.(event.inputTokens, event.outputTokens, event.cachedInputTokens);
           break;
+        case "model_alias":
+          // The provider served a different model than requested. App.tsx
+          // renders every diagnostic with its own "⚠ " prefix, so this text
+          // must NOT carry one. /model is the switch command the TUI lists.
+          options.onDiagnostic?.(
+            `${event.provider} serves "${event.requested}" as "${event.served}" — switch with /model ${event.provider}/${event.served}`,
+          );
+          break;
         case "done":
           break;
       }

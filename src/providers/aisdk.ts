@@ -6,6 +6,7 @@ import type { Message, ToolDef } from "../types.js";
 import type { Provider, ProviderBalance, StreamEvent } from "./types.js";
 import type { ProviderPreset } from "./presets.js";
 import { logRequest, logResponse, logTiming, logError } from "../debug/logger.js";
+import { readCachedModels } from "./live-models.js";
 
 export function mapMessages(messages: Message[]): ModelMessage[] {
   const toolNameByCallId = new Map<string, string>();
@@ -204,7 +205,64 @@ function toReasoningLevel(effort: string | undefined): SdkReasoningLevel | undef
   return undefined;
 }
 
-export function createAISDKProvider(preset: ProviderPreset, model: string, apiKey: string): Provider {
+/**
+ * A model id with any `vendor/` prefix and case stripped, so a served id and a
+ * requested id can be compared in the same shape (OpenRouter echoes ids as
+ * `qwen/qwen3.7-flash`, DeepSeek as bare `deepseek-flash`).
+ */
+function bareModelId(id: string): string {
+  return id.toLowerCase().split("/").pop() ?? id;
+}
+
+/**
+ * One alias notice per provider+requested+served triple for the whole process.
+ * The stream runs once per turn, so a naive emit would reprint the same rename
+ * every turn; module-level state survives across the turn-scoped provider
+ * instance.
+ */
+const emittedModelAliases = new Set<string>();
+
+/**
+ * Whether a provider rejection reports the requested model as unavailable.
+ * Requires model-ish evidence in the body/message: a not-found phrase, or the
+ * requested id itself. A bare HTTP status is NOT enough — a 400 for e.g.
+ * context-length-exceeded must pass through as its own error, not be rewritten
+ * as "Model X is not available". Read duck-typed — the AI SDK's error class is
+ * deliberately not imported, every field may be absent, and the `cause` chain
+ * is walked so a wrapped error is still recognized.
+ */
+function isModelUnavailableError(err: unknown, model: string): boolean {
+  let text = "";
+  let current: unknown = err;
+  for (let depth = 0; current != null && typeof current === "object" && depth < 5; depth++) {
+    const e = current as Record<string, unknown>;
+    for (const field of ["responseBody", "message", "data"] as const) {
+      const v = e[field];
+      if (typeof v === "string") text += ` ${v}`;
+      else if (v != null && typeof v === "object") {
+        try {
+          text += ` ${JSON.stringify(v)}`;
+        } catch {
+          // A circular or otherwise unserializable body is simply not evidence.
+        }
+      }
+    }
+    current = e.cause;
+  }
+
+  const lower = text.toLowerCase();
+  if (/model[_ -]?not[_ -]?found|not exist|invalid model|unknown model|no such model/.test(lower)) {
+    return true;
+  }
+  return lower.includes(model.toLowerCase());
+}
+
+export function createAISDKProvider(
+  preset: ProviderPreset,
+  model: string,
+  apiKey: string,
+  providerName = "",
+): Provider {
   return {
     name: model,
 
@@ -322,9 +380,27 @@ export function createAISDKProvider(preset: ProviderPreset, model: string, apiKe
               break;
             }
 
-            case "finish-step":
+            case "finish-step": {
               sawFinishStep = true;
               cachedTokens = event.usage.inputTokenDetails?.cacheReadTokens ?? undefined;
+              // A provider may serve a different model id than the one asked
+              // for — a silent server-side rename. Report it once, but only
+              // when the served id is a model THIS catalog lists: that filters
+              // out a versioned id echoed for the model we requested (e.g.
+              // `deepseek-v4-flash-0731` for `deepseek-v4-flash`) and keeps a
+              // config-defined provider, whose preset has no models, silent.
+              const served = event.response?.modelId;
+              if (typeof served === "string" && served !== "") {
+                const key = `${providerName}|${model}|${served}`;
+                if (
+                  bareModelId(served) !== bareModelId(model) &&
+                  (preset.models[served] ?? preset.models[bareModelId(served)]) !== undefined &&
+                  !emittedModelAliases.has(key)
+                ) {
+                  emittedModelAliases.add(key);
+                  yield { type: "model_alias", provider: providerName, requested: model, served };
+                }
+              }
               yield {
                 type: "usage",
                 inputTokens: event.usage.inputTokens ?? 0,
@@ -333,6 +409,7 @@ export function createAISDKProvider(preset: ProviderPreset, model: string, apiKe
               };
               logResponse(event.usage, Array.from(toolCallAccum.values()));
               break;
+            }
 
             case "finish": {
               const finishedAt = Date.now();
@@ -354,6 +431,18 @@ export function createAISDKProvider(preset: ProviderPreset, model: string, apiKe
             }
 
             case "error":
+              // A rejection that names the model is a dead end worth a clear,
+              // actionable message; every other error is rethrown untouched.
+              if (isModelUnavailableError(event.error, model)) {
+                // Append what the provider last reported it serves, but only
+                // from the cache — the stream path must not await a network
+                // call mid-turn. Absent a cached list, the base message stands.
+                const cached = providerName ? readCachedModels(providerName) : null;
+                const available = cached && cached.length > 0
+                  ? ` Available: ${cached.join(", ")} (/model).`
+                  : "";
+                throw new Error(`Model "${model}" is not available from ${providerName}.${available}`);
+              }
               throw event.error;
           }
         }

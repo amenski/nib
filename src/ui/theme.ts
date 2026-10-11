@@ -178,6 +178,14 @@ export interface ThemeDefinition {
   border: number;
   selection: number;
 
+  /**
+   * Diff line backgrounds (Claude Code's diffAdded / diffRemoved). Used as
+   * backgrounds, so they must be dark tints that separate from `background`
+   * while staying readable under the diff's own foreground.
+   */
+  diffAddedBg: number;
+  diffRemovedBg: number;
+
   // ── Prompt ──
   promptFg: number;
   promptBg?: number;
@@ -233,6 +241,10 @@ export const DARK_THEME: ThemeDefinition = {
   // Selection is used as a BACKGROUND slab, so it must be a dark tint that
   // separates from `background` while staying readable under bright text.
   selection: 24, // selectionBg rgb(38,79,120)
+
+  // Diff line backgrounds (Claude Code's diffAdded / diffRemoved).
+  diffAddedBg: 22, // rgb(34,92,43)
+  diffRemovedBg: 52, // rgb(122,41,54)
 
   // Gutter/prompt accent: Claude Code's orange, readable on black.
   promptFg: 173,
@@ -299,6 +311,10 @@ export const LIGHT_THEME: ThemeDefinition = {
   border: ANSI.grey151,
   selection: 153,
 
+  // Light tints, so a diff keeps a readable dark foreground on white.
+  diffAddedBg: 194,
+  diffRemovedBg: 224,
+
   // Deep blue gutter/prompt accent — legible on white (not the old mid-cyan,
   // which washed out).
   promptFg: 26,
@@ -362,6 +378,9 @@ export const HIGH_CONTRAST_THEME: ThemeDefinition = {
   surface: ANSI.grey15,
   border: ANSI.grey31,
   selection: 25,
+
+  diffAddedBg: 22,
+  diffRemovedBg: 52,
 
   promptFg: ANSI.brightCyan,
   promptBg: undefined,
@@ -437,6 +456,9 @@ export const DRACULA_THEME: ThemeDefinition = {
   border: 245,
   selection: 60, // #44475a — the canonical Dracula selection
 
+  diffAddedBg: 22,
+  diffRemovedBg: 52,
+
   // Bright cyan gutter/prompt accent, readable on the dark purple-grey bg.
   promptFg: 117,
   promptBg: undefined,
@@ -502,6 +524,9 @@ export const MONOKAI_THEME: ThemeDefinition = {
   border: 244,
   selection: 58, // #49483e
 
+  diffAddedBg: 22,
+  diffRemovedBg: 52,
+
   // Bright cyan gutter/prompt accent, readable on the dark olive-grey bg.
   promptFg: 81,
   promptBg: undefined,
@@ -565,9 +590,11 @@ export const GITHUB_DARK_THEME: ThemeDefinition = {
   surface: 235, // #161b22
   // border doubles as the chip fill and needs real separation from the page.
   border: 243, // lifted from #30363d so chips read against the page
-  selection: 24,
+  selection: 24, // selectionBg
 
-  // Bright blue gutter/prompt accent, legible on the near-black navy bg.
+  diffAddedBg: 22,
+  diffRemovedBg: 52,
+
   promptFg: 75,
   promptBg: undefined,
 
@@ -631,6 +658,9 @@ export const GITHUB_LIGHT_THEME: ThemeDefinition = {
   surface: 254, // #f6f8fa
   border: 250, // #d0d7de
   selection: 153, // light blue selection
+
+  diffAddedBg: 194,
+  diffRemovedBg: 224,
 
   // Deep blue gutter/prompt accent — legible on white.
   promptFg: 25,
@@ -701,6 +731,11 @@ export const ANSI_DARK_THEME: ThemeDefinition = {
   border: 8, // brightBlack
   selection: 4, // blue
 
+  // Base-16 has no dark diff tint, so the palette's own green/red are the only
+  // readable pair; the point of this preset is 16-colour fidelity.
+  diffAddedBg: 2, // green
+  diffRemovedBg: 1, // red
+
   promptFg: 12, // brightBlue
   promptBg: undefined,
 
@@ -762,6 +797,9 @@ export const ANSI_LIGHT_THEME: ThemeDefinition = {
   surface: 7, // white
   border: 8, // brightBlack
   selection: 14, // brightCyan
+
+  diffAddedBg: 10, // brightGreen
+  diffRemovedBg: 9, // brightRed
 
   promptFg: 4, // blue
   promptBg: undefined,
@@ -969,6 +1007,16 @@ export class ThemeContextValue {
   /** Format text as dimmed foreground. */
   dimFg(color: number, text: string): string {
     return this._wrap(color, undefined, false, text, true);
+  }
+
+  /**
+   * Dim + italic foreground — Claude Code's completed-thinking echo. Italic is
+   * an attribute, so it can only be carried by escapes (never a <Text> prop
+   * here), and it is skipped entirely when colour is off.
+   */
+  dimItalic(color: number, text: string): string {
+    if (!this.colorEnabled) return text;
+    return `\x1b[2m\x1b[3m${ansiFg(color)}${text}${ANSI_RESET}`;
   }
 
   /** Format text using a semantic color key from the theme. */

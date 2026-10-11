@@ -5,6 +5,7 @@ import App from "./App.js";
 import type { AppContext } from "./types.js";
 import { __resetInputWireForTests } from "./hooks/useTerminalInput.js";
 import { stripAnsi } from "./test-helpers.js";
+import { ANSWER_BULLET } from "./constants.js";
 import { todoStore } from "../tools/todo.js";
 import { jobManager } from "../tools/jobs.js";
 import { ModeLoader } from "../modes/loader.js";
@@ -337,16 +338,18 @@ describe("App streaming markdown", () => {
     expect(frame.match(/continues/g) ?? []).toHaveLength(1);
   });
 
-  it("keeps a wrapped list item under one bullet", async () => {
+  it("keeps a wrapped list item under one marker", async () => {
     const { lastFrame } = await runTurn("hi", ["- item one\n", "  wrapped\n", "plain\n"]);
     const frame = stripAnsi(lastFrame() ?? "");
     expect(frame).toContain("item one");
     expect(frame).toContain("wrapped");
     expect(frame).toContain("plain");
-    const bullets = frame.split("\n").filter((l) => l.includes("•")).length;
-    // "item one" and its wrapped continuation share one bullet; "plain" is a
-    // plain line.
-    expect(bullets).toBe(1);
+    // One "- " marker: the wrapped continuation shares it. (Rows also carry
+    // the answer block's two-column gutter, so match within the row.)
+    const rows = frame.split("\n").filter((r) => r.trim() !== "");
+    expect(rows.filter((r) => r.includes("- "))).toHaveLength(1);
+    expect(rows.find((r) => r.includes("item one"))).toContain("- item one");
+    expect(rows.find((r) => r.includes("wrapped"))).not.toContain("- ");
   });
 
   it("keeps a multi-line blockquote as one block", async () => {
@@ -364,19 +367,19 @@ describe("App streaming markdown", () => {
   it("does not bullet the blank line that ends a paragraph", async () => {
     // One chunk commits both the paragraph and the blank line after it. Only
     // the paragraph may carry the answer bullet — a bulleted "" renders as a
-    // bare "●" row above the next tool call.
+    // bare answer-glyph row above the next tool call.
     const { lastFrame } = await runTurn("hi", ["all done.\n\n"]);
     const frame = stripAnsi(lastFrame() ?? "");
     expect(frame).toContain("all done.");
-    expect(frame.split("\n").filter((l) => l.trim() === "●")).toHaveLength(0);
+    expect(frame.split("\n").filter((l) => l.trim() === ANSWER_BULLET)).toHaveLength(0);
   });
 
   it("bullets the first real line when the block opens with a blank", async () => {
     const { lastFrame } = await runTurn("hi", ["\nall done.\n"]);
     const frame = stripAnsi(lastFrame() ?? "");
     const answer = frame.split("\n").find((l) => l.includes("all done."));
-    expect(answer).toContain("●");
-    expect(frame.split("\n").filter((l) => l.trim() === "●")).toHaveLength(0);
+    expect(answer).toContain(ANSWER_BULLET);
+    expect(frame.split("\n").filter((l) => l.trim() === ANSWER_BULLET)).toHaveLength(0);
   });
 
   it("commits an unclosed fence as a code block at turn end", async () => {

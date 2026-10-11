@@ -120,7 +120,9 @@ describe("streamTextChunk", () => {
 
   it("commits a paragraph at a heading, fence, or blockquote boundary", () => {
     const { lines } = feed(["para text\n", "# Heading\n"]);
-    expect(lines).toEqual(["para text", "# Heading"]);
+    // The heading separator (Claude Code prints one blank after a heading)
+    // rides along with the heading's own commit.
+    expect(lines).toEqual(["para text", "# Heading", ""]);
 
     // A quote interrupts a held span paragraph the same way a heading does —
     // the span cannot cross into the quote. The quote line itself then holds:
@@ -128,6 +130,22 @@ describe("streamTextChunk", () => {
     const { lines: q, state } = feed(["**bold\n", "> quote\n"]);
     expect(q).toEqual(["**bold"]);
     expect(state.pending).toEqual(["> quote"]);
+  });
+
+  it("follows a heading with exactly one blank line (2026-10-11)", () => {
+    // Separator added, and the source's own blank swallowed.
+    expect(feed(["# Title\n", "\n", "body\n"]).lines).toEqual(["# Title", "", "body"]);
+    // No source blank: the separator alone.
+    expect(feed(["# Title\n", "body\n"]).lines).toEqual(["# Title", "", "body"]);
+    // A heading whose inline span is still open is held; its separator is
+    // emitted at that later commit, so it can never land above the closing text.
+    expect(feed(["## **bold\n", "closes**\n", "\n", "after\n"]).lines).toEqual([
+      "## **bold\ncloses**",
+      "",
+      "after",
+    ]);
+    // Only headings get the separator.
+    expect(feed(["plain\n", "\n", "body\n"]).lines).toEqual(["plain", "", "body"]);
   });
 
   it("holds a multi-line blockquote and commits it as one entry", () => {

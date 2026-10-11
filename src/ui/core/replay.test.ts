@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { buildReplayLines } from "./replay.js";
-import { USER_ECHO_TAG, VERBATIM_TAG } from "../constants.js";
+import { USER_ECHO_TAG, VERBATIM_TAG, BULLET_TAG, ANSWER_CONT_TAG } from "../constants.js";
 import type { Message } from "../../types.js";
 import { stripAnsi } from "../test-helpers.js";
 import { ThemeContextValue, DARK_THEME, ansiFg } from "../theme.js";
@@ -15,10 +15,21 @@ describe("buildReplayLines", () => {
     expect(lines).toContain(VERBATIM_TAG + USER_ECHO_TAG + "fix the bug");
   });
 
-  it("bullets assistant text", () => {
+  it("tags assistant text as an answer block instead of a literal bullet glyph", () => {
+    // A literal "● " prefix read as no answer block at all (OutputArea keys the
+    // gutter off the tags) and defeated block-level markdown at the line start.
     const msgs: Message[] = [{ role: "assistant", content: "Done." }];
     const lines = buildReplayLines(msgs, noColor);
-    expect(lines.some((l) => l.startsWith(VERBATIM_TAG + "● Done."))).toBe(true);
+    expect(lines).toContain(VERBATIM_TAG + BULLET_TAG + "Done.");
+    expect(lines.some((l) => l.includes("● "))).toBe(false);
+  });
+
+  it("tags every later line of a multi-line assistant message as a continuation", () => {
+    const msgs: Message[] = [{ role: "assistant", content: "## Heading\n\nbody text" }];
+    const lines = buildReplayLines(msgs, noColor);
+    // The heading keeps its own markdown: a "● " prefix would break the anchor.
+    expect(lines).toContain(VERBATIM_TAG + BULLET_TAG + "## Heading");
+    expect(lines).toContain(VERBATIM_TAG + ANSWER_CONT_TAG + "body text");
   });
 
   it("renders a visible tool call and its result", () => {

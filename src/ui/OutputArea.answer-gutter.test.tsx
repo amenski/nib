@@ -2,7 +2,7 @@ import React from "react";
 import { describe, it, expect } from "vitest";
 import { render } from "ink-testing-library";
 import OutputArea from "./OutputArea.js";
-import { BULLET_TAG, ANSWER_CONT_TAG } from "./constants.js";
+import { BULLET_TAG, ANSWER_CONT_TAG, ANSWER_BULLET } from "./constants.js";
 import { stripAnsi } from "./test-helpers.js";
 import { visualLength } from "./MarkdownTable.js";
 
@@ -11,7 +11,7 @@ describe("answer block gutter (2026-10-10)", () => {
     const lines = [BULLET_TAG + "First paragraph.", "", ANSWER_CONT_TAG + "Second paragraph."];
     const { lastFrame } = render(<OutputArea lines={lines} activeLine="" busy={false} staticEpoch={0} />);
     const rows = stripAnsi(lastFrame() ?? "").split("\n");
-    expect(rows.find((r) => r.includes("First"))).toMatch(/^● First paragraph\./);
+    expect(rows.find((r) => r.includes("First"))).toMatch(new RegExp(`^${ANSWER_BULLET} First paragraph\\.`));
     expect(rows.find((r) => r.includes("Second"))).toMatch(/^ {2}Second paragraph\./);
   });
 

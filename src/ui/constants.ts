@@ -1,6 +1,21 @@
 export const ARGS_SEPARATOR = " | ";
 export const ANSI_CLEAR_SCREEN = "[2J[3J[H";
-export const PROMPT_PREFIX_WIDTH = 2;
+/**
+ * Columns consumed before the prompt's text column: one column of box padding
+ * plus the two-column chevron gutter ("❯ "). The border draws no side rules
+ * (Claude Code's prompt), so nothing else is subtracted here.
+ */
+export const PROMPT_PREFIX_WIDTH = 3;
+
+/**
+ * Gutter glyph opening an assistant answer block: `⏺` on macOS, `●` elsewhere
+ * (Claude Code's own choice). Exported so tests assert the glyph this platform
+ * actually draws — CI is Linux, where it is `●`.
+ */
+export const ANSWER_BULLET = process.platform === "darwin" ? "⏺" : "●";
+
+/** Prompt glyph drawn dim in front of the user echo and the input box. */
+export const PROMPT_CHEVRON = "❯";
 /**
  * Sentinel prefixed onto an echoed user message so OutputArea renders it as a
  * full-width highlighted bar (grey background + "›" chevron), the way Claude
@@ -49,3 +64,13 @@ export const ANSWER_CONT_TAG = "\u0001\u0002";
  * USER_ECHO_TAG / COMMAND_ECHO_TAG / BULLET_TAG underneath.
  */
 export const VERBATIM_TAG = "\u0001\u0006";
+
+/**
+ * Sentinel prefixed onto a tool-call header line (and a sub-agent's nested
+ * lines). OutputArea renders these as plain styled text instead of running
+ * them through MarkdownText: a header's arguments are shell/path text where an
+ * inline marker is literal, so a glob pattern was being italicised away as an
+ * emphasis span. The colouring is baked into the string by the emitter (a dim
+ * glyph, a bold name, plain arguments).
+ */
+export const TOOL_HEADER_TAG = "\u0001\u000e";

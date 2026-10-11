@@ -29,6 +29,8 @@ interface MarkdownTableProps {
   theme?: {
     fg: (color: number, text: string) => string;
     theme: { textDim: number };
+    /** When false, no colour escapes are emitted (the header stays plain). */
+    colorEnabled?: boolean;
   };
 }
 
@@ -65,9 +67,18 @@ export function visualWidth(ch: string): number {
   return 1;
 }
 
+/**
+ * ANSI SGR sequences (`\x1b[38;5;246m`, `\x1b[0m`) occupy no columns.
+ */
+const ANSI_SGR_RE = /\x1b\[[0-9;]*m/g;
+
 export function visualLength(str: string): number {
   let len = 0;
-  for (const ch of str) {
+  // Measure the visible text, not the colour codes. Counting escapes as
+  // columns made every pre-coloured line — dim tool results, reasoning echoes,
+  // diffs, code blocks — read ~15 columns wider than it draws, so the wrapping
+  // code broke it several rows early (a 70-column dim line wrapped at 80).
+  for (const ch of str.replace(ANSI_SGR_RE, "")) {
     len += visualWidth(ch);
   }
   return len;
@@ -308,10 +319,13 @@ function renderRow(
   start: string,
   sep: string,
   end: string,
+  emphasize?: (s: string) => string,
 ): string {
   const parts = cols.map((c, i) => {
     const a = alignments[i] || "left";
-    return ` ${padText(c, widths[i], a)} `;
+    const cell = ` ${padText(c, widths[i], a)} `;
+    // The header row is emphasised (bold) by the caller; body rows are not.
+    return emphasize ? emphasize(cell) : cell;
   });
   return start + parts.join(sep) + end;
 }
@@ -347,7 +361,11 @@ function renderTableBlock(
   return result.join("\n");
 }
 
-export function renderTable(text: string, maxWidth: number): string | null {
+export function renderTable(
+  text: string,
+  maxWidth: number,
+  emphasizeHeader?: (s: string) => string,
+): string | null {
   const parsed = parseTable(text);
   if (!parsed) return null;
 
@@ -369,7 +387,7 @@ export function renderTable(text: string, maxWidth: number): string | null {
   const result: string[] = [];
 
   result.push(renderBorder(widths, BOX.tl, BOX.hd, BOX.tr));
-  result.push(renderRow(headers, widths, alignments, BOX.vt, BOX.vt, BOX.vt));
+  result.push(renderRow(headers, widths, alignments, BOX.vt, BOX.vt, BOX.vt, emphasizeHeader));
   result.push(renderBorder(widths, BOX.vl, BOX.cr, BOX.vr));
 
   for (const rowLines of wrappedRows) {
@@ -390,7 +408,11 @@ function MarkdownTable({ children, width, theme }: MarkdownTableProps) {
   if (!children) return null;
 
   const maxWidth = width ?? (process.stdout.columns || 80);
-  const rendered = renderTable(children, maxWidth);
+  // The header row is emphasised (bold), built as a string escape so it
+  // composes with the border dimming below: the escape characters are not
+  // border glyphs, so the per-character pass leaves them intact.
+  const bold = (s: string) => `\x1b[1m${s}\x1b[22m`;
+  const rendered = renderTable(children, maxWidth, theme?.colorEnabled ? bold : undefined);
 
   if (!rendered) return <Text>{children}</Text>;
 

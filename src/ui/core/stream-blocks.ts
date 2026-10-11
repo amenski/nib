@@ -38,10 +38,16 @@ export interface StreamBlockState {
   pending: string[];
   /** Open fenced code block: lines so far, or null when not inside a fence. */
   fence: string[] | null;
+  /**
+   * A blank line was just emitted after a heading (Claude Code's heading
+   * separator). If the source's own next line is also blank, it is swallowed
+   * so the gap stays one line rather than two.
+   */
+  headingBlank: boolean;
 }
 
 export function createStreamBlockState(): StreamBlockState {
-  return { buffer: "", pending: [], fence: null };
+  return { buffer: "", pending: [], fence: null, headingBlank: false };
 }
 
 export type LineKind =
@@ -70,9 +76,9 @@ export function classifyLine(line: string): LineKind {
   return "text";
 }
 
-/** "- item", "* item" (but not "**bold**"), "1. item", "10) item"-style. */
+/** "- item", "* item", "+ item" (but not "**bold**"), "1. item", "10) item"-style. */
 export function isListItem(line: string): boolean {
-  return /^([-*])\s+/.test(line) || /^(\d+)\.\s+/.test(line);
+  return /^([-*+])\s+/.test(line) || /^(\d+)\.\s+/.test(line);
 }
 
 /**
@@ -137,13 +143,23 @@ export function streamTextChunk(prev: StreamBlockState, chunk: string): StreamBl
     buffer: prev.buffer + chunk,
     pending: [...prev.pending],
     fence: prev.fence ? [...prev.fence] : null,
+    headingBlank: prev.headingBlank,
   };
   const lines: string[] = [];
 
   const flushPending = () => {
     if (state.pending.length === 0) return;
-    lines.push(state.pending.join("\n"));
+    const block = state.pending.join("\n");
     state.pending = [];
+    lines.push(block);
+    // Claude Code separates a heading from what follows with one blank line.
+    // It is emitted here, at the commit site, and not while the heading is
+    // still held: a heading waiting on a closing inline span must not print
+    // its separator above the text that closes it.
+    if (classifyLine(block.split("\n")[0]!) === "heading") {
+      lines.push("");
+      state.headingBlank = true;
+    }
   };
 
   const rawLines = state.buffer.split("\n");
@@ -176,13 +192,20 @@ export function streamTextChunk(prev: StreamBlockState, chunk: string): StreamBl
 
     // Blank line = paragraph boundary. Commit any held paragraph (an unclosed
     // span renders as literal markers — a span can't cross a blank line in
-    // CommonMark) and pass the blank through for spacing.
+    // CommonMark) and pass the blank through for spacing. Exception: the blank
+    // immediately after a heading is the one the heading separator already
+    // contributed, so it is swallowed to keep a single blank line.
     if (kind === "blank") {
       flushPending();
-      lines.push("");
+      if (state.headingBlank) {
+        state.headingBlank = false;
+      } else {
+        lines.push("");
+      }
       consumed = i + 1;
       continue;
     }
+    state.headingBlank = false;
 
     // Headings, blockquotes and rules are their own blocks and may interrupt a
     // paragraph, so any held lines commit before this line joins a new one.
@@ -227,7 +250,9 @@ export function streamTextChunk(prev: StreamBlockState, chunk: string): StreamBl
     // Append to the current paragraph, then hold while a span is still open
     // or the paragraph is a list/quote block (its closer / continuation may
     // arrive on a later streamed line). The whole paragraph commits as ONE
-    // entry.
+    // entry. A heading whose inline span is still open ("## **bold") is held
+    // the same way; flushPending recognises it by its first line and emits the
+    // heading separator at that later commit.
     state.pending.push(line);
     if (paragraphShouldHold(state.pending) && state.pending.length < MAX_HELD_LINES) {
       consumed = i + 1;

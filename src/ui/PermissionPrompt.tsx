@@ -7,6 +7,7 @@ import type { BashEnvelope } from "../permissions/session-grant.js";
 import { extractToolSubject } from "../permissions/rules.js";
 import { useTheme } from "./contexts.js";
 import { ansi256, type ThemeContextValue } from "./theme.js";
+import { toolDisplayName } from "./ToolCallFormatter.js";
 
 export interface PermissionRequest {
   toolName: string;
@@ -312,7 +313,7 @@ export default function PermissionPrompt({ request, cursor, onChoose, onCancel }
       <Box marginBottom={1}>
         <Text color={warningColor} bold>{permissionHeader(request)}</Text>
       </Box>
-      <Text bold>{request.toolName}</Text>
+      <Text bold>{toolDisplayName(request.toolName)}</Text>
       <Text>{request.command}</Text>
       {scopeLine(request) ? <Text color={slotColor(theme, "warning")}>{scopeLine(request)}</Text> : null}
       {request.defaultRule?.kind === "glob" ? <Text color={slotColor(theme, "textDim")}>Pattern: {request.defaultRule.pattern}</Text> : null}
@@ -360,7 +361,7 @@ export function DestructiveConfirmPrompt({ request, cursor, onChoose, onCancel }
       <Box marginBottom={1}>
         <Text color={errorColor} bold>⚠ Destructive command</Text>
       </Box>
-      <Text bold>{request.toolName}</Text>
+      <Text bold>{toolDisplayName(request.toolName)}</Text>
       <Text color={errorColor}>{request.command}</Text>
       {scopeLine(request) ? <Text color={slotColor(theme, "warning")}>{scopeLine(request)}</Text> : null}
       {request.defaultRule?.kind === "glob" ? <Text color={slotColor(theme, "textDim")}>Pattern: {request.defaultRule.pattern}</Text> : null}

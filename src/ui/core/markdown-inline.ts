@@ -9,7 +9,7 @@
  * The tree building lives in scanInline (see there for nesting and flanking).
  */
 
-export type Format = "bold" | "italic" | "code" | "strike";
+export type Format = "bold" | "italic" | "code" | "strike" | "link" | "linkUrl";
 
 export interface Segment {
   text: string;
@@ -31,6 +31,8 @@ interface OpenDelim {
   /** Index into `nodes` of this opener's fmt placeholder. */
   nodeIndex: number;
   node: FmtNode;
+  /** Offset in the input where this opener's markers begin. */
+  startAt: number;
 }
 
 export function parseInline(input: string): Segment[] {
@@ -59,6 +61,36 @@ export function inlineSpanOpen(input: string): boolean {
   if (scanInline(input).stack.length > 0) return true;
   const backticks = (input.match(/`/g) ?? []).length;
   return backticks % 2 === 1;
+}
+
+/**
+ * The closing markers needed to finish every span still open at the end of
+ * `input`, ordered innermost-first. Used by the LIVE stream preview only: while
+ * a paragraph is held mid-span the preview appends these so the text renders
+ * bold/italic/code right away instead of flashing a literal `**` until the
+ * real closer arrives. The committed text is never modified by this — a real
+ * unclosed opener must still render literally (see parseInline).
+ *
+ * Innermost-first matters for a code span opened inside emphasis
+ * ("**bold `code" needs "`" before "**"); the opener's own offset gives that
+ * order, so two openers at the same offset (a 3-run "***") fall back to the
+ * longest marker first.
+ */
+export function unclosedSpanClosers(input: string): string {
+  // A fence's content is literal code, not inline spans — and the ``` lines
+  // themselves are backticks, so the odd-run rule below would append a stray
+  // "`" to a streaming code block's preview (found by probe 2026-10-11).
+  if (input.startsWith("```")) return "";
+  const { stack } = scanInline(input);
+  const closers = stack.map((d) => ({ at: d.startAt, literal: d.literal }));
+  // An unclosed code span leaves no stack entry (it degrades to literal
+  // backticks), so an odd backtick total contributes one here.
+  const backticks = (input.match(/`/g) ?? []).length;
+  if (backticks % 2 === 1) closers.push({ at: input.length, literal: "`" });
+  return closers
+    .sort((a, b) => b.at - a.at || b.literal.length - a.literal.length)
+    .map((c) => c.literal)
+    .join("");
 }
 
 /**
@@ -98,12 +130,17 @@ function scanInline(input: string): { nodes: Node[]; stack: OpenDelim[] } {
       continue;
     }
 
-    // ── Link: [text](url) → "text (url)". Only reached on non-code text,
-    // because code spans were consumed atomically above.
+    // ── Link: [text](url) → the text, then " (url)". The two carry different
+    // formats (`link` vs `linkUrl`) so the renderer can colour the label with
+    // the accent and let the URL recede dim in its parentheses. Each still
+    // flattens to plain text for callers that only want the words (a table
+    // cell, a width measurement). ──
     if (ch === "[") {
       const m = input.slice(i).match(/^\[([^\[\]]+)\]\(([^)\s]+)\)/);
       if (m) {
-        nodes.push({ kind: "text", text: `${m[1]} (${m[2]})` });
+        nodes.push({ kind: "fmt", formats: ["link"], children: [{ kind: "text", text: m[1] }] });
+        nodes.push({ kind: "text", text: " " });
+        nodes.push({ kind: "fmt", formats: ["linkUrl"], children: [{ kind: "text", text: `(${m[2]})` }] });
         i += m[0].length;
         continue;
       }
@@ -178,6 +215,7 @@ function scanInline(input: string): { nodes: Node[]; stack: OpenDelim[] } {
             literal: ch.repeat(delimCount),
             nodeIndex: nodes.length - 1,
             node,
+            startAt: i,
           });
           const leftover = run - delimCount;
           if (leftover > 0) nodes.push({ kind: "text", text: ch.repeat(leftover) });

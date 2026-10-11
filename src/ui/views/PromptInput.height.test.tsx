@@ -63,16 +63,18 @@ describe("PromptInput frame height", () => {
     expect(rowsOf(lastFrame())).toBe(before);
   });
 
-  it("boxes the input, not the status", () => {
+  it("raises the input with rules, not the status", () => {
     // The INPUT is the raised element — it is where attention belongs. The
     // status sits flat below it. This was inverted at one point (status boxed,
     // input bare), which read backwards.
+    // Claude Code's prompt draws only the rules above and below, with the
+    // chevron marking the text column — no side borders.
     const rows = strip(setup().lastFrame() ?? "").split("\n");
-    const inputRow = rows.findIndex((r) => r.includes("▏"));
+    const inputRow = rows.findIndex((r) => r.includes("❯"));
     expect(inputRow).toBeGreaterThan(0);
-    expect(rows[inputRow]).toMatch(/^│.*│$/);
-    expect(rows[inputRow - 1]).toMatch(/^╭─+╮$/);
-    expect(rows[inputRow + 1]).toMatch(/^╰─+╯$/);
+    expect(rows[inputRow - 1]).toMatch(/^─+$/);
+    expect(rows[inputRow + 1]).toMatch(/^─+$/);
+    expect(rows[inputRow]).not.toMatch(/^[│╭╰]/);
   });
 
   it("renders the status flat, outside the box", () => {
@@ -122,7 +124,7 @@ describe("PromptInput frame height", () => {
       .filter(({ r }) => r.includes("DeepSeek V4 Flash"));
     // Exactly one row carries the pill, and it is the row with the input caret.
     expect(pillRows).toHaveLength(1);
-    expect(pillRows[0].r).toContain("▏");
+    expect(pillRows[0].r).toContain("❯");
   });
 
   it("reserves the notice row even when there is nothing to show", () => {

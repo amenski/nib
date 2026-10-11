@@ -22,6 +22,7 @@ import { Text } from "ink";
 import {
   parseInline,
   inlineSpanOpen,
+  unclosedSpanClosers,
   type Segment,
 } from "./core/markdown-inline.js";
 import SyntaxHighlighter, { detectLanguage, type Language } from "./SyntaxHighlighter.js";
@@ -31,7 +32,7 @@ import type { SyntaxColors } from "./theme.js";
 
 // Re-exported so callers/tests importing from "./MarkdownText.js" keep working
 // after the parser moved to core/markdown-inline.ts.
-export { parseInline, inlineSpanOpen };
+export { parseInline, inlineSpanOpen, unclosedSpanClosers };
 export type { Segment };
 
 interface MarkdownTextProps {
@@ -74,6 +75,16 @@ function SegmentText({ segment, theme }: { segment: Segment; theme?: MarkdownTex
     // `accent`). Terminal dim is only the no-theme fallback: most terminals
     // draw it as a faint grey that is hard to read.
     if (theme?.colorEnabled) return <Text {...props}>{theme.fg(theme.theme.accent, segment.text)}</Text>;
+    props.dimColor = true;
+  }
+
+  // A link's label takes the accent; its URL recedes dim beside it.
+  // (OSC-8 hyperlinks are out of scope.)
+  if (segment.formats.includes("link") && theme?.colorEnabled) {
+    return <Text {...props}>{theme.fg(theme.theme.accent, segment.text)}</Text>;
+  }
+  if (segment.formats.includes("linkUrl")) {
+    if (theme?.colorEnabled) return <Text {...props}>{theme.fg(theme.theme.textDim, segment.text)}</Text>;
     props.dimColor = true;
   }
 
@@ -129,57 +140,79 @@ function CodeBlockBlock({
   const content = lines.slice(1, lines[lines.length - 1] === "```" ? -1 : undefined);
 
   const language = detectLanguage(info);
-  const langLabel = language !== "text" ? language : (info || "code");
+  const body = content.join("\n");
 
-  const dim = theme ? (s: string) => theme.fg(theme.theme.textDim, s) : ((s: string) => `\x1b[2m${s}\x1b[0m`);
-  const fg = theme?.fg;
+  // No "── lang ──" header: Claude Code draws the body alone, flush with the
+  // gutter (the highlighted body carries no extra indent either).
+  if (content.length === 0) return null;
 
-  if (!theme || !theme.colorEnabled || language === "text") {
-    // Fallback: plain dim text
-    const header = dim(`  ── ${langLabel} ──`);
-    const body = content.map((l) => dim(`  ${l}`)).join("\n");
-    return <Text>{header}{"\n"}{body}</Text>;
+  if (theme?.colorEnabled && language !== "text") {
+    return (
+      <Text>
+        <SyntaxHighlighter code={body} language={language} theme={theme as any} />
+      </Text>
+    );
   }
 
-  // Use syntax highlighting
-  const joinedCode = content.join("\n");
-
-  return (
-    <Text>
-      <Text>{dim(`  ── ${langLabel} ──`)}</Text>
-      {"\n"}
-      {content.length > 0 && (
-        <SyntaxHighlighter
-          code={joinedCode}
-          language={language}
-          theme={theme as any}
-        />
-      )}
-    </Text>
-  );
+  // Nothing to highlight: Claude Code colours an unlabelled block with its
+  // `permission` tone (nib's `accent`) rather than a dim grey. With no theme at
+  // all, terminal dim is the only available weight.
+  const paint = theme
+    ? (s: string) => theme.fg(theme.theme.accent, s)
+    : (s: string) => `\x1b[2m${s}\x1b[0m`;
+  return <Text>{paint(body)}</Text>;
 }
 
 // ── List block parsing ──
 
+/**
+ * A parsed list item. `depth` is 1 for a top-level item and 2 for one level of
+ * nesting ("  - x" under "- x"); deeper indents stay a continuation, since the
+ * renderer only lays out two levels.
+ */
 interface ListItem {
-  /** Marker: the "-"/"*" char for unordered, the number for ordered. */
+  /** The rendered marker glyph, without its trailing space. */
   marker: string;
+  /** Nesting level, 1-based. */
+  depth: number;
   /** Item text, including any wrapped continuation lines (kept verbatim). */
   content: string;
 }
 
+/** A depth-1 unordered marker, a depth-1 ordered marker, or "1)"-style. */
+const TOP_ITEM_RE = /^([-*+]|\d+\.)\s+(.*)$/;
+/** The same markers, indented by two or more columns. */
+const NESTED_ITEM_RE = /^ {2,}([-*+]|\d+\.)\s+(.*)$/;
+
+/** "a", "b", … for a nested ordered item. */
+function ordinalLetter(i: number): string {
+  return String.fromCharCode(97 + (i % 26));
+}
+
 /**
- * Split a (possibly multi-line) entry into list items. A line matching
- * `itemRe` starts a new item; any other line is a continuation of the current
- * item and is kept verbatim (its leading indent included), so a wrapped item
- * reads as markdown wrote it. Returns null when the first line isn't an item.
+ * Split a (possibly multi-line) entry into list items, top-level and one level
+ * of nesting. A line matching an item marker starts a new item; any other line
+ * is a continuation of the current item and is kept verbatim (its leading
+ * indent included), so a wrapped item reads as markdown wrote it. Returns null
+ * when the first line isn't an item.
+ *
+ * A nested ordered item is re-lettered ("a.", "b.", …) from its own sequence,
+ * which restarts at each top-level item — the numbers the source wrote at
+ * depth 2 are not used.
  */
-function splitListItems(text: string, itemRe: RegExp): ListItem[] | null {
+function splitListItems(text: string): ListItem[] | null {
   const items: ListItem[] = [];
+  let subCounter = 0;
   for (const line of text.split("\n")) {
-    const m = line.match(itemRe);
-    if (m) {
-      items.push({ marker: m[1], content: m[2] });
+    const top = line.match(TOP_ITEM_RE);
+    const nested = line.match(NESTED_ITEM_RE);
+    if (top) {
+      subCounter = 0;
+      items.push({ marker: top[1], depth: 1, content: top[2] });
+    } else if (nested) {
+      const raw = nested[1];
+      const marker = /^\d+\.$/.test(raw) ? `${ordinalLetter(subCounter++)}.` : raw;
+      items.push({ marker, depth: 2, content: nested[2] });
     } else if (items.length > 0) {
       items[items.length - 1].content += "\n" + line;
     } else {
@@ -187,6 +220,28 @@ function splitListItems(text: string, itemRe: RegExp): ListItem[] | null {
     }
   }
   return items;
+}
+
+/** Columns the item's own text starts at: 2 per nesting level, then the marker. */
+function itemContentIndent(item: ListItem): number {
+  return (item.depth - 1) * 2 + item.marker.length + 1;
+}
+
+/** Render the items of one list block, each with its marker and hanging text. */
+function renderListItems(items: ListItem[], theme?: MarkdownTextProps["theme"], width?: number) {
+  const dim = theme ? (s: string) => theme.fg(theme.theme.textDim, s) : ((s: string) => `\x1b[2m${s}\x1b[0m`);
+  return (
+    <Text>
+      {items.map((item, i) => (
+        <Fragment key={i}>
+          {i > 0 && "\n"}
+          {item.depth > 1 && "  "}
+          <Text>{dim(item.marker)}</Text>{" "}
+          <Inline text={item.content} theme={theme} width={width} indent={itemContentIndent(item)} />
+        </Fragment>
+      ))}
+    </Text>
+  );
 }
 
 // ── Main Markdown Renderer ──
@@ -206,11 +261,10 @@ function MarkdownText({ children, theme, width }: MarkdownTextProps) {
   }
 
   // ── Code fence opener alone (no content yet — streaming) ──
-  if (text.startsWith("```")) {
-    const lang = text.length > 3 ? text.slice(3).trim() : "";
-    const dim = theme ? (s: string) => theme.fg(theme.theme.textDim, s) : ((s: string) => `\x1b[2m${s}\x1b[0m`);
-    return <Text>{dim(lang ? `  ── ${lang} ──` : "  ── code ──")}</Text>;
-  }
+  // Nothing to draw: the header line was dropped (Claude Code renders a code
+  // block as its body alone), and the body has not streamed yet. The preview
+  // fills in as soon as the first line arrives.
+  if (text.startsWith("```")) return null;
 
   // ── Table: multi-line pipe-separated with separator row ──
   if (isTableBlock(text)) {
@@ -224,16 +278,19 @@ function MarkdownText({ children, theme, width }: MarkdownTextProps) {
   const headingMatch = firstLine.match(/^(#{1,6})\s+(.+)$/);
   if (headingMatch) {
     const level = headingMatch[1].length;
-    // Headings carry inline formatting too: "# **Bold** plan" must render the
-    // bold, not a literal "**Bold**".
+    // h1 reads bold + italic + underlined; h2-h6 bold (Claude Code's heading
+    // weights). Headings carry inline formatting too: "# **Bold** plan" must
+    // render the bold, not a literal "**Bold**". They wrap to `width` like any
+    // paragraph — a long heading used to run past the terminal and get
+    // re-wrapped by Ink.
     const rest = text.split("\n").slice(1).join("\n");
     return (
-      <Text bold={level <= 3}>
-        <Inline text={headingMatch[2]} theme={theme} />
+      <Text bold italic={level === 1} underline={level === 1}>
+        <Inline text={headingMatch[2]} theme={theme} width={width} />
         {rest && (
           <>
             {"\n"}
-            <Inline text={rest} theme={theme} />
+            <Inline text={rest} theme={theme} width={width} />
           </>
         )}
       </Text>
@@ -241,15 +298,18 @@ function MarkdownText({ children, theme, width }: MarkdownTextProps) {
   }
 
   // ── Horizontal rule: ---, ***, ___ (3+ chars) ──
+  // Three dashes, dim — Claude Code's rule, not a full-width bar.
   if (/^[-*_]{3,}$/.test(text.trim())) {
     const dim = theme ? (s: string) => theme.fg(theme.theme.textDim, s) : ((s: string) => `\x1b[2m${s}\x1b[0m`);
-    return <Text>{dim("─".repeat(48))}</Text>;
+    return <Text>{dim("---")}</Text>;
   }
 
   // ── Blockquote: > text (one or more lines) ──
   // A multi-line entry arrives when the streamer held a quote paragraph (e.g.
   // a span closed across its lines); each line gets its own ▎ marker, and a
-  // line without ">" is a lazy continuation shown as-is.
+  // line without ">" is a lazy continuation shown as-is. The body is italic
+  // (Claude Code's quote weight) and wraps two columns in, hanging under the
+  // text rather than under the marker.
   if (text.startsWith(">")) {
     const dim = theme ? (s: string) => theme.fg(theme.theme.textDim, s) : ((s: string) => `\x1b[2m${s}\x1b[0m`);
     return (
@@ -258,49 +318,33 @@ function MarkdownText({ children, theme, width }: MarkdownTextProps) {
           <Fragment key={i}>
             {i > 0 && "\n"}
             <Text>{dim("▎")}</Text>{" "}
-            <Inline text={raw.startsWith(">") ? raw.replace(/^>\s?/, "") : raw} theme={theme} />
+            <Text italic>
+              <Inline
+                text={raw.startsWith(">") ? raw.replace(/^>\s?/, "") : raw}
+                theme={theme}
+                width={width}
+                indent={2}
+              />
+            </Text>
           </Fragment>
         ))}
       </Text>
     );
   }
 
-  // ── Unordered list: "- text" or "* text" (but not "**bold**") ──
-  // Multi-line: each "- " line is its own bulleted item; wrapped lines under
-  // an item stay as its continuation (the streamer holds them into one entry).
-  const ulFirst = firstLine.match(/^([-*])\s+(.+)$/);
+  // ── Unordered list: "- text", "* text" or "+ text" (but not "**bold**") ──
+  // Multi-line: each marker line is its own item; wrapped lines under an item
+  // stay as its continuation (the streamer holds them into one entry). The
+  // marker is "-" at column 0, and an indented marker is one level of nesting.
+  const ulFirst = firstLine.match(/^([-*+])\s+/);
   if (ulFirst && !text.startsWith("**")) {
-    const items = splitListItems(text, /^([-*])\s+(.+)$/) ?? [];
-    const dim = theme ? (s: string) => theme.fg(theme.theme.textDim, s) : ((s: string) => `\x1b[2m${s}\x1b[0m`);
-    return (
-      <Text>
-        {items.map((item, i) => (
-          <Fragment key={i}>
-            {i > 0 && "\n"}
-            <Text>{dim(" •")}</Text>{" "}
-            <Inline text={item.content} theme={theme} width={width} indent={3} />
-          </Fragment>
-        ))}
-      </Text>
-    );
+    return renderListItems(splitListItems(text) ?? [], theme, width);
   }
 
   // ── Ordered list: 1. text, 2. text, etc. ──
-  const olFirst = firstLine.match(/^(\d+)\.\s+(.+)$/);
+  const olFirst = firstLine.match(/^(\d+)\.\s+/);
   if (olFirst) {
-    const items = splitListItems(text, /^(\d+)\.\s+(.+)$/) ?? [];
-    const dim = theme ? (s: string) => theme.fg(theme.theme.textDim, s) : ((s: string) => `\x1b[2m${s}\x1b[0m`);
-    return (
-      <Text>
-        {items.map((item, i) => (
-          <Fragment key={i}>
-            {i > 0 && "\n"}
-            <Text>{dim(` ${item.marker}.`)}</Text>{" "}
-            <Inline text={item.content} theme={theme} width={width} indent={item.marker.length + 3} />
-          </Fragment>
-        ))}
-      </Text>
-    );
+    return renderListItems(splitListItems(text) ?? [], theme, width);
   }
 
   // ── Default: inline formatting only ──

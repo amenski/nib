@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Box, Text } from "ink";
-import { PROMPT_PREFIX_WIDTH } from "../constants.js";
+import { PROMPT_PREFIX_WIDTH, PROMPT_CHEVRON } from "../constants.js";
 import {
   EMPTY_BUFFER,
   backspace, deleteForward, deleteWordBefore, deleteWordAfter,
@@ -526,15 +526,19 @@ const PromptInput = React.memo(function PromptInput({
           is where attention belongs. Everything else (status, hints) sits flat
           and dim outside it. The model pill rides on the input's right edge:
           it is a property of what you are about to send, so it belongs with the
-          composer rather than in the ambient status row. */}
+          composer rather than in the ambient status row. Only the rules above
+          and below are drawn (Claude Code's prompt): no side borders, so the
+          text column is not inset twice. */}
       <Box
         width={screenWidth}
         borderStyle="round"
-        borderColor={theme.colorEnabled ? ansi256(theme.theme.promptFg) : undefined}
+        borderLeft={false}
+        borderRight={false}
+        borderColor={theme.colorEnabled ? ansi256(theme.theme.border) : undefined}
         paddingX={1}
       >
-        <Box width={1}>
-          <Text color={theme.colorEnabled ? ansi256(theme.theme.promptFg) : undefined}>{"▏"}</Text>
+        <Box width={2} flexShrink={0}>
+          <Text color={theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined}>{`${PROMPT_CHEVRON} `}</Text>
         </Box>
         <Box flexGrow={1} flexShrink={1}>
           <Text wrap="hard">

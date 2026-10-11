@@ -27,13 +27,71 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
   ask_user_question: "AskUserQuestion",
 };
 
-/** "⏺ Bash(grep -rn "x" src/…)" — headline for a tool call. */
-export function formatToolCallHeader(name: string, args: Record<string, unknown>): string {
-  const display = TOOL_DISPLAY_NAMES[name] ?? name;
+/** Human-friendly display name for a ⏺ Tool(args) header. */
+export function toolDisplayName(name: string): string {
+  return TOOL_DISPLAY_NAMES[name] ?? name;
+}
+
+/** The three parts of a tool-call header, before any colouring. */
+export interface ToolHeaderParts {
+  /** Outcome glyph opening the line. */
+  dot: string;
+  /** Display name, e.g. "Bash". */
+  name: string;
+  /** Argument text; "" when the tool takes none. */
+  args: string;
+}
+
+/**
+ * Split a call into its header parts. Kept separate from the string-building
+ * below so callers with a theme can colour the parts independently.
+ */
+export function toolHeaderParts(name: string, args: Record<string, unknown>): ToolHeaderParts {
   const desc = describeToolCall(name, args);
   // describeToolCall returns "name arg…" — strip the leading raw name to get just the arg.
   const arg = desc.startsWith(name) ? desc.slice(name.length).trim() : desc;
-  return arg ? `⏺ ${display}(${arg})` : `⏺ ${display}`;
+  return { dot: "⏺", name: toolDisplayName(name), args: arg };
+}
+
+/** "⏺ Bash(grep -rn "x" src/…)" — headline for a tool call. */
+export function formatToolCallHeader(name: string, args: Record<string, unknown>): string {
+  const { dot, name: display, args: arg } = toolHeaderParts(name, args);
+  return arg ? `${dot} ${display}(${arg})` : `${dot} ${display}`;
+}
+
+/**
+ * The minimal theme surface a header needs (mirrors MarkdownText's own theme
+ * prop rather than depending on ThemeContextValue).
+ */
+export interface HeaderTheme {
+  colorEnabled: boolean;
+  theme: { text: number; textDim: number };
+  fg: (color: number, text: string) => string;
+  bold: (color: number, text: string) => string;
+}
+
+/**
+ * A tool-call header as one styled string: a dim glyph, the bold display name,
+ * then the arguments plainly. Built from text + escapes rather than JSX so it
+ * can ride the transcript's line protocol — the caller prefixes
+ * TOOL_HEADER_TAG, which tells OutputArea to render the line as-is instead of
+ * through the markdown renderer. An argument such as a glob pattern is shell
+ * text, not an emphasis span, and markdown used to eat it.
+ *
+ * The glyph is dim because the header is emitted when the call STARTS: its
+ * outcome is not known yet (agent.ts fires every onToolStart in a batch before
+ * any result), so an outcome-coloured dot is not available here. The result
+ * preview below the header carries the outcome colour instead.
+ */
+export function formatStyledToolHeader(
+  theme: HeaderTheme,
+  name: string,
+  args: Record<string, unknown>,
+): string {
+  const { dot, name: display, args: arg } = toolHeaderParts(name, args);
+  const glyph = theme.colorEnabled ? theme.fg(theme.theme.textDim, dot) : dot;
+  const label = theme.colorEnabled ? theme.bold(theme.theme.text, display) : display;
+  return arg ? `${glyph} ${label}(${arg})` : `${glyph} ${label}`;
 }
 
 /**

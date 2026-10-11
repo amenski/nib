@@ -27,4 +27,26 @@ describe("wrapSegments", () => {
     expect(rowText(wrapSegments([plain("a\nb")], 10))).toEqual(["a", "b"]);
     expect(rowText(wrapSegments([plain("abcdefghij")], 4))).toEqual(["abcd", "efgh", "ij"]);
   });
+
+  it("keeps a pre-coloured line on one row when it fits (2026-10-11)", () => {
+    // Regression: the escapes counting as columns made a dim 70-column line
+    // wrap at width 80. `visualLength` is ANSI-aware now, so the row fits.
+    const dim = (s: string) => `\x1b[38;5;246m${s}\x1b[0m`;
+    const line = "word ".repeat(14).trim(); // 69 columns
+    const rows = wrapSegments([{ text: dim(line), formats: [] }], 80);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]![0]!.text).toBe(dim(line));
+  });
+
+  it("never splits inside an ANSI escape when force-breaking (2026-10-11)", () => {
+    // A word longer than the width is split mid-word; the split must land
+    // between escapes and characters, never inside one, or the raw sequence
+    // fragments ("\x1b[38;5;2" / "46m") leak into the frame.
+    const coloured = "\x1b[38;5;246m" + "abcdefghij" + "\x1b[0m";
+    const rows = rowText(wrapSegments([{ text: coloured, formats: [] }], 4));
+    expect(rows.join("")).toBe(coloured);
+    for (const r of wrapSegments([{ text: coloured, formats: [] }], 4)) {
+      for (const seg of r) expect(seg.text).not.toMatch(/\x1b\[[0-9;]*$/);
+    }
+  });
 });

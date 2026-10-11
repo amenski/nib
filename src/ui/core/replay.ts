@@ -16,13 +16,20 @@ import {
   formatToolResultPreview,
   SILENT_TOOLS,
 } from "../ToolCallFormatter.js";
-import { USER_ECHO_TAG, VERBATIM_TAG } from "../constants.js";
+import { USER_ECHO_TAG, VERBATIM_TAG, BULLET_TAG, ANSWER_CONT_TAG } from "../constants.js";
 import type { ThemeContextValue } from "../theme.js";
 
-const withBullet = (line: string): string => {
-  const [first, ...rest] = line.split("\n");
-  return [`● ${first}`, ...rest].join("\n");
-};
+/**
+ * Tag an assistant message as one answer block: the opening line carries
+ * BULLET_TAG and every later line ANSWER_CONT_TAG — the same tags live output
+ * carries. Previously a literal "● " was string-prepended, which registered as
+ * no answer block at all (OutputArea never saw a tag), so a resumed transcript
+ * lost the two-column gutter — and the "● " prefix additionally defeated
+ * block-level markdown anchored at the start of a line, so a replayed heading
+ * or list item never matched and rendered as raw text.
+ */
+const answerBlockLines = (content: string): string[] =>
+  content.split("\n").map((line, i) => (i === 0 ? BULLET_TAG : ANSWER_CONT_TAG) + line);
 
 /**
  * Build the scrollback lines for a resumed transcript. Silent (context-only)
@@ -77,7 +84,7 @@ export function buildReplayLines(messages: Message[], theme: ThemeContextValue):
 
     if (msg.role === "assistant") {
       if (msg.content && msg.content.trim() !== "") {
-        out.push(tag(withBullet(msg.content)));
+        out.push(...answerBlockLines(msg.content).map(tag));
       }
       for (const call of msg.toolCalls ?? []) {
         if (SILENT_TOOLS.has(call.name)) {

@@ -80,10 +80,11 @@ import type { AskQuestionItem } from "../tools/types.js";
 import { setAskQuestion } from "../tools/index.js";
 import { ModelsDropdown, EffortSelector } from "./components/index.js";
 import ThemeDropdown, { persistThemeChoice } from "./components/ThemeDropdown/index.js";
-import { USER_ECHO_TAG, COMMAND_ECHO_TAG, BULLET_TAG, ANSWER_CONT_TAG, ANSI_CLEAR_SCREEN } from "./constants.js";
+import { USER_ECHO_TAG, COMMAND_ECHO_TAG, BULLET_TAG, ANSWER_CONT_TAG, TOOL_HEADER_TAG, ANSI_CLEAR_SCREEN } from "./constants.js";
 import { seedPromptHistory } from "./core/prompt-history.js";
 import { loadPromptHistory, appendPromptHistory } from "./core/history-store.js";
 import { summarizeReasoning } from "./core/reasoning-echo.js";
+import { unclosedSpanClosers } from "./core/markdown-inline.js";
 import { resolveRefreshProfile, type ResolvedRefresh } from "./core/refresh-rates.js";
 import {
   formatSubagentHeader,
@@ -94,7 +95,7 @@ import {
 } from "./core/subagent-progress-format.js";
 import { groupTableLines, splitCommittable } from "./core/table-group.js";
 import {
-  formatToolCallHeader,
+  formatStyledToolHeader,
   formatToolResultPreview,
 } from "./ToolCallFormatter.js";
 import {
@@ -755,13 +756,19 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
   // interval. The interval comes from the active refresh profile, so a slow
   // terminal can trade streaming smoothness for a stable frame.
   const activeLineFlushRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // What the live preview should DRAW, which is not always what
+  // activeLineRef holds: a held span's closers are appended for display only
+  // (see previewClosers). Kept separate so the flush sites still commit the
+  // raw text.
+  const activeLineDisplayRef = useRef("");
 
-  function setActiveLineBoth(v: string) {
+  function setActiveLineBoth(v: string, display: string = v) {
     activeLineRef.current = v;
+    activeLineDisplayRef.current = display;
     if (activeLineFlushRef.current) return;
     activeLineFlushRef.current = setTimeout(() => {
       activeLineFlushRef.current = null;
-      setActiveLine(activeLineRef.current);
+      setActiveLine(activeLineDisplayRef.current);
     }, REFRESH.activeLineMs);
   }
 
@@ -900,7 +907,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
       const compacted = await ctx.compactResumed();
       replayResumed(compacted ?? resumeSource());
     } catch (err) {
-      pushOutput(`Compaction failed: ${(err as Error).message}. Loading full transcript.`);
+      pushOutput(theme.fg(theme.theme.error, `Compaction failed: ${(err as Error).message}. Loading full transcript.`));
       replayResumed(resumeSource());
     } finally {
       setCompactingResume(false);
@@ -1066,9 +1073,6 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
 
       let needTextSeparator = false;
       let textBuffer = "";
-      // True while the machine holds a paragraph (span/list) or an open fence
-      // — the active line is live-previewed rather than committed yet.
-      let holding = false;
 
       // The echo is a marker that reasoning happened, not a transcript of it —
       // the full text is already in the model's context and is not addressed to
@@ -1083,7 +1087,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
         const summary = summarizeReasoning(buffer);
         if (summary === null) return;
         reasoningRef.current.flushed = true;
-        scheduleOutput(theme.fg(theme.theme.textDim, `✱ ${summary}`));
+        scheduleOutput(theme.dimItalic(theme.theme.textDim, `∴ ${summary}`));
       }
 
       const callbacks = {
@@ -1103,16 +1107,14 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           // Feed the chunk through the stream state machine. Complete lines
           // are committed (whole paragraphs, completed fences, blanks); the
           // machine's activeLine is the live preview of what is still held.
-          const prevHolding = holding;
           const active = consumeStream(c);
-          holding = active !== "";
-          if (active !== "" && !prevHolding) {
-            setActiveLineBoth(withBullet(active));
-          } else if (active !== "" && prevHolding) {
-            // A line already on screen (held) is being extended — update the
-            // rendered line in place rather than committing the older text.
-            setActiveLineBoth(withBullet(active));
-          } else if (active === "") {
+          if (active !== "") {
+            // The PREVIEW also closes any span still open, so held text shows
+            // its bold/italic/code immediately instead of flashing a literal
+            // "**" until the real closer streams in. Display only — the committed
+            // text (activeLineRef) keeps the raw markers.
+            setActiveLineBoth(withBullet(active), withBullet(active + unclosedSpanClosers(active)));
+          } else {
             setActiveLineBoth("");
           }
           if (
@@ -1132,11 +1134,10 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           flushStream();
           if (activeLineRef.current) scheduleOutput(activeLineRef.current);
           setActiveLineBoth("");
-          holding = false;
           textBuffer = "";
           atBlockStart = true; // next answer block re-bullets after this tool call
           scheduleOutput("");
-          const header = formatToolCallHeader(name, args);
+          const header = TOOL_HEADER_TAG + formatStyledToolHeader(theme, name, args);
           scheduleOutput(header);
         },
         onToolResult: (
@@ -1169,7 +1170,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           flushStream();
           if (activeLineRef.current) scheduleOutput(activeLineRef.current);
           setActiveLineBoth("");
-          scheduleOutput(theme.fg(theme.theme.textDim, `⚠ ${msg}`));
+          scheduleOutput(theme.fg(theme.theme.warning, `⚠ ${msg}`));
         },
         onRetry: () => {},
         onCompacted: () => {},
@@ -1202,6 +1203,11 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           // progress line is scheduled to the transcript above the live active
           // line; the main paragraph commits whole at its own boundary.
           let line: string | null;
+          // A header or child-tool line is pre-styled (dim glyph, bold name,
+          // plain arguments) and must NOT be markdown-parsed: a child's
+          // arguments are shell text. Those carry TOOL_HEADER_TAG so OutputArea
+          // draws them verbatim; the rollup and finish lines stay dim text.
+          let styled = false;
           if (event.kind === "start") {
             subagentStart = Date.now();
             subagentDisplay.set(event.depth, initSubagentDisplayState());
@@ -1210,7 +1216,9 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
               agentName: event.agent,
               model: ctx.modelDisplayName?.(),
               depth: event.depth,
+              theme,
             });
+            styled = true;
           } else if (event.kind === "tool") {
             const state =
               subagentDisplay.get(event.depth) ?? initSubagentDisplayState();
@@ -1220,13 +1228,15 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
               event.name ?? "",
               event.args ?? {},
               event.depth,
+              theme,
             );
+            styled = true;
           } else {
             const took = Date.now() - subagentStart;
             line = formatSubagentFinishLine({ depth: event.depth, elapsedMs: took });
           }
           if (line === null) return;
-          scheduleOutput(theme.fg(theme.theme.textDim, line));
+          scheduleOutput(styled ? TOOL_HEADER_TAG + line : theme.fg(theme.theme.textDim, line));
         },
         onLoopDetected: (m: string) => {
           scheduleOutput(`[${m}]`);
@@ -1238,7 +1248,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           flushStream();
           if (activeLineRef.current) scheduleOutput(activeLineRef.current);
           setActiveLineBoth("");
-          scheduleOutput(theme.fg(theme.theme.textDim, `⚠ stopped after ${requests} model requests (--max-turns)`));
+          scheduleOutput(theme.fg(theme.theme.warning, `⚠ stopped after ${requests} model requests (--max-turns)`));
         },
         onUsage: () => {
           // Usage totals live on ctx.mutable (sessionInput/sessionOutput) and
@@ -1278,7 +1288,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
               "apply_patch",
             ].includes(toolName)
           ) {
-            const preview = previewEdit(toolName, args);
+            const preview = previewEdit(toolName, args, theme);
             if (preview) scheduleOutput(preview);
           }
 
@@ -1407,7 +1417,6 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
 
         if (activeLineRef.current) pushOutput(activeLineRef.current);
         setActiveLineBoth("");
-        holding = false;
         textBuffer = "";
 
         // Per-turn completion footer: "✳ Worked for Ns" (dim), mirroring Claude
@@ -1460,7 +1469,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
       } catch (err) {
         flushStream();
         flushOutputQueue(true);
-        pushOutput(`Error: ${(err as Error).message}`);
+        pushOutput(theme.fg(theme.theme.error, `Error: ${(err as Error).message}`));
         announceToScreenReader(
           `Error: ${(err as Error).message}`,
           "assertive",

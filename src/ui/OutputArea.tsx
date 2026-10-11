@@ -15,7 +15,7 @@ import { Box, Static, Text } from "ink";
 import MarkdownText from "./MarkdownText.js";
 import { useTheme, useTerminalInfo } from "./contexts.js";
 import { ansi256 } from "./theme.js";
-import { USER_ECHO_TAG, COMMAND_ECHO_TAG, BULLET_TAG, ANSWER_CONT_TAG, VERBATIM_TAG } from "./constants.js";
+import { USER_ECHO_TAG, COMMAND_ECHO_TAG, BULLET_TAG, ANSWER_CONT_TAG, VERBATIM_TAG, TOOL_HEADER_TAG, ANSWER_BULLET, PROMPT_CHEVRON } from "./constants.js";
 import { formatEcho } from "./core/echo-format.js";
 import type { TabDefinition } from "./types.js";
 
@@ -114,13 +114,25 @@ const OutputLine = memo(function OutputLine({
   const body = hasBullet ? untagged.slice(BULLET_TAG.length) : isCont ? untagged.slice(ANSWER_CONT_TAG.length) : untagged;
   const summary = useMemo(() => (verbatim ? null : needsSummary(body)), [body, verbatim]);
 
+  // A tool-call header (TOOL_HEADER_TAG) is pre-styled text: a dim glyph, a
+  // bold name, plain arguments. It must NOT pass through MarkdownText — its
+  // arguments are shell/path text where an inline marker is literal, so a glob
+  // pattern was being italicised away as an emphasis span.
+  if (untagged.startsWith(TOOL_HEADER_TAG)) {
+    return <Text>{untagged.slice(TOOL_HEADER_TAG.length)}</Text>;
+  }
+
   if (hasBullet || isCont) {
     // Fixed two columns that never shrink: as a plain flex child, a long
     // paragraph beside it made the layout shrink the gutter to one column, so
     // some paragraphs (and wrapped list rows) sat at column 1 and others at 2.
+    // The dot itself is the default text colour (Claude Code's answer marker),
+    // with the platform's own glyph.
     const bulletEl = (
       <Box width={2} flexShrink={0}>
-        <Text color={theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined}>{hasBullet ? "● " : "  "}</Text>
+        <Text color={theme.colorEnabled ? ansi256(theme.theme.text) : undefined}>
+          {hasBullet ? `${ANSWER_BULLET} ` : "  "}
+        </Text>
       </Box>
     );
     if (summary) {
@@ -142,32 +154,40 @@ const OutputLine = memo(function OutputLine({
     );
   }
 
-  // A user-echo line (tagged with USER_ECHO_TAG) renders with a blue gutter bar
-  // on the left and plain text — the gutter is what marks input, so assistant
-  // replies can stay plain flush-left text. (A full-width background fill was
-  // tried and read as heavier/noisier, so this uses a subtle left rule instead.)
+  // A user-echo line (tagged with USER_ECHO_TAG) renders as Claude Code's
+  // prompt row: a dim "❯" then the text on the user-message background
+  // (`surface`, nib's 237 — Claude Code's userMessageBackground), with one
+  // column of right padding. An earlier version used a left rule instead
+  // because a background "read heavier"; the owner chose this look
+  // deliberately (2026-10-11), so the fill is the point, not a regression.
   if (untagged.startsWith(USER_ECHO_TAG)) {
-    // Draw the gutter on every line rather than flattening the message: the
-    // echo must show what was actually submitted, newlines included. A
-    // verbatim (replayed) echo is exempt from formatEcho's own line/char caps
-    // for the same reason it is exempt from needsSummary — it is restored
-    // history, not a live paste that might bury the transcript.
+    // Draw the row on every line rather than flattening the message: the echo
+    // must show what was actually submitted, newlines included. A verbatim
+    // (replayed) echo is exempt from formatEcho's own line/char caps for the
+    // same reason it is exempt from needsSummary — it is restored history, not
+    // a live paste that might bury the transcript. Later lines are indented two
+    // columns so the text block lines up under the first line's text.
     const { lines: msgLines, truncated } = verbatim
       ? formatEcho(untagged.slice(USER_ECHO_TAG.length), Infinity, Infinity)
       : formatEcho(untagged.slice(USER_ECHO_TAG.length));
-    const gutter = theme.colorEnabled ? ansi256(theme.theme.promptFg) : undefined;
+    const dimFg = theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined;
+    const bg = theme.colorEnabled ? ansi256(theme.theme.surface) : undefined;
     return (
       <Box flexDirection="column">
         {msgLines.map((msg, i) => (
           <Box key={i}>
-            <Text color={gutter}>{"▌ "}</Text>
-            <Text>{msg}</Text>
+            <Text color={dimFg} backgroundColor={bg}>{i === 0 ? `${PROMPT_CHEVRON} ` : "  "}</Text>
+            {/* The right padding lives inside this node, not a sibling <Text>:
+                a separate pad node made Ink drop one character when it wrapped
+                a long coloured line (measured 2026-10-11 — a 1400-char echo
+                rendered 1399). */}
+            <Text backgroundColor={bg}>{msg + " "}</Text>
           </Box>
         ))}
         {truncated !== null && (
           <Box>
-            <Text color={gutter}>{"▌ "}</Text>
-            <Text color={theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined}>{truncated}</Text>
+            <Text color={dimFg} backgroundColor={bg}>{"  "}</Text>
+            <Text color={dimFg} backgroundColor={bg}>{truncated + " "}</Text>
           </Box>
         )}
       </Box>

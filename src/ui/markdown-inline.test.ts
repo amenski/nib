@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseInline, inlineSpanOpen } from "./MarkdownText.js";
+import { parseInline, inlineSpanOpen, unclosedSpanClosers } from "./MarkdownText.js";
 
 function textOf(segments: { text: string }[]): string {
   return segments.map((s) => s.text).join("");
@@ -60,7 +60,13 @@ describe("parseInline", () => {
   it("still normalizes real links outside code, even with asterisks in the URL", () => {
     const segs = parseInline("see [docs](https://x.com/a**b) here");
     expect(textOf(segs)).toBe("see docs (https://x.com/a**b) here");
-    expect(segs.every((s) => (s as any).formats.length === 0)).toBe(true);
+    // The label and its URL carry distinct formats so the renderer can accent
+    // the one and dim the other; the surrounding text stays plain.
+    const link = segs.find((s) => (s as any).formats.includes("link"));
+    const url = segs.find((s) => (s as any).formats.includes("linkUrl"));
+    expect(link?.text).toBe("docs");
+    expect(url?.text).toBe("(https://x.com/a**b)");
+    expect((segs[0] as any).formats).toEqual([]);
   });
 
   it("supports underscore emphasis", () => {
@@ -99,6 +105,44 @@ describe("parseInline", () => {
     const segs = parseInline("~~**gone**~~ stays");
     expect(textOf(segs)).toBe("gone stays");
     expect((segs[0] as any).formats).toEqual(["strike", "bold"]);
+  });
+});
+
+describe("unclosedSpanClosers (2026-10-11)", () => {
+  it("returns nothing for text with no open span", () => {
+    expect(unclosedSpanClosers("plain text")).toBe("");
+    expect(unclosedSpanClosers("**closed**")).toBe("");
+  });
+
+  it("closes an open emphasis span", () => {
+    expect(unclosedSpanClosers("**bold")).toBe("**");
+    expect(unclosedSpanClosers("*italic")).toBe("*");
+    expect(unclosedSpanClosers("~~strike")).toBe("~~");
+  });
+
+  it("closes an unmatched backtick, which leaves no parser stack entry", () => {
+    expect(unclosedSpanClosers("install `npm")).toBe("`");
+  });
+
+  it("never closes a fenced code block (its content is literal, not a span)", () => {
+    // Regression (found by probe): a fence's ``` lines are backticks, so the
+    // odd-run rule appended a stray "`" to a streaming code block's preview,
+    // rendering an extra backtick that was never in the output.
+    expect(unclosedSpanClosers("```ts\nconst x = 1")).toBe("");
+    expect(unclosedSpanClosers("```")).toBe("");
+    expect(unclosedSpanClosers("```\ncode here\n```")).toBe("");
+  });
+
+  it("closes innermost first so a nested span stays well-formed", () => {
+    // "**bold `code" must close the code span before its parent emphasis.
+    expect(unclosedSpanClosers("**bold `code")).toBe("`**");
+  });
+
+  it("produces text the parser reads as fully closed", () => {
+    for (const input of ["**bold", "*italic", "install `npm", "**bold `code"]) {
+      expect(inlineSpanOpen(input)).toBe(true);
+      expect(inlineSpanOpen(input + unclosedSpanClosers(input))).toBe(false);
+    }
   });
 });
 

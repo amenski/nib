@@ -19,7 +19,7 @@
  * results (ToolCallFormatter.ts).
  */
 
-import { formatToolCallHeader } from "../ToolCallFormatter.js";
+import { toolHeaderParts, type HeaderTheme } from "../ToolCallFormatter.js";
 
 /** Cap on child tool-call lines rendered per sub-agent before collapsing to a
  *  rollup line — mirrors formatToolResultPreview's "first N, then …+N" shape. */
@@ -59,11 +59,18 @@ export function formatSubagentHeader(opts: {
   agentName?: string;
   model?: string;
   depth: number;
+  /** When given, the header is pre-styled (dim glyph/model, bold label). */
+  theme?: HeaderTheme;
 }): string {
-  const { description, agentName, model, depth } = opts;
+  const { description, agentName, model, depth, theme } = opts;
   const modelSuffix = model ? ` ${model}` : "";
   const agentSuffix = agentName ? ` (${agentName})` : "";
-  return `${indentFor(depth)}⏺ Agent(${description})${modelSuffix}${agentSuffix}`;
+  if (!theme) {
+    return `${indentFor(depth)}⏺ Agent(${description})${modelSuffix}${agentSuffix}`;
+  }
+  const dim = (s: string) => (theme.colorEnabled ? theme.fg(theme.theme.textDim, s) : s);
+  const bold = (s: string) => (theme.colorEnabled ? theme.bold(theme.theme.text, s) : s);
+  return `${indentFor(depth)}${dim("⏺")} ${bold("Agent")}(${description})${dim(modelSuffix)}${dim(agentSuffix)}`;
 }
 
 /**
@@ -77,12 +84,17 @@ export function formatSubagentToolLine(
   name: string,
   args: Record<string, unknown>,
   depth: number,
+  theme?: HeaderTheme,
 ): string | null {
   state.totalCount++;
   if (state.shownCount < MAX_VISIBLE_CHILDREN) {
     state.shownCount++;
-    const header = formatToolCallHeader(name, args); // "⏺ Bash(grep -n …)"
-    const body = header.startsWith("⏺ ") ? header.slice(2) : header;
+    // The tree connector "└" IS this line's marker, so the call's own glyph is
+    // dropped and only the bold name + plain arguments are drawn. The arguments
+    // are never run through markdown (a child's args are shell text).
+    const { name: display, args: arg } = toolHeaderParts(name, args);
+    const label = theme?.colorEnabled ? theme.bold(theme.theme.text, display) : display;
+    const body = arg ? `${label}(${arg})` : label;
     return `${indentFor(depth + 1)}${TREE_CONNECTOR} ${body}`;
   }
   if (!state.rollupPrinted) {

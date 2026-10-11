@@ -3,7 +3,7 @@ import { describe, it, expect } from "vitest";
 import { render } from "ink-testing-library";
 import OutputArea from "./OutputArea.js";
 import { buildReplayLines } from "./core/replay.js";
-import { USER_ECHO_TAG, VERBATIM_TAG, BULLET_TAG } from "./constants.js";
+import { USER_ECHO_TAG, VERBATIM_TAG, BULLET_TAG, PROMPT_CHEVRON, ANSWER_BULLET } from "./constants.js";
 import type { Message } from "../types.js";
 import { stripAnsi } from "./test-helpers.js";
 import { ThemeContextValue, DARK_THEME } from "./theme.js";
@@ -74,16 +74,16 @@ describe("OutputArea verbatim (replay) rendering", () => {
     expect(rawFrame).not.toContain("more lines");
   });
 
-  it("still draws the ▌ gutter on a replayed user-echo line", () => {
+  it("still draws the prompt glyph on a replayed user-echo line", () => {
     const msgs: Message[] = [{ role: "user", content: "fix the bug" }];
     const lines = buildReplayLines(msgs, noColor);
-    expect(frameOf(lines)).toContain("▌ fix the bug");
+    expect(frameOf(lines)).toContain(`${PROMPT_CHEVRON} fix the bug`);
   });
 
-  it("still draws the ● bullet on a replayed assistant line", () => {
+  it("still draws the answer bullet on a replayed assistant line", () => {
     const msgs: Message[] = [{ role: "assistant", content: "Done." }];
     const lines = buildReplayLines(msgs, noColor);
-    expect(frameOf(lines)).toContain("● Done.");
+    expect(frameOf(lines)).toContain(`${ANSWER_BULLET} Done.`);
   });
 
   it("draws the gutter AND keeps full text for a long replayed user message", () => {
@@ -95,7 +95,7 @@ describe("OutputArea verbatim (replay) rendering", () => {
     const rawFrame = frameOf(lines);
     const collapsed = rawFrame.replace(/\s/g, "");
 
-    expect(rawFrame).toContain("▌");
+    expect(rawFrame).toContain(PROMPT_CHEVRON);
     expect(collapsed).toContain("TAIL_MARKER");
     expect(rawFrame).not.toContain("more chars");
     expect(rawFrame).not.toContain("more lines");

@@ -40,6 +40,16 @@ describe("visualLength", () => {
     expect(visualLength("你好")).toBe(4);
     expect(visualLength("a你b")).toBe(4);
   });
+
+  it("does not count ANSI SGR sequences as columns (2026-10-11)", () => {
+    // Every replayed entry carries colour codes: a dim tool result, a
+    // reasoning echo, a diff. Counting the escapes made those lines measure
+    // ~15 columns wider than they draw, so the wrappers broke them rows early.
+    const dim = "\x1b[38;5;246mhello world\x1b[0m";
+    expect(visualLength(dim)).toBe(11);
+    expect(visualLength(`\x1b[1m\x1b[38;5;231mabc\x1b[22m\x1b[39m`)).toBe(3);
+    expect(visualLength("你好")).toBe(visualLength("\x1b[2m你好\x1b[0m"));
+  });
 });
 
 describe("isTableBlock", () => {
@@ -290,5 +300,20 @@ describe("table colour (2026-10-10)", () => {
     // The content is drawn as-is: no dim wrapper around a cell's text.
     expect(frame).not.toContain("[dim:C]");
     expect(frame).not.toContain("[dim:CarouselStorePort]");
+  });
+
+  it("bolds the header row and leaves the body plain (2026-10-11)", () => {
+    const theme = { colorEnabled: true, theme: { textDim: 246 }, fg: (_c: number, s: string) => s };
+    const table = React.createElement(
+      MarkdownTable,
+      { theme, children: "| Component | Status |\n|---|---|\n| CarouselStorePort | done |" },
+    );
+    const frame = render(table).lastFrame() ?? "";
+    const rows = frame.split("\n").filter((r) => r.includes("Component") || r.includes("Carousel"));
+    // Bold, built as an escape by the renderer (Ink's gradient-free text has no
+    // attribute-only prop through this path), opens before the header's padding.
+    expect(rows[0]).toContain("\x1b[1m");
+    expect(stripAnsi(rows[0]!)).toContain("Component");
+    expect(rows[1]).not.toContain("\x1b[1m");
   });
 });

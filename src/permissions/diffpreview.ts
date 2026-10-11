@@ -1,4 +1,46 @@
 import { readFileSync, existsSync } from "node:fs";
+import { ansiBg, ANSI_RESET } from "../ui/theme.js";
+
+/**
+ * Columns the diff body is indented by, aligning it with the text of a tool
+ * result's own `⎿` preview ("  ⎿  " is five columns before its text).
+ */
+export const DIFF_INDENT = 5;
+
+/**
+ * The theme surface the diff needs. Structural (not ThemeContextValue) so this
+ * module stays free of the UI layer's React types.
+ */
+export interface DiffTheme {
+  colorEnabled: boolean;
+  theme: { diffAddedBg: number; diffRemovedBg: number };
+}
+
+/**
+ * Paint a unified diff for the terminal: removed lines carry the theme's
+ * `diffRemovedBg`, added lines its `diffAddedBg`, in the terminal's default
+ * foreground (Claude Code's diff look). With no theme (or colour off) the diff
+ * is plain text — the previous implementation hard-coded SGR 31/32, which
+ * ignored the active theme entirely.
+ */
+function paintDiff(preview: string, theme?: DiffTheme): string {
+  const pad = " ".repeat(DIFF_INDENT);
+  return preview
+    .split("\n")
+    .map((line) => {
+      const body = pad + line;
+      if (!theme?.colorEnabled) return body;
+      // "---"/"+++" are the file headers, not removed/added content.
+      if (line.startsWith("-") && !line.startsWith("---")) {
+        return `${ansiBg(theme.theme.diffRemovedBg)}${body}${ANSI_RESET}`;
+      }
+      if (line.startsWith("+") && !line.startsWith("+++")) {
+        return `${ansiBg(theme.theme.diffAddedBg)}${body}${ANSI_RESET}`;
+      }
+      return body;
+    })
+    .join("\n");
+}
 
 function computePreviewDiff(toolName: string, args: Record<string, unknown>): string | null {
   const rawPath = args.path ?? args.filePath;
@@ -50,10 +92,10 @@ function generateUnifiedDiff(filePath: string, original: string, oldStr: string,
   }
 
   for (const line of oldLines) {
-    diff += `\x1b[31m-${line}\x1b[0m\n`;
+    diff += `-${line}\n`;
   }
   for (const line of newLines) {
-    diff += `\x1b[32m+${line}\x1b[0m\n`;
+    diff += `+${line}\n`;
   }
 
   const afterStart = startIdx + oldStr.length;
@@ -74,10 +116,10 @@ function generateFullDiff(filePath: string, original: string, newContent: string
   diff += `@@ -1,${origLines.length} +1,${newLines.length} @@\n`;
 
   for (const line of origLines) {
-    diff += `\x1b[31m-${line}\x1b[0m\n`;
+    diff += `-${line}\n`;
   }
   for (const line of newLines) {
-    diff += `\x1b[32m+${line}\x1b[0m\n`;
+    diff += `+${line}\n`;
   }
 
   return diff;
@@ -103,10 +145,10 @@ function generateReplacePreview(filePath: string, original: string, search: stri
   }
 
   for (const line of searchLines) {
-    diff += `\x1b[31m-${line}\x1b[0m\n`;
+    diff += `-${line}\n`;
   }
   for (const line of replaceLines) {
-    diff += `\x1b[32m+${line}\x1b[0m\n`;
+    diff += `+${line}\n`;
   }
 
   const afterStart = firstIdx + search.length;
@@ -135,8 +177,17 @@ function formatPreview(preview: string, maxLines: number = 40): string {
   return lines.slice(0, maxLines).join("\n") + `\n(+${lines.length - maxLines} more)`;
 }
 
-export function previewEdit(toolName: string, args: Record<string, unknown>): string | null {
+/**
+ * A unified diff for the permission prompt. The body is indented to align with
+ * a tool result's own `⎿` preview and, given a theme, painted with the diff
+ * background slots.
+ */
+export function previewEdit(
+  toolName: string,
+  args: Record<string, unknown>,
+  theme?: DiffTheme,
+): string | null {
   const raw = computePreviewDiff(toolName, args);
   if (!raw) return null;
-  return formatPreview(raw);
+  return paintDiff(formatPreview(raw), theme);
 }

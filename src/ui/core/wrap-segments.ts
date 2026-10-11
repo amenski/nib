@@ -81,15 +81,27 @@ function sameFormats(a: Segment, b: Segment): boolean {
   return a.formats.length === b.formats.length && a.formats.every((f, i) => f === b.formats[i]);
 }
 
+/**
+ * Split text into atoms that may not be broken apart: an ANSI SGR escape (zero
+ * columns) or a single character. Without this, an overlong word containing
+ * colour codes could be split *inside* one (`\x1b[38;5;2` / `46m`), leaving
+ * literal escape fragments on screen.
+ */
+const ATOM_RE = /\x1b\[[0-9;]*m|[\s\S]/g;
+
+function atoms(text: string): string[] {
+  return text.match(ATOM_RE) ?? [];
+}
+
 function splitAtWidth(text: string, room: number): [string, string] {
-  const chars = Array.from(text);
+  const parts = atoms(text);
   let used = 0;
   let i = 0;
-  for (; i < chars.length; i++) {
-    const cw = visualLength(chars[i]!);
+  for (; i < parts.length; i++) {
+    const cw = visualLength(parts[i]!);
     if (used + cw > room) break;
     used += cw;
   }
   const cut = Math.max(1, i);
-  return [chars.slice(0, cut).join(""), chars.slice(cut).join("")];
+  return [parts.slice(0, cut).join(""), parts.slice(cut).join("")];
 }

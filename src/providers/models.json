@@ -2,39 +2,37 @@
   "source": {
     "provider": "models.dev",
     "revision": "models.dev:https://models.dev/api.json",
-    "generatedAt": "2026-08-23"
+    "generatedAt": "2026-10-11"
   },
   "providers": {
     "deepseek": {
       "models": {
-        "deepseek-chat": {
-          "displayName": "DeepSeek Chat",
+        "deepseek-flash": {
+          "displayName": "DeepSeek V4.1 Flash",
           "supportsTools": true,
           "contextWindow": 1000000,
-          "vision": false,
+          "vision": true,
           "pricing": {
-            "inputPerM": 0.14,
-            "outputPerM": 0.28
-          }
-        },
-        "deepseek-reasoner": {
-          "displayName": "DeepSeek Reasoner",
-          "supportsTools": true,
-          "contextWindow": 1000000,
-          "vision": false,
-          "pricing": {
-            "inputPerM": 0.14,
-            "outputPerM": 0.28
+            "inputPerM": 0.15,
+            "outputPerM": 0.6
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "max"
+            ],
+            "default": "high"
           }
         },
         "deepseek-v4-flash": {
           "displayName": "DeepSeek V4 Flash",
           "supportsTools": true,
           "contextWindow": 1000000,
-          "vision": false,
+          "vision": true,
           "pricing": {
-            "inputPerM": 0.14,
-            "outputPerM": 0.28
+            "inputPerM": 0.15,
+            "outputPerM": 0.6
           },
           "effort": {
             "values": [
@@ -51,8 +49,8 @@
           "contextWindow": 1000000,
           "vision": true,
           "pricing": {
-            "inputPerM": 0.14,
-            "outputPerM": 0.28
+            "inputPerM": 0.15,
+            "outputPerM": 0.6
           },
           "effort": {
             "values": [
@@ -69,12 +67,13 @@
           "contextWindow": 1000000,
           "vision": false,
           "pricing": {
-            "inputPerM": 0.435,
-            "outputPerM": 0.87
+            "inputPerM": 0.66,
+            "outputPerM": 1.98
           },
           "effort": {
             "values": [
               "high",
+              "low",
               "max"
             ],
             "default": "high"
@@ -227,6 +226,26 @@
               "none"
             ],
             "default": "default"
+          }
+        },
+        "qwen/qwen3.8-27b": {
+          "displayName": "Qwen3.8 27B",
+          "supportsTools": true,
+          "contextWindow": 131042,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 0.8,
+            "outputPerM": 4
+          },
+          "effort": {
+            "values": [
+              "default",
+              "high",
+              "low",
+              "medium",
+              "none"
+            ],
+            "default": "medium"
           }
         }
       }
@@ -670,8 +689,8 @@
           "contextWindow": 1050000,
           "vision": true,
           "pricing": {
-            "inputPerM": 5,
-            "outputPerM": 30
+            "inputPerM": 4,
+            "outputPerM": 20
           },
           "effort": {
             "values": [
@@ -712,8 +731,8 @@
           "contextWindow": 1050000,
           "vision": true,
           "pricing": {
-            "inputPerM": 5,
-            "outputPerM": 30
+            "inputPerM": 4,
+            "outputPerM": 20
           },
           "effort": {
             "values": [
@@ -735,6 +754,130 @@
           "pricing": {
             "inputPerM": 2,
             "outputPerM": 12
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "max",
+              "medium",
+              "none",
+              "xhigh"
+            ],
+            "default": "medium"
+          }
+        },
+        "gpt-6-astra": {
+          "displayName": "GPT-6 Astra",
+          "supportsTools": true,
+          "contextWindow": 1050000,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 10,
+            "outputPerM": 50
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "max",
+              "medium",
+              "xhigh"
+            ],
+            "default": "medium"
+          }
+        },
+        "gpt-6-luna": {
+          "displayName": "GPT-6 Luna",
+          "supportsTools": true,
+          "contextWindow": 1050000,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 0.1,
+            "outputPerM": 0.5
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "max",
+              "medium",
+              "none",
+              "xhigh"
+            ],
+            "default": "medium"
+          }
+        },
+        "gpt-6-sol": {
+          "displayName": "GPT-6 Sol",
+          "supportsTools": true,
+          "contextWindow": 1050000,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 2,
+            "outputPerM": 10
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "max",
+              "medium",
+              "none",
+              "xhigh"
+            ],
+            "default": "medium"
+          }
+        },
+        "gpt-6.1-sol": {
+          "displayName": "GPT-6.1 Sol",
+          "supportsTools": true,
+          "contextWindow": 1050000,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 2,
+            "outputPerM": 10
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "max",
+              "medium",
+              "xhigh"
+            ],
+            "default": "medium"
+          }
+        },
+        "gpt-daybreak-blue-latest": {
+          "displayName": "Daybreak Blue",
+          "supportsTools": true,
+          "contextWindow": 1050000,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 4,
+            "outputPerM": 20
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "max",
+              "medium",
+              "none",
+              "xhigh"
+            ],
+            "default": "medium"
+          }
+        },
+        "gpt-daybreak-red-latest": {
+          "displayName": "Daybreak Red",
+          "supportsTools": true,
+          "contextWindow": 400000,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 12.5,
+            "outputPerM": 75
           },
           "effort": {
             "values": [
@@ -940,6 +1083,42 @@
             "outputPerM": 1.4
           }
         },
+        "aion-labs/aion-3.5": {
+          "displayName": "Aion 3.5",
+          "supportsTools": true,
+          "contextWindow": 262144,
+          "vision": false,
+          "pricing": {
+            "inputPerM": 3,
+            "outputPerM": 6
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "max"
+            ],
+            "default": "high"
+          }
+        },
+        "aion-labs/aion-3.5-mini": {
+          "displayName": "Aion 3.5 Mini",
+          "supportsTools": true,
+          "contextWindow": 262144,
+          "vision": false,
+          "pricing": {
+            "inputPerM": 0.7,
+            "outputPerM": 1.4
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "max"
+            ],
+            "default": "high"
+          }
+        },
         "aion-labs/aion-rp-llama-3.1-8b": {
           "displayName": "Aion-RP 1.0 (8B)",
           "supportsTools": false,
@@ -948,16 +1127,6 @@
           "pricing": {
             "inputPerM": 0.8,
             "outputPerM": 1.6
-          }
-        },
-        "allenai/olmo-3-32b-think": {
-          "displayName": "Olmo 3 32B Think",
-          "supportsTools": false,
-          "contextWindow": 65536,
-          "vision": false,
-          "pricing": {
-            "inputPerM": 0.15,
-            "outputPerM": 0.5
           }
         },
         "amazon/nova-2-lite-v1": {
@@ -1016,22 +1185,32 @@
           "contextWindow": 32768,
           "vision": false,
           "pricing": {
-            "inputPerM": 3,
+            "inputPerM": 2.5,
             "outputPerM": 5
-          }
-        },
-        "anthropic/claude-3-haiku": {
-          "displayName": "Claude 3 Haiku",
-          "supportsTools": true,
-          "contextWindow": 200000,
-          "vision": true,
-          "pricing": {
-            "inputPerM": 0.25,
-            "outputPerM": 1.25
           }
         },
         "anthropic/claude-fable-5": {
           "displayName": "Claude Fable 5",
+          "supportsTools": true,
+          "contextWindow": 1000000,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 10,
+            "outputPerM": 50
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "max",
+              "medium",
+              "xhigh"
+            ],
+            "default": "medium"
+          }
+        },
+        "anthropic/claude-fable-5.1": {
+          "displayName": "Claude Fable 5.1",
           "supportsTools": true,
           "contextWindow": 1000000,
           "vision": true,
@@ -1060,14 +1239,24 @@
             "outputPerM": 5
           }
         },
-        "anthropic/claude-opus-4": {
-          "displayName": "Claude Opus 4",
+        "anthropic/claude-haiku-5.5": {
+          "displayName": "Claude Haiku 5.5",
           "supportsTools": true,
-          "contextWindow": 200000,
+          "contextWindow": 1000000,
           "vision": true,
           "pricing": {
-            "inputPerM": 15,
-            "outputPerM": 75
+            "inputPerM": 0.1,
+            "outputPerM": 0.5
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "max",
+              "medium",
+              "xhigh"
+            ],
+            "default": "medium"
           }
         },
         "anthropic/claude-opus-4.1": {
@@ -1088,14 +1277,6 @@
           "pricing": {
             "inputPerM": 5,
             "outputPerM": 25
-          },
-          "effort": {
-            "values": [
-              "high",
-              "low",
-              "medium"
-            ],
-            "default": "medium"
           }
         },
         "anthropic/claude-opus-4.6": {
@@ -1137,26 +1318,6 @@
             "default": "medium"
           }
         },
-        "anthropic/claude-opus-4.7-fast": {
-          "displayName": "Claude Opus 4.7 (Fast)",
-          "supportsTools": true,
-          "contextWindow": 1000000,
-          "vision": true,
-          "pricing": {
-            "inputPerM": 30,
-            "outputPerM": 150
-          },
-          "effort": {
-            "values": [
-              "high",
-              "low",
-              "max",
-              "medium",
-              "xhigh"
-            ],
-            "default": "medium"
-          }
-        },
         "anthropic/claude-opus-4.8": {
           "displayName": "Claude Opus 4.8",
           "supportsTools": true,
@@ -1165,26 +1326,6 @@
           "pricing": {
             "inputPerM": 5,
             "outputPerM": 25
-          },
-          "effort": {
-            "values": [
-              "high",
-              "low",
-              "max",
-              "medium",
-              "xhigh"
-            ],
-            "default": "medium"
-          }
-        },
-        "anthropic/claude-opus-4.8-fast": {
-          "displayName": "Claude Opus 4.8 (Fast)",
-          "supportsTools": true,
-          "contextWindow": 1000000,
-          "vision": true,
-          "pricing": {
-            "inputPerM": 10,
-            "outputPerM": 50
           },
           "effort": {
             "values": [
@@ -1217,14 +1358,14 @@
             "default": "medium"
           }
         },
-        "anthropic/claude-opus-5-fast": {
-          "displayName": "Claude Opus 5 (Fast)",
+        "anthropic/claude-opus-5.5": {
+          "displayName": "Claude Opus 5.5",
           "supportsTools": true,
           "contextWindow": 1000000,
           "vision": true,
           "pricing": {
-            "inputPerM": 10,
-            "outputPerM": 50
+            "inputPerM": 4,
+            "outputPerM": 20
           },
           "effort": {
             "values": [
@@ -1240,7 +1381,7 @@
         "anthropic/claude-sonnet-4": {
           "displayName": "Claude Sonnet 4",
           "supportsTools": true,
-          "contextWindow": 1000000,
+          "contextWindow": 200000,
           "vision": true,
           "pricing": {
             "inputPerM": 3,
@@ -1296,34 +1437,44 @@
             "default": "medium"
           }
         },
+        "anthropic/claude-sonnet-5.5": {
+          "displayName": "Claude Sonnet 5.5",
+          "supportsTools": true,
+          "contextWindow": 1000000,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 2,
+            "outputPerM": 10
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "max",
+              "medium",
+              "xhigh"
+            ],
+            "default": "medium"
+          }
+        },
+        "apodex/apodex-1.1-mini:free": {
+          "displayName": "Apodex 1.1 Mini (free)",
+          "supportsTools": true,
+          "contextWindow": 262144,
+          "vision": false,
+          "pricing": {
+            "inputPerM": 0,
+            "outputPerM": 0
+          }
+        },
         "arcee-ai/trinity-large-thinking": {
           "displayName": "Trinity Large Thinking",
           "supportsTools": true,
           "contextWindow": 262144,
           "vision": false,
           "pricing": {
-            "inputPerM": 0.22,
-            "outputPerM": 0.85
-          }
-        },
-        "arcee-ai/virtuoso-large": {
-          "displayName": "Virtuoso Large",
-          "supportsTools": true,
-          "contextWindow": 131072,
-          "vision": false,
-          "pricing": {
-            "inputPerM": 0.75,
-            "outputPerM": 1.2
-          }
-        },
-        "baidu/ernie-4.5-vl-424b-a47b": {
-          "displayName": "ERNIE 4.5 VL 424B A47B ",
-          "supportsTools": false,
-          "contextWindow": 123000,
-          "vision": true,
-          "pricing": {
-            "inputPerM": 0.42,
-            "outputPerM": 1.25
+            "inputPerM": 0.25,
+            "outputPerM": 0.8
           }
         },
         "bytedance-seed/seed-1.6": {
@@ -1442,6 +1593,16 @@
             "outputPerM": 10
           }
         },
+        "cohere/command-a-plus": {
+          "displayName": "Command A+",
+          "supportsTools": true,
+          "contextWindow": 192000,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 0.3,
+            "outputPerM": 1.5
+          }
+        },
         "cohere/command-r-08-2024": {
           "displayName": "Command R",
           "supportsTools": true,
@@ -1488,8 +1649,8 @@
           "contextWindow": 163840,
           "vision": false,
           "pricing": {
-            "inputPerM": 0.2574,
-            "outputPerM": 1.0287
+            "inputPerM": 0.32,
+            "outputPerM": 0.89
           }
         },
         "deepseek/deepseek-chat-v3-0324": {
@@ -1498,8 +1659,8 @@
           "contextWindow": 163840,
           "vision": false,
           "pricing": {
-            "inputPerM": 0.25,
-            "outputPerM": 1
+            "inputPerM": 0.29,
+            "outputPerM": 1.14
           }
         },
         "deepseek/deepseek-chat-v3.1": {
@@ -1508,8 +1669,8 @@
           "contextWindow": 163840,
           "vision": false,
           "pricing": {
-            "inputPerM": 0.55,
-            "outputPerM": 1.65
+            "inputPerM": 0.25,
+            "outputPerM": 0.95
           }
         },
         "deepseek/deepseek-r1": {
@@ -1523,23 +1684,13 @@
           }
         },
         "deepseek/deepseek-r1-0528": {
-          "displayName": "R1 0528",
+          "displayName": "DeepSeek R1 0528",
           "supportsTools": true,
           "contextWindow": 163840,
           "vision": false,
           "pricing": {
             "inputPerM": 0.5,
             "outputPerM": 2.15
-          }
-        },
-        "deepseek/deepseek-r1-distill-llama-70b": {
-          "displayName": "R1 Distill Llama 70B",
-          "supportsTools": false,
-          "contextWindow": 8192,
-          "vision": false,
-          "pricing": {
-            "inputPerM": 0.8,
-            "outputPerM": 0.8
           }
         },
         "deepseek/deepseek-v3.1-terminus": {
@@ -1558,8 +1709,8 @@
           "contextWindow": 163840,
           "vision": false,
           "pricing": {
-            "inputPerM": 0.26,
-            "outputPerM": 0.38
+            "inputPerM": 0.259,
+            "outputPerM": 0.8
           }
         },
         "deepseek/deepseek-v3.2-exp": {
@@ -1578,8 +1729,8 @@
           "contextWindow": 1048576,
           "vision": false,
           "pricing": {
-            "inputPerM": 0.04886,
-            "outputPerM": 0.09772
+            "inputPerM": 0.03,
+            "outputPerM": 1.28
           },
           "effort": {
             "values": [
@@ -1592,11 +1743,11 @@
         "deepseek/deepseek-v4-flash-0731": {
           "displayName": "DeepSeek V4 Flash 0731",
           "supportsTools": true,
-          "contextWindow": 1310720,
+          "contextWindow": 1048576,
           "vision": false,
           "pricing": {
-            "inputPerM": 0.08,
-            "outputPerM": 0.18
+            "inputPerM": 0.0137,
+            "outputPerM": 1.28
           },
           "effort": {
             "values": [
@@ -1613,8 +1764,8 @@
           "contextWindow": 1048576,
           "vision": true,
           "pricing": {
-            "inputPerM": 0.22,
-            "outputPerM": 0.66
+            "inputPerM": 0.2156,
+            "outputPerM": 0.6468
           },
           "effort": {
             "values": [
@@ -1631,8 +1782,8 @@
           "contextWindow": 1048576,
           "vision": false,
           "pricing": {
-            "inputPerM": 0.396894,
-            "outputPerM": 0.793788
+            "inputPerM": 0.2088,
+            "outputPerM": 0.4176
           },
           "effort": {
             "values": [
@@ -1648,8 +1799,26 @@
           "contextWindow": 1048576,
           "vision": false,
           "pricing": {
-            "inputPerM": 1.122,
-            "outputPerM": 3.366
+            "inputPerM": 0.66,
+            "outputPerM": 1.98
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "max"
+            ],
+            "default": "high"
+          }
+        },
+        "deepseek/deepseek-v4.1-flash": {
+          "displayName": "DeepSeek V4.1 Flash",
+          "supportsTools": true,
+          "contextWindow": 1048576,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 0.3,
+            "outputPerM": 1.2
           },
           "effort": {
             "values": [
@@ -1668,6 +1837,24 @@
           "pricing": {
             "inputPerM": 0,
             "outputPerM": 0
+          }
+        },
+        "fireworks/ember-1": {
+          "displayName": "Ember-1",
+          "supportsTools": true,
+          "contextWindow": 1048576,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 3,
+            "outputPerM": 15
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "max"
+            ],
+            "default": "high"
           }
         },
         "google/gemini-2.5-flash": {
@@ -1720,16 +1907,6 @@
             "outputPerM": 10
           }
         },
-        "google/gemini-2.5-pro-preview-05-06": {
-          "displayName": "Gemini 2.5 Pro Preview 05-06",
-          "supportsTools": true,
-          "contextWindow": 1048576,
-          "vision": true,
-          "pricing": {
-            "inputPerM": 1.25,
-            "outputPerM": 10
-          }
-        },
         "google/gemini-3-flash-preview": {
           "displayName": "Gemini 3 Flash Preview",
           "supportsTools": true,
@@ -1760,7 +1937,7 @@
           }
         },
         "google/gemini-3-pro-image-preview": {
-          "displayName": "Nano Banana Pro",
+          "displayName": "Nano Banana Pro Preview",
           "supportsTools": false,
           "contextWindow": 65536,
           "vision": true,
@@ -1787,7 +1964,7 @@
           }
         },
         "google/gemini-3.1-flash-image-preview": {
-          "displayName": "Nano Banana 2",
+          "displayName": "Nano Banana 2 Preview",
           "supportsTools": false,
           "contextWindow": 65536,
           "vision": true,
@@ -1957,8 +2134,8 @@
           "contextWindow": 1048576,
           "vision": true,
           "pricing": {
-            "inputPerM": 0.375,
-            "outputPerM": 1.875
+            "inputPerM": 0.75,
+            "outputPerM": 3.75
           },
           "effort": {
             "values": [
@@ -1967,6 +2144,41 @@
               "medium"
             ],
             "default": "medium"
+          }
+        },
+        "google/gemini-3.8-flash": {
+          "displayName": "Gemini 3.8 Flash",
+          "supportsTools": true,
+          "contextWindow": 1048576,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 0.75,
+            "outputPerM": 3.75
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "medium"
+            ],
+            "default": "medium"
+          }
+        },
+        "google/gemini-nano-banana-2.1": {
+          "displayName": "Nano Banana 2.1",
+          "supportsTools": true,
+          "contextWindow": 65536,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 1.5,
+            "outputPerM": 7.5
+          },
+          "effort": {
+            "values": [
+              "high",
+              "minimal"
+            ],
+            "default": "high"
           }
         },
         "google/gemma-2-27b-it": {
@@ -1980,7 +2192,7 @@
           }
         },
         "google/gemma-3-12b-it": {
-          "displayName": "Gemma 3 12B",
+          "displayName": "Gemma 3 12B IT",
           "supportsTools": true,
           "contextWindow": 131072,
           "vision": true,
@@ -1990,9 +2202,9 @@
           }
         },
         "google/gemma-3-27b-it": {
-          "displayName": "Gemma 3 27B",
+          "displayName": "Gemma 3 27B IT",
           "supportsTools": true,
-          "contextWindow": 262144,
+          "contextWindow": 131072,
           "vision": true,
           "pricing": {
             "inputPerM": 0.08,
@@ -2000,7 +2212,7 @@
           }
         },
         "google/gemma-3-4b-it": {
-          "displayName": "Gemma 3 4B",
+          "displayName": "Gemma 3 4B IT",
           "supportsTools": false,
           "contextWindow": 131072,
           "vision": true,
@@ -2009,24 +2221,14 @@
             "outputPerM": 0.1
           }
         },
-        "google/gemma-3n-e4b-it": {
-          "displayName": "Gemma 3n 4B",
-          "supportsTools": false,
-          "contextWindow": 32768,
-          "vision": false,
-          "pricing": {
-            "inputPerM": 0.06,
-            "outputPerM": 0.12
-          }
-        },
         "google/gemma-4-26b-a4b-it": {
           "displayName": "Gemma 4 26B A4B IT",
           "supportsTools": true,
           "contextWindow": 262144,
           "vision": true,
           "pricing": {
-            "inputPerM": 0.07,
-            "outputPerM": 0.34
+            "inputPerM": 0.0675,
+            "outputPerM": 0.225
           }
         },
         "google/gemma-4-26b-a4b-it:free": {
@@ -2045,7 +2247,7 @@
           "contextWindow": 262144,
           "vision": true,
           "pricing": {
-            "inputPerM": 0.1,
+            "inputPerM": 0.09,
             "outputPerM": 0.34
           }
         },
@@ -2085,8 +2287,8 @@
           "contextWindow": 8192,
           "vision": false,
           "pricing": {
-            "inputPerM": 0.06,
-            "outputPerM": 0.06
+            "inputPerM": 0.08,
+            "outputPerM": 0.11
           }
         },
         "ibm-granite/granite-4.0-h-micro": {
@@ -2099,14 +2301,22 @@
             "outputPerM": 0.112
           }
         },
-        "ibm-granite/granite-4.1-8b": {
-          "displayName": "Granite 4.1 8B",
+        "ibm-granite/granite-4.2-8b": {
+          "displayName": "Granite 4.2 8B",
           "supportsTools": true,
           "contextWindow": 131072,
           "vision": false,
           "pricing": {
-            "inputPerM": 0.05,
-            "outputPerM": 0.1
+            "inputPerM": 0.06,
+            "outputPerM": 0.25
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "none"
+            ],
+            "default": "high"
           }
         },
         "inception/mercury-2": {
@@ -2128,28 +2338,27 @@
             "default": "medium"
           }
         },
-        "inclusionai/ling-2.6-1t": {
-          "displayName": "Ling-2.6-1T",
+        "inception/mercury-2.5": {
+          "displayName": "Mercury 2.5",
           "supportsTools": true,
-          "contextWindow": 262144,
+          "contextWindow": 260000,
           "vision": false,
           "pricing": {
-            "inputPerM": 0.075,
-            "outputPerM": 0.625
-          }
-        },
-        "inclusionai/ling-2.6-flash": {
-          "displayName": "Ling-2.6-flash",
-          "supportsTools": true,
-          "contextWindow": 262144,
-          "vision": false,
-          "pricing": {
-            "inputPerM": 0.01,
-            "outputPerM": 0.03
+            "inputPerM": 0.04,
+            "outputPerM": 0.15
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "medium",
+              "none"
+            ],
+            "default": "medium"
           }
         },
         "inclusionai/ling-3.0-flash": {
-          "displayName": "Ling-3.0-flash",
+          "displayName": "Ling 3.0 Flash",
           "supportsTools": true,
           "contextWindow": 262144,
           "vision": false,
@@ -2158,51 +2367,64 @@
             "outputPerM": 0.063
           }
         },
-        "inclusionai/ring-2.6-1t": {
-          "displayName": "Ring-2.6-1T",
+        "inclusionai/ling-3.0-flash-fin": {
+          "displayName": "Ling 3.0 Flash Fin",
           "supportsTools": true,
           "contextWindow": 262144,
           "vision": false,
           "pricing": {
-            "inputPerM": 0.075,
-            "outputPerM": 0.625
-          },
-          "effort": {
-            "values": [
-              "high",
-              "xhigh"
-            ],
-            "default": "high"
+            "inputPerM": 0.042,
+            "outputPerM": 0.1232
           }
         },
-        "kwaipilot/kat-coder-air-v2.5": {
-          "displayName": "KAT-Coder-Air V2.5",
-          "supportsTools": true,
-          "contextWindow": 256000,
-          "vision": false,
-          "pricing": {
-            "inputPerM": 0.15,
-            "outputPerM": 0.6
-          }
-        },
-        "kwaipilot/kat-coder-pro-v2": {
-          "displayName": "KAT-Coder-Pro V2",
+        "inclusionai/ling-3.0-flash-sante": {
+          "displayName": "Ling 3.0 Flash Sante",
           "supportsTools": true,
           "contextWindow": 262144,
           "vision": false,
           "pricing": {
-            "inputPerM": 0.3,
-            "outputPerM": 1.2
+            "inputPerM": 0.042,
+            "outputPerM": 0.1232
           }
         },
-        "kwaipilot/kat-coder-pro-v2.5": {
-          "displayName": "KAT-Coder-Pro V2.5",
+        "inclusionai/ling-3.0-flash-vl": {
+          "displayName": "Ling 3.0 Flash VL",
           "supportsTools": true,
-          "contextWindow": 256000,
+          "contextWindow": 262144,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 0.021,
+            "outputPerM": 0.0616
+          }
+        },
+        "inclusionai/ling-3.1-flash": {
+          "displayName": "Ling 3.1 Flash",
+          "supportsTools": true,
+          "contextWindow": 262144,
           "vision": false,
           "pricing": {
-            "inputPerM": 0.74,
-            "outputPerM": 2.96
+            "inputPerM": 0,
+            "outputPerM": 0
+          }
+        },
+        "inference-net/schematron-v2-small": {
+          "displayName": "Schematron V2 Small",
+          "supportsTools": false,
+          "contextWindow": 128000,
+          "vision": false,
+          "pricing": {
+            "inputPerM": 0.05,
+            "outputPerM": 0.23
+          }
+        },
+        "inference-net/schematron-v2-turbo": {
+          "displayName": "Schematron V2 Turbo",
+          "supportsTools": false,
+          "contextWindow": 128000,
+          "vision": false,
+          "pricing": {
+            "inputPerM": 0.03,
+            "outputPerM": 0.15
           }
         },
         "liquid/lfm-2.5-2.6b:free": {
@@ -2221,7 +2443,7 @@
           "contextWindow": 8000,
           "vision": false,
           "pricing": {
-            "inputPerM": 0.5,
+            "inputPerM": 0.4,
             "outputPerM": 0.75
           }
         },
@@ -2236,7 +2458,7 @@
           }
         },
         "meta-llama/llama-3.1-70b-instruct": {
-          "displayName": "Llama 3.1 70B Instruct",
+          "displayName": "Llama-3.1-70B-Instruct",
           "supportsTools": true,
           "contextWindow": 131072,
           "vision": false,
@@ -2281,8 +2503,8 @@
           "contextWindow": 131072,
           "vision": false,
           "pricing": {
-            "inputPerM": 0.1,
-            "outputPerM": 0.32
+            "inputPerM": 0.22,
+            "outputPerM": 0.5
           }
         },
         "meta-llama/llama-4-maverick": {
@@ -2291,8 +2513,8 @@
           "contextWindow": 1048576,
           "vision": true,
           "pricing": {
-            "inputPerM": 0.2,
-            "outputPerM": 0.8
+            "inputPerM": 0.1875,
+            "outputPerM": 0.6525
           }
         },
         "meta-llama/llama-4-scout": {
@@ -2308,7 +2530,7 @@
         "meta-llama/llama-guard-4-12b": {
           "displayName": "Llama Guard 4 12B",
           "supportsTools": false,
-          "contextWindow": 1048576,
+          "contextWindow": 163840,
           "vision": true,
           "pricing": {
             "inputPerM": 0.18,
@@ -2321,8 +2543,8 @@
           "contextWindow": 131072,
           "vision": true,
           "pricing": {
-            "inputPerM": 0.35,
-            "outputPerM": 1.5
+            "inputPerM": 0.3,
+            "outputPerM": 1.2
           },
           "effort": {
             "values": [
@@ -2394,6 +2616,48 @@
             "default": "medium"
           }
         },
+        "meta/muse-spark-1.3": {
+          "displayName": "Muse Spark 1.3",
+          "supportsTools": true,
+          "contextWindow": 1048576,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 1.25,
+            "outputPerM": 4.25
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "max",
+              "medium",
+              "minimal",
+              "xhigh"
+            ],
+            "default": "medium"
+          }
+        },
+        "meta/muse-spark-1.3-contributor": {
+          "displayName": "Muse Spark 1.3 Contributor",
+          "supportsTools": true,
+          "contextWindow": 1048576,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 0.1,
+            "outputPerM": 0.2
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "max",
+              "medium",
+              "minimal",
+              "xhigh"
+            ],
+            "default": "medium"
+          }
+        },
         "microsoft/phi-4": {
           "displayName": "Phi 4",
           "supportsTools": false,
@@ -2440,8 +2704,8 @@
           "contextWindow": 204800,
           "vision": false,
           "pricing": {
-            "inputPerM": 0.255,
-            "outputPerM": 1.02
+            "inputPerM": 0.3,
+            "outputPerM": 1.2
           }
         },
         "minimax/minimax-m2-her": {
@@ -2480,8 +2744,8 @@
           "contextWindow": 204800,
           "vision": false,
           "pricing": {
-            "inputPerM": 0.24,
-            "outputPerM": 0.96
+            "inputPerM": 0.21,
+            "outputPerM": 0.84
           }
         },
         "minimax/minimax-m3": {
@@ -2495,13 +2759,23 @@
           }
         },
         "mistralai/codestral-2508": {
-          "displayName": "Codestral 2508",
+          "displayName": "Codestral 25.08",
           "supportsTools": true,
           "contextWindow": 256000,
           "vision": false,
           "pricing": {
             "inputPerM": 0.3,
             "outputPerM": 0.9
+          }
+        },
+        "mistralai/devstral-2512": {
+          "displayName": "Devstral 2",
+          "supportsTools": true,
+          "contextWindow": 262144,
+          "vision": false,
+          "pricing": {
+            "inputPerM": 0.4,
+            "outputPerM": 2
           }
         },
         "mistralai/ministral-14b-2512": {
@@ -2522,16 +2796,6 @@
           "pricing": {
             "inputPerM": 0.1,
             "outputPerM": 0.1
-          }
-        },
-        "mistralai/ministral-8b": {
-          "displayName": "Ministral 8B",
-          "supportsTools": false,
-          "contextWindow": 128000,
-          "vision": false,
-          "pricing": {
-            "inputPerM": 0.11,
-            "outputPerM": 0.11
           }
         },
         "mistralai/ministral-8b-2512": {
@@ -2572,6 +2836,23 @@
           "pricing": {
             "inputPerM": 0.5,
             "outputPerM": 1.5
+          }
+        },
+        "mistralai/mistral-large-4-0": {
+          "displayName": "Mistral Large 4",
+          "supportsTools": true,
+          "contextWindow": 1048576,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 0.68,
+            "outputPerM": 2.09
+          },
+          "effort": {
+            "values": [
+              "high",
+              "none"
+            ],
+            "default": "high"
           }
         },
         "mistralai/mistral-medium-3": {
@@ -2617,7 +2898,7 @@
           "contextWindow": 131072,
           "vision": false,
           "pricing": {
-            "inputPerM": 0.019,
+            "inputPerM": 0.029,
             "outputPerM": 0.03
           }
         },
@@ -2660,7 +2941,7 @@
         },
         "mistralai/mistral-small-3.1-24b-instruct": {
           "displayName": "Mistral Small 3.1 24B",
-          "supportsTools": false,
+          "supportsTools": true,
           "contextWindow": 128000,
           "vision": true,
           "pricing": {
@@ -2671,11 +2952,11 @@
         "mistralai/mistral-small-3.2-24b-instruct": {
           "displayName": "Mistral Small 3.2 24B",
           "supportsTools": true,
-          "contextWindow": 131072,
+          "contextWindow": 256000,
           "vision": true,
           "pricing": {
-            "inputPerM": 0.075,
-            "outputPerM": 0.2
+            "inputPerM": 0.09375,
+            "outputPerM": 0.25
           }
         },
         "mistralai/mixtral-8x22b-instruct": {
@@ -2691,7 +2972,7 @@
         "mistralai/voxtral-small-24b-2507": {
           "displayName": "Voxtral Small 24B 2507",
           "supportsTools": true,
-          "contextWindow": 32000,
+          "contextWindow": 32768,
           "vision": false,
           "pricing": {
             "inputPerM": 0.1,
@@ -2709,7 +2990,7 @@
           }
         },
         "moonshotai/kimi-k2-0905": {
-          "displayName": "Kimi K2 0905",
+          "displayName": "Kimi K2 Instruct 0905",
           "supportsTools": true,
           "contextWindow": 262144,
           "vision": false,
@@ -2734,8 +3015,8 @@
           "contextWindow": 262144,
           "vision": true,
           "pricing": {
-            "inputPerM": 0.45,
-            "outputPerM": 2.25
+            "inputPerM": 0.5,
+            "outputPerM": 2.5
           }
         },
         "moonshotai/kimi-k2.6": {
@@ -2744,8 +3025,8 @@
           "contextWindow": 262144,
           "vision": true,
           "pricing": {
-            "inputPerM": 0.95,
-            "outputPerM": 4
+            "inputPerM": 0.65,
+            "outputPerM": 3.41
           }
         },
         "moonshotai/kimi-k2.7-code": {
@@ -2754,8 +3035,8 @@
           "contextWindow": 262144,
           "vision": true,
           "pricing": {
-            "inputPerM": 0.67,
-            "outputPerM": 3.4
+            "inputPerM": 0.6712,
+            "outputPerM": 3.35
           }
         },
         "moonshotai/kimi-k3": {
@@ -2764,8 +3045,8 @@
           "contextWindow": 1048576,
           "vision": true,
           "pricing": {
-            "inputPerM": 3,
-            "outputPerM": 15
+            "inputPerM": 0.8,
+            "outputPerM": 10
           },
           "effort": {
             "values": [
@@ -2796,24 +3077,40 @@
             "outputPerM": 1.9
           }
         },
-        "nex-agi/nex-n2-mini": {
-          "displayName": "Nex-N2-Mini",
-          "supportsTools": true,
+        "nex-agi/nex-n2.5-mini": {
+          "displayName": "Nex-N2.5-Mini",
+          "supportsTools": false,
           "contextWindow": 262144,
           "vision": true,
           "pricing": {
             "inputPerM": 0.025,
             "outputPerM": 0.1
+          },
+          "effort": {
+            "values": [
+              "high",
+              "medium",
+              "none"
+            ],
+            "default": "medium"
           }
         },
-        "nex-agi/nex-n2-pro": {
-          "displayName": "Nex-N2-Pro",
+        "nex-agi/nex-n2.5-pro": {
+          "displayName": "Nex-N2.5-Pro",
           "supportsTools": true,
           "contextWindow": 262144,
           "vision": true,
           "pricing": {
-            "inputPerM": 0.25,
-            "outputPerM": 1
+            "inputPerM": 0.075,
+            "outputPerM": 0.25
+          },
+          "effort": {
+            "values": [
+              "high",
+              "medium",
+              "none"
+            ],
+            "default": "medium"
           }
         },
         "nousresearch/hermes-3-llama-3.1-405b": {
@@ -2846,34 +3143,14 @@
             "outputPerM": 3
           }
         },
-        "nousresearch/hermes-4-70b": {
-          "displayName": "Hermes 4 70B",
-          "supportsTools": false,
-          "contextWindow": 131072,
-          "vision": false,
-          "pricing": {
-            "inputPerM": 0.13,
-            "outputPerM": 0.4
-          }
-        },
         "nvidia/nemotron-3-nano-30b-a3b": {
           "displayName": "Nemotron 3 Nano 30B A3B",
           "supportsTools": true,
           "contextWindow": 262144,
           "vision": false,
           "pricing": {
-            "inputPerM": 0.05,
-            "outputPerM": 0.2
-          }
-        },
-        "nvidia/nemotron-3-nano-30b-a3b:free": {
-          "displayName": "Nemotron 3 Nano 30B A3B (free)",
-          "supportsTools": true,
-          "contextWindow": 256000,
-          "vision": false,
-          "pricing": {
-            "inputPerM": 0,
-            "outputPerM": 0
+            "inputPerM": 0.06,
+            "outputPerM": 0.24
           }
         },
         "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free": {
@@ -2889,11 +3166,11 @@
         "nvidia/nemotron-3-super-120b-a12b": {
           "displayName": "Nemotron 3 Super 120B A12B",
           "supportsTools": true,
-          "contextWindow": 1000000,
+          "contextWindow": 262144,
           "vision": false,
           "pricing": {
-            "inputPerM": 0.085,
-            "outputPerM": 0.4
+            "inputPerM": 0.08,
+            "outputPerM": 0.45
           },
           "effort": {
             "values": [
@@ -2923,11 +3200,11 @@
         "nvidia/nemotron-3-ultra-550b-a55b": {
           "displayName": "Nemotron 3 Ultra 550B A55B",
           "supportsTools": true,
-          "contextWindow": 512288,
+          "contextWindow": 262144,
           "vision": false,
           "pricing": {
-            "inputPerM": 0.6,
-            "outputPerM": 3.6
+            "inputPerM": 0.5,
+            "outputPerM": 2.2
           },
           "effort": {
             "values": [
@@ -2954,6 +3231,16 @@
             "default": "medium"
           }
         },
+        "nvidia/nemotron-3.5-content-safety": {
+          "displayName": "Nemotron 3.5 Content Safety",
+          "supportsTools": false,
+          "contextWindow": 131072,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 0.2,
+            "outputPerM": 0.2
+          }
+        },
         "nvidia/nemotron-3.5-content-safety:free": {
           "displayName": "Nemotron 3.5 Content Safety (free)",
           "supportsTools": false,
@@ -2970,7 +3257,7 @@
           "contextWindow": 262144,
           "vision": false,
           "pricing": {
-            "inputPerM": 0.08,
+            "inputPerM": 0.07,
             "outputPerM": 0.2
           }
         },
@@ -2978,26 +3265,6 @@
           "displayName": "Nemotron 3.5 Lightning (free)",
           "supportsTools": true,
           "contextWindow": 1000000,
-          "vision": false,
-          "pricing": {
-            "inputPerM": 0,
-            "outputPerM": 0
-          }
-        },
-        "nvidia/nemotron-nano-12b-v2-vl:free": {
-          "displayName": "Nemotron Nano 12B 2 VL (free)",
-          "supportsTools": true,
-          "contextWindow": 128000,
-          "vision": true,
-          "pricing": {
-            "inputPerM": 0,
-            "outputPerM": 0
-          }
-        },
-        "nvidia/nemotron-nano-9b-v2:free": {
-          "displayName": "Nemotron Nano 9B V2 (free)",
-          "supportsTools": true,
-          "contextWindow": 128000,
           "vision": false,
           "pricing": {
             "inputPerM": 0,
@@ -3059,16 +3326,6 @@
           "supportsTools": true,
           "contextWindow": 128000,
           "vision": true,
-          "pricing": {
-            "inputPerM": 10,
-            "outputPerM": 30
-          }
-        },
-        "openai/gpt-4-turbo-preview": {
-          "displayName": "GPT-4 Turbo Preview",
-          "supportsTools": true,
-          "contextWindow": 128000,
-          "vision": false,
           "pricing": {
             "inputPerM": 10,
             "outputPerM": 30
@@ -3680,6 +3937,170 @@
             "default": "medium"
           }
         },
+        "openai/gpt-6-astra": {
+          "displayName": "GPT-6 Astra",
+          "supportsTools": true,
+          "contextWindow": 1050000,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 10,
+            "outputPerM": 50
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "max",
+              "medium",
+              "xhigh"
+            ],
+            "default": "medium"
+          }
+        },
+        "openai/gpt-6-astra-pro": {
+          "displayName": "GPT-6 Astra Pro",
+          "supportsTools": true,
+          "contextWindow": 1050000,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 10,
+            "outputPerM": 50
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "max",
+              "medium",
+              "xhigh"
+            ],
+            "default": "medium"
+          }
+        },
+        "openai/gpt-6-luna": {
+          "displayName": "GPT-6 Luna",
+          "supportsTools": true,
+          "contextWindow": 1050000,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 0.1,
+            "outputPerM": 0.5
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "max",
+              "medium",
+              "none",
+              "xhigh"
+            ],
+            "default": "medium"
+          }
+        },
+        "openai/gpt-6-luna-pro": {
+          "displayName": "GPT-6 Luna Pro",
+          "supportsTools": true,
+          "contextWindow": 1050000,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 0.1,
+            "outputPerM": 0.5
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "max",
+              "medium",
+              "none",
+              "xhigh"
+            ],
+            "default": "medium"
+          }
+        },
+        "openai/gpt-6-sol": {
+          "displayName": "GPT-6 Sol",
+          "supportsTools": true,
+          "contextWindow": 1050000,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 2,
+            "outputPerM": 10
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "max",
+              "medium",
+              "none",
+              "xhigh"
+            ],
+            "default": "medium"
+          }
+        },
+        "openai/gpt-6-sol-pro": {
+          "displayName": "GPT-6 Sol Pro",
+          "supportsTools": true,
+          "contextWindow": 1050000,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 2,
+            "outputPerM": 10
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "max",
+              "medium",
+              "none",
+              "xhigh"
+            ],
+            "default": "medium"
+          }
+        },
+        "openai/gpt-6.1-sol": {
+          "displayName": "GPT-6.1 Sol",
+          "supportsTools": true,
+          "contextWindow": 1050000,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 2,
+            "outputPerM": 10
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "max",
+              "medium",
+              "xhigh"
+            ],
+            "default": "medium"
+          }
+        },
+        "openai/gpt-6.1-sol-pro": {
+          "displayName": "GPT-6.1 Sol Pro",
+          "supportsTools": true,
+          "contextWindow": 1050000,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 2,
+            "outputPerM": 10
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "max",
+              "medium",
+              "xhigh"
+            ],
+            "default": "medium"
+          }
+        },
         "openai/gpt-audio": {
           "displayName": "GPT Audio",
           "supportsTools": true,
@@ -3734,8 +4155,8 @@
           "contextWindow": 131072,
           "vision": false,
           "pricing": {
-            "inputPerM": 0.03,
-            "outputPerM": 0.13
+            "inputPerM": 0.018,
+            "outputPerM": 0.09
           },
           "effort": {
             "values": [
@@ -3747,7 +4168,7 @@
           }
         },
         "openai/gpt-oss-safeguard-20b": {
-          "displayName": "gpt-oss-safeguard-20b",
+          "displayName": "GPT OSS Safeguard 20B",
           "supportsTools": true,
           "contextWindow": 131072,
           "vision": false,
@@ -3772,14 +4193,6 @@
           "pricing": {
             "inputPerM": 15,
             "outputPerM": 60
-          },
-          "effort": {
-            "values": [
-              "high",
-              "low",
-              "medium"
-            ],
-            "default": "medium"
           }
         },
         "openai/o1-pro": {
@@ -3800,14 +4213,6 @@
           "pricing": {
             "inputPerM": 2,
             "outputPerM": 8
-          },
-          "effort": {
-            "values": [
-              "high",
-              "low",
-              "medium"
-            ],
-            "default": "medium"
           }
         },
         "openai/o3-mini": {
@@ -3818,14 +4223,6 @@
           "pricing": {
             "inputPerM": 1.1,
             "outputPerM": 4.4
-          },
-          "effort": {
-            "values": [
-              "high",
-              "low",
-              "medium"
-            ],
-            "default": "medium"
           }
         },
         "openai/o3-mini-high": {
@@ -3852,14 +4249,6 @@
           "pricing": {
             "inputPerM": 20,
             "outputPerM": 80
-          },
-          "effort": {
-            "values": [
-              "high",
-              "low",
-              "medium"
-            ],
-            "default": "medium"
           }
         },
         "openai/o4-mini": {
@@ -3870,14 +4259,6 @@
           "pricing": {
             "inputPerM": 1.1,
             "outputPerM": 4.4
-          },
-          "effort": {
-            "values": [
-              "high",
-              "low",
-              "medium"
-            ],
-            "default": "medium"
           }
         },
         "openai/o4-mini-high": {
@@ -3938,6 +4319,26 @@
           "pricing": {
             "inputPerM": 0.15,
             "outputPerM": 1.5
+          }
+        },
+        "perceptron/perceptron-mk1.5": {
+          "displayName": "Perceptron Mk1.5",
+          "supportsTools": true,
+          "contextWindow": 36864,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 0.15,
+            "outputPerM": 1.5
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "medium",
+              "minimal",
+              "none"
+            ],
+            "default": "medium"
           }
         },
         "perplexity/sonar": {
@@ -4030,6 +4431,23 @@
             "outputPerM": 0
           }
         },
+        "prism-ml/ternary-bonsai-2-27b": {
+          "displayName": "Ternary Bonsai 2 27B",
+          "supportsTools": true,
+          "contextWindow": 262144,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 0.075,
+            "outputPerM": 0.5
+          },
+          "effort": {
+            "values": [
+              "medium",
+              "xhigh"
+            ],
+            "default": "medium"
+          }
+        },
         "qwen/qwen-2.5-72b-instruct": {
           "displayName": "Qwen2.5 72B Instruct",
           "supportsTools": true,
@@ -4070,26 +4488,6 @@
             "outputPerM": 0.78
           }
         },
-        "qwen/qwen-plus-2025-07-28": {
-          "displayName": "Qwen Plus 0728",
-          "supportsTools": true,
-          "contextWindow": 1000000,
-          "vision": false,
-          "pricing": {
-            "inputPerM": 0.26,
-            "outputPerM": 0.78
-          }
-        },
-        "qwen/qwen-plus-2025-07-28:thinking": {
-          "displayName": "Qwen Plus 0728 (thinking)",
-          "supportsTools": true,
-          "contextWindow": 1000000,
-          "vision": false,
-          "pricing": {
-            "inputPerM": 0.26,
-            "outputPerM": 0.78
-          }
-        },
         "qwen/qwen2.5-vl-72b-instruct": {
           "displayName": "Qwen2.5 VL 72B Instruct",
           "supportsTools": false,
@@ -4103,21 +4501,11 @@
         "qwen/qwen3-14b": {
           "displayName": "Qwen3 14B",
           "supportsTools": true,
-          "contextWindow": 131072,
+          "contextWindow": 40960,
           "vision": false,
           "pricing": {
             "inputPerM": 0.12,
             "outputPerM": 0.24
-          }
-        },
-        "qwen/qwen3-235b-a22b": {
-          "displayName": "Qwen3 235B-A22B",
-          "supportsTools": true,
-          "contextWindow": 131072,
-          "vision": false,
-          "pricing": {
-            "inputPerM": 0.455,
-            "outputPerM": 1.82
           }
         },
         "qwen/qwen3-235b-a22b-2507": {
@@ -4133,17 +4521,17 @@
         "qwen/qwen3-235b-a22b-thinking-2507": {
           "displayName": "Qwen3 235B A22B Thinking 2507",
           "supportsTools": true,
-          "contextWindow": 262144,
+          "contextWindow": 128000,
           "vision": false,
           "pricing": {
-            "inputPerM": 0.23,
-            "outputPerM": 2.3
+            "inputPerM": 0.45,
+            "outputPerM": 3.5
           }
         },
         "qwen/qwen3-30b-a3b": {
           "displayName": "Qwen3 30B A3B",
           "supportsTools": true,
-          "contextWindow": 131072,
+          "contextWindow": 40960,
           "vision": false,
           "pricing": {
             "inputPerM": 0.12,
@@ -4156,18 +4544,8 @@
           "contextWindow": 262144,
           "vision": false,
           "pricing": {
-            "inputPerM": 0.04815,
-            "outputPerM": 0.19305
-          }
-        },
-        "qwen/qwen3-30b-a3b-thinking-2507": {
-          "displayName": "Qwen3 30B A3B Thinking 2507",
-          "supportsTools": true,
-          "contextWindow": 81920,
-          "vision": false,
-          "pricing": {
-            "inputPerM": 0.2,
-            "outputPerM": 2.4
+            "inputPerM": 0.1,
+            "outputPerM": 0.3
           }
         },
         "qwen/qwen3-32b": {
@@ -4178,16 +4556,6 @@
           "pricing": {
             "inputPerM": 0.08,
             "outputPerM": 0.28
-          }
-        },
-        "qwen/qwen3-8b": {
-          "displayName": "Qwen3 8B",
-          "supportsTools": true,
-          "contextWindow": 131072,
-          "vision": false,
-          "pricing": {
-            "inputPerM": 0.117,
-            "outputPerM": 0.455
           }
         },
         "qwen/qwen3-coder": {
@@ -4230,36 +4598,6 @@
             "outputPerM": 0.8
           }
         },
-        "qwen/qwen3-coder-plus": {
-          "displayName": "Qwen3 Coder Plus",
-          "supportsTools": true,
-          "contextWindow": 1000000,
-          "vision": false,
-          "pricing": {
-            "inputPerM": 0.65,
-            "outputPerM": 3.25
-          }
-        },
-        "qwen/qwen3-max": {
-          "displayName": "Qwen3 Max",
-          "supportsTools": true,
-          "contextWindow": 262144,
-          "vision": false,
-          "pricing": {
-            "inputPerM": 0.78,
-            "outputPerM": 3.9
-          }
-        },
-        "qwen/qwen3-max-thinking": {
-          "displayName": "Qwen3 Max Thinking",
-          "supportsTools": true,
-          "contextWindow": 262144,
-          "vision": false,
-          "pricing": {
-            "inputPerM": 0.78,
-            "outputPerM": 3.9
-          }
-        },
         "qwen/qwen3-next-80b-a3b-instruct": {
           "displayName": "Qwen3-Next 80B-A3B Instruct",
           "supportsTools": true,
@@ -4290,24 +4628,14 @@
             "outputPerM": 1.9
           }
         },
-        "qwen/qwen3-vl-235b-a22b-thinking": {
-          "displayName": "Qwen3 VL 235B A22B Thinking",
-          "supportsTools": true,
-          "contextWindow": 131072,
-          "vision": true,
-          "pricing": {
-            "inputPerM": 0.4,
-            "outputPerM": 4
-          }
-        },
         "qwen/qwen3-vl-30b-a3b-instruct": {
           "displayName": "Qwen3 VL 30B A3B Instruct",
           "supportsTools": true,
           "contextWindow": 262144,
           "vision": true,
           "pricing": {
-            "inputPerM": 0.13,
-            "outputPerM": 0.52
+            "inputPerM": 0.15,
+            "outputPerM": 0.6
           }
         },
         "qwen/qwen3-vl-30b-a3b-thinking": {
@@ -4316,18 +4644,8 @@
           "contextWindow": 262144,
           "vision": true,
           "pricing": {
-            "inputPerM": 0.2,
-            "outputPerM": 2.4
-          }
-        },
-        "qwen/qwen3-vl-32b-instruct": {
-          "displayName": "Qwen3 VL 32B Instruct",
-          "supportsTools": true,
-          "contextWindow": 131072,
-          "vision": true,
-          "pricing": {
-            "inputPerM": 0.104,
-            "outputPerM": 0.416
+            "inputPerM": 0.29,
+            "outputPerM": 1
           }
         },
         "qwen/qwen3-vl-8b-instruct": {
@@ -4336,18 +4654,8 @@
           "contextWindow": 262144,
           "vision": true,
           "pricing": {
-            "inputPerM": 0.117,
-            "outputPerM": 0.455
-          }
-        },
-        "qwen/qwen3-vl-8b-thinking": {
-          "displayName": "Qwen3 VL 8B Thinking",
-          "supportsTools": true,
-          "contextWindow": 131072,
-          "vision": true,
-          "pricing": {
-            "inputPerM": 0.18,
-            "outputPerM": 2.1
+            "inputPerM": 0.25,
+            "outputPerM": 0.75
           }
         },
         "qwen/qwen3.5-122b-a10b": {
@@ -4366,8 +4674,8 @@
           "contextWindow": 262144,
           "vision": true,
           "pricing": {
-            "inputPerM": 0.195,
-            "outputPerM": 1.56
+            "inputPerM": 0.26,
+            "outputPerM": 2.6
           }
         },
         "qwen/qwen3.5-35b-a3b": {
@@ -4376,8 +4684,8 @@
           "contextWindow": 262144,
           "vision": true,
           "pricing": {
-            "inputPerM": 0.25,
-            "outputPerM": 1.25
+            "inputPerM": 0.08,
+            "outputPerM": 0.75
           }
         },
         "qwen/qwen3.5-397b-a17b": {
@@ -4386,8 +4694,8 @@
           "contextWindow": 262144,
           "vision": true,
           "pricing": {
-            "inputPerM": 0.39,
-            "outputPerM": 2.34
+            "inputPerM": 0.55,
+            "outputPerM": 3.5
           }
         },
         "qwen/qwen3.5-9b": {
@@ -4436,8 +4744,8 @@
           "contextWindow": 262144,
           "vision": true,
           "pricing": {
-            "inputPerM": 0.6,
-            "outputPerM": 3.6
+            "inputPerM": 0.32,
+            "outputPerM": 3.2
           }
         },
         "qwen/qwen3.6-35b-a3b": {
@@ -4446,8 +4754,8 @@
           "contextWindow": 262144,
           "vision": true,
           "pricing": {
-            "inputPerM": 0.14,
-            "outputPerM": 1
+            "inputPerM": 0.1,
+            "outputPerM": 0.95
           }
         },
         "qwen/qwen3.6-flash": {
@@ -4458,16 +4766,6 @@
           "pricing": {
             "inputPerM": 0.1875,
             "outputPerM": 1.125
-          }
-        },
-        "qwen/qwen3.6-max-preview": {
-          "displayName": "Qwen3.6 Max Preview",
-          "supportsTools": true,
-          "contextWindow": 262144,
-          "vision": false,
-          "pricing": {
-            "inputPerM": 1.027,
-            "outputPerM": 6.162
           }
         },
         "qwen/qwen3.6-plus": {
@@ -4534,8 +4832,8 @@
           "contextWindow": 1000000,
           "vision": true,
           "pricing": {
-            "inputPerM": 0.4,
-            "outputPerM": 3
+            "inputPerM": 0.04,
+            "outputPerM": 2.3
           },
           "effort": {
             "values": [
@@ -4546,8 +4844,18 @@
             "default": "medium"
           }
         },
-        "qwen/qwen3.8-max": {
-          "displayName": "Qwen3.8 Max",
+        "qwen/qwen3.8-flash": {
+          "displayName": "Qwen3.8 Flash",
+          "supportsTools": true,
+          "contextWindow": 1000000,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 0.15,
+            "outputPerM": 0.47
+          }
+        },
+        "qwen/qwen3.8-max-0902": {
+          "displayName": "Qwen3.8 Max 0902",
           "supportsTools": true,
           "contextWindow": 1000000,
           "vision": true,
@@ -4564,6 +4872,36 @@
               "xhigh"
             ],
             "default": "medium"
+          }
+        },
+        "qwen/qwen3.8-max-prime": {
+          "displayName": "Qwen 3.8 Max Prime",
+          "supportsTools": true,
+          "contextWindow": 1000000,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 4,
+            "outputPerM": 12
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "medium",
+              "minimal",
+              "xhigh"
+            ],
+            "default": "medium"
+          }
+        },
+        "qwen/qwen3.8-omni-flash": {
+          "displayName": "Qwen3.8 Omni Flash",
+          "supportsTools": true,
+          "contextWindow": 1000000,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 0.15,
+            "outputPerM": 0.47
           }
         },
         "rekaai/reka-edge": {
@@ -4606,8 +4944,44 @@
             "outputPerM": 3
           }
         },
+        "sakana/fugu-max": {
+          "displayName": "Fugu Max",
+          "supportsTools": true,
+          "contextWindow": 1000000,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 2,
+            "outputPerM": 6
+          },
+          "effort": {
+            "values": [
+              "high",
+              "max",
+              "xhigh"
+            ],
+            "default": "high"
+          }
+        },
         "sakana/fugu-ultra": {
           "displayName": "Fugu Ultra",
+          "supportsTools": true,
+          "contextWindow": 1000000,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 5,
+            "outputPerM": 30
+          },
+          "effort": {
+            "values": [
+              "high",
+              "max",
+              "xhigh"
+            ],
+            "default": "high"
+          }
+        },
+        "sakana/fugu-ultra-v2": {
+          "displayName": "Fugu Ultra v2",
           "supportsTools": true,
           "contextWindow": 1000000,
           "vision": true,
@@ -4653,7 +5027,7 @@
         },
         "sao10k/l3.1-euryale-70b": {
           "displayName": "Llama 3.1 Euryale 70B v2.2",
-          "supportsTools": true,
+          "supportsTools": false,
           "contextWindow": 131072,
           "vision": false,
           "pricing": {
@@ -4669,24 +5043,6 @@
           "pricing": {
             "inputPerM": 0.65,
             "outputPerM": 0.75
-          }
-        },
-        "stealth/ox-alpha": {
-          "displayName": "Ox Alpha",
-          "supportsTools": true,
-          "contextWindow": 1048576,
-          "vision": true,
-          "pricing": {
-            "inputPerM": 0,
-            "outputPerM": 0
-          },
-          "effort": {
-            "values": [
-              "high",
-              "low",
-              "max"
-            ],
-            "default": "high"
           }
         },
         "stepfun/step-3.5-flash": {
@@ -4707,6 +5063,24 @@
           "pricing": {
             "inputPerM": 0.2,
             "outputPerM": 1.15
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "medium"
+            ],
+            "default": "medium"
+          }
+        },
+        "stepfun/step-5-preview": {
+          "displayName": "Step 5 Preview",
+          "supportsTools": true,
+          "contextWindow": 1000000,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 1,
+            "outputPerM": 2.7
           },
           "effort": {
             "values": [
@@ -4793,6 +5167,24 @@
             "default": "high"
           }
         },
+        "tencent/hy4-preview": {
+          "displayName": "Hy4 preview",
+          "supportsTools": true,
+          "contextWindow": 1048576,
+          "vision": false,
+          "pricing": {
+            "inputPerM": 0.834,
+            "outputPerM": 2.501
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "none"
+            ],
+            "default": "high"
+          }
+        },
         "thedrummer/cydonia-24b-v4.1": {
           "displayName": "Cydonia 24B V4.1",
           "supportsTools": false,
@@ -4800,16 +5192,6 @@
           "vision": false,
           "pricing": {
             "inputPerM": 0.3,
-            "outputPerM": 0.5
-          }
-        },
-        "thedrummer/rocinante-12b": {
-          "displayName": "Rocinante 12B",
-          "supportsTools": false,
-          "contextWindow": 65536,
-          "vision": false,
-          "pricing": {
-            "inputPerM": 0.25,
             "outputPerM": 0.5
           }
         },
@@ -4825,7 +5207,7 @@
         },
         "thedrummer/unslopnemo-12b": {
           "displayName": "UnslopNemo 12B",
-          "supportsTools": true,
+          "supportsTools": false,
           "contextWindow": 1024000,
           "vision": false,
           "pricing": {
@@ -4836,10 +5218,10 @@
         "thinkingmachines/inkling": {
           "displayName": "Inkling",
           "supportsTools": true,
-          "contextWindow": 1048576,
+          "contextWindow": 524288,
           "vision": true,
           "pricing": {
-            "inputPerM": 0.95,
+            "inputPerM": 1,
             "outputPerM": 4.05
           },
           "effort": {
@@ -4857,7 +5239,7 @@
         "thinkingmachines/inkling-small": {
           "displayName": "Inkling Small",
           "supportsTools": true,
-          "contextWindow": 1048576,
+          "contextWindow": 524288,
           "vision": true,
           "pricing": {
             "inputPerM": 0.45,
@@ -4878,7 +5260,7 @@
         "thinkingmachines/inkling-small:free": {
           "displayName": "Inkling Small (free)",
           "supportsTools": true,
-          "contextWindow": 262144,
+          "contextWindow": 1048576,
           "vision": true,
           "pricing": {
             "inputPerM": 0,
@@ -4899,7 +5281,7 @@
         "thinkingmachines/inkling:free": {
           "displayName": "Inkling (free)",
           "supportsTools": true,
-          "contextWindow": 262144,
+          "contextWindow": 1048576,
           "vision": true,
           "pricing": {
             "inputPerM": 0,
@@ -4917,14 +5299,56 @@
             "default": "medium"
           }
         },
+        "unbiased/pareto": {
+          "displayName": "Pareto",
+          "supportsTools": true,
+          "contextWindow": 262144,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 2.5,
+            "outputPerM": 7.5
+          }
+        },
+        "unbiased/pareto-26.10-preview": {
+          "displayName": "Pareto 26.10 Preview",
+          "supportsTools": true,
+          "contextWindow": 1048576,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 0.8,
+            "outputPerM": 3.2
+          }
+        },
         "undi95/remm-slerp-l2-13b": {
           "displayName": "ReMM SLERP 13B",
           "supportsTools": false,
           "contextWindow": 6144,
           "vision": false,
           "pricing": {
-            "inputPerM": 0.45,
+            "inputPerM": 0.35,
             "outputPerM": 0.65
+          }
+        },
+        "upstage/solar-mini4": {
+          "displayName": "Solar Mini 4",
+          "supportsTools": true,
+          "contextWindow": 524288,
+          "vision": false,
+          "pricing": {
+            "inputPerM": 0.05,
+            "outputPerM": 0.2
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "max",
+              "medium",
+              "minimal",
+              "none",
+              "xhigh"
+            ],
+            "default": "medium"
           }
         },
         "upstage/solar-pro-3": {
@@ -4935,6 +5359,16 @@
           "pricing": {
             "inputPerM": 0.15,
             "outputPerM": 0.6
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "medium",
+              "minimal",
+              "none"
+            ],
+            "default": "medium"
           }
         },
         "upstage/solar-pro4": {
@@ -4943,8 +5377,20 @@
           "contextWindow": 524288,
           "vision": false,
           "pricing": {
-            "inputPerM": 0.03,
-            "outputPerM": 0.12
+            "inputPerM": 0.09,
+            "outputPerM": 0.36
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "max",
+              "medium",
+              "minimal",
+              "none",
+              "xhigh"
+            ],
+            "default": "medium"
           }
         },
         "writer/palmyra-x5": {
@@ -5042,6 +5488,25 @@
             "default": "medium"
           }
         },
+        "x-ai/grok-4.7": {
+          "displayName": "Grok 4.7",
+          "supportsTools": true,
+          "contextWindow": 500000,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 2,
+            "outputPerM": 6
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "medium",
+              "xhigh"
+            ],
+            "default": "medium"
+          }
+        },
         "x-ai/grok-build-0.1": {
           "displayName": "Grok Build 0.1",
           "supportsTools": true,
@@ -5070,6 +5535,36 @@
           "pricing": {
             "inputPerM": 0.435,
             "outputPerM": 0.87
+          }
+        },
+        "xiaomi/mimo-v2.6-flash": {
+          "displayName": "MiMo-V2.6-Flash",
+          "supportsTools": true,
+          "contextWindow": 1050000,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 0.14,
+            "outputPerM": 0.28
+          }
+        },
+        "xiaomi/mimo-v2.6-pro": {
+          "displayName": "MiMo-V2.6-Pro",
+          "supportsTools": true,
+          "contextWindow": 1050000,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 0.435,
+            "outputPerM": 0.87
+          }
+        },
+        "xiaomi/mimo-v2.6-pro-ultraspeed": {
+          "displayName": "MiMo-V2.6-Pro-UltraSpeed",
+          "supportsTools": true,
+          "contextWindow": 1048576,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 4.35,
+            "outputPerM": 8.7
           }
         },
         "z-ai/glm-4.5": {
@@ -5128,17 +5623,17 @@
           "contextWindow": 204800,
           "vision": false,
           "pricing": {
-            "inputPerM": 0.4,
-            "outputPerM": 1.75
+            "inputPerM": 0.6,
+            "outputPerM": 2.2
           }
         },
         "z-ai/glm-4.7-flash": {
           "displayName": "GLM-4.7-Flash",
           "supportsTools": true,
-          "contextWindow": 202752,
+          "contextWindow": 200000,
           "vision": false,
           "pricing": {
-            "inputPerM": 0.06,
+            "inputPerM": 0.0605,
             "outputPerM": 0.4
           }
         },
@@ -5178,25 +5673,8 @@
           "contextWindow": 1048576,
           "vision": false,
           "pricing": {
-            "inputPerM": 0.966,
-            "outputPerM": 3.036
-          },
-          "effort": {
-            "values": [
-              "high",
-              "xhigh"
-            ],
-            "default": "high"
-          }
-        },
-        "z-ai/glm-5.2:free": {
-          "displayName": "GLM 5.2 (free)",
-          "supportsTools": true,
-          "contextWindow": 256000,
-          "vision": false,
-          "pricing": {
-            "inputPerM": 0,
-            "outputPerM": 0
+            "inputPerM": 0.06,
+            "outputPerM": 7
           },
           "effort": {
             "values": [
@@ -5212,8 +5690,62 @@
           "contextWindow": 1048576,
           "vision": false,
           "pricing": {
-            "inputPerM": 1.4,
-            "outputPerM": 4.4
+            "inputPerM": 0.039,
+            "outputPerM": 4.8
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "max"
+            ],
+            "default": "high"
+          }
+        },
+        "z-ai/glm-5.3-flash": {
+          "displayName": "GLM-5.3-Flash",
+          "supportsTools": true,
+          "contextWindow": 1048576,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 0.15,
+            "outputPerM": 0.5
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "max"
+            ],
+            "default": "high"
+          }
+        },
+        "z-ai/glm-5.3-flashx": {
+          "displayName": "GLM 5.3 FlashX",
+          "supportsTools": true,
+          "contextWindow": 1048576,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 0.37,
+            "outputPerM": 1.25
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "max"
+            ],
+            "default": "high"
+          }
+        },
+        "z-ai/glm-5.3-prime": {
+          "displayName": "GLM 5.3 Prime",
+          "supportsTools": true,
+          "contextWindow": 1000000,
+          "vision": false,
+          "pricing": {
+            "inputPerM": 2.8,
+            "outputPerM": 8.8
           },
           "effort": {
             "values": [
@@ -5255,13 +5787,23 @@
           }
         },
         "~anthropic/claude-haiku-latest": {
-          "displayName": "Anthropic Claude Haiku Latest",
+          "displayName": "Claude Haiku Latest",
           "supportsTools": true,
-          "contextWindow": 200000,
+          "contextWindow": 1000000,
           "vision": true,
           "pricing": {
-            "inputPerM": 1,
-            "outputPerM": 5
+            "inputPerM": 0.1,
+            "outputPerM": 0.5
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "max",
+              "medium",
+              "xhigh"
+            ],
+            "default": "medium"
           }
         },
         "~anthropic/claude-opus-latest": {
@@ -5270,8 +5812,8 @@
           "contextWindow": 1000000,
           "vision": true,
           "pricing": {
-            "inputPerM": 5,
-            "outputPerM": 25
+            "inputPerM": 4,
+            "outputPerM": 20
           },
           "effort": {
             "values": [
@@ -5285,7 +5827,7 @@
           }
         },
         "~anthropic/claude-sonnet-latest": {
-          "displayName": "Anthropic Claude Sonnet Latest",
+          "displayName": "Claude Sonnet Latest",
           "supportsTools": true,
           "contextWindow": 1000000,
           "vision": true,
@@ -5304,14 +5846,50 @@
             "default": "medium"
           }
         },
+        "~deepseek/deepseek-flash-latest": {
+          "displayName": "DeepSeek Flash Latest",
+          "supportsTools": true,
+          "contextWindow": 1048576,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 0.0001,
+            "outputPerM": 0.6
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "max"
+            ],
+            "default": "high"
+          }
+        },
+        "~deepseek/deepseek-pro-latest": {
+          "displayName": "DeepSeek Pro Latest",
+          "supportsTools": true,
+          "contextWindow": 1048576,
+          "vision": false,
+          "pricing": {
+            "inputPerM": 0.21912,
+            "outputPerM": 0.65736
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "max"
+            ],
+            "default": "high"
+          }
+        },
         "~deepseek/deepseek-v4-flash-latest": {
           "displayName": "DeepSeek V4 Flash Latest",
           "supportsTools": true,
-          "contextWindow": 1310720,
+          "contextWindow": 1048576,
           "vision": false,
           "pricing": {
-            "inputPerM": 0.04,
-            "outputPerM": 0.08
+            "inputPerM": 0.0137,
+            "outputPerM": 1.28
           },
           "effort": {
             "values": [
@@ -5323,13 +5901,13 @@
           }
         },
         "~google/gemini-flash-latest": {
-          "displayName": "Google Gemini Flash Latest",
+          "displayName": "Gemini Flash Latest",
           "supportsTools": true,
           "contextWindow": 1048576,
           "vision": true,
           "pricing": {
-            "inputPerM": 0.375,
-            "outputPerM": 1.875
+            "inputPerM": 0.75,
+            "outputPerM": 3.75
           },
           "effort": {
             "values": [
@@ -5341,7 +5919,7 @@
           }
         },
         "~google/gemini-pro-latest": {
-          "displayName": "Google Gemini Pro Latest",
+          "displayName": "Gemini Pro Latest",
           "supportsTools": true,
           "contextWindow": 1048576,
           "vision": true,
@@ -5359,13 +5937,13 @@
           }
         },
         "~moonshotai/kimi-latest": {
-          "displayName": "MoonshotAI Kimi Latest",
+          "displayName": "Kimi Latest",
           "supportsTools": true,
           "contextWindow": 1048576,
           "vision": true,
           "pricing": {
-            "inputPerM": 2.6,
-            "outputPerM": 13
+            "inputPerM": 0.44,
+            "outputPerM": 14.89
           },
           "effort": {
             "values": [
@@ -5376,14 +5954,34 @@
             "default": "high"
           }
         },
-        "~openai/gpt-latest": {
-          "displayName": "OpenAI GPT Latest",
+        "~openai/gpt-astra-latest": {
+          "displayName": "GPT Astra Latest",
           "supportsTools": true,
           "contextWindow": 1050000,
           "vision": true,
           "pricing": {
-            "inputPerM": 2,
-            "outputPerM": 10
+            "inputPerM": 10,
+            "outputPerM": 50
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "max",
+              "medium",
+              "xhigh"
+            ],
+            "default": "medium"
+          }
+        },
+        "~openai/gpt-luna-latest": {
+          "displayName": "GPT Luna Latest",
+          "supportsTools": true,
+          "contextWindow": 1050000,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 0.1,
+            "outputPerM": 0.5
           },
           "effort": {
             "values": [
@@ -5398,7 +5996,7 @@
           }
         },
         "~openai/gpt-mini-latest": {
-          "displayName": "OpenAI GPT Mini Latest",
+          "displayName": "GPT Mini Latest",
           "supportsTools": true,
           "contextWindow": 400000,
           "vision": true,
@@ -5410,6 +6008,47 @@
             "values": [
               "high",
               "low",
+              "medium",
+              "none",
+              "xhigh"
+            ],
+            "default": "medium"
+          }
+        },
+        "~openai/gpt-sol-latest": {
+          "displayName": "GPT Sol Latest",
+          "supportsTools": true,
+          "contextWindow": 1050000,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 2,
+            "outputPerM": 10
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "max",
+              "medium",
+              "xhigh"
+            ],
+            "default": "medium"
+          }
+        },
+        "~openai/gpt-terra-latest": {
+          "displayName": "GPT Terra Latest",
+          "supportsTools": true,
+          "contextWindow": 1050000,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 2,
+            "outputPerM": 12
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "max",
               "medium",
               "none",
               "xhigh"
@@ -5436,14 +6075,32 @@
             "default": "medium"
           }
         },
+        "~z-ai/glm-flash-latest": {
+          "displayName": "GLM Flash Latest",
+          "supportsTools": true,
+          "contextWindow": 1048576,
+          "vision": true,
+          "pricing": {
+            "inputPerM": 0.04,
+            "outputPerM": 0.5
+          },
+          "effort": {
+            "values": [
+              "high",
+              "low",
+              "max"
+            ],
+            "default": "high"
+          }
+        },
         "~z-ai/glm-latest": {
           "displayName": "GLM Latest",
           "supportsTools": true,
           "contextWindow": 1048576,
           "vision": false,
           "pricing": {
-            "inputPerM": 1.4,
-            "outputPerM": 4.4
+            "inputPerM": 0.039,
+            "outputPerM": 4.8
           },
           "effort": {
             "values": [

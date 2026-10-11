@@ -148,12 +148,12 @@ describe("BUILTIN_PRESETS models map", () => {
     expect(BUILTIN_PRESETS.deepseek.models["deepseek-v4-flash"]).toMatchObject({
       supportsTools: true,
       contextWindow: 1000000,
-      pricing: { inputPerM: 0.14, outputPerM: 0.28 },
+      pricing: { inputPerM: 0.15, outputPerM: 0.6 },
     });
     expect(BUILTIN_PRESETS.deepseek.models["deepseek-v4-pro"]).toMatchObject({
       supportsTools: true,
       contextWindow: 1000000,
-      pricing: { inputPerM: 0.435, outputPerM: 0.87 },
+      pricing: { inputPerM: 0.66, outputPerM: 1.98 },
     });
   });
 
@@ -193,12 +193,12 @@ describe("imageSupportWarning", () => {
 
   it("is silent when no images are being sent", async () => {
     const { imageSupportWarning } = await import("./registry.js");
-    expect(imageSupportWarning("deepseek", "deepseek-chat", 0)).toBeUndefined();
+    expect(imageSupportWarning("deepseek", "deepseek-v4-pro", 0)).toBeUndefined();
   });
 
   it("warns when the model is declared text-only", async () => {
     const { imageSupportWarning } = await import("./registry.js");
-    const warning = imageSupportWarning("deepseek", "deepseek-chat", 1);
+    const warning = imageSupportWarning("deepseek", "deepseek-v4-pro", 1);
     expect(warning).toMatch(/does not accept image input/);
   });
 

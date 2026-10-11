@@ -3,7 +3,7 @@ import { describe, it, expect } from "vitest";
 import { render } from "ink-testing-library";
 import OutputArea from "./OutputArea.js";
 import { buildReplayLines } from "./core/replay.js";
-import { USER_ECHO_TAG, VERBATIM_TAG, BULLET_TAG, PROMPT_CHEVRON, ANSWER_BULLET } from "./constants.js";
+import { USER_ECHO_TAG, VERBATIM_TAG, BULLET_TAG, ANSWER_CONT_TAG, PROMPT_CHEVRON, ANSWER_BULLET } from "./constants.js";
 import type { Message } from "../types.js";
 import { stripAnsi } from "./test-helpers.js";
 import { ThemeContextValue, DARK_THEME } from "./theme.js";
@@ -117,9 +117,11 @@ describe("OutputArea verbatim (replay) rendering", () => {
 
 /**
  * Guard against over-applying the verbatim exemption: ordinary LIVE output
- * (no VERBATIM_TAG) must keep summarizing exactly as before.
+ * (no VERBATIM_TAG) must keep summarizing exactly as before. Progressive
+ * disclosure is what it was written for — a huge tool result or job line
+ * streaming by mid-turn.
  */
-describe("OutputArea live output still summarizes (unchanged behavior)", () => {
+describe("OutputArea live output still summarizes (untagged bulk)", () => {
   it("still collapses a long non-replay line and reports a coherent size", () => {
     const longText = "D".repeat(1400);
     const frame = frameOf([longText]);
@@ -128,17 +130,36 @@ describe("OutputArea live output still summarizes (unchanged behavior)", () => {
     expect(frame).toContain("1400 chars");
   });
 
-  it("still collapses a long non-replay bulleted assistant line", () => {
-    const longText = "E".repeat(1400);
-    const frame = frameOf([BULLET_TAG + longText]);
-    expect(frame).not.toContain("E".repeat(1400));
-    expect(frame).toContain("1400 chars");
-  });
-
   it("still collapses a >20-line non-replay block", () => {
     const bigBody = Array.from({ length: 30 }, (_, i) => `row ${i}`).join("\n");
     const frame = frameOf([bigBody]);
     expect(frame).toContain("(30 lines)");
     expect(frame).not.toContain("row 15");
+  });
+});
+
+/**
+ * Item 0: the assistant's own answer must never collapse. A fenced block
+ * commits as ONE entry, so a long code block or paragraph exceeded the
+ * 20-line/1000-char summary threshold and was replaced by a preview plus a
+ * "▼ N lines" footer — the text the user asked for was neither visible nor
+ * copyable (reported 2026-10-11: asking for a prompt gave two lines, then
+ * "▼ 75 lines").
+ */
+describe("OutputArea never collapses the assistant's answer (2026-10-11)", () => {
+  it("renders all 80 lines of an 80-line fenced block in a bulleted answer", () => {
+    const fence = ["```", ...Array.from({ length: 80 }, (_, i) => `line ${i}`), "```"].join("\n");
+    const frame = frameOf([BULLET_TAG + fence]);
+
+    // No collapse footer, and the last line is actually on screen.
+    expect(frame).not.toContain("▼");
+    expect(frame).toContain("line 0");
+    expect(frame).toContain("line 79");
+  });
+
+  it("does not collapse a long continuation line of the same answer block", () => {
+    const longText = "E".repeat(1400);
+    const frame = frameOf([ANSWER_CONT_TAG + longText]);
+    expect(frame).not.toContain("1400 chars");
   });
 });

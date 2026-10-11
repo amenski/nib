@@ -112,7 +112,14 @@ const OutputLine = memo(function OutputLine({
   const hasBullet = untagged.startsWith(BULLET_TAG);
   const isCont = !hasBullet && untagged.startsWith(ANSWER_CONT_TAG);
   const body = hasBullet ? untagged.slice(BULLET_TAG.length) : isCont ? untagged.slice(ANSWER_CONT_TAG.length) : untagged;
-  const summary = useMemo(() => (verbatim ? null : needsSummary(body)), [body, verbatim]);
+  // Progressive disclosure is for untagged bulk output only (a long tool
+  // result or job line). An assistant answer never collapses: Claude Code shows
+  // the whole answer, and a collapsed fence hid the text the user actually
+  // asked for behind a "▼ N lines" footer (reported 2026-10-11).
+  const summary = useMemo(
+    () => (verbatim || hasBullet || isCont ? null : needsSummary(body)),
+    [body, verbatim, hasBullet, isCont],
+  );
 
   // A tool-call header (TOOL_HEADER_TAG) is pre-styled text: a dim glyph, a
   // bold name, plain arguments. It must NOT pass through MarkdownText — its
@@ -135,17 +142,6 @@ const OutputLine = memo(function OutputLine({
         </Text>
       </Box>
     );
-    if (summary) {
-      return (
-        <Box flexDirection="column">
-          <Box>
-            {bulletEl}
-            <MarkdownText theme={theme} width={columns - 2}>{summarizeText(body)}</MarkdownText>
-          </Box>
-          <Text color={theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined}>{summary}</Text>
-        </Box>
-      );
-    }
     return (
       <Box>
         {bulletEl}

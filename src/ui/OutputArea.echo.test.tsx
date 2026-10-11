@@ -35,6 +35,18 @@ describe("OutputArea user echo", () => {
     expect(frame).toContain("  second line");
   });
 
+  it("hangs a wrapped long line under the text and pads nothing past it", () => {
+    // The row used to carry a grey fill and a trailing pad column; the fill is
+    // gone (ink-testing-library cannot see colour, so the layout is what is
+    // asserted): wrapped rows start at column 2, and no row ends in padding.
+    const words = Array.from({ length: 40 }, (_, i) => `word${i}`).join(" ");
+    const rows = frameOf([USER_ECHO_TAG + words]).split("\n").filter((r) => r.trim() !== "");
+    expect(rows.length).toBeGreaterThan(1);
+    expect(rows[0]!.startsWith(`${PROMPT_CHEVRON} word0`)).toBe(true);
+    for (const r of rows.slice(1)) expect(r.startsWith("  ")).toBe(true);
+    for (const r of rows) expect(r).toBe(r.trimEnd());
+  });
+
   it("does not join separate lines into one", () => {
     const frame = frameOf([USER_ECHO_TAG + "alpha\nbeta"]);
     expect(frame).not.toContain("alpha beta");

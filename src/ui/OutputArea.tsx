@@ -168,12 +168,11 @@ const OutputLine = memo(function OutputLine({
     );
   }
 
-  // A user-echo line (tagged with USER_ECHO_TAG) renders as Claude Code's
-  // prompt row: a dim "❯" then the text on the user-message background
-  // (`surface`, nib's 237 — Claude Code's userMessageBackground), with one
-  // column of right padding. An earlier version used a left rule instead
-  // because a background "read heavier"; the owner chose this look
-  // deliberately (2026-10-11), so the fill is the point, not a regression.
+  // A user-echo line (tagged with USER_ECHO_TAG) renders as a dim "❯" then the
+  // text in the terminal's own colour, with no background fill (the owner
+  // dropped the grey user-message fill 2026-10-11: it filled only behind the
+  // text, so wrapped rows and blank lines looked ragged). No foreground is set
+  // either, so the text reads on a light terminal as well as a dark one.
   if (untagged.startsWith(USER_ECHO_TAG)) {
     // Draw the row on every line rather than flattening the message: the echo
     // must show what was actually submitted, newlines included. A verbatim
@@ -185,23 +184,22 @@ const OutputLine = memo(function OutputLine({
       ? formatEcho(untagged.slice(USER_ECHO_TAG.length), Infinity, Infinity)
       : formatEcho(untagged.slice(USER_ECHO_TAG.length));
     const dimFg = theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined;
-    const bg = theme.colorEnabled ? ansi256(theme.theme.surface) : undefined;
     return (
       <Box flexDirection="column">
         {msgLines.map((msg, i) => (
           <Box key={i}>
-            <Text color={dimFg} backgroundColor={bg}>{i === 0 ? `${PROMPT_CHEVRON} ` : "  "}</Text>
-            {/* The right padding lives inside this node, not a sibling <Text>:
-                a separate pad node made Ink drop one character when it wrapped
-                a long coloured line (measured 2026-10-11 — a 1400-char echo
-                rendered 1399). */}
-            <Text backgroundColor={bg}>{msg + " "}</Text>
+            <Box width={2} flexShrink={0}>
+              <Text color={dimFg}>{i === 0 ? `${PROMPT_CHEVRON} ` : "  "}</Text>
+            </Box>
+            <Text>{msg}</Text>
           </Box>
         ))}
         {truncated !== null && (
           <Box>
-            <Text color={dimFg} backgroundColor={bg}>{"  "}</Text>
-            <Text color={dimFg} backgroundColor={bg}>{truncated + " "}</Text>
+            <Box width={2} flexShrink={0}>
+              <Text>{"  "}</Text>
+            </Box>
+            <Text color={dimFg}>{truncated}</Text>
           </Box>
         )}
       </Box>

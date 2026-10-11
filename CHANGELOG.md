@@ -7,6 +7,71 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-10-11
+
+### Added
+
+- **`read_file` reads a line range.** `offset` (1-based) and `limit` (max 2000)
+  read part of a file with real line numbers and a footer saying how to read
+  more, so partial reads no longer go through `sed -n` in `run_bash`.
+- **Toolchains and Gradle run inside the sandbox.** Toolchain installs under
+  `$HOME` are readable and their build caches writable. Loopback networking is
+  allowed by default (`sandbox.allowLocalNetwork`) for Gradle's daemon;
+  external addresses stay refused. New global-only settings:
+  `sandbox.readRoots`, `sandbox.allowLocalNetwork`.
+- **Sandbox refusals are named.** Bash tool descriptions say what the sandbox
+  refuses, and a refused result gets a note appended outside the untrusted
+  wrapper.
+- **One approval per sibling project** for read-only tools, instead of one per
+  folder.
+- **Model rename notices.** A silent server-side alias (a request for one model
+  id served as another) or a removed model is reported once per provider and
+  model. `nib doctor` and `/doctor` gain rows for the catalog snapshot's age and
+  whether the active model is still served; the provider's live model list is
+  fetched at most once a day and cached in `~/.nib/provider-models.json`.
+- **`compaction.maxTokens`** (optional, integer >= 10000) caps the compaction
+  trigger below `contextWindow x threshold`.
+- **Skills and model switching respect the running turn.** A bare `/skill <name>`
+  loads the skill and waits for your next message; `/skill <name> <text>` runs
+  the text as the prompt.
+- **Transcript look closer to Claude Code's:** theme-driven diff backgrounds,
+  a prompt ruled above and below, plain tool headers, heading and list weights,
+  and code blocks without a banner.
+
+### Changed
+
+- **Sandboxed Bash is auto-allowed by default.** Eligible foreground calls under
+  an active sandbox profile no longer prompt (`sandbox.autoAllowBash`, global
+  only; set `false` to restore the prompt). Guarded, denied, background,
+  config-authored and MCP calls still ask. Sub-agents reuse this automatic grant
+  but never a human's session approval.
+- **No interactive turn cap.** Loop detection, the five-consecutive-failure stop
+  and Esc still end a runaway turn; `--max-turns` still caps when given and
+  headless `-p` keeps 100. A `max_turns` stop is now saved with its work.
+- **Default general model is `deepseek/deepseek-flash`.** Sessions on the old id
+  keep working.
+- **Bundled models.dev catalog refreshed.** `deepseek-chat` and
+  `deepseek-reasoner` are no longer listed.
+- **Old tool results are no longer trimmed from requests by default.** Trimming
+  broke the provider's prefix cache; the volatile context block is also
+  appended rather than merged so the cached prefix survives turns.
+
+### Fixed
+
+- A tool batch's results stay contiguous, so a note raised mid-batch no longer
+  ends the turn with "Tool result is missing for tool call".
+- A failing tool keeps its output, and sub-agent todos no longer crash.
+- A failed turn keeps its work and logs the failure; the abort signal is renewed
+  per turn.
+- Sandboxed builds no longer rewrite Gradle's executables.
+- The assistant's own answer is never collapsed behind a "▼ N lines" summary.
+- Streamed replies keep sentences whole, aligned at a steady two-column indent;
+  tables fit the gutter; resumed transcripts regain their gutter; the context
+  meter refreshes after a resume.
+- The read-only project root is walked in one coordinate space for permissions.
+- The release workflow packs the tarball correctly and can be rerun to verify
+  an already-published version.
+
 ## [0.5.1] — 2026-09-15
 
 ### Added

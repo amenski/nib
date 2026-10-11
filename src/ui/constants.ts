@@ -1,11 +1,17 @@
 export const ARGS_SEPARATOR = " | ";
 export const ANSI_CLEAR_SCREEN = "[2J[3J[H";
 /**
- * Columns consumed before the prompt's text column: one column of box padding
- * plus the two-column chevron gutter ("❯ "). The border draws no side rules
- * (Claude Code's prompt), so nothing else is subtracted here.
+ * Columns consumed before the prompt's text column: the two-column chevron
+ * gutter ("❯ "). The box has no side padding and its border draws no side
+ * rules (Claude Code's prompt), so nothing else is subtracted here.
  */
-export const PROMPT_PREFIX_WIDTH = 3;
+export const PROMPT_PREFIX_WIDTH = 2;
+
+/**
+ * Text rows the prompt box always shows, so it reads as an input area rather
+ * than a single line. Longer input grows the box past this.
+ */
+export const PROMPT_MIN_ROWS = 1;
 
 /**
  * Gutter glyph opening an assistant answer block: `⏺` on macOS, `●` elsewhere

@@ -3,6 +3,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { render } from "ink-testing-library";
 import { Text } from "ink";
 import PromptInput from "./PromptInput.js";
+import { PROMPT_MIN_ROWS } from "../constants.js";
 import { __resetInputWireForTests } from "../hooks/useTerminalInput.js";
 import { stripAnsi as strip } from "../test-helpers.js";
 const rowsOf = (f: string | undefined) => strip(f ?? "").split("\n").length;
@@ -73,7 +74,8 @@ describe("PromptInput frame height", () => {
     const inputRow = rows.findIndex((r) => r.includes("❯"));
     expect(inputRow).toBeGreaterThan(0);
     expect(rows[inputRow - 1]).toMatch(/^─+$/);
-    expect(rows[inputRow + 1]).toMatch(/^─+$/);
+    // The box is PROMPT_MIN_ROWS text rows tall; the lower rule sits below them.
+    expect(rows[inputRow + PROMPT_MIN_ROWS]).toMatch(/^─+$/);
     expect(rows[inputRow]).not.toMatch(/^[│╭╰]/);
   });
 
@@ -108,6 +110,29 @@ describe("PromptInput frame height", () => {
     stdin.write("\r");
     await flush();
     expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("puts the chevron at column 0 and uses the full width for text", async () => {
+    // The box has no side padding, so the input's chevron lines up with the
+    // echoed prompt's and the answer bullet (both at column 0), and a row holds
+    // screenWidth - 2 characters of text (the 2-column chevron gutter only).
+    const { stdin, lastFrame } = setup({ screenWidth: 40 });
+    stdin.write("x".repeat(100));
+    await flush();
+    const rows = strip(lastFrame() ?? "").split("\n");
+    const first = rows.find((r) => r.includes("❯"))!;
+    expect(first.startsWith("❯ x")).toBe(true);
+    expect(first.match(/x+/)![0].length).toBe(38);
+  });
+
+  it("shows PROMPT_MIN_ROWS text rows between the rules, chevron on the first", () => {
+    const rows = strip(setup().lastFrame() ?? "").split("\n");
+    const rules = rows.map((r, i) => (/^─+$/.test(r) ? i : -1)).filter((i) => i >= 0);
+    expect(rules.length).toBeGreaterThanOrEqual(2);
+    const inner = rows.slice(rules[0]! + 1, rules[1]!);
+    expect(inner).toHaveLength(PROMPT_MIN_ROWS);
+    expect(inner[0]).toContain("❯");
+    if (inner.length > 1) expect(inner[1]).not.toContain("❯");
   });
 
   it("reserves the notice row even when there is nothing to show", () => {

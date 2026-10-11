@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Box, Text } from "ink";
-import { PROMPT_PREFIX_WIDTH, PROMPT_CHEVRON } from "../constants.js";
+import { PROMPT_PREFIX_WIDTH, PROMPT_MIN_ROWS, PROMPT_CHEVRON } from "../constants.js";
 import {
   EMPTY_BUFFER,
   backspace, deleteForward, deleteWordBefore, deleteWordAfter,
@@ -532,7 +532,7 @@ const PromptInput = React.memo(function PromptInput({
         borderLeft={false}
         borderRight={false}
         borderColor={theme.colorEnabled ? ansi256(theme.theme.border) : undefined}
-        paddingX={1}
+        minHeight={PROMPT_MIN_ROWS}
       >
         <Box width={2} flexShrink={0}>
           <Text color={theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined}>{`${PROMPT_CHEVRON} `}</Text>

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { projectDirPath } from "../config/paths.js";
@@ -85,5 +85,19 @@ describe("SkillLoader.load honors enabledSkills", () => {
   it("keeps a skill explicitly set true", async () => {
     const skills = await new SkillLoader().load({ enabledSkills: { alpha: true } });
     expect(skills.map((s) => s.name).sort()).toEqual(["alpha", "beta"]);
+  });
+
+  it("skips a folder without SKILL.md silently (e.g. a sync cache)", async () => {
+    mkdirSync(join(projectDirPath(projectDir), "skills", "synced", "bucket"), {
+      recursive: true,
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const skills = await new SkillLoader().load();
+      expect(skills.map((s) => s.name).sort()).toEqual(["alpha", "beta"]);
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

@@ -141,6 +141,8 @@ async function scanDir(dir: string): Promise<SkillDef[]> {
 
       skills.push({ name, description, content, mode, sourcePath: skillPath });
     } catch (err) {
+      // A folder without SKILL.md isn't a skill (e.g. a sync cache), so skip it quietly.
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") continue;
       console.warn(
         `[skills] Failed to read ${skillPath}: ${(err as Error).message}`
       );

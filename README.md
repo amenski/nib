@@ -9,7 +9,7 @@ multi-provider agent loop with explicit permissions, resumable sessions,
 checkpoints, skills, and MCP — without a hosted service or telemetry.
 
 <p align="center">
-  <img src="assets/prompt-screen.png" alt="Nib running in a terminal with DeepSeek V4 Flash" width="900">
+  <img src="assets/prompt-screen.png" alt="Nib in Code mode with auto-approve on, running DeepSeek V4 Flash" width="900">
 </p>
 
 ## Quick start

@@ -31,7 +31,7 @@ interface HelpSectionBuild {
 const SLASH_COMMANDS: { command: string; description: string }[] = [
   { command: "/help", description: "Show this help screen" },
   { command: "/exit", description: "Exit the CLI" },
-  { command: "/clear", description: "Clear conversation history" },
+  { command: "/clear", description: "Clear the conversation and the screen" },
   { command: "/new", description: "Start a fresh conversation" },
   { command: "/mode <slug>", description: "Switch persona (general/code)" },
   { command: "/modes", description: "List available modes" },

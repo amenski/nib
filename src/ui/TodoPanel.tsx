@@ -14,6 +14,8 @@ interface Props {
   todos: TodoItem[];
   /** False after the turn ends: keep the last state on screen, fully dimmed. */
   active: boolean;
+  /** Add a blank row above: the transcript's last row is not already blank. */
+  gapAbove?: boolean;
 }
 
 /**
@@ -25,7 +27,7 @@ interface Props {
  * LAST row, so a panel repaint cannot cascade below it (see HintBar.tsx).
  * Glyphs: ◻ pending (dim) / ▸ in_progress (accent) / ☑ completed (dim).
  */
-export default function TodoPanel({ todos, active }: Props) {
+export default function TodoPanel({ todos, active, gapAbove = false }: Props) {
   const theme = useTheme();
   if (todos.length === 0) return null;
 
@@ -33,7 +35,7 @@ export default function TodoPanel({ todos, active }: Props) {
   const dimAll = !active;
 
   return (
-    <Box flexDirection="column" paddingLeft={2}>
+    <Box flexDirection="column" paddingLeft={2} marginTop={gapAbove ? 1 : 0}>
       {todos.map((t, i) => {
         const glyph = t.status === "in_progress" ? "▸" : t.status === "completed" ? "☑" : "◻";
         return (

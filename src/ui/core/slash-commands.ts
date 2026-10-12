@@ -23,7 +23,7 @@ export const BUILTIN_SLASH_COMMANDS: SlashCommandItem[] = [
   { kind: "usage", name: "usage", label: "/usage", description: "Show account balance and token usage" },
   { kind: "plan", name: "plan", label: "/plan", description: "Toggle plan mode (propose before implementing)" },
   { kind: "raw", name: "raw", label: "/raw", description: "Cycle display mode (lite | normal | raw-scrollback)" },
-  { kind: "clear", name: "clear", label: "/clear", description: "Clear conversation history" },
+  { kind: "clear", name: "clear", label: "/clear", description: "Clear the conversation and the screen" },
   { kind: "compact", name: "compact", label: "/compact", description: "Summarize older turns to free context" },
   { kind: "context", name: "context", label: "/context", description: "Show context usage and when compaction triggers" },
   { kind: "doctor", name: "doctor", label: "/doctor", description: "Show provider, model, and refresh settings" },

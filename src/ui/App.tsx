@@ -230,6 +230,9 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
   // clock live inside <Spinner> so their 80ms/1s ticks don't re-render the
   // transcript — see the comment there.
   const [turnActive, setTurnActive] = useState(false);
+  // True while /compact's summarizer call runs: a model call of several
+  // seconds that is not a turn, so it drives the indicator on its own.
+  const [compacting, setCompacting] = useState(false);
   const [statusLine, setStatusLine] = useState<StatusSegment[]>(() =>
     ctx.buildStatusBar(),
   );
@@ -1667,10 +1670,10 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
         return;
       }
     }
-    if (trimmed === "/new") {
+    if (trimmed === "/new" || trimmed === "/clear") {
       // Start a fresh conversation: drop the model-visible history and wipe the
-      // scrollback so the session reads as new. Same history reset as /clear,
-      // plus a visible-transcript clear the bare /clear doesn't do. Re-seeds
+      // scrollback so the session reads as new. /clear used to reset only the
+      // history, leaving the old transcript on screen above "[cleared]". Re-seeds
       // with the welcome banner so it reappears at the top of the fresh
       // screen — parity with the old pinned WelcomeScreen, which survived
       // clears because it lived outside the transcript entirely.
@@ -1683,7 +1686,22 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           cwd: process.cwd(),
         }),
       );
-      pushOutput("[started a fresh conversation]");
+      pushOutput(trimmed === "/clear" ? "[cleared]" : "[started a fresh conversation]");
+      return;
+    }
+    if (trimmed === "/compact") {
+      // Hold the turn gate so queued input waits for the new history, and show
+      // the indicator: the screen used to sit still on the echo until done.
+      turnActiveRef.current = true;
+      setCompacting(true);
+      ctx.handleSlash(trimmed).then((lines) => {
+        for (const line of lines) pushOutput(line);
+      }).finally(() => {
+        setCompacting(false);
+        setStatusLine(ctx.buildStatusBar());
+        turnActiveRef.current = false;
+        drainQueueRef.current();
+      });
       return;
     }
     if (trimmed === "/plan") {
@@ -1792,7 +1810,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
       {
         id: "cmd-clear",
         label: "/clear",
-        description: "Clear conversation history",
+        description: "Clear the conversation and the screen",
         category: "command",
         execute: () => handleSlashCommand("/clear"),
       },
@@ -2274,6 +2292,15 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
     return <Text color={ansi256(theme.theme.textDim)}>{exitHint}</Text>;
   }
 
+  // The todo checklist and the queued stack sit right under the transcript, so
+  // they need the same gap rule the composer uses — the checklist rendered
+  // flush against a tool's "… +102 lines" row.
+  const transcriptGap = needsComposerGap({
+    panelAbove: false,
+    liveTail: activeLine !== "" && !busy,
+    lastOutputLine: outputLines[outputLines.length - 1],
+  });
+
   return (
     <Box flexDirection="column" width={term.columns}>
       <OutputArea
@@ -2284,7 +2311,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
       />
 
       {/* Live checklist for the agent's update_todo_list plan (src/tools/todo.ts). */}
-      <TodoPanel todos={todos} active={turnActive} />
+      <TodoPanel todos={todos} active={turnActive} gapAbove={transcriptGap} />
 
       {showHelp && <HelpOverlay onClose={() => setShowHelp(false)} />}
 
@@ -2597,7 +2624,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           order just above the input, so the user sees what's lined up to run
           when the current turn finishes. */}
       {queuedItems.length > 0 && (
-        <Box flexDirection="column">
+        <Box flexDirection="column" marginTop={todos.length === 0 && transcriptGap ? 1 : 0}>
           {queuedItems.map((item, i) => (
             <Text key={i} color={ansi256(theme.theme.accent)}>
               {`${formatQueueTime(item.at)} ${queuedLabel(item.text)}`}
@@ -2654,9 +2681,11 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           — which is what made the prompt box tear while streaming. With nothing
           under it, a tick rewrites just this row. */}
       <HintBar
-        working={turnActive}
+        working={turnActive || compacting}
         left={
-          turnActive
+          compacting
+            ? [{ key: "", label: "compacting…" }]
+            : turnActive
             ? [{ key: "esc", label: "interrupt" }]
             : [
                 { key: "⇧ Tab", label: posture === "normal" ? "auto-approve" : "normal" },

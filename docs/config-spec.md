@@ -211,8 +211,9 @@ jobs, MCP servers, hooks) under a macOS Seatbelt profile that mechanically
 enforces the `permissionProfile` level: `strict-sandbox` = read-only
 filesystem, no network; `workspace-write` = write only the workspace, the
 private session temp dir and the toolchain caches below; reads blocked
-under `$HOME` except the workspace and named exceptions; no direct network
-except loopback. Inert on non-macOS platforms (a startup warning says so)
+under `$HOME` except the workspace and named exceptions; outbound network
+to any IP host (on by default since 2026-10-11) plus loopback, but no Unix
+sockets beyond name resolution. Inert on non-macOS platforms (a startup warning says so)
 — the policy layer (`ProfileEvaluator`) still enforces the boundary
 everywhere. Semantics: permission-profile.md §8,
 docs/security-architecture-plan.md.
@@ -226,7 +227,7 @@ whether Bash asks at all. Each needs `enabled` alongside it.
 | `writeRoots` | `[]` | Extra writable (and readable) directories. |
 | `readRoots` | `[]` | Extra read-only directories under `$HOME`. |
 | `autoAllowBash` | `true` | Run eligible sandboxed Bash without the session prompt (permission-ux-redesign.md). |
-| `allowLocalNetwork` | `true` | Loopback (`localhost`) networking for `workspace-write` children; Java is forced to IPv4 so it matches. Needed by Gradle's daemon. |
+| `allowLocalNetwork` | `true` | Loopback (`localhost`) networking for `workspace-write` children; Java is forced to IPv4 so it matches. Needed by Gradle's daemon. `false` denies loopback only — other hosts stay reachable. |
 
 Built-in toolchain access (`src/sandbox/seatbelt.ts`, added 2026-10-10):
 installs under `$HOME` such as `.sdkman`, `.gradle`, `.m2`, `.rustup`,

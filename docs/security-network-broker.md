@@ -1,17 +1,37 @@
 # Future network broker
 
-**Status:** deferred security feature. No broad-egress exception is shipped.
+**Status:** deferred security feature. Since 2026-10-11 `workspace-write`
+children have outbound network by default; no host-scoped policy exists.
 
-## Decision
+## Decision (revised 2026-10-11)
 
-Sandboxed Nib sessions deny direct network egress. We will not add a
-"temporary network access" approval for Bash, package managers, interpreters,
-MCP processes, hooks, or notification scripts.
+The original decision was to deny sandboxed children all direct egress and to
+add no network approval, because any network grant is broad authority: an
+allowed program can start another program, resolve any hostname, and
+exfiltrate any file its sandbox read rules allow. Matching command names such
+as `curl`, `npm`, or `git` does not close that route. The analysis still holds.
 
-That approval would be broad authority in disguise: any allowed program can
-start another program, resolve any hostname, and exfiltrate any file that its
-sandbox read rules allow. Matching command names such as `curl`, `npm`, or
-`git` does not close that route.
+It was reversed by the user's decision: a new user hit a dead end — a skill
+that needed the network simply stopped, and the fix was a settings file they
+had never seen. So `workspace-write` now allows outbound network, with no
+prompt and no per-call flag:
+
+- **IP destinations only, plus name resolution.** The profile adds
+  `(allow network-outbound (remote ip "*:*"))` and the mDNSResponder socket —
+  never an unscoped `network-outbound`, which Seatbelt also applies to Unix
+  sockets. Measured 2026-10-11: unscoped, a child reached a Unix socket under
+  `$HOME`; IP-scoped, it got EPERM. Docker's API socket (host root) is the
+  case this protects.
+- **Everything else stands:** the write boundary, the `$HOME` read boundary,
+  the toolchain-secret denies and the `.git` denies. Git over ssh still fails
+  because `~/.ssh` is unreadable.
+- **Loopback is its own switch.** `sandbox.allowLocalNetwork: false` denies
+  127.0.0.1 while other hosts stay reachable.
+- **`strict-sandbox` is the no-network level.** Users who want egress denied
+  choose it, or turn the profile level down there.
+- **Risk accepted:** a sandboxed command — or a package install script it
+  runs — can send anything it can read, project `.env` files included, to any
+  host. The session-grant consent text says so.
 
 ## Future feature boundary
 
@@ -36,10 +56,13 @@ The broker design must prove all of the following before implementation:
    unsupported protocols fail closed.
 
 Until those acceptance criteria are demonstrated with adversarial integration
-tests, a user who needs unrestricted networking must run outside the sandbox
-deliberately; Nib will not present that as a narrowly scoped approval.
+tests, no host-scoped policy ships; `workspace-write` egress is unscoped and
+the documentation says so.
 
 **Criterion 1 verified 2026-09-16, for the mechanism half of criterion 5.**
+(Since 2026-10-11 these rows run with `allowLocalNetwork: false` against
+loopback fixtures, so they now prove the loopback deny and the Unix-socket
+deny, not a general egress deny — the default allows other hosts.)
 `src/sandbox/egress.test.ts` measures ten egress mechanisms against local
 fixtures, each with an unsandboxed control and a destination-side connection
 counter (error text cannot distinguish denial from refusal — git's contained

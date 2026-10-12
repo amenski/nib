@@ -12,7 +12,8 @@ import { realpathNearestAncestor, resolveWriteRoots } from "./write-roots.js";
  * The policy layer (ProfileEvaluator, src/permissions/profile.ts) decides
  * allow/deny per call; the Seatbelt layer makes the level's defaults hold in
  * the OS for bash children: strict-sandbox = read-only fs + no network,
- * workspace-write = write only workspace roots + no direct network, with
+ * workspace-write = write only workspace roots + outbound network over IP
+ * (on by default since 2026-10-11, {@link NETWORK_OUTBOUND_ALLOWS}), with
  * deliberate, battery-proven carve-outs to the write boundary. Which
  * carve-outs are emitted depends on the caller: a launch that supplies a
  * session temp dir (what every production launch does — see
@@ -27,9 +28,10 @@ import { realpathNearestAncestor, resolveWriteRoots } from "./write-roots.js";
  * `.git/hooks`.
  *
  * Seatbelt cannot safely enforce hostname allowlists because it filters
- * resolved IPs, not hostnames. Therefore workspace-write denies direct
- * egress by default; a future network broker must provide any scoped
- * exception rather than granting arbitrary child processes the network.
+ * resolved IPs, not hostnames. workspace-write therefore allows any IP
+ * destination rather than pretending to scope it (user decision 2026-10-11);
+ * a host-scoped policy would need the future network broker. strict-sandbox
+ * is the no-network level.
  *
  * macOS-only. On any other platform `sandboxPrefix` returns null (plain
  * spawn args, policy-only) — the loader emits a one-time startup notice
@@ -184,8 +186,9 @@ export function configureSandbox(opts: { readRoots?: string[]; allowLocalNetwork
  * Loopback networking for workspace-write children (default on, user decision
  * 2026-10-10): Gradle's client reaches its build daemon over 127.0.0.1 and
  * coordinates file locks over a loopback UDP socket, so a build cannot start
- * without it. Measured: with these lines a direct connect to an external IP is
- * still denied by the profile while 127.0.0.1 is reachable. Risk accepted: a
+ * without it. Loopback is separate from {@link NETWORK_OUTBOUND_ALLOWS}: with
+ * `sandbox.allowLocalNetwork: false` other hosts stay reachable while
+ * 127.0.0.1 is denied. Risk accepted: a
  * child can reach any service listening on localhost (databases, Docker's
  * API, a local proxy that itself has egress). Opt out with
  * `sandbox.allowLocalNetwork: false`.
@@ -195,6 +198,24 @@ const LOOPBACK_NETWORK_ALLOWS = [
   `(allow network-inbound (local ip "localhost:*"))`,
   `(allow network-outbound (remote ip "localhost:*"))`,
 ];
+
+/**
+ * Outbound network for workspace-write children (default on, user decision
+ * 2026-10-11): package installs, API calls and git over https just work.
+ * Scoped to IP destinations plus the mDNSResponder socket name resolution
+ * goes through — never an unscoped `network-outbound`, which also opens every
+ * Unix-domain socket (Docker's API socket is host root). Measured 2026-10-11:
+ * curl and Python reach https hosts; a Unix socket under $HOME is EPERM.
+ * Risk accepted: a child can send anything it can read — project files,
+ * `.env` included — to any host. strict-sandbox stays no-network.
+ */
+const NETWORK_OUTBOUND_ALLOWS = [
+  `(allow network-outbound (remote ip "*:*"))`,
+  `(allow network-outbound (remote unix-socket (path-literal "/private/var/run/mDNSResponder")))`,
+];
+
+/** `sandbox.allowLocalNetwork: false` with the network on: loopback stays shut. */
+const LOOPBACK_OUTBOUND_DENY = `(deny network-outbound (remote ip "localhost:*"))`;
 
 /**
  * JVM flags for a contained child, appended to any JAVA_TOOL_OPTIONS the user
@@ -457,7 +478,11 @@ export function buildSeatbeltProfile(
   for (const root of roots) {
     lines.push(`(allow file-write* (subpath "${sbplQuote(root)}"))`);
   }
-  if (level === "workspace-write" && allowLocalNetwork) lines.push(...LOOPBACK_NETWORK_ALLOWS);
+  if (level === "workspace-write") {
+    lines.push(...NETWORK_OUTBOUND_ALLOWS);
+    // Last matching rule wins: the loopback deny must follow the IP allow.
+    lines.push(...(allowLocalNetwork ? LOOPBACK_NETWORK_ALLOWS : [LOOPBACK_OUTBOUND_DENY]));
+  }
   // Toolchain credentials/startup config: after every read and write allow.
   const home = realpathNearestAncestor(homedir());
   if (isUsableHomeDeny(home)) {

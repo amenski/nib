@@ -105,24 +105,28 @@ describe("buildSeatbeltProfile", () => {
     expect(p).not.toContain("(allow file-write* (subpath");
   });
 
-  it("workspace-write: strict core plus the workspace write-set, outbound to loopback only", () => {
-    // Default (sandbox.allowLocalNetwork unset): Gradle's daemon needs
-    // 127.0.0.1, so loopback is allowed — but no outbound rule names any
-    // host other than localhost.
+  it("workspace-write: strict core plus the workspace write-set, outbound network over IP", () => {
+    // Network is on by default (user decision 2026-10-11): any IP, plus the one
+    // Unix socket name resolution needs. Never an unscoped network-outbound,
+    // which would also open every Unix socket — Docker's among them.
     const p = buildSeatbeltProfile("workspace-write", "/private/tmp/ws");
     expect(p).toContain('(allow file-write* (subpath "/private/tmp/ws"))');
-    expect(p).toContain('(allow network-outbound (remote ip "localhost:*"))');
-    expect(p.split("\n").filter((l) => l.includes("network-outbound"))).toEqual([
-      '(allow network-outbound (remote ip "localhost:*"))',
-    ]);
+    expect(p).toContain('(allow network-outbound (remote ip "*:*"))');
+    expect(p).toContain('(allow network-outbound (remote unix-socket (path-literal "/private/var/run/mDNSResponder")))');
+    expect(p.split("\n")).not.toContain("(allow network-outbound)");
     expect(p).toContain("(deny default)");
   });
 
-  it("workspace-write with allowLocalNetwork: false emits no network rule at all", () => {
+  it("workspace-write with allowLocalNetwork: false keeps the network but denies loopback", () => {
     configureSandbox({ allowLocalNetwork: false });
     try {
-      const p = buildSeatbeltProfile("workspace-write", "/private/tmp/ws");
-      expect(p).not.toContain("network-");
+      const lines = buildSeatbeltProfile("workspace-write", "/private/tmp/ws").split("\n");
+      expect(lines).toContain('(allow network-outbound (remote ip "*:*"))');
+      expect(lines).not.toContain('(allow network-bind (local ip "localhost:*"))');
+      // Last matching rule wins, so the loopback deny must follow the allow.
+      const allow = lines.indexOf('(allow network-outbound (remote ip "*:*"))');
+      const deny = lines.indexOf('(deny network-outbound (remote ip "localhost:*"))');
+      expect(deny).toBeGreaterThan(allow);
     } finally {
       configureSandbox({});
     }

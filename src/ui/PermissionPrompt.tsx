@@ -263,7 +263,7 @@ export function grantConsentLines(envelope: BashEnvelope): string[] {
       ? `Writable: ${roots.join(", ")} — not the machine's shared temporary directories, and not the package-manager cache.`
       : "Writable: nothing — this profile grants no write access at all.",
     "It can run project scripts and start child processes.",
-    "Direct network connections from those children are denied, except to services on this Mac (localhost) unless sandbox.allowLocalNetwork is off; macOS name resolution may still occur outside the child.",
+    "Those children have outbound network: they can connect to any host and send any file they can read. Services on this Mac (localhost) are reachable unless sandbox.allowLocalNetwork is off; Unix sockets such as Docker's are not.",
     "Reads are only partly contained: files outside your home directory can still be readable, toolchain folders in it (SDKMAN, Gradle, Maven, Cargo, pub, CocoaPods) are readable — including Gradle/Maven credentials files — and files inside the project, including .env, can be read by a script even though the file tools guard them.",
   ];
 

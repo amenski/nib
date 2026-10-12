@@ -234,7 +234,9 @@ secret-adjacent reads, session rules, audit) stays.
 The rules-first phase above is the *policy*; the OS sandbox is the
 *mechanism*. `sandbox: { enabled: true }` launches the agent's bash child
 processes under a Seatbelt profile per level — strict-sandbox: read-only fs +
-no network; workspace-write: write only workspace roots + no direct network.
+no network; workspace-write: write only workspace roots + outbound network
+over IP (on by default since 2026-10-11 — see
+docs/security-network-broker.md).
 Non-macOS platforms run policy-only with a startup notice. This closes the
 "bash can touch anything" gap from §7 without pretending a shell command has
 a trustworthy hostname-level authority.

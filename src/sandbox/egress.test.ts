@@ -133,9 +133,11 @@ function workspace(): { ws: string; cleanup: () => void } {
 
 describe("network egress (macOS) — release gate 4", () => {
   // Every probe here uses a LOOPBACK listener as its stand-in destination, and
-  // the default profile now allows loopback (sandbox.allowLocalNetwork, for
-  // Gradle's daemon). These rows therefore prove the opt-out mode; the
-  // default's external-IP denial is proven by the describe at the end.
+  // the default profile allows loopback (sandbox.allowLocalNetwork, for
+  // Gradle's daemon). These rows therefore prove the opt-out mode: loopback
+  // stays shut even though outbound network to other hosts is on by default
+  // since 2026-10-11 (proven by the describe at the end). The Unix-socket row
+  // holds in every mode — the network allow is IP-scoped.
   beforeAll(() => configureSandbox({ allowLocalNetwork: false }));
   afterAll(() => configureSandbox({}));
 
@@ -431,29 +433,53 @@ describe("network egress (macOS) — release gate 4", () => {
 });
 
 describe("network egress with loopback allowed (macOS, default)", () => {
-  // Default profile: loopback is reachable, every other destination is denied
-  // by Seatbelt itself. The errno is the signal here: the sandbox refuses the
-  // connect with EPERM before a packet is sent, whereas an uncontained connect
-  // to TEST-NET-1 (192.0.2.1, RFC 5737, never routed) times out or is
-  // unreachable — never EPERM. Nothing leaves the machine in either run.
+  // Default profile since 2026-10-11: outbound network is on. The errno is the
+  // signal: a Seatbelt refusal is EPERM before any packet is sent, so its
+  // absence means the send left the sandbox. The destination is TEST-NET-1
+  // (192.0.2.1, RFC 5737, never routed), so nothing reaches anything — TCP
+  // times out, UDP sends into the void.
   const PROBE = (proto: "tcp" | "udp") =>
     proto === "tcp"
       ? `node -e 'const s=require("net").connect({host:"192.0.2.1",port:80});s.setTimeout(2000,()=>{console.log("ERR TIMEOUT");process.exit(0)});s.on("connect",()=>{console.log("CONNECTED");process.exit(0)});s.on("error",e=>{console.log("ERR "+e.code);process.exit(0)})'`
       : `node -e 'const s=require("dgram").createSocket("udp4");s.send(Buffer.from("x"),53,"192.0.2.1",e=>{console.log(e?"ERR "+e.code:"SENT");process.exit(0)})'`;
 
   for (const proto of ["tcp", "udp"] as const) {
-    itOnDarwin(`a ${proto} send to a non-loopback address is refused by the sandbox (EPERM)`, async () => {
+    itOnDarwin(`a ${proto} send to a non-loopback address is not refused by the sandbox`, async () => {
       const f = workspace();
       try {
-        const control = await runShell(PROBE(proto), f.ws);
-        expect(control).not.toContain("ERR EPERM");
         const contained = await runShell(PROBE(proto), f.ws, "workspace-write");
-        expect(contained).toContain("ERR EPERM");
+        expect(contained).not.toContain("ERR EPERM");
+        expect(contained).toMatch(proto === "tcp" ? /ERR TIMEOUT|CONNECTED|ERR E(HOST|NET)UNREACH/ : /SENT|ERR E(HOST|NET)UNREACH/);
       } finally {
         f.cleanup();
       }
     }, 25_000);
   }
+
+  itOnDarwin("a Unix-domain daemon socket under $HOME stays unreachable with the network on", async () => {
+    // Measured 2026-10-11: an unscoped `(allow network-outbound)` lets this
+    // connect through (Unix sockets are network-outbound to Seatbelt), which is
+    // why the default allow is IP-scoped. Docker's API socket is the case.
+    const root = mkdtempSync(join(homedir(), ".nib-egress-"));
+    const socketPath = join(root, "daemon.sock");
+    let seen = 0;
+    const server = createNetServer();
+    server.on("connection", () => { seen += 1; });
+    const listening = new Promise<void>((resolve) => server.listen(socketPath, resolve));
+    const f = workspace();
+    try {
+      await listening;
+      const command =
+        `node -e 'const s=require("net").connect(${JSON.stringify(socketPath)});` +
+        `s.on("connect",()=>{console.log("UNIXREACHED");s.end()});` +
+        `s.on("error",e=>console.log("UNIXFAIL",e.code))'`;
+      await expectNoEgress(f.ws, command, () => seen, "UNIXREACHED", "UNIXFAIL");
+    } finally {
+      server.close();
+      f.cleanup();
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 60_000);
 
   itOnDarwin("a loopback listener is reachable (what Gradle's daemon needs)", async () => {
     const listener = await startListener();

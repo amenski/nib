@@ -929,9 +929,10 @@ readable, so repository credentials in them are exposed to sandboxed code,
 but they and Gradle init scripts are write-denied (no persistence through
 them); cargo/pub registry tokens stay read- and write-denied; (3) loopback
 networking is allowed by default (`sandbox.allowLocalNetwork`), so a child
-can reach any local service, including a local proxy that has egress —
-external addresses are still refused with EPERM before a packet is sent
-(`egress.test.ts`, "loopback allowed"). Java children get
+can reach any local service, including a local proxy that has egress.
+(Superseded 2026-10-11: outbound network to any IP host is now on by default
+for `workspace-write` — see docs/security-network-broker.md; Unix sockets
+stay denied, `egress.test.ts`, "loopback allowed".) Java children get
 `-Djava.net.preferIPv4Stack=true` because the dual-stack connect to
 127.0.0.1 was denied without it. The loopback-listener egress rows now run
 with `allowLocalNetwork: false`, so they prove the opt-out mode.

@@ -164,8 +164,8 @@ describe("grantConsentLines", () => {
     // Every limit the redesign doc requires the user to be told.
     expect(copy).toContain("Writable: /work/project, /tmp/nib-scratch");
     expect(copy).toContain("not the machine's shared temporary directories");
-    expect(copy).toContain("Direct network connections from those children are denied");
-    expect(copy).toContain("macOS name resolution may still occur outside the child");
+    expect(copy).toContain("Those children have outbound network");
+    expect(copy).toContain("Unix sockets such as Docker's are not");
     expect(copy).toContain("files outside your home directory can still be readable");
     expect(copy).toContain(".env");
     expect(copy).toContain("Denied and guarded commands still ask.");

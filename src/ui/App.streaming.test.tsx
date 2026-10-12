@@ -1083,3 +1083,59 @@ describe("a streamed sentence stays one line", () => {
     expect(frame).toContain("It froze before my rm.");
   });
 });
+
+describe("block spacing around tool calls (2026-10-12)", () => {
+  /** Rows strictly between the first row containing `a` and the next containing `b`. */
+  function between(frame: string, a: string, b: string): string[] {
+    const rows = frame.split("\n");
+    const i = rows.findIndex((r) => r.includes(a));
+    const j = rows.findIndex((r, k) => k > i && r.includes(b));
+    return rows.slice(i + 1, j);
+  }
+
+  async function run(script: (cb: any) => void): Promise<string> {
+    const ctx = makeCtx(async (_input: string, cb: any) => {
+      script(cb);
+      return { stopReason: "done", messages: [], newMessages: [] };
+    });
+    const inst = render(<App ctx={ctx} />);
+    mounted.push(inst);
+    inst.stdin.write("go");
+    await flush();
+    inst.stdin.write("\r");
+    await flush();
+    await flush();
+    return stripAnsi(inst.lastFrame() ?? "");
+  }
+
+  it("leaves exactly one blank row between an answer and the next tool call", async () => {
+    // The answer usually ends with its own blank line; onToolStart added a
+    // second one on top, so tool calls sat two rows below the text.
+    const frame = await run((cb) => {
+      cb.onText("Removing it, then verifying.\n\n");
+      cb.onToolStart("run_bash", { command: "echo hi" });
+      cb.onToolResult("run_bash", { content: "hi" });
+    });
+    expect(between(frame, "Removing it", "Bash(")).toEqual([""]);
+  });
+
+  it("leaves exactly one blank row between a tool's output and the answer after it", async () => {
+    // A one-line answer is held until the turn ends, and that flush path
+    // skipped the separator: the answer sat flush against the preview.
+    const frame = await run((cb) => {
+      cb.onToolStart("run_bash", { command: "echo hi" });
+      cb.onToolResult("run_bash", { content: "tool-out" });
+      cb.onText("Design is built.");
+    });
+    expect(between(frame, "tool-out", "Design is built")).toEqual([""]);
+  });
+
+  it("still one blank row when the answer after a tool streams in complete paragraphs", async () => {
+    const frame = await run((cb) => {
+      cb.onToolStart("run_bash", { command: "echo hi" });
+      cb.onToolResult("run_bash", { content: "tool-out" });
+      cb.onText("\nFirst paragraph.\n\nSecond.\n");
+    });
+    expect(between(frame, "tool-out", "First paragraph")).toEqual([""]);
+  });
+});

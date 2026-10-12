@@ -154,4 +154,26 @@ describe("buildReplayLines", () => {
     const lines = buildReplayLines(msgs, withColor);
     expect(lines.some((l) => l.includes(ansiFg(DARK_THEME.error)) && l.includes("nope"))).toBe(true);
   });
+
+  it("puts exactly one blank row between blocks, as the live view does", () => {
+    // Live (App.tsx blockGap/commitText): one blank between an answer and the
+    // next tool call, and between a tool's output and the answer after it.
+    const msgs: Message[] = [
+      { role: "user", content: "go" },
+      {
+        role: "assistant",
+        content: "Removing it.",
+        toolCalls: [{ id: "c1", name: "run_bash", arguments: { command: "echo hi" } }],
+      },
+      { role: "tool", toolCallId: "c1", content: "tool-out" },
+      { role: "assistant", content: "Design is built." },
+    ];
+    const rows = buildReplayLines(msgs, noColor).map(stripAnsi);
+    const at = (needle: string) => rows.findIndex((r) => r.includes(needle));
+    expect(rows.slice(at("Removing it.") + 1, at("Bash(echo hi)"))).toEqual([""]);
+    expect(rows.slice(at("tool-out") + 1, at("Design is built."))).toEqual([""]);
+    // Never two blank rows in a row anywhere.
+    expect(rows.some((r, i) => r === "" && rows[i + 1] === "")).toBe(false);
+  });
 });
+

@@ -63,6 +63,10 @@ export function buildReplayLines(messages: Message[], theme: ThemeContextValue):
   // Tool-call ids whose call header was suppressed (silent tool) — their result
   // message must be suppressed too, so the replay stays consistent.
   const silentCallIds = new Set<string>();
+  // One blank row between blocks, never two — the live view's blockGap rule.
+  const gap = (): void => {
+    if (out.length > 0 && out[out.length - 1] !== "") out.push("");
+  };
 
   for (const msg of messages) {
     if (msg.role === "system") {
@@ -93,6 +97,7 @@ export function buildReplayLines(messages: Message[], theme: ThemeContextValue):
 
     if (msg.role === "assistant") {
       if (msg.content && msg.content.trim() !== "") {
+        gap();
         out.push(...answerBlockLines(msg.content).map(tag));
       }
       for (const call of msg.toolCalls ?? []) {
@@ -100,7 +105,7 @@ export function buildReplayLines(messages: Message[], theme: ThemeContextValue):
           silentCallIds.add(call.id);
           continue;
         }
-        out.push("");
+        gap();
         // TOOL_HEADER_TAG, exactly as the live path tags it (App.tsx's
         // onToolStart), so a replayed header is not run through the markdown
         // renderer: arguments are shell/path text where a marker is literal.

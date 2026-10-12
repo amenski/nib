@@ -953,7 +953,11 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
         resumedTodosRef.current = null;
       }
 
+      // Whether the last committed row is blank, so a block gap is never
+      // doubled (see blockGap).
+      let lastBlank = false;
       const scheduleOutput = (line: string) => {
+        lastBlank = line === "";
         if (rawMode.mode === "raw") {
           process.stdout.write(line + "\n");
         } else {
@@ -1037,7 +1041,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
         // the line it belongs to.
         streamStateRef.current = next;
         for (const l of emitted) {
-          scheduleOutput(withBullet(l));
+          commitText(withBullet(l));
           // Per line, not per batch. One chunk often commits a paragraph AND
           // the blank line that ends it (stream-blocks passes the blank
           // through for spacing); flipping only after the loop bulleted every
@@ -1058,7 +1062,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           streamStateRef.current = next;
           if (emitted.length > 0) {
             for (const l of emitted) {
-              scheduleOutput(withBullet(l));
+              commitText(withBullet(l));
               if (l !== "") atBlockStart = false;
             }
             // The committed lines are exactly what the active-line preview was
@@ -1074,6 +1078,25 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
 
       let needTextSeparator = false;
       let textBuffer = "";
+
+      // One blank row between blocks (answer text, tool call), never two: the
+      // answer usually ends with its own blank line, which the tool header's
+      // gap used to stack on top of.
+      const blockGap = () => {
+        if (!lastBlank) scheduleOutput("");
+      };
+      // Every committed answer line goes through here, so the gap after a
+      // tool's output lands before the first text row on any path. It used to
+      // be emitted from onText only once a whole paragraph had committed, so a
+      // one-line answer — held until the turn-end flush — got no gap at all.
+      const commitText = (line: string) => {
+        if (line === "" || needTextSeparator) {
+          needTextSeparator = false;
+          blockGap();
+          if (line === "") return;
+        }
+        scheduleOutput(line);
+      };
 
       // The echo is a marker that reasoning happened, not a transcript of it —
       // the full text is already in the model's context and is not addressed to
@@ -1118,14 +1141,6 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           } else {
             setActiveLineBoth("");
           }
-          if (
-            needTextSeparator &&
-            streamStateRef.current.buffer === "" &&
-            streamStateRef.current.pending.length === 0
-          ) {
-            needTextSeparator = false;
-            scheduleOutput("");
-          }
           textBuffer = "";
         },
         onToolStart: (name: string, args: Record<string, unknown>) => {
@@ -1133,11 +1148,11 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           // Commit any held paragraph — its lines are complete, only their
           // closing marker/continuation may have been pending.
           flushStream();
-          if (activeLineRef.current) scheduleOutput(activeLineRef.current);
+          if (activeLineRef.current) commitText(activeLineRef.current);
           setActiveLineBoth("");
           textBuffer = "";
           atBlockStart = true; // next answer block re-bullets after this tool call
-          scheduleOutput("");
+          blockGap();
           const header = TOOL_HEADER_TAG + formatStyledToolHeader(theme, name, args);
           scheduleOutput(header);
         },

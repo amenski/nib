@@ -16,9 +16,9 @@ checkpoints, skills, and MCP — without a hosted service or telemetry.
 
 Requires Node.js 20+ and Git.
 
-> **Distribution:** package-manager distribution begins with v0.5.1. If the
-> relevant npm registry or Homebrew tap artifact is not yet available, install
-> from source instead.
+> **Distribution:** npm and Homebrew carry every release from v0.5.1. The
+> Homebrew formula can trail a new npm release briefly; install from source if
+> you need a version it does not have yet.
 
 Install with npm:
 
@@ -116,6 +116,7 @@ current built-ins. See the [mode specification](./docs/mode-spec.md).
 | `/help` | full command list |
 | `/model`, `/effort` | pick model · set reasoning effort |
 | `/new`, `/resume`, `/continue` | session management |
+| `/clear`, `/compact` | clear the conversation and screen · summarize older turns to free context |
 | `/undo` | rewind code and/or conversation |
 | `/permissions` | this session's permission history |
 | `/skills`, `/mcp`, `/tasks` | list skills · inspect MCP servers · inspect/stop sub-agent tasks |
@@ -185,6 +186,13 @@ Full schema: [`docs/config-spec.md`](./docs/config-spec.md).
   own instructions and tool groups.
 - **Explicit permissions.** Allow, ask, or deny by tool and pattern. Every
   decision is inspectable through `/permissions`.
+- **OS sandbox for commands (macOS).** Bash, background jobs, MCP servers and
+  hooks run under a Seatbelt profile: writes stay in the workspace, the
+  session temp dir and toolchain caches; reads under `$HOME` are limited to the
+  workspace; outbound network is allowed (Unix sockets such as Docker's are
+  not). Because of that boundary, ordinary sandboxed Bash runs without a
+  prompt (`sandbox.autoAllowBash`); background jobs and guarded commands still
+  ask.
 - **Recoverable edits.** Interactive edits are checkpointed in a shadow Git
   repo; `/undo` can rewind code, conversation, or both.
 - **Durable sessions.** Conversations are append-only JSONL with automatic
@@ -194,13 +202,15 @@ Full schema: [`docs/config-spec.md`](./docs/config-spec.md).
   results stay available to the model; the complete transcript remains in the
   local session log.
 - **Skills, MCP, and sub-agents.** Load [Agent Skills](https://agentskills.io),
-  connect stdio MCP servers, and delegate bounded work through `new_task`.
+  add stdio MCP servers with `nib mcp add`, and delegate bounded work through
+  `new_task`.
 - **Safe file coordination.** Nib tracks when it last read a file and refuses
   to overwrite changes made outside the agent.
 - **Optional web access.** Keyless Bing RSS search and HTTPS fetch are
   permission-gated and marked as untrusted input; arbitrary fetch targets are
   also SSRF-checked. A local SearXNG instance can provide richer results.
-- **Terminal-native visibility.** Streaming output, live themes, token/cost
+- **Terminal-native visibility.** A streaming, Claude Code-style transcript
+  (readable tool headers, collapsed results, a live todo list), token/cost
   reporting, diagnostics, task status, and opt-in redacted debug logs are all
   available without leaving the TUI.
 
@@ -303,8 +313,25 @@ before enabling auto-approve on code you didn't write.
 
 ### How do I configure MCP?
 
-Add `mcpServers` to settings.json (see Configuration above), then use `/mcp` to
-inspect connected servers. See [`docs/config-spec.md`](./docs/config-spec.md).
+Add a server from the command line, restart Nib, then run `/mcp` to check it
+connected:
+
+```bash
+nib mcp add github --env GITHUB_TOKEN=... -- npx -y @modelcontextprotocol/server-github
+nib mcp list
+nib mcp remove github
+```
+
+Servers run inside Nib's sandbox. Browser servers cannot: the sandbox blocks
+the macOS services a browser needs. Add those with `--no-sandbox`, which runs
+only that server outside it:
+
+```bash
+nib mcp add playwright --no-sandbox -- npx @playwright/mcp@latest
+```
+
+`nib mcp` writes `mcpServers` in `~/.nib/settings.json`; you can also edit it
+by hand. See [`docs/config-spec.md`](./docs/config-spec.md).
 
 ### How do I get notified when a task completes?
 

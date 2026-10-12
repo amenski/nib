@@ -72,7 +72,7 @@ import UsageView from "./views/UsageView.js";
 import ResumeChooser from "./views/ResumeChooser.js";
 import { buildReplayLines } from "./core/replay.js";
 import { opensModal } from "./core/modal-commands.js";
-import { parseSkillLoadCommand, isSkillAlreadyLoaded, buildSkillLoadMessage } from "./core/skill-load.js";
+import { parseSkillLoadCommand, isSkillAlreadyLoaded, buildSkillLoadMessage, SKILL_START_PROMPT } from "./core/skill-load.js";
 import { findCommand, expandCommand } from "../commands/index.js";
 import { toolResultForHistory } from "../agent.js";
 import type { Message } from "../types.js";
@@ -1574,6 +1574,9 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
     // Record for ↑/↓ recall before any early return, so queued and modal
     // submissions land in history too — the user typed them either way.
     recordPromptHistory(command ? `/${command}` : text);
+    // A submit consumes any pending draft. Left set, every modal's unmount and
+    // remount of PromptInput re-applied it (fresh nonce ref), refilling the input.
+    setPromptDraft(null);
     if (command) {
       if (command === "exit") { handleExit(); return; }
       if (turnActiveRef.current && !opensModal(command)) {
@@ -1630,8 +1633,9 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
   function handleSlashCommand(trimmed: string) {
     // Echo the command into scrollback as a lightweight dim line, so there's a
     // visible record of what was typed. Commands make no model call, so this is
-    // never counted toward context usage.
-    pushOutput(COMMAND_ECHO_TAG + trimmed);
+    // never counted toward context usage. `/skills` is skipped: it only opens
+    // the picker, and the pick echoes its own `/skill <name>` line.
+    if (trimmed !== "/skills") pushOutput(COMMAND_ECHO_TAG + trimmed);
     if (trimmed === "/exit") {
       handleExit();
       return;
@@ -1748,13 +1752,10 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           void runAgentTurn(skill.text);
           return;
         }
-        // Loaded, and nothing more. `/skill <name>` used to start a turn with a
-        // synthetic "apply the skill you just loaded" prompt, which began work
-        // the user had not asked for (onramp 2026-10-10: it started the task
-        // loop on a guessed tracker file 11 s before the real instruction).
-        pushOutput(theme.fg(theme.theme.textDim, `Skill ${skill.name} loaded — your next message will use it.`));
-        // The gate is open again: keep any queue the claim held back moving.
-        drainQueueRef.current();
+        // Bare `/skill <name>` runs the skill now, as Claude Code does. The
+        // hidden prompt tells the model to ask for missing input rather than
+        // guess (see SKILL_START_PROMPT); the command echo is the record.
+        void runAgentTurn(SKILL_START_PROMPT, undefined, { echo: false });
       });
       return;
     }

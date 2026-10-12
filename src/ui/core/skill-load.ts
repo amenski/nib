@@ -22,6 +22,15 @@ export function buildSkillLoadMessage(name: string, content: string): Message {
 }
 
 /**
+ * Hidden turn prompt for a bare `/skill <name>`: run the skill now (Claude Code
+ * behaviour). The old "apply the skill" prompt let the model guess missing
+ * inputs — in onramp it began the task loop on a guessed tracker file — so
+ * this one tells it to ask instead.
+ */
+export const SKILL_START_PROMPT =
+  "Start the skill you just loaded. If it needs input you don't have (a task, file, or target), ask me for it instead of guessing.";
+
+/**
  * The skill name (and optional instruction) in a `/skill <name> [text]`
  * command, or null when `input` is not that form. Requires whitespace after
  * `skill`, so `/skills` (the list command) and a bare `/skill` never match.

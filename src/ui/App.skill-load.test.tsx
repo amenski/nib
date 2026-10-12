@@ -6,7 +6,7 @@ import type { AppContext } from "./types.js";
 import { __resetInputWireForTests } from "./hooks/useTerminalInput.js";
 import { stripAnsi } from "./test-helpers.js";
 import { todoStore } from "../tools/todo.js";
-import { buildSkillLoadMessage, skillLoadMarker } from "./core/skill-load.js";
+import { buildSkillLoadMessage, skillLoadMarker, SKILL_START_PROMPT } from "./core/skill-load.js";
 
 // App's promptHistory initializer reads ~/.nib at mount; point it at a
 // throwaway implementation so these tests never touch real history.
@@ -103,6 +103,12 @@ function makeHarness(
 }
 
 const flush = () => new Promise((r) => setTimeout(r, 60));
+// Poll instead of a fixed sleep: under full-suite load a 60 ms beat can miss
+// the picker's mount or the draft landing.
+async function until(check: () => boolean, ms = 3000): Promise<void> {
+  const deadline = Date.now() + ms;
+  while (!check() && Date.now() < deadline) await new Promise((r) => setTimeout(r, 20));
+}
 
 const mounted: Array<{ unmount: () => void }> = [];
 afterEach(() => {
@@ -122,8 +128,8 @@ async function typeCommand(inst: ReturnType<typeof render>, text: string): Promi
   await flush();
 }
 
-describe("/skill loads, and runs only with the user's words", () => {
-  it("does not start a turn for a bare /skill <name>", async () => {
+describe("/skill loads and runs", () => {
+  it("runs a bare /skill <name> straight away (Claude Code behaviour)", async () => {
     const h = makeHarness(["update-docs"]);
     const inst = render(<App ctx={h.ctx} />);
     mounted.push(inst);
@@ -131,15 +137,15 @@ describe("/skill loads, and runs only with the user's words", () => {
     await typeCommand(inst, "/skill update-docs");
 
     expect(h.slashCalls).toEqual(["/skill update-docs"]);
-    // The whole point: loading is not an instruction. It used to start a turn
-    // with a synthetic "apply the skill you just loaded" prompt, which began
-    // work the user had not asked for.
-    expect(h.runAgentTurnCore).not.toHaveBeenCalled();
-    // The skill IS loaded — in the history, ready for the next message.
-    expect(h.ctx.mutable.conversationHistory[0].content).toContain("update-docs BODY");
-    expect(stripAnsi(inst.lastFrame() ?? "")).toContain(
-      "Skill update-docs loaded — your next message will use it.",
-    );
+    // Enter starts the skill; it does not wait for another message. The hidden
+    // prompt tells the model to ask for missing input, not guess it.
+    expect(h.runAgentTurnCore).toHaveBeenCalledTimes(1);
+    expect(h.runAgentTurnCore.mock.calls[0][0]).toBe(SKILL_START_PROMPT);
+    expect(h.historyAtTurn()[0].content).toContain("update-docs BODY");
+    const frame = stripAnsi(inst.lastFrame() ?? "");
+    expect(frame).not.toContain("your next message will use it");
+    // The hidden prompt is not echoed as if the user typed it.
+    expect(frame).not.toContain("Start the skill you just loaded");
   });
 
   it("runs the trailing instruction as the turn prompt", async () => {
@@ -180,7 +186,7 @@ describe("/skill loads, and runs only with the user's words", () => {
     expect(h.runAgentTurnCore).not.toHaveBeenCalled();
   });
 
-  it("picking a skill from /skills fills the input and waits for Enter", async () => {
+  it("picking a skill from /skills fills the input; Enter runs it", async () => {
     const h = makeHarness(["update-docs"]);
     const inst = render(<App ctx={h.ctx} />);
     mounted.push(inst);
@@ -189,10 +195,10 @@ describe("/skill loads, and runs only with the user's words", () => {
     inst.stdin.write("/skills");
     await flush();
     inst.stdin.write("\r");
-    await flush();
+    await until(() => stripAnsi(inst.lastFrame() ?? "").includes("[esc] close"));
+    await flush(); // drawn is not yet listening: let the picker's key handler attach
     inst.stdin.write("\r"); // select "update-docs"
-    await flush();
-    await flush();
+    await until(() => stripAnsi(inst.lastFrame() ?? "").includes("❯ /skill update-docs"));
 
     // Nothing has loaded yet: no slash call, no turn, no history entry.
     expect(h.slashCalls).toEqual([]);
@@ -204,15 +210,35 @@ describe("/skill loads, and runs only with the user's words", () => {
     expect(frame).toContain("/skill update-docs");
     expect(frame).not.toContain("Skill update-docs loaded");
 
-    // Enter runs the unchanged typed path: bare name loads, no turn starts.
+    // Enter runs the typed path: the skill loads and starts at once.
     inst.stdin.write("\r");
-    await flush();
-    await flush();
+    await until(() => h.runAgentTurnCore.mock.calls.length > 0);
     await flush();
 
     expect(h.slashCalls).toEqual(["/skill update-docs"]);
-    expect(h.runAgentTurnCore).not.toHaveBeenCalled();
-    expect(h.ctx.mutable.conversationHistory[0].content).toContain("update-docs BODY");
+    expect(h.runAgentTurnCore).toHaveBeenCalledTimes(1);
+    expect(h.historyAtTurn()[0].content).toContain("update-docs BODY");
+
+    // Opening the picker leaves no `› /skills` line: the pick's own
+    // `› /skill update-docs` echo is the record.
+    const transcript = stripAnsi(inst.lastFrame() ?? "");
+    expect(transcript).not.toContain("› /skills");
+    expect(transcript).toContain("› /skill update-docs");
+
+    // Submitting consumes the draft. Any modal unmounts PromptInput, and the
+    // remount used to re-apply the still-set draft, so `/skill update-docs`
+    // came back after every permission ask or overlay.
+    inst.stdin.write("/skills");
+    await flush();
+    inst.stdin.write("\r");
+    await until(() => stripAnsi(inst.lastFrame() ?? "").includes("[esc] close"));
+    await flush(); // drawn is not yet listening: let the picker's key handler attach
+    inst.stdin.write("\x1b"); // close the picker: PromptInput remounts
+    await until(() => !stripAnsi(inst.lastFrame() ?? "").includes("[esc] close"));
+    await flush();
+    const rows = stripAnsi(inst.lastFrame() ?? "").split("\n");
+    const inputRow = rows.filter((r) => r.startsWith("❯")).pop()!;
+    expect(inputRow).not.toContain("/skill");
   });
 
 });
@@ -305,8 +331,10 @@ describe("mid-turn /skill", () => {
     inst.stdin.write("/skills");
     await flush();
     inst.stdin.write("\r");
-    await flush();
+    await until(() => stripAnsi(inst.lastFrame() ?? "").includes("[esc] close"));
+    await flush(); // drawn is not yet listening: let the picker's key handler attach
     inst.stdin.write("\r"); // Enter on the highlighted skill -> fills the input
+    await until(() => stripAnsi(inst.lastFrame() ?? "").includes("❯ /skill update-docs"));
     await flush();
     inst.stdin.write("\r"); // Enter on the input -> submits the filled command
     const deadline = Date.now() + 5000;

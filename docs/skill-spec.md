@@ -108,20 +108,23 @@ trusted }` — never the content.
 
 | Command | Behavior |
 |---------|----------|
-| `/skills` | List available skills: name, description, source path; picking one loads it |
-| `/skill <name> [text]` | Load a skill; with `text`, run that text as the turn's prompt |
+| `/skills` | List available skills: name, description, source path; picking one fills the input with `/skill <name> ` |
+| `/skill <name> [text]` | Load a skill and run it; with `text`, that text is the turn's prompt |
 
 `/skill` pushes the skill body into history as a user message
-(`buildSkillLoadMessage`, marker `[skill: <name>]`) and stops there. The turn
-is the user's: `/skill <name> implement phase 1` runs "implement phase 1" as
-the prompt, echoed like any submission. A bare `/skill <name>` starts no turn
-and says so — `Skill <name> loaded — your next message will use it.` An
-unknown name, or a skill already loaded this conversation, loads nothing.
+(`buildSkillLoadMessage`, marker `[skill: <name>]`) and starts a turn, as
+Claude Code does. `/skill <name> implement phase 1` runs "implement phase 1" as
+the prompt, echoed like any submission. A bare `/skill <name>` runs the hidden
+`SKILL_START_PROMPT`, which tells the model to ask for missing input (a task,
+file or target) instead of guessing. An unknown name, or a skill already loaded
+this conversation, loads nothing. Opening `/skills` leaves no echo line; the
+pick's `/skill <name>` echo is the record.
 
-It used to start a turn on its own with a synthetic `SKILL_APPLY_PROMPT`
-("Apply the skill you just loaded"), which began work the user had not asked
-for: in onramp on 2026-10-10 that hidden turn started the task loop on a
-guessed tracker file 11 s before the user's real instruction arrived.
+An earlier hidden prompt, `SKILL_APPLY_PROMPT` ("Apply the skill you just
+loaded"), let the model guess: in onramp on 2026-10-10 it started the task loop
+on a guessed tracker file 11 s before the user's real instruction arrived. A
+bare load then started no turn at all, until 2026-10-11, when it changed back to
+running at once with the ask-don't-guess prompt.
 
 **During a running turn**, `/skill` is injected rather than queued or refused:
 the payload (`buildSkillLoadMessage` body + any `text`) goes into the steering

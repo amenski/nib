@@ -247,8 +247,8 @@ async function main() {
   // Folder-level "fast path" trust (config/folder-trust.ts): runs BEFORE the
   // three per-artifact gates below. A "yes" bulk-applies to the skill/
   // settings/hooks trust stores for exactly what's present right now, so none
-  // of the three gates below prompt for it; a "no" (or nothing gated at all)
-  // falls through to exactly today's per-artifact behavior. The theme config
+  // of the three gates below prompt for it; a "no" exits. With nothing gated
+  // the per-artifact gates run as before. The theme config
   // isn't resolved yet at this point (it comes from configResult.config,
   // which is what's being asked about), so this uses the same default the
   // pre-mount settings prompt falls back to before that value exists.
@@ -263,12 +263,14 @@ async function main() {
         folderTrust.status,
         { mode: configResult.config.theme?.mode, name: configResult.config.theme?.name, overrides: configResult.config.theme?.overrides },
       );
-      if (trusted) {
-        trustFolder(projectDirForTrust, folderSummary);
+      if (!trusted) {
+        // "No" exits, as in Claude Code. It used to fall through to one
+        // prompt per artifact — in `~` that was a prompt per skill, and Esc
+        // on each only skipped that one.
+        process.stdout.write("Folder not trusted — exiting. Run nib from a folder you trust.\n");
+        process.exit(0);
       }
-      // "no" falls through — the three gates below run their normal
-      // per-artifact prompts/strip/skip logic, completely unaware this ask
-      // ever happened.
+      trustFolder(projectDirForTrust, folderSummary);
     }
   }
 

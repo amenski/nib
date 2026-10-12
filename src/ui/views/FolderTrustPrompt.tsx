@@ -9,9 +9,10 @@ import { ansi256 } from "../theme.js";
  * single bulk-approval question shown once per project dir, on top of the
  * three existing per-artifact TOFU gates (skills/settings/hooks). y = trust
  * this folder AND every artifact listed below, forever, as of right now
- * (persisted, and bulk-applied to the three underlying trust stores); n =
- * decline, falling back to exactly today's per-artifact prompts/strip/skip
- * behavior. Same Promise+modal pattern as SettingsTrustPrompt/SkillTrustPrompt
+ * (persisted, and bulk-applied to the three underlying trust stores); n or
+ * Esc = exit nib (Claude Code's shape). It used to fall back to one prompt
+ * per artifact, which in a folder like `~` meant a prompt per skill with no
+ * way out. Same Promise+modal pattern as SettingsTrustPrompt/SkillTrustPrompt
  * /HookTrustPrompt — this is not a replacement for those, only a convenience
  * layered in front of them.
  */
@@ -74,10 +75,10 @@ export default function FolderTrustPrompt({ projectDir, summary, status, resolve
           {cursor === 0 ? "> " : "  "}Yes — trust this folder
         </Text>
         <Text color={cursor === 1 ? accentColor : undefined}>
-          {cursor === 1 ? "> " : "  "}No — ask me per item instead
+          {cursor === 1 ? "> " : "  "}No — exit
         </Text>
       </Box>
-      <Text color={theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined}>↑↓ navigate · Enter choose · y/n · Esc cancel</Text>
+      <Text color={theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined}>↑↓ navigate · Enter choose · y/n · Esc exit</Text>
     </Box>
   );
 }

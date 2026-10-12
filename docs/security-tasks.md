@@ -375,6 +375,8 @@ exactly the artifacts present in the project **right now** — using each
 gate's own key derivation (realpath + full sha256 for skills/settings, the
 content-hashed `hookTrustKey` for hooks). A "yes" is fully equivalent to
 answering "yes" to every pending per-artifact prompt individually.
+A "no" (or Esc) exits nib (2026-10-12); it used to fall back to one prompt
+per artifact, which in `~` meant a prompt per skill with no way out.
 
 ### Deliberate limits (do not "fix" these)
 

@@ -7,6 +7,28 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **`nib mcp add | list | remove`.** Add an MCP server without editing JSON:
+  `nib mcp add playwright --no-sandbox -- npx @playwright/mcp@latest`.
+  Writes the global `~/.nib/settings.json`.
+- **Per-server `"sandbox": false` for MCP servers** (global settings only).
+  Browser servers such as Playwright cannot start inside nib's sandbox; this
+  runs just that server outside it while Bash and other servers stay
+  sandboxed.
+
+### Changed
+
+- **`/clear` clears the screen too**, not only the conversation.
+- **Tool headers use readable names** (`Update Todos`, `Fetch`,
+  `github · create_issue`) instead of internal ones like `update_todo_list`.
+
+### Fixed
+
+- **`/compact` shows progress** in the hint bar while it summarizes.
+- **The todo list and queued messages get a blank row** above them instead of
+  touching the last tool output.
+
 ## [0.6.0] — 2026-10-11
 
 ### Added

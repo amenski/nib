@@ -910,7 +910,9 @@ describe("sub-agent Bash grant and ask origin (2026-10-10)", () => {
     return { runBash, askUser };
   }
 
-  it("runs an ordinary command through the parent's automatic grant without prompting", async () => {
+  // Session grants exist only where Seatbelt does (isSandboxedLevel is
+  // darwin-only); elsewhere the call is asked, which is the fail-closed answer.
+  it.skipIf(process.platform !== "darwin")("runs an ordinary command through the parent's automatic grant without prompting", async () => {
     const { runBash, askUser } = await delegate("git status", { getBashEnvelope: () => envelope(true) });
 
     expect(runBash).toHaveBeenCalled();

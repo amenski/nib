@@ -249,7 +249,7 @@ describe("todo panel", () => {
     expect(frame).toContain("☑ UI row in the pro gate");
     // The call header stays (visible marker), but the redundant result echo —
     // which would print the whole list dimmed — is suppressed.
-    expect(frame).toContain("⏺ update_todo_list");
+    expect(frame).toContain("⏺ Update Todos");
     expect(frame).not.toContain("Todo list updated");
 
     // A check-off mid-turn re-renders the panel live.

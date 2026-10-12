@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatToolResultPreview, describeToolCall, formatStyledToolHeader, PREVIEW_LINE_MAX } from "./ToolCallFormatter.js";
+import { formatToolResultPreview, describeToolCall, formatStyledToolHeader, formatToolCallHeader, toolDisplayName, PREVIEW_LINE_MAX } from "./ToolCallFormatter.js";
 import { wrapUntrusted } from "../tools/untrusted-content.js";
 
 describe("formatToolResultPreview", () => {
@@ -109,5 +109,33 @@ describe("styled tool header (2026-10-11)", () => {
   it("emits no escapes when colour is disabled", () => {
     const plain = formatStyledToolHeader({ ...theme, colorEnabled: false }, "run_bash", { command: "ls" });
     expect(plain).toBe("⏺ Bash(ls)");
+  });
+});
+
+describe("tool display names (2026-10-12)", () => {
+  it("maps the newer tools to readable names", () => {
+    expect(toolDisplayName("update_todo_list")).toBe("Update Todos");
+    expect(toolDisplayName("run_bash_background")).toBe("Background");
+    expect(toolDisplayName("check_job")).toBe("JobStatus");
+    expect(toolDisplayName("kill_job")).toBe("KillJob");
+    expect(toolDisplayName("web_fetch")).toBe("Fetch");
+    expect(toolDisplayName("web_search")).toBe("WebSearch");
+    expect(toolDisplayName("view_image")).toBe("ViewImage");
+    expect(toolDisplayName("switch_mode")).toBe("Mode");
+    expect(toolDisplayName("attempt_completion")).toBe("Done");
+    expect(toolDisplayName("ask_user_question")).toBe("Ask");
+  });
+
+  it("shows an MCP tool as server · tool", () => {
+    expect(toolDisplayName("mcp__github__create_issue")).toBe("github · create_issue");
+  });
+
+  it("never shows an unknown snake_case name raw", () => {
+    expect(toolDisplayName("foo_bar")).toBe("FooBar");
+  });
+
+  it("keeps the header free of the raw name", () => {
+    expect(formatToolCallHeader("update_todo_list", { todos: [] })).toBe("⏺ Update Todos");
+    expect(formatToolCallHeader("run_bash_background", { command: "npm run dev" })).toBe("⏺ Background(npm run dev)");
   });
 });

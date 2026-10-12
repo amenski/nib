@@ -24,12 +24,30 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
   apply_patch: "Patch",
   load_skill: "Skill",
   new_task: "Task",
-  ask_user_question: "AskUserQuestion",
+  ask_user_question: "Ask",
+  update_todo_list: "Update Todos",
+  run_bash_background: "Background",
+  check_job: "JobStatus",
+  kill_job: "KillJob",
+  web_fetch: "Fetch",
+  web_search: "WebSearch",
+  view_image: "ViewImage",
+  switch_mode: "Mode",
+  attempt_completion: "Done",
 };
 
-/** Human-friendly display name for a ⏺ Tool(args) header. */
+/**
+ * Human-friendly display name for a ⏺ Tool(args) header. Names outside the
+ * table never show raw: an MCP tool (`mcp__<server>__<tool>`, see
+ * src/mcp/connector.ts) reads `server · tool`, and any other snake_case name
+ * becomes PascalCase.
+ */
 export function toolDisplayName(name: string): string {
-  return TOOL_DISPLAY_NAMES[name] ?? name;
+  const known = TOOL_DISPLAY_NAMES[name];
+  if (known) return known;
+  const mcp = /^mcp__(.+?)__(.+)$/.exec(name);
+  if (mcp) return `${mcp[1]} · ${mcp[2]}`;
+  return name.replace(/(?:^|_)([a-z0-9])/g, (_, c: string) => c.toUpperCase());
 }
 
 /** The three parts of a tool-call header, before any colouring. */

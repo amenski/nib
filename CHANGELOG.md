@@ -16,9 +16,8 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   more, so partial reads no longer go through `sed -n` in `run_bash`.
 - **Toolchains and Gradle run inside the sandbox.** Toolchain installs under
   `$HOME` are readable and their build caches writable. Loopback networking is
-  allowed by default (`sandbox.allowLocalNetwork`) for Gradle's daemon;
-  external addresses stay refused. New global-only settings:
-  `sandbox.readRoots`, `sandbox.allowLocalNetwork`.
+  allowed by default (`sandbox.allowLocalNetwork`) for Gradle's daemon. New
+  global-only settings: `sandbox.readRoots`, `sandbox.allowLocalNetwork`.
 - **Sandbox refusals are named.** Bash tool descriptions say what the sandbox
   refuses, and a refused result gets a note appended outside the untrusted
   wrapper.
@@ -31,15 +30,27 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   fetched at most once a day and cached in `~/.nib/provider-models.json`.
 - **`compaction.maxTokens`** (optional, integer >= 10000) caps the compaction
   trigger below `contextWindow x threshold`.
-- **Skills and model switching respect the running turn.** A bare `/skill <name>`
-  loads the skill and waits for your next message; `/skill <name> <text>` runs
-  the text as the prompt.
+- **Skills and model switching respect the running turn.** `/skill <name>`
+  loads the skill and starts it at once, asking for any missing input rather
+  than guessing; `/skill <name> <text>` runs the text as the prompt. Picking
+  from `/skills` fills the input with `/skill <name> ` and waits for Enter.
 - **Transcript look closer to Claude Code's:** theme-driven diff backgrounds,
   a prompt ruled above and below, plain tool headers, heading and list weights,
-  and code blocks without a banner.
+  code blocks without a banner, one blank row between blocks, and the model
+  name in the status bar beside `ctx`. The prompt box spans the full width.
 
 ### Changed
 
+- **Sandboxed commands have outbound network by default.** Under
+  `workspace-write`, package installs, API calls and git over https work with
+  no prompt. Connections are IP-scoped: Unix sockets such as Docker's stay
+  unreachable, and the write and `$HOME` read boundaries are unchanged.
+  Accepted risk: a sandboxed command can send any file it can read, `.env`
+  included, to any host. `sandbox.allowLocalNetwork: false` now denies
+  loopback only; `strict-sandbox` remains the no-network level.
+- **One built-in theme.** Nib ships a single dark theme modelled on Claude
+  Code's; `/theme` is hidden. Tool names, output and the answer bullet use
+  colours that read on light terminals too.
 - **Sandboxed Bash is auto-allowed by default.** Eligible foreground calls under
   an active sandbox profile no longer prompt (`sandbox.autoAllowBash`, global
   only; set `false` to restore the prompt). Guarded, denied, background,
@@ -69,6 +80,11 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   tables fit the gutter; resumed transcripts regain their gutter; the context
   meter refreshes after a resume.
 - The read-only project root is walked in one coordinate space for permissions.
+- Tool-result previews keep their indentation, live and on resume.
+- A resumed session shows its compaction summary dimmed, not as a highlighted
+  prompt; echoed prompts no longer carry a grey background fill.
+- A picked `/skill` command no longer reappears in the input after a dialog
+  closes.
 - The release workflow packs the tarball correctly and can be rerun to verify
   an already-published version.
 

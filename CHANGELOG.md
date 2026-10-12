@@ -7,6 +7,8 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-10-12
+
 ### Added
 
 - **`nib mcp add | list | remove`.** Add an MCP server without editing JSON:
@@ -16,25 +18,6 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Browser servers such as Playwright cannot start inside nib's sandbox; this
   runs just that server outside it while Bash and other servers stay
   sandboxed.
-
-### Changed
-
-- **`/clear` clears the screen too**, not only the conversation.
-- **Tool headers use readable names** (`Update Todos`, `Fetch`,
-  `github · create_issue`) instead of internal ones like `update_todo_list`.
-
-### Fixed
-
-- **`/compact` shows progress** in the hint bar while it summarizes.
-- **The todo list and queued messages get a blank row** above them instead of
-  touching the last tool output.
-- **MCP tools reach the model in Code mode.** Servers connected, but no
-  built-in mode granted the `mcp` tool group, so their tools were filtered
-  out of every request.
-
-## [0.6.0] — 2026-10-11
-
-### Added
 
 - **`read_file` reads a line range.** `offset` (1-based) and `limit` (max 2000)
   read part of a file with real line numbers and a footer saying how to read
@@ -66,6 +49,10 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **`/clear` clears the screen too**, not only the conversation.
+- **Tool headers use readable names** (`Update Todos`, `Fetch`,
+  `github · create_issue`) instead of internal ones like `update_todo_list`.
+
 - **Sandboxed commands have outbound network by default.** Under
   `workspace-write`, package installs, API calls and git over https work with
   no prompt. Connections are IP-scoped: Unix sockets such as Docker's stay
@@ -93,6 +80,18 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   appended rather than merged so the cached prefix survives turns.
 
 ### Fixed
+
+- **`/compact` shows progress** in the hint bar while it summarizes.
+- **The todo list and queued messages get a blank row** above them instead of
+  touching the last tool output.
+- **MCP tools reach the model in Code mode.** Servers connected, but no
+  built-in mode granted the `mcp` tool group, so their tools were filtered
+  out of every request.
+- **A half-typed message survives a permission prompt.** The input box was
+  unmounted under every prompt and picker, wiping the draft; it now stays
+  mounted and hidden. Option keys (`1`–`4`, Enter) wait 0.5 s when a
+  permission prompt opens over a draft, so the end of a sentence cannot
+  answer it.
 
 - A tool batch's results stay contiguous, so a note raised mid-batch no longer
   ends the turn with "Tool result is missing for tool call".
@@ -599,7 +598,8 @@ further injection sinks.
 Earlier releases predate this changelog. See the git history for
 `v0.1.0..v0.2.1`.
 
-[Unreleased]: https://github.com/amenski/nib/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/amenski/nib/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/amenski/nib/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/amenski/nib/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/amenski/nib/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/amenski/nib/compare/v0.4.1...v0.4.2

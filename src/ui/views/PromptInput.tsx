@@ -71,12 +71,20 @@ interface Props {
    * is never doubled — see core/composer-gap.ts.
    */
   gapAbove?: boolean;
+  /**
+   * True while a modal (permission prompt, picker, help…) owns the screen: the
+   * composer draws nothing and releases input, but stays mounted so the draft,
+   * cursor, paste spans, images and undo stack survive. It used to unmount,
+   * and a permission prompt arriving mid-typing wiped the draft.
+   */
+  suspended?: boolean;
 }
 
 const PromptInput = React.memo(function PromptInput({
   screenWidth, promptHistory, busy, placeholder, statusLine,
   promptDraft, onSubmit, onInterrupt, onExitShortcut, onModelPickerOpen, onCyclePosture, onOpenModePicker, completer, onDraftChange, gapAbove,
-}: Props): React.ReactElement {
+  suspended = false,
+}: Props): React.ReactElement | null {
   const theme = useTheme();
   const undoRedoRef = useRef(createPromptUndoRedoState());
   const wasBusyRef = useRef(busy);
@@ -504,7 +512,7 @@ const PromptInput = React.memo(function PromptInput({
       const sanitized = key.value.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
       updateBuffer((s) => insertText(s, sanitized));
     }
-  }, { isActive: true });
+  }, { isActive: !suspended });
 
   // A transient notice (attachment count, or a status message like "press
   // ctrl+d again to exit") TAKES OVER the status row rather than adding one of
@@ -518,6 +526,9 @@ const PromptInput = React.memo(function PromptInput({
     : footerText !== ""
       ? { text: footerText, color: undefined }
       : null;
+
+  // After every hook: a suspended composer keeps its state but draws nothing.
+  if (suspended) return null;
 
   return (
     <Box flexDirection="column" width={screenWidth} marginTop={gapAbove ? 1 : 0}>

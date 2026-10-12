@@ -161,6 +161,9 @@ function jobSummaryToSegment(s: JobSummary): StatusSegment {
   };
 }
 
+/** How long a permission prompt opened over a half-typed draft ignores `1`–`4`/Enter. */
+export const PERMISSION_TYPING_GUARD_MS = 500;
+
 function InnerApp({ ctx }: { ctx: AppContext }) {
   const { exit, waitUntilRenderFlush } = useApp();
   const theme = useTheme();
@@ -283,6 +286,8 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
     workingDir?: string;
     /** Set when a background sub-agent asked — shown in the prompt header. */
     origin?: { subagent: string };
+    /** Epoch ms before which `1`–`4`/Enter are ignored (0 = no guard). */
+    guardUntil?: number;
     cursor: number;
   } | null>(null);
   // AbortController for an in-flight Ctrl+E explanation stream, so a new
@@ -1402,6 +1407,10 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
               workingDir: process.cwd(),
               origin,
               cursor: 0,
+              // Opened over a half-typed draft: the user's next keys were meant
+              // for the composer, so `1`–`4`/Enter wait out a short guard —
+              // "fix step 2⏎" must not approve option 2.
+              guardUntil: draftTextRef.current.trim() !== "" ? Date.now() + PERMISSION_TYPING_GUARD_MS : 0,
             });
           });
         },
@@ -1595,6 +1604,10 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
     // A submit consumes any pending draft. Left set, every modal's unmount and
     // remount of PromptInput re-applied it (fresh nonce ref), refilling the input.
     setPromptDraft(null);
+    // The submitted text is no longer a draft. PromptInput reports its cleared
+    // buffer only after re-rendering, and a permission prompt the turn opens
+    // before then would read the sent message as mid-typing and arm its guard.
+    draftTextRef.current = "";
     if (command) {
       if (command === "exit") { handleExit(); return; }
       if (turnActiveRef.current && !opensModal(command)) {
@@ -2197,6 +2210,8 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
         return;
       }
 
+      if ((askPrompt.guardUntil ?? 0) > Date.now()) return;
+
       if (askPrompt.scopeStage) {
         if (lower === "1" || lower === "2") {
           handleScopeDecision(scopeChoices[Number(lower) - 1]);
@@ -2633,46 +2648,47 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
         </Box>
       )}
 
-      {!askPrompt && !askQuestionPrompt && !hookTrustPrompt && !skillTrustPrompt && !planPrompt && !showSessionList && !showSkillList && !showModeList && !showUndoSelector && !showMcpStatus && !showTasks && !showPermissionHistory && !showUsage && !showModelDropdown && !showThemeDropdown && !showEffortSelector && !showHelp && !showCommandPalette && !resumeChoice && !compactingResume && (
-        <PromptInput
-          screenWidth={term.columns}
-          promptHistory={promptHistory}
-          busy={busy}
-          placeholder="Type your message..."
-          promptDraft={promptDraft}
-          onSubmit={submitFromInput}
-          onInterrupt={() => ctx.provideAbortController().abort()}
-          onExitShortcut={() => handleExit()}
-          onModelPickerOpen={() => setShowModelDropdown(true)}
-          onCyclePosture={() => cyclePosture()}
-          onOpenModePicker={() => setShowModeList(true)}
-          completer={ctx.completer}
-          onDraftChange={onPromptDraftChange}
-          gapAbove={needsComposerGap({
-            // The todo checklist and the queued-follow-up stack both render
-            // between the transcript and the composer, flush against the prompt.
-            panelAbove: todos.length > 0 || queuedItems.length > 0,
-            liveTail: activeLine !== "" && !busy,
-            lastOutputLine: outputLines[outputLines.length - 1],
-          })}
-          statusLine={
-            <StatusBar
-              segments={
-                statusLineProviderSegments.length > 0 || jobSummary.total > 0
-                  ? [
-                      ...statusLine,
-                      ...(jobSummary.total > 0
-                        ? [jobSummaryToSegment(jobSummary)]
-                        : []),
-                      ...statusLineProviderSegments,
-                    ]
-                  : statusLine
-              }
-              gitStatus={gitStatus}
-            />
-          }
-        />
-      )}
+      {/* Always mounted: a modal suspends the composer rather than unmounting
+          it, so a permission prompt arriving mid-typing keeps the draft. */}
+      <PromptInput
+        suspended={modalOpen}
+        screenWidth={term.columns}
+        promptHistory={promptHistory}
+        busy={busy}
+        placeholder="Type your message..."
+        promptDraft={promptDraft}
+        onSubmit={submitFromInput}
+        onInterrupt={() => ctx.provideAbortController().abort()}
+        onExitShortcut={() => handleExit()}
+        onModelPickerOpen={() => setShowModelDropdown(true)}
+        onCyclePosture={() => cyclePosture()}
+        onOpenModePicker={() => setShowModeList(true)}
+        completer={ctx.completer}
+        onDraftChange={onPromptDraftChange}
+        gapAbove={needsComposerGap({
+          // The todo checklist and the queued-follow-up stack both render
+          // between the transcript and the composer, flush against the prompt.
+          panelAbove: todos.length > 0 || queuedItems.length > 0,
+          liveTail: activeLine !== "" && !busy,
+          lastOutputLine: outputLines[outputLines.length - 1],
+        })}
+        statusLine={
+          <StatusBar
+            segments={
+              statusLineProviderSegments.length > 0 || jobSummary.total > 0
+                ? [
+                    ...statusLine,
+                    ...(jobSummary.total > 0
+                      ? [jobSummaryToSegment(jobSummary)]
+                      : []),
+                    ...statusLineProviderSegments,
+                  ]
+                : statusLine
+            }
+            gitStatus={gitStatus}
+          />
+        }
+      />
 
       {/* The hint bar is deliberately the LAST row of the frame, and carries the
           only continuously-changing element (the working indicator). Ink

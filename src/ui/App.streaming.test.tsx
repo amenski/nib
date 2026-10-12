@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render } from "ink-testing-library";
-import App from "./App.js";
+import App, { PERMISSION_TYPING_GUARD_MS } from "./App.js";
 import type { AppContext } from "./types.js";
 import { __resetInputWireForTests } from "./hooks/useTerminalInput.js";
 import { stripAnsi } from "./test-helpers.js";
@@ -692,6 +692,73 @@ describe("permission profile overlay — consolidation M.1 (§5)", () => {
     inst.stdin.write("1");
     await flush();
     expect(await askPromise).toBe(true);
+  });
+
+  // A prompt arriving mid-typing (2026-10-12): the composer used to unmount
+  // under it, so the half-typed follow-up was gone when the prompt closed.
+  function makeGatedAsk(): { ctx: AppContext; open: () => void; asked: () => Promise<boolean> | null } {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => { release = r; });
+    let askPromise: Promise<boolean> | null = null;
+    const ctx = makeAskCtx(async (_input: string, cb: any) => {
+      await gate;
+      askPromise = cb.askUser("run_bash_background", { command: "echo hi" });
+      await askPromise;
+      return { stopReason: "done", messages: [], newMessages: [] };
+    }, "strict-sandbox");
+    return { ctx, open: release, asked: () => askPromise };
+  }
+
+  it("keeps a half-typed draft through a permission prompt", async () => {
+    const h = makeGatedAsk();
+    const inst = render(<App ctx={h.ctx} />);
+    mounted.push(inst);
+    inst.stdin.write("run it");
+    await flush();
+    inst.stdin.write("\r");
+    await flush();
+    inst.stdin.write("hello wor");
+    await flush();
+    h.open();
+    await flush();
+    await flush();
+    expect(stripAnsi(inst.lastFrame() ?? "")).toContain("Permission required");
+
+    inst.stdin.write("\x1b"); // Esc denies
+    await flush();
+    await flush();
+    expect(await h.asked()).toBe(false);
+    inst.stdin.write("ld");
+    await flush();
+    expect(stripAnsi(inst.lastFrame() ?? "")).toContain("hello world");
+  });
+
+  it("ignores option keys briefly when the prompt opens over a draft", async () => {
+    const h = makeGatedAsk();
+    const inst = render(<App ctx={h.ctx} />);
+    mounted.push(inst);
+    inst.stdin.write("run it");
+    await flush();
+    inst.stdin.write("\r");
+    await flush();
+    inst.stdin.write("fix step ");
+    await flush();
+    h.open();
+    await flush();
+    await flush();
+
+    // The user's next key, meant for the composer, lands on the prompt.
+    let settled = false;
+    void h.asked()!.then(() => { settled = true; });
+    inst.stdin.write("2");
+    await flush();
+    expect(settled).toBe(false);
+    expect(stripAnsi(inst.lastFrame() ?? "")).toContain("Permission required");
+
+    await new Promise((r) => setTimeout(r, PERMISSION_TYPING_GUARD_MS));
+    inst.stdin.write("1");
+    await flush();
+    expect(await h.asked()).toBe(true);
   });
 
   // The consolidation (docs/permission-ux-redesign.md): with a real containment

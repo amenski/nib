@@ -7,6 +7,15 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Declining folder trust exits.** "No" or Esc on "Do you trust the files in
+  this folder?" now quits nib. It used to fall back to one prompt per
+  project skill, hook and setting; started in `~`, that was a prompt per skill
+  with no way out.
+- **A skills subfolder without `SKILL.md` is skipped quietly** (for example a
+  sync cache) instead of printing a warning on every start.
+
 ## [0.6.0] — 2026-10-12
 
 ### Added

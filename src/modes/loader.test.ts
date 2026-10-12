@@ -19,6 +19,9 @@ describe("ModeLoader", () => {
     const code = await loader.load("code");
     expect(code?.roleDefinition.length).toBeGreaterThan(0);
     expect(code?.groups).toContain("workflow");
+    // Configured MCP servers register under the "mcp" group; without it
+    // their tools connect but never reach the model.
+    expect(code?.groups).toContain("mcp");
     expect((await loader.load("general"))?.groups).toEqual(["read"]);
   });
 

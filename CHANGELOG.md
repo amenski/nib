@@ -28,6 +28,9 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **`/compact` shows progress** in the hint bar while it summarizes.
 - **The todo list and queued messages get a blank row** above them instead of
   touching the last tool output.
+- **MCP tools reach the model in Code mode.** Servers connected, but no
+  built-in mode granted the `mcp` tool group, so their tools were filtered
+  out of every request.
 
 ## [0.6.0] — 2026-10-11
 

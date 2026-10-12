@@ -369,7 +369,7 @@ describe("runExecMode first-run failures are clean (B1)", () => {
     const { code } = await run({ mode: "code" });
 
     expect(code).toBe(0);
-    expect(getByModeSpy).toHaveBeenCalledWith(["read", "edit", "command", "workflow"]);
+    expect(getByModeSpy).toHaveBeenCalledWith(["read", "edit", "command", "mcp", "workflow"]);
     expect(createProviderSpy).toHaveBeenCalledWith("deepseek", expect.objectContaining({ modelOverride: undefined }));
   });
 });

@@ -87,13 +87,24 @@ are fatal — `main()` exits 1 (`src/cli.tsx`).
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-filesystem", "."],
       "env": { "SOME_VAR": "value" }
+    },
+    // `nib mcp add playwright --no-sandbox -- npx @playwright/mcp@latest`
+    // writes this entry. "sandbox": false runs the server outside the
+    // Seatbelt profile: global-only (ignored, with a warning, in a project
+    // file; a project entry with the same name voids it). Browser servers
+    // need it — the profile denies the macOS services Chrome needs, and
+    // Playwright MCP aborts under it (measured 2026-10-12).
+    "playwright": {
+      "command": "npx",
+      "args": ["@playwright/mcp@latest"],
+      "sandbox": false
     }
   },
 
   // When true, only allowlisted MCP server commands may be spawned
-  // (default false). Allowlist: npx, node, python3, python, uvx, uv, bun,
+  // (default true). Allowlist: npx, node, python3, python, uvx, uv, bun,
   // deno, go, java (src/mcp/connector.ts).
-  "strictMcpConfig": false,
+  "strictMcpConfig": true,
 
   // When true, show the client-side estimated cost (status bar segment +
   // the /cost estimate line). Default false (hidden): the estimate is

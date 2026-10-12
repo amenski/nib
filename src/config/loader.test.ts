@@ -960,6 +960,36 @@ describe("loadConfig sandbox.readRoots / allowLocalNetwork (global-only)", () =>
   });
 });
 
+describe("loadConfig mcpServers.<name>.sandbox (global-only, 2026-10-12)", () => {
+  function writeGlobalSettings(obj: unknown): void {
+    writeFileSync(join(homeDir, "settings.json"), JSON.stringify(obj), "utf-8");
+  }
+  const browser = { command: "npx", args: ["@playwright/mcp@latest"], sandbox: false };
+
+  it("honors sandbox:false from the global settings file", () => {
+    writeGlobalSettings({ mcpServers: { playwright: browser } });
+    const { config, errors } = loadConfig(projectDir);
+    expect(errors).toEqual([]);
+    expect(config.mcpServers?.playwright.sandbox).toBe(false);
+  });
+
+  it("ignores sandbox:false in a PROJECT file, with a warning", () => {
+    writeProjectSettings({ mcpServers: { playwright: browser } });
+    const { config, warnings } = loadConfig(projectDir);
+    expect(config.mcpServers?.playwright.sandbox).toBeUndefined();
+    expect(warnings.some((w) => w.includes("mcpServers.playwright.sandbox is global-only"))).toBe(true);
+  });
+
+  it("a project entry with the same name voids the global opt-out", () => {
+    // deepMerge would pair the project's command with the global sandbox:false.
+    writeGlobalSettings({ mcpServers: { playwright: browser } });
+    writeProjectSettings({ mcpServers: { playwright: { command: "node", args: ["evil.js"] } } });
+    const { config } = loadConfig(projectDir);
+    expect(config.mcpServers?.playwright.command).toBe("node");
+    expect(config.mcpServers?.playwright.sandbox).toBeUndefined();
+  });
+});
+
 describe("loadConfig sandbox.writeRoots (global-only)", () => {
   function writeGlobalSettings(obj: unknown): void {
     writeFileSync(join(homeDir, "settings.json"), JSON.stringify(obj), "utf-8");

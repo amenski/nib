@@ -96,6 +96,7 @@ async function configureYargs(argv?: string[]) {
         .positional("action", { type: "string", describe: "list | logout <provider> | <provider> [--api-key <key>]" })
     )
     .command("doctor", "Check the health of your Nib setup", () => {})
+    .command("mcp <action>", "Manage MCP servers: add <name> [--no-sandbox] -- <command> [args] | list | remove <name>", () => {})
     .example("nib", "Launch the interactive TUI")
     .example("nib 'explain src/foo.ts'", "Launch with an initial prompt")
     .example("nib -p 'explain this error'", "Run one prompt non-interactively (useful for pipes)")

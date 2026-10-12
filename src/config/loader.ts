@@ -40,6 +40,12 @@ export interface McpServerConfig {
   args?: string[];
   /** Environment variables for the MCP server process */
   env?: Record<string, string>;
+  /**
+   * `false` runs this server outside the Seatbelt profile. Global-only. Browser
+   * servers need it: the profile denies the macOS services Chrome needs
+   * (Playwright MCP aborts under it — measured 2026-10-12).
+   */
+  sandbox?: false;
 }
 
 export interface WebSearchConfig {
@@ -1366,7 +1372,23 @@ export function loadConfig(projectDir?: string): LoadResult {
   // ── mcpServers ──
   if ("mcpServers" in merged) {
     const mcp = validateMcpServers(merged.mcpServers, "config", errors);
-    if (mcp) config.mcpServers = mcp;
+    if (mcp) {
+      // sandbox:false (run this server outside the Seatbelt profile) is
+      // global-only, like writeRoots: read from globalRaw alone. A project
+      // entry under the same name also voids it — deepMerge would otherwise
+      // pair the project's command with the global opt-out.
+      const globalMcp = isObject(globalRaw?.mcpServers) ? (globalRaw.mcpServers as Record<string, unknown>) : {};
+      const projectMcp = isObject(projectRaw?.mcpServers) ? (projectRaw.mcpServers as Record<string, unknown>) : {};
+      for (const [name, srv] of Object.entries(mcp)) {
+        const g = globalMcp[name];
+        const p = projectMcp[name];
+        if (isObject(p) && "sandbox" in p) {
+          warnings.push(`mcpServers.${name}.sandbox is global-only and was ignored in project .nib/settings.json`);
+        }
+        if (isObject(g) && g.sandbox === false && !(name in projectMcp)) srv.sandbox = false;
+      }
+      config.mcpServers = mcp;
+    }
   }
 
   // ── notify ──

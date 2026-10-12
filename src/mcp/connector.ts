@@ -27,7 +27,7 @@ export interface McpServerStatusEntry {
  * Commands an MCP server may be launched from when `strictMcpConfig` is enabled.
  * Compared against the basename of `command`, case-sensitively.
  */
-const ALLOWED_MCP_COMMANDS = new Set([
+export const ALLOWED_MCP_COMMANDS = new Set([
   "npx",
   "node",
   "python3",
@@ -109,7 +109,8 @@ export async function reconnectMCPServer(
 
   try {
     const client = new MCPClient();
-    const spawnOptions = options?.spawn ?? sessionSpawnOptions;
+    // A global `sandbox: false` entry (loader-enforced) runs uncontained.
+    const spawnOptions = config.sandbox === false ? undefined : (options?.spawn ?? sessionSpawnOptions);
     if (spawnOptions) {
       await client.connect(config.command, config.args || [], config.env, spawnOptions);
     } else {

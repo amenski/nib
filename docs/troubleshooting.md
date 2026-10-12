@@ -109,6 +109,11 @@
   `strictMcpConfig: true`, only allowlisted launcher commands may spawn
   (`npx, node, python3, python, uvx, uv, bun, deno, go, java`);
   non-allowlisted servers are marked failed, never spawned.
+- **A browser server (Playwright) fails with `EPERM` or Chrome exits with
+  SIGABRT** — nib's sandbox blocks browsers. Add it unsandboxed:
+  `nib mcp add playwright --no-sandbox -- npx @playwright/mcp@latest`.
+  Add `--isolated` after the package for a fresh browser profile each
+  session (no saved logins).
 
 ## Model behavior
 

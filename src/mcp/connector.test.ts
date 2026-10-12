@@ -119,6 +119,26 @@ describe("connectMCPServers strictMcpConfig allowlist", () => {
     expect(connectMock).toHaveBeenCalledWith("node", ["server.js"], { MCP_MODE: "stdio" }, spawn);
   });
 
+  it("runs a sandbox:false server uncontained and keeps the others contained", async () => {
+    const spawn = {
+      cwd: "/workspace",
+      trustedRoot: "/workspace",
+      sandboxLevel: "workspace-write" as const,
+      sessionTempDir: "/private/tmp/nib-session-test",
+    };
+
+    await connectMCPServers(
+      {
+        browser: { command: "npx", args: ["@playwright/mcp"], sandbox: false },
+        contained: { command: "node", args: ["server.js"] },
+      },
+      { strictMcpConfig: true, spawn },
+    );
+
+    expect(connectMock).toHaveBeenCalledWith("npx", ["@playwright/mcp"], undefined);
+    expect(connectMock).toHaveBeenCalledWith("node", ["server.js"], undefined, spawn);
+  });
+
   it("blocks case-mismatched allowlist entries (Node is not node)", async () => {
     const cased: Record<string, McpServerConfig> = {
       cased: { command: "Node", args: [] },

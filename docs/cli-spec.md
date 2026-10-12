@@ -14,9 +14,18 @@ nib auth <provider>                # set <provider>'s key (masked prompt)
 nib auth <provider> --api-key <key># non-interactive; -k alias
 echo <key> | nib auth <provider>   # piped: key read from stdin
 nib doctor                         # print environment / config diagnostics
+nib mcp add <name> [--env K=V]... [--no-sandbox] -- <command> [args...]
+nib mcp list                       # MCP servers in ~/.nib/settings.json
+nib mcp remove <name>
 ```
 
-`doctor` and `auth` are the only real subcommands — special-cased in
+`nib mcp` (`src/mcp/mcp-command.ts`, 2026-10-12) edits `mcpServers` in the
+global `~/.nib/settings.json` only, through the same atomic writer as the
+theme and model pickers. `add` refuses an existing name and names outside
+`[A-Za-z0-9_-]`; `--no-sandbox` writes `"sandbox": false` (config-spec.md)
+and prints a one-line warning. Changes take effect on the next start.
+
+`doctor`, `auth`, `models` and `mcp` are the only real subcommands — special-cased in
 `src/cli.tsx` `main()` before argument parsing. Everything else is parsed by
 yargs (`src/cli-args.ts`) as flags plus an optional positional `prompt`; a
 non-flag word that is not `auth`/`doctor` is treated as a positional prompt,

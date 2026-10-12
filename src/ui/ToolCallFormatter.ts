@@ -65,9 +65,9 @@ export function formatToolCallHeader(name: string, args: Record<string, unknown>
  */
 export interface HeaderTheme {
   colorEnabled: boolean;
-  theme: { text: number; textDim: number };
+  theme: { textDim: number };
   fg: (color: number, text: string) => string;
-  bold: (color: number, text: string) => string;
+  bold: (color: number | undefined, text: string) => string;
 }
 
 /**
@@ -90,7 +90,9 @@ export function formatStyledToolHeader(
 ): string {
   const { dot, name: display, args: arg } = toolHeaderParts(name, args);
   const glyph = theme.colorEnabled ? theme.fg(theme.theme.textDim, dot) : dot;
-  const label = theme.colorEnabled ? theme.bold(theme.theme.text, display) : display;
+  // No foreground: the terminal's own text colour, so the name reads on a
+  // light background as well as a dark one (the theme's `text` is white).
+  const label = theme.colorEnabled ? theme.bold(undefined, display) : display;
   return arg ? `${glyph} ${label}(${arg})` : `${glyph} ${label}`;
 }
 

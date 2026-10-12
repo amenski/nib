@@ -151,11 +151,11 @@ const OutputLine = memo(function OutputLine({
     // Fixed two columns that never shrink: as a plain flex child, a long
     // paragraph beside it made the layout shrink the gutter to one column, so
     // some paragraphs (and wrapped list rows) sat at column 1 and others at 2.
-    // The dot itself is the default text colour (Claude Code's answer marker),
-    // with the platform's own glyph.
+    // The dot itself is the terminal's default text colour (Claude Code's
+    // answer marker), with the platform's own glyph.
     const bulletEl = (
       <Box width={2} flexShrink={0}>
-        <Text color={theme.colorEnabled ? ansi256(theme.theme.text) : undefined}>
+        <Text>
           {hasBullet ? `${ANSWER_BULLET} ` : "  "}
         </Text>
       </Box>

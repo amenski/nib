@@ -67,10 +67,22 @@ describe("read_file range in the call description (2026-10-10)", () => {
 describe("styled tool header (2026-10-11)", () => {
   const theme = {
     colorEnabled: true,
-    theme: { text: 231, textDim: 246 },
+    theme: { textDim: 246 },
     fg: (_c: number, s: string) => `[fg:${s}]`,
-    bold: (_c: number, s: string) => `[bold:${s}]`,
+    bold: (_c: number | undefined, s: string) => `[bold:${s}]`,
   };
+
+  it("draws the name in the terminal's own colour, so it reads on a light background", () => {
+    // Regression (2026-10-11): the name was bold white (231), invisible on a
+    // white terminal.
+    const colours: Array<number | undefined> = [];
+    formatStyledToolHeader(
+      { ...theme, bold: (c: number | undefined, s: string) => (colours.push(c), s) },
+      "run_bash",
+      { command: "ls" },
+    );
+    expect(colours).toEqual([undefined]);
+  });
 
   it("dims the glyph, bolds the display name, and leaves the args plain", () => {
     const line = formatStyledToolHeader(theme, "run_bash", { command: "ls -la" });

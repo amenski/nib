@@ -69,7 +69,7 @@ export function formatSubagentHeader(opts: {
     return `${indentFor(depth)}⏺ Agent(${description})${modelSuffix}${agentSuffix}`;
   }
   const dim = (s: string) => (theme.colorEnabled ? theme.fg(theme.theme.textDim, s) : s);
-  const bold = (s: string) => (theme.colorEnabled ? theme.bold(theme.theme.text, s) : s);
+  const bold = (s: string) => (theme.colorEnabled ? theme.bold(undefined, s) : s);
   return `${indentFor(depth)}${dim("⏺")} ${bold("Agent")}(${description})${dim(modelSuffix)}${dim(agentSuffix)}`;
 }
 
@@ -93,7 +93,7 @@ export function formatSubagentToolLine(
     // dropped and only the bold name + plain arguments are drawn. The arguments
     // are never run through markdown (a child's args are shell text).
     const { name: display, args: arg } = toolHeaderParts(name, args);
-    const label = theme?.colorEnabled ? theme.bold(theme.theme.text, display) : display;
+    const label = theme?.colorEnabled ? theme.bold(undefined, display) : display;
     const body = arg ? `${label}(${arg})` : label;
     return `${indentFor(depth + 1)}${TREE_CONNECTOR} ${body}`;
   }

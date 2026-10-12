@@ -238,7 +238,9 @@ export const DARK_THEME: ThemeDefinition = {
 
   text: 231, // rgb(255,255,255)
   textDim: 246, // inactive rgb(153,153,153)
-  toolOutput: 250, // rgb(188,188,188)
+  // Mid grey, not Claude Code's lighter tones: nib has one theme, so this
+  // must stay readable on a light terminal background too.
+  toolOutput: 244, // rgb(128,128,128)
   textBright: 231,
   textInverse: 16,
   link: 147, // suggestion rgb(177,185,249)
@@ -445,8 +447,8 @@ export class ThemeContextValue {
     return this._wrap(color, undefined, false, text, false);
   }
 
-  /** Format text with bold + foreground. */
-  bold(color: number, text: string): string {
+  /** Format text with bold + foreground; no colour keeps the terminal's own. */
+  bold(color: number | undefined, text: string): string {
     return this._wrap(color, undefined, true, text, false);
   }
 

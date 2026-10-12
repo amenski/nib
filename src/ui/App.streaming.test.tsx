@@ -900,7 +900,7 @@ describe("tool result preview colour", () => {
   it("draws the ⎿ preview in the theme's toolOutput grey, not terminal dim", async () => {
     // Terminal dim (SGR 2) renders as a faint grey that is hard to read, and the
     // theme's textDim (246) was still too faint for output people read; the
-    // preview uses the lighter toolOutput slot (250).
+    // preview uses the toolOutput slot (244, readable on light terminals too).
     const { DARK_THEME, ansiFg } = await import("./theme.js");
     const ctx = makeCtx(async (_input: string, cb: any) => {
       cb.onToolStart("run_bash", { command: "echo hi" });

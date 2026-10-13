@@ -205,13 +205,18 @@ const PromptInput = React.memo(function PromptInput({
 
   useEffect(() => { exitHistoryBrowsing(); }, [promptHistoryKey, exitHistoryBrowsing]);
 
-  // Report draft changes upward. One observer covers every mutation path
-  // (typing, paste, history recall, @-mention insert, promptDraft restore,
-  // clear) — they all flow through setBuffer.
+  // Report draft changes upward. Typing and edits report synchronously from
+  // updateBuffer (an effect runs after Ink has already drawn the frame, so App
+  // would lag the screen); this effect covers every other path (promptDraft
+  // restore, clear, the setters) and the prevDraftTextRef check stops a double
+  // report.
   useEffect(() => {
-    if (buffer.text === prevDraftTextRef.current) return;
-    prevDraftTextRef.current = buffer.text;
-    onDraftChangeRef.current?.(buffer.text);
+    // Read the ref, not the render's buffer: this effect can run after a newer
+    // synchronous report and would otherwise push the older text back up.
+    const text = bufferRef.current.text;
+    if (text === prevDraftTextRef.current) return;
+    prevDraftTextRef.current = text;
+    onDraftChangeRef.current?.(text);
   }, [buffer.text]);
 
   function updateBuffer(updater: (state: PromptBufferState) => PromptBufferState): void {
@@ -224,6 +229,10 @@ const PromptInput = React.memo(function PromptInput({
     const next = updater(current);
     recordPromptEdit(undoRedoRef.current, current, next);
     bufferRef.current = next;
+    if (next.text !== prevDraftTextRef.current) {
+      prevDraftTextRef.current = next.text;
+      onDraftChangeRef.current?.(next.text);
+    }
     setBuffer(next);
     setPasteSpansChecked(applyEditToSpans(pasteSpansRef.current, current.text, next.text));
   }

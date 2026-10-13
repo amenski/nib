@@ -743,22 +743,31 @@ describe("permission profile overlay — consolidation M.1 (§5)", () => {
     await flush();
     inst.stdin.write("fix step ");
     await flush();
-    h.open();
-    await flush();
-    await flush();
+    // Frozen clock: under full-suite load real time can pass the guard before
+    // the next key lands, which made this test flaky.
+    const t0 = Date.now();
+    let now = t0;
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+    try {
+      h.open();
+      await flush();
+      await flush();
 
-    // The user's next key, meant for the composer, lands on the prompt.
-    let settled = false;
-    void h.asked()!.then(() => { settled = true; });
-    inst.stdin.write("2");
-    await flush();
-    expect(settled).toBe(false);
-    expect(stripAnsi(inst.lastFrame() ?? "")).toContain("Permission required");
+      // The user's next key, meant for the composer, lands on the prompt.
+      let settled = false;
+      void h.asked()!.then(() => { settled = true; });
+      inst.stdin.write("2");
+      await flush();
+      expect(settled).toBe(false);
+      expect(stripAnsi(inst.lastFrame() ?? "")).toContain("Permission required");
 
-    await new Promise((r) => setTimeout(r, PERMISSION_TYPING_GUARD_MS));
-    inst.stdin.write("1");
-    await flush();
-    expect(await h.asked()).toBe(true);
+      now = t0 + PERMISSION_TYPING_GUARD_MS + 1;
+      inst.stdin.write("1");
+      await flush();
+      expect(await h.asked()).toBe(true);
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   // The consolidation (docs/permission-ux-redesign.md): with a real containment

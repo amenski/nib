@@ -26,6 +26,9 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   sync cache) instead of printing a warning on every start.
 - **Picking `/model` from the menu clears the typed command.** The composer
   now stays mounted behind the picker, so `/mod` used to be left in the input.
+- **The typing guard catches a prompt that opens right after a keystroke.**
+  App read the draft a tick late, so a permission prompt opening within
+  milliseconds of typing could accept `1`–`4`/Enter at once.
 
 ## [0.6.0] — 2026-10-12
 

@@ -84,6 +84,11 @@ zero-config TypeScript, watch mode. `npm test` runs `vitest run`.
 - Fake ctx objects must `typeof`-guard optional stores
   (`sessionStore.queryTodos` etc.) — App's mount effect reads them, and an
   unguarded fake crashes every mount.
+- A frame that shows text does not mean state fed by a `useEffect` has
+  caught up: Ink paints during the commit, and effects run after it. Under
+  full-suite load that gap is wide enough to fail a test (the typing-guard
+  flake, `02d1197`). State that another component reads mid-keystroke must be
+  reported synchronously, not from an effect.
 
 ### Unit tests (from Phase 2)
 Highest-value targets, in priority order:

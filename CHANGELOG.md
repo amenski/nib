@@ -7,6 +7,8 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.6.1] — 2026-10-13
+
 ### Changed
 
 - **`web_search` and `web_fetch` work by default.** At the default
@@ -621,7 +623,8 @@ further injection sinks.
 Earlier releases predate this changelog. See the git history for
 `v0.1.0..v0.2.1`.
 
-[Unreleased]: https://github.com/amenski/nib/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/amenski/nib/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/amenski/nib/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/amenski/nib/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/amenski/nib/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/amenski/nib/compare/v0.4.2...v0.5.0

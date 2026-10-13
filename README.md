@@ -6,9 +6,11 @@
 [![npm downloads](https://img.shields.io/npm/dm/@amenski/nib.svg)](https://www.npmjs.com/package/@amenski/nib)
 [![Node.js 20+](https://img.shields.io/badge/node-%3E%3D20-green.svg)](https://nodejs.org)
 
-A terminal coding agent you can inspect, configure, and own. Nib combines a
-multi-provider agent loop with explicit permissions, resumable sessions,
-checkpoints, skills, and MCP — without a hosted service or telemetry.
+An open-source, bring-your-own-key coding agent for the terminal, built for
+cheap models: run it all day on DeepSeek for a few dollars, or point it at
+OpenAI, OpenRouter, Groq, or local Ollama. Explicit permissions, rewindable
+checkpoints, resumable sessions, skills, and MCP — one process on your machine,
+no hosted service, no telemetry.
 
 <p align="center">
   <img src="assets/prompt-screen.png" alt="Nib in Code mode with auto-approve on, running DeepSeek V4 Flash" width="900">

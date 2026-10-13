@@ -43,7 +43,7 @@
     "typescript": "^5.8.0",
     "vitest": "^4.1.10"
   },
-  "description": "Open-source AI coding agent for the terminal. Bring your own key (DeepSeek, OpenAI, OpenRouter, Groq, Ollama); permissions, sandbox, checkpoints, MCP, skills, no telemetry.",
+  "description": "Open-source, bring-your-own-key coding agent for the terminal. Built for cheap models: run all day on DeepSeek for a few dollars, or use OpenAI, OpenRouter, Groq, local Ollama. Explicit permissions, no telemetry.",
   "keywords": [
     "ai",
     "ai-agent",

@@ -37,7 +37,7 @@ describe("ProfileEvaluator.decide — level defaults (§3 table)", () => {
     expect(ev.decide("web_search", { query: "hello" })).toBe("deny");
   });
 
-  it("workspace-write: read anywhere, writes reachable everywhere (boundary enforced as an engine ask), network default-deny", () => {
+  it("workspace-write: read anywhere, writes reachable everywhere (boundary enforced as an engine ask), network default-allow", () => {
     const ev = evaluator("workspace-write");
     expect(ev.decide("read_file", { path: "/etc/passwd" })).toBe("allow");
     expect(ev.decide("write_to_file", { path: "/workspace/src/main.ts" })).toBe("allow");
@@ -50,8 +50,9 @@ describe("ProfileEvaluator.decide — level defaults (§3 table)", () => {
     // lives in the engine (see engine.test.ts "file-tool write boundary").
     expect(ev.decide("write_to_file", { path: "/tmp/x" })).toBe("allow");
     expect(ev.decide("write_to_file", { path: join(HOME, "x") })).toBe("allow");
-    expect(ev.decide("web_fetch", { url: "https://api.deepseek.com/v1" })).toBe("deny");
-    expect(ev.decide("web_search", { query: "hello" })).toBe("deny"); // bing not allowlisted
+    // Network is on by default (2026-10-13), matching sandboxed Bash.
+    expect(ev.decide("web_fetch", { url: "https://api.deepseek.com/v1" })).toBe("allow");
+    expect(ev.decide("web_search", { query: "hello" })).toBe("allow");
   });
 
   it("unrestricted: read + write anywhere, network default-allow", () => {
@@ -193,10 +194,17 @@ describe("ProfileEvaluator.decide — network allow/deny semantics", () => {
   });
 
   it("matching is exact and case-insensitive; subdomains are not implied", () => {
-    const ev = evaluator("workspace-write", { network: { allow: ["API.Deepseek.COM"] } });
+    const ev = evaluator("workspace-write", { network: { allow: ["API.Deepseek.COM"], deny: ["*"] } });
     expect(ev.decide("web_fetch", { url: "https://api.deepseek.com/v1" })).toBe("allow");
-    const sub = evaluator("workspace-write", { network: { allow: ["deepseek.com"] } });
+    const sub = evaluator("workspace-write", { network: { allow: ["deepseek.com"], deny: ["*"] } });
     expect(sub.decide("web_fetch", { url: "https://api.deepseek.com/v1" })).toBe("deny");
+  });
+
+  it("an allow list alone stays an allowlist at workspace-write (no silent widening)", () => {
+    const ev = evaluator("workspace-write", { network: { allow: ["api.deepseek.com"] } });
+    expect(ev.decide("web_fetch", { url: "https://api.deepseek.com/v1" })).toBe("allow");
+    expect(ev.decide("web_fetch", { url: "https://evil.com/x" })).toBe("deny");
+    expect(ev.decide("web_search", { query: "x" })).toBe("deny"); // bing not listed
   });
 
   it("deny entries narrow at unrestricted; allow entries are inert there", () => {
@@ -213,9 +221,12 @@ describe("ProfileEvaluator.decide — network allow/deny semantics", () => {
 
   it("web_search is evaluated against the pinned search host (web-search-spec.md §2)", () => {
     expect(evaluator("strict-sandbox").decide("web_search", { query: "x" })).toBe("deny");
-    expect(evaluator("workspace-write").decide("web_search", { query: "x" })).toBe("deny");
+    expect(evaluator("workspace-write").decide("web_search", { query: "x" })).toBe("allow");
     expect(
-      evaluator("workspace-write", { network: { allow: ["www.bing.com"] } }).decide("web_search", { query: "x" }),
+      evaluator("workspace-write", { network: { deny: ["www.bing.com"] } }).decide("web_search", { query: "x" }),
+    ).toBe("deny");
+    expect(
+      evaluator("workspace-write", { network: { allow: ["www.bing.com"], deny: ["*"] } }).decide("web_search", { query: "x" }),
     ).toBe("allow");
     expect(evaluator("unrestricted").decide("web_search", { query: "x" })).toBe("allow");
   });

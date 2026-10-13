@@ -63,8 +63,9 @@
   writes to `~/.npm`, `~/.cache`, `/tmp`. Adjust the carve-outs or set
   `sandbox.enabled: false` (policy-only) — see permission-profile.md §8.
 - **`web_fetch` returns "Permission denied"** — under a profile with
-  `network.deny: ["*"]`, only allowlisted hosts are reachable; add hosts
-  to `network.allow`. `web_search` needs `www.bing.com` allowlisted.
+  `network.deny: ["*"]` or a non-empty `network.allow` list, only
+  allowlisted hosts are reachable; add hosts to `network.allow`.
+  `web_search` needs `www.bing.com` allowlisted.
 - Revert: `sandbox.enabled: false` keeps the policy layer; removing
   `permissionProfile` restores pre-profile behavior entirely.
 

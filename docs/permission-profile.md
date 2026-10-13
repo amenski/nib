@@ -95,9 +95,11 @@ is in both lists the more specific entry wins, ties go to deny.
   write-set (enforced by validation) — so the fs rules that *act* are `deny`
   rules plus the level defaults. Read/write rules are accepted for
   explicitness and future levels.
-- `network.allow` entries are honored where the level permits grants:
-  `workspace-write` (the allowlist) and `unrestricted` (vacuous — the
-  default already allows). Under `strict-sandbox` they are **inert**, not a
+- At `workspace-write`, a non-empty `network.allow` list means only those
+  hosts (as before); with no `allow` list every host not denied is allowed.
+  At `unrestricted`, `allow` matters only with `deny: ["*"]`.
+  `workspace-write` was default-deny until 2026-10-13, which refused
+  `web_search` outright while sandboxed Bash could reach any host. Under `strict-sandbox` they are **inert**, not a
   config error — the level's network deny wins. A `*` deny is the least
   specific entry, so a specific allow carves the allowlist out of it
   (`deny: ["*"]` allowlist mode, above).
@@ -137,7 +139,7 @@ is in both lists the more specific entry wins, ties go to deny.
 | Level | Default fs | Default network | Equivalent today |
 |---|---|---|---|
 | `strict-sandbox` | read-only (any path) | denied | plan posture, but absolute |
-| `workspace-write` | read anywhere; write only inside workspace roots | default-deny + allowlist | current behavior + a network allowlist |
+| `workspace-write` | read anywhere; write only inside workspace roots | default-allow (since 2026-10-13); `deny` narrows; a non-empty `allow` list = only those hosts | current behavior |
 | `unrestricted` | read + write anywhere | default-allow | exactly today's behavior |
 
 Explicit `fs`/`network` rules **narrow only** — they can deny within a
@@ -260,7 +262,9 @@ a trustworthy hostname-level authority.
   `(allow file-write* (subpath "<trusted root>"))` for the session
   workspace root fixed at startup — never the per-call `cwd` (SBPL subpath
   matching is directory-boundary aware) — the private session-temp root
-  below. Neither sandboxed profile grants `(allow network-outbound)`.
+  below. Neither sandboxed profile grants an unscoped
+  `(allow network-outbound)`; workspace-write grants it IP-scoped (since
+  2026-10-11).
   `unrestricted` gets no prefix at all.
   Verified empirically on macOS 2026-08-13: `ls`, `git status`,
   `node -e 'console.log(1)'` run under both sandboxed levels; writes
@@ -306,12 +310,12 @@ a trustworthy hostname-level authority.
   subdirectory cwd inside the root runs there with the write-set root still
   the trusted root; level absent/`unrestricted` or non-macOS hosts skip
   both the profile and the check.
-- **Network: deny direct egress.** SBPL filters resolved IPs, not hostnames,
-  so its network primitive cannot enforce `network.allow`. Both sandboxed
-  profiles therefore deny direct egress. A temporary broad-egress exception
-  is intentionally not shipped: granting it to a shell grants every child
-  process arbitrary outbound access. A future host-aware broker must mediate
-  all egress before Nib offers a scoped network exception; see
+- **Network: IP-scoped egress at workspace-write.** SBPL filters resolved
+  IPs, not hostnames, so its network primitive cannot enforce
+  `network.allow`. Until 2026-10-11 both sandboxed profiles denied direct
+  egress; workspace-write now allows outbound over IP (Unix sockets stay
+  blocked) and strict-sandbox still denies it. The decision reversal and
+  its accepted risk are recorded in
   [security-network-broker.md](./security-network-broker.md).
 - **Git integrity in SBPL (2026-09-16, release gate 2).** The `.git`
   always-denied set used to be policy-layer only, and the release-gate probe

@@ -334,14 +334,19 @@ export class ProfileEvaluator {
     if (denySpecificity > allowSpecificity) return "deny";
     if (denyMatch !== undefined && denySpecificity === allowSpecificity) return "deny";
     if (allowMatch !== undefined) {
-      // A specific allow beating a wildcard deny is honored only at
-      // workspace-write, where the level default is deny and the allowlist
-      // is the grant mechanism (§3 table). Under strict-sandbox it is inert
-      // (the level denies all network; rules narrow only); under
-      // unrestricted the default already allows.
+      // A listed host (an allowlist, with or without a `deny: ["*"]`). Under
+      // strict-sandbox it is inert
+      // (the level denies all network; rules narrow only).
       return this.level === "strict-sandbox" ? "deny" : "allow";
     }
-    return this.level === "unrestricted" ? "allow" : "deny";
+    // workspace-write allows by default since 2026-10-13, like sandboxed Bash
+    // (edf3763): denying the SSRF-guarded tools while Bash can curl any host
+    // protected nothing and left web_search refused outright. A configured
+    // `allow` list keeps its old meaning — only those hosts — so an existing
+    // allowlist never silently widens to every host.
+    if (this.level === "strict-sandbox") return "deny";
+    if (this.level === "workspace-write" && this.networkAllow.length > 0) return "deny";
+    return "allow";
   }
 }
 

@@ -7,6 +7,15 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **`web_search` and `web_fetch` work by default.** At the default
+  `workspace-write` level their network was deny-by-default with an empty
+  allowlist, so every search was refused while sandboxed Bash could reach any
+  host. They now allow by default; `permissionProfile.network.deny` still
+  blocks hosts, and an existing `allow` list still means only those hosts. Their
+  SSRF guard and permission asks are unchanged.
+
 ### Fixed
 
 - **Declining folder trust exits.** "No" or Esc on "Do you trust the files in

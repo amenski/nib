@@ -186,7 +186,7 @@ terminal (`deny-by-profile` audit decision, permission-spec.md §11).
 | Level | Default fs | Default network |
 |---|---|---|
 | `strict-sandbox` | read-only (any path) | denied |
-| `workspace-write` | read anywhere; write inside workspace roots | default-deny + allowlist |
+| `workspace-write` | read anywhere; write inside workspace roots | default-allow (since 2026-10-13); a non-empty `allow` list = only those hosts |
 | `unrestricted` | read + write anywhere | default-allow |
 
 - `fs` entries are gitignore-style globs (`*`, `?`, `**`; `~`-home-relative
@@ -197,8 +197,9 @@ terminal (`deny-by-profile` audit decision, permission-spec.md §11).
   always denied — no rule can rescue them.
 - `network` entries are exact hostnames (case-insensitive) or `"*"` (any
   host — the only wildcard). The most specific matching entry wins; a tie
-  (same host in both lists) goes to deny. `allow` is honored where the
-  level permits grants (`workspace-write` allowlist, `unrestricted`); it is
+  (same host in both lists) goes to deny. At `workspace-write` a
+  non-empty `allow` list is an allowlist (only those hosts); at
+  `unrestricted` it matters only with `deny: ["*"]`; it is
   inert under `strict-sandbox`. `web_search` is evaluated against the
   pinned search host (`www.bing.com`).
 - Project > global merge: `level` — project wins; `fs` — project entries

@@ -1,6 +1,6 @@
 # Improvement Roadmap
 
-**Status:** forward-looking roadmap · refreshed 2026-08-08 · not a spec — shipped items are marked ✅ with commit hashes; unshipped items are plans, not behavior.
+**Status:** forward-looking roadmap · refreshed 2026-10-12 · not a spec — shipped items are marked ✅ with commit hashes; unshipped items are plans, not behavior.
 
 > **Remaining items now have detailed plans.** The open items below were
 > researched against Claude Code, Codex, Gemini CLI, aider, and opencode on
@@ -146,6 +146,32 @@ findings. Verified against the code on 2026-08-08 (not from memory):
 |---|---|---|
 | **Streaming-markdown refactor** | `src/ui/core/stream-blocks.ts` + `markdown-inline.ts`, rewriting `MarkdownText`/`App` streaming. | Started 2026-08-08. Must preserve two earlier fixes it supersedes: holding back a line whose inline span (`**`, `` ` ``, `~~`) hasn't closed yet, and keeping the block-start `●` out of the raw markdown so headings/lists still parse. |
 | **Sessions index** | A queryable index over the JSONL session store (list/resume ergonomics, observability). | **✅ Shipped** — `sessions-index.json` (`src/sessions/store.ts`, `updateIndexEntry`/`rebuildIndex`), consumed by `list()`; verified 2026-08-13. Optional polish (search in the picker) is unplanned — see feature-plans.md §11. |
+
+## ✅ Shipped — the 2026-10-11 → 10-12 wave (v0.6.0)
+
+Released as v0.6.0 on GitHub, npm and Homebrew (`amenski/tap/nib`) on
+2026-10-12. Items found from real use, not from the borrow list:
+
+| Shipped item | Evidence |
+|---|---|
+| ~~**`nib mcp add / list / remove`**~~ ✅ | Adds MCP servers without editing JSON; writes global settings (`216a4fa`). |
+| ~~**Per-server MCP sandbox opt-out**~~ ✅ | `mcpServers.<name>.sandbox: false`, global-only; Playwright MCP aborts under Seatbelt, works with it (`216a4fa`). |
+| ~~**MCP tools in Code mode**~~ ✅ | Code mode now grants the `mcp` tool group (`43493f3`). |
+| ~~**Outbound network for sandboxed commands**~~ ✅ | On by default, IP-scoped; Unix sockets stay blocked (`edf3763`). |
+| ~~**Draft survives a permission prompt**~~ ✅ | Composer suspended instead of unmounted; 0.5 s option-key guard over a draft (`6b8c597`). |
+| ~~**`/skill` runs on Enter**~~ ✅ | Picker fills the input; Enter clears it and starts the skill (`c261ccd`). |
+| ~~**`/clear` clears the screen; `/compact` shows progress**~~ ✅ | (`382362b`). |
+| ~~**Readable tool names**~~ ✅ | `Update Todos`, `Fetch`, `server · tool`; PascalCase fallback (`624baa8`). |
+| ~~**Transcript spacing**~~ ✅ | One blank row between blocks; gap above the todo list and queued stack (`efb8a40`, `382362b`). |
+| ~~**Single dark theme, readable on light terminals**~~ ✅ | (`48ba4d7`, `0f5c72f`). |
+| ~~**README refresh**~~ ✅ | 0.6.0 interface, sandbox, `nib mcp`, new screenshot (`596ec87`, `27fbdb2`). |
+
+Fixed after the tag (Unreleased, ships in 0.6.1):
+
+| Shipped item | Evidence |
+|---|---|
+| ~~**Declining folder trust exits**~~ ✅ | "No"/Esc quits instead of one prompt per skill (`00a41ca`). |
+| ~~**Skills folder without `SKILL.md` skipped quietly**~~ ✅ | (`64c5e41`). |
 
 ## 🆕 Newly-known items (surfaced during the wave)
 

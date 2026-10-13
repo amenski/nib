@@ -256,7 +256,7 @@ const PromptInput = React.memo(function PromptInput({
     if (item.kind === "doctor") { onSubmit({ text: item.label }); resetInput(); return; }
     if (item.kind === "context") { onSubmit({ text: item.label }); resetInput(); return; }
     if (item.kind === "skills") { onSubmit({ text: item.label }); resetInput(); return; }
-    if (item.kind === "model") { onModelPickerOpen?.(); return; }
+    if (item.kind === "model") { onModelPickerOpen?.(); resetInput(); return; }
     if (item.kind === "mode") { onSubmit({ text: "/modes" }); resetInput(); return; }
     if (item.kind === "effort") { onSubmit({ text: "/effort" }); resetInput(); return; }
     if (item.kind === "raw") { onSubmit({ text: item.label }); resetInput(); return; }

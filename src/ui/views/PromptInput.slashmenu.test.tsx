@@ -83,6 +83,18 @@ describe("PromptInput slash menu Enter-to-select", () => {
     expect(stripAnsi(lastFrame() ?? "")).not.toContain("/clear");
   });
 
+  it("picking /model opens the picker and clears the typed command", async () => {
+    // The composer stays mounted behind the picker, so a leftover "/mod" would
+    // still be in the input when the picker closes.
+    const { stdin, lastFrame, onModelPickerOpen } = setup();
+    stdin.write("/mod");
+    await flush();
+    stdin.write(RETURN);
+    await flush();
+    expect(onModelPickerOpen).toHaveBeenCalledTimes(1);
+    expect(stripAnsi(lastFrame() ?? "")).not.toContain("/mod");
+  });
+
   it("a menu pick while a turn is running routes to App instead of being refused", async () => {
     // The menu used to answer every pick with "wait for response or press esc"
     // while busy — including /model, which App already opens mid-turn when it

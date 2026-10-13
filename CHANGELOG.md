@@ -24,6 +24,8 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   with no way out.
 - **A skills subfolder without `SKILL.md` is skipped quietly** (for example a
   sync cache) instead of printing a warning on every start.
+- **Picking `/model` from the menu clears the typed command.** The composer
+  now stays mounted behind the picker, so `/mod` used to be left in the input.
 
 ## [0.6.0] — 2026-10-12
 

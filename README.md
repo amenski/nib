@@ -2,6 +2,8 @@
 
 [![Build](https://github.com/amenski/nib/actions/workflows/build.yml/badge.svg)](https://github.com/amenski/nib/actions/workflows/build.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
+[![npm](https://img.shields.io/npm/v/@amenski/nib.svg)](https://www.npmjs.com/package/@amenski/nib)
+[![npm downloads](https://img.shields.io/npm/dm/@amenski/nib.svg)](https://www.npmjs.com/package/@amenski/nib)
 [![Node.js 20+](https://img.shields.io/badge/node-%3E%3D20-green.svg)](https://nodejs.org)
 
 A terminal coding agent you can inspect, configure, and own. Nib combines a
@@ -11,6 +13,20 @@ checkpoints, skills, and MCP — without a hosted service or telemetry.
 <p align="center">
   <img src="assets/prompt-screen.png" alt="Nib in Code mode with auto-approve on, running DeepSeek V4 Flash" width="900">
 </p>
+
+## Why Nib
+
+| | Nib | Claude Code |
+|---|---|---|
+| Models | Any key: DeepSeek, OpenAI, OpenRouter, Groq, local Ollama | One vendor's models |
+| Where the agent runs | One inspectable process on your machine | Local CLI, closed source |
+| Telemetry | None | Vendor-controlled |
+| Permissions | Explicit allow/ask/deny rules, sandbox profiles, audit trail | Prompt-based approvals |
+| Code | Apache 2.0, every subsystem documented in [`docs/`](./docs) | Not available |
+
+Already using Claude Code? Hooks, skills, MCP, sub-agents, custom slash
+commands and `-p` headless mode work the way you expect; see the
+[parity table](./docs/claude-code-parity.md) for what is and is not there yet.
 
 ## Quick start
 

@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { resolveHome } from "../config/loader.js";
-import { updateSettings } from "../ui/components/ThemeDropdown/index.js";
+import { updateSettings } from "../config/settings-writer.js";
 import { ALLOWED_MCP_COMMANDS } from "./connector.js";
 
 /**

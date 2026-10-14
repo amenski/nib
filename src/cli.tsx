@@ -40,6 +40,7 @@ import { SkillLoader, createLoadSkillTool, type SkillDef } from "./skills/index.
 import { AgentLoader, type AgentDef } from "./agents/index.js";
 import { CommandLoader, type CommandDef } from "./commands/index.js";
 import { denialReader } from "./sandbox/denials.js";
+import { resolveStoredGrants } from "./sandbox/capabilities.js";
 import { containmentWarning, hasActiveSandboxContainment, loadConfig, resolveHome, workspaceOutsideHomeWarning } from "./config/loader.js";
 import { projectSettingsPath } from "./config/paths.js";
 import { checkSettingsTrust, trustSettings, stripExecutionKeys } from "./config/settings-trust.js";
@@ -603,7 +604,7 @@ async function main() {
   const writeRoots = [...(configResult.config.sandbox?.writeRoots ?? []), ...additionalWriteRoots];
   // Global-only sandbox.readRoots / allowLocalNetwork / allowBrowser: set before any profile
   // is built so every launch and the session-grant hash agree.
-  configureSandbox({ readRoots: configResult.config.sandbox?.readRoots, allowLocalNetwork: configResult.config.sandbox?.allowLocalNetwork, allowBrowser: configResult.config.sandbox?.allowBrowser });
+  configureSandbox({ readRoots: configResult.config.sandbox?.readRoots, allowLocalNetwork: configResult.config.sandbox?.allowLocalNetwork, allowBrowser: configResult.config.sandbox?.allowBrowser, grants: resolveStoredGrants(configResult.config.sandbox?.grants).grants });
   setWriteRoots(writeRoots);
   // The kernel's own report of what the sandbox refuses (sandbox/denials.ts).
   // Without it the existing output-matching hint stays the only signal, and the

@@ -113,6 +113,11 @@ are fatal — `main()` exits 1 (`src/cli.tsx`).
   // stays intact behind this flag.
   "showCost": false,
 
+  // Once a day at startup (interactive TUI only), ask registry.npmjs.org for
+  // the latest nib and print one dim line when it is newer. Default true;
+  // NIB_NO_UPDATE_CHECK=1 also turns it off.
+  "updateCheck": true,
+
   // Theme (nib extension)
   "theme": {
     "mode": "dark",                        // "dark" | "light" | "auto"
@@ -534,8 +539,12 @@ codebase and no config key enables one — the former `telemetryEnabled` key
 removed; `telemetryEnabled` now warns as an unknown field. If you set it,
 nothing happens because there is nothing to enable.
 
-Nib makes no automatic network contacts. Network requests occur only when you
-select a model provider or explicitly configure or invoke an integration.
+Nib makes one automatic network contact: at most once a day, the interactive
+TUI asks `registry.npmjs.org` for the latest published nib version, to print a
+one-line update notice. Nothing is sent beyond the HTTP request itself, and
+headless `nib -p` never makes it. Turn it off with `"updateCheck": false` or
+`NIB_NO_UPDATE_CHECK=1`. Every other request occurs only when you select a model
+provider or explicitly configure or invoke an integration.
 
 ## 16. Deprecated keys
 
@@ -555,6 +564,7 @@ select a model provider or explicitly configure or invoke an integration.
 | `NIB_REFRESH` | Repaint cadence: `fast \| balanced \| slow` (lower priority than settings.json `refresh`) |
 | `NIB_PROFILE` | `"1"` enables the event-loop stall watchdog (troubleshooting.md) |
 | `NIB_HIGH_CONTRAST` | `"1"` enables high-contrast rendering |
+| `NIB_NO_UPDATE_CHECK` | Any value disables the daily npm update check (same as `"updateCheck": false`) |
 | `NO_COLOR`, `CI`, `TERM`, `COLORTERM` | Color/terminal capability gating |
 | `DEEPSEEK_API_KEY` | DeepSeek API key |
 | `OPENAI_API_KEY` | OpenAI API key |

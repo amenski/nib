@@ -42,6 +42,7 @@ import { CommandLoader, type CommandDef } from "./commands/index.js";
 import { denialReader } from "./sandbox/denials.js";
 import { resolveStoredGrants } from "./sandbox/capabilities.js";
 import { detectPresets } from "./sandbox/presets.js";
+import { checkForUpdate } from "./update-check.js";
 import { containmentWarning, hasActiveSandboxContainment, loadConfig, resolveHome, workspaceOutsideHomeWarning } from "./config/loader.js";
 import { projectSettingsPath } from "./config/paths.js";
 import { checkSettingsTrust, trustSettings, stripExecutionKeys } from "./config/settings-trust.js";
@@ -1153,17 +1154,24 @@ async function main() {
       sandboxPresets: hasActiveSandboxContainment(configResult.config) && bashSandboxLevel === "workspace-write"
         ? detectPresets(process.cwd()).filter((p) => !isPresetDeclined(process.cwd(), p.id))
         : [],
-      // Background (non-blocking) live model-list check: when the provider no
-      // longer lists the active model, the App prints one dim line after mount.
-      // Skipped for a provider with no key or a non-openai-compatible API.
+      // Background (non-blocking) startup checks, one dim line each after mount:
+      // the live model-list check (when the provider no longer lists the active
+      // model; skipped for a provider with no key or a non-openai-compatible
+      // API) and the daily npm update check (`updateCheck: false` turns it off).
       startupNotices: async () => {
-        const preset = getPreset(shared.providerName);
-        if (!preset || preset.api !== "openai-compatible") return undefined;
-        const apiKey = resolveLiveModelsKey(shared.providerName);
-        if (!apiKey) return undefined;
-        const model = shared.activeModel ?? preset.defaultModel;
-        const models = await getLiveModels({ provider: shared.providerName, baseUrl: preset.baseUrl, apiKey });
-        return liveModelStartupNotice(shared.providerName, model, models);
+        const liveModels = async (): Promise<string | undefined> => {
+          const preset = getPreset(shared.providerName);
+          if (!preset || preset.api !== "openai-compatible") return undefined;
+          const apiKey = resolveLiveModelsKey(shared.providerName);
+          if (!apiKey) return undefined;
+          const model = shared.activeModel ?? preset.defaultModel;
+          const models = await getLiveModels({ provider: shared.providerName, baseUrl: preset.baseUrl, apiKey });
+          return liveModelStartupNotice(shared.providerName, model, models);
+        };
+        const update = async (): Promise<string | undefined> =>
+          configResult.config.updateCheck === false ? undefined : checkForUpdate();
+        const lines = await Promise.allSettled([liveModels(), update()]);
+        return lines.map((r) => (r.status === "fulfilled" ? r.value : undefined)).filter(Boolean).join("\n") || undefined;
       },
       initialMessages: sessionLoaded ? sessionMessages : undefined,
       compactResumed: async (): Promise<Message[] | null> => {

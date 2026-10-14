@@ -393,6 +393,13 @@ describe("loadConfig strictMcpConfig", () => {
     expect(config.strictMcpConfig).toBeUndefined();
   });
 
+  it("accepts updateCheck: false and rejects a non-boolean", () => {
+    writeProjectSettings({ updateCheck: false });
+    expect(loadConfig(projectDir).config.updateCheck).toBe(false);
+    writeProjectSettings({ updateCheck: "no" });
+    expect(loadConfig(projectDir).errors).toContain("config.updateCheck: must be a boolean");
+  });
+
   it("accepts showCost: true", () => {
     writeProjectSettings({ showCost: true });
     const { config, errors } = loadConfig(projectDir);

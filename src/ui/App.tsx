@@ -425,13 +425,13 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
       const lines = ctx.initialNotice.split("\n");
       setOutputLines((prev) => [...prev, ...lines.map((l) => theme.fg(theme.theme.textDim, l))]);
     }
-    // A background startup check (the live model-list probe) must not hold up
-    // this first render, so it runs detached and appends one dim line if it
-    // resolves with something to say — the same dim rendering onDiagnostic uses.
+    // Background startup checks (live model list, npm update) must not hold up
+    // this first render, so they run detached and append a dim line each when
+    // they resolve with something to say.
     if (ctx.startupNotices) {
       ctx.startupNotices()
-        .then((line) => {
-          if (line) pushOutput(theme.fg(theme.theme.textDim, line));
+        .then((text) => {
+          for (const line of text?.split("\n") ?? []) if (line) pushOutput(theme.fg(theme.theme.textDim, line));
         })
         .catch(() => {});
     }

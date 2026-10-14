@@ -155,6 +155,8 @@ export interface DeepCodeSettings {
    *  math the owner has asked to keep hidden (2026-08-14); token counts
    *  always display. The code stays — this only gates the display. */
   showCost?: boolean;
+  /** Daily startup check for a newer nib on npm (default on; NIB_NO_UPDATE_CHECK=1 also disables). */
+  updateCheck?: boolean;
 
   // ── Temperature ──
   temperature?: number;
@@ -442,6 +444,7 @@ const KNOWN_KEYS = new Set([
   "debugLogEnabled",
   "strictMcpConfig",
   "showCost",
+  "updateCheck",
   "temperature",
   // Nib extensions
   "provider",
@@ -1504,6 +1507,10 @@ export function loadConfig(projectDir?: string): LoadResult {
   }
 
   // ── showCost (display flag, default false — hidden) ──
+  if ("updateCheck" in merged) {
+    if (typeof merged.updateCheck === "boolean") config.updateCheck = merged.updateCheck;
+    else errors.push("config.updateCheck: must be a boolean");
+  }
   if ("showCost" in merged) {
     if (typeof merged.showCost === "boolean") {
       config.showCost = merged.showCost;

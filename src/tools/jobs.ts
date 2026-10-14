@@ -11,6 +11,7 @@ import {
   type SandboxLevel,
 } from "../sandbox/seatbelt.js";
 import { containmentFailureError, spawnContained, type ReadinessOutcome } from "../sandbox/launcher.js";
+import { denialReader, formatDenialBlock, type DenialAttachment, type DenialGroup } from "../sandbox/denials.js";
 import { wrapUntrusted, sanitizeControlChars } from "./untrusted-content.js";
 import { SANDBOX_TOOL_NOTE, sandboxBlockedHint } from "./sandbox-hint.js";
 
@@ -47,6 +48,8 @@ export interface Job {
    *  job so check_job can tell a sandbox refusal ("Operation not permitted")
    *  from an ordinary EPERM the command hit on its own. */
   sandboxed: boolean;
+  /** The OS-reported sandbox denials for this job's process tree, when the denial stream was up at launch. */
+  denials?: DenialAttachment;
 }
 
 export interface JobStatusReport {
@@ -61,6 +64,8 @@ export interface JobStatusReport {
   runningMs: number;
   /** See Job.sandboxed — carried on the report so the handler can annotate. */
   sandboxed: boolean;
+  /** Denials the OS has reported for this job so far (empty when the denial stream was not running). */
+  denials: DenialGroup[];
 }
 
 // Timeout handles live on the side (not on Job) so the plan's Job shape stays
@@ -155,6 +160,7 @@ export class JobManager {
       stderrTruncated: job.stderrTruncated,
       runningMs: Date.now() - job.startTime,
       sandboxed: job.sandboxed,
+      denials: job.denials?.snapshot() ?? [],
     };
   }
 
@@ -190,6 +196,7 @@ export class JobManager {
     // Undefined until the framed path sets it; track() treats undefined as
     // "nothing to confirm" (the unsandboxed spawn).
     let readiness: Promise<ReadinessOutcome> | undefined;
+    let denials: DenialAttachment | undefined;
     try {
       // sandboxLevel (permission-profile.md §8, phase (e)): background jobs
       // spawn under the same Seatbelt profile as run_bash children.
@@ -199,6 +206,7 @@ export class JobManager {
         const contained = spawnContained(sandbox, ["/bin/sh", "-c", command], { cwd, env, detached: true });
         proc = contained.proc;
         readiness = contained.readiness;
+        denials = denialReader.attach(proc, { kind: "job", jobId: id }, { matchGroup: true });
       } else {
         proc = spawn(command, {
           cwd,
@@ -227,6 +235,7 @@ export class JobManager {
       timeoutMs,
       stream: opts?.stream ?? false,
       sandboxed: isSandboxedLevel(opts?.sandboxLevel),
+      denials,
     };
     this.jobs.set(id, job);
     this.track(job, readiness);
@@ -243,7 +252,7 @@ export class JobManager {
    */
   adopt(
     proc: ChildProcess,
-    opts: { command: string; cwd: string; timeoutMs: number; stdout?: string; stderr?: string; sandboxed?: boolean },
+    opts: { command: string; cwd: string; timeoutMs: number; stdout?: string; stderr?: string; sandboxed?: boolean; denials?: DenialAttachment },
   ): { ok: true; id: string } | { ok: false; error: string } {
     this.cleanup();
     const runningCount = [...this.jobs.values()].filter((j) => j.status === "running").length;
@@ -270,7 +279,9 @@ export class JobManager {
       timeoutMs: opts.timeoutMs,
       stream: false,
       sandboxed: opts.sandboxed === true,
+      denials: opts.denials,
     };
+    opts.denials?.retarget({ kind: "job", jobId: id });
     // run_bash's foreground buffers are already capped below MAX_STREAM_CHARS,
     // but cap defensively in case a future caller passes more.
     if (opts.stdout) {
@@ -503,9 +514,12 @@ const checkJobHandler: ToolHandler = async (args) => {
   if (report.stderrTruncated) lines.push("(stderr truncated — kept last 1MB)");
   // nib's own note, outside the untrusted wrapper, and only for a job that
   // really ran under the sandbox.
-  const hint = sandboxBlockedHint(`${report.stdout}\n${report.stderr}`, report.sandboxed);
+  // The OS's own report, when there is one, says more than output matching.
+  const hint = report.denials.length > 0 ? "" : sandboxBlockedHint(`${report.stdout}\n${report.stderr}`, report.sandboxed);
   if (hint) lines.push(hint);
-  return { content: lines.join("\n") };
+  const denialBlock = formatDenialBlock(report.denials);
+  if (denialBlock) lines.push(denialBlock);
+  return { content: lines.join("\n"), sandboxDenials: report.denials.length > 0 ? report.denials : undefined };
 };
 
 const killJobHandler: ToolHandler = async (args) => {

@@ -7,6 +7,7 @@ import {
   GRACE_MS,
   formatDenialBlock,
   groupDenials,
+  isBaselineNoise,
   opClassOf,
   parseDenialLine,
   summarizeDenials,
@@ -46,6 +47,21 @@ describe("parseDenialLine", () => {
     expect(parseDenialLine("2026-10-14 18:14:35.514 Df kernel[0:40bfc0] (Sandbox) Sandbox: ContextStoreAgent(900) allow file-read-data /Applications/Firefox.app")).toBeNull();
     expect(parseDenialLine("2026-10-14 18:14:35.267 E  kernel[0:3e7733] (Sandbox) System Policy: RTProtectionDaemon(566) deny(1) system-privilege 1016")).toBeNull();
     expect(parseDenialLine("")).toBeNull();
+  });
+});
+
+describe("isBaselineNoise", () => {
+  const d = (proc: string, op: string, target: string) => ({ proc, op, target });
+
+  it("drops what every command's shell logs at startup", () => {
+    expect(isBaselineNoise(d("sh", "file-write-data", "/dev/dtracehelper"))).toBe(true);
+    expect(isBaselineNoise(d("bash", "file-write-data", "/dev/tty"))).toBe(true);
+  });
+
+  it("keeps a real refusal that looks similar", () => {
+    expect(isBaselineNoise(d("git", "file-write-data", "/dev/tty"))).toBe(false);
+    expect(isBaselineNoise(d("bash", "file-write-data", "/dev/ttys003"))).toBe(false);
+    expect(isBaselineNoise(d("bash", "file-write-create", "/dev/tty"))).toBe(false);
   });
 });
 
@@ -176,6 +192,17 @@ describe("DenialReader attribution", () => {
     reader.feed(line(9001, "file-write-create", "/opt/x"));
     await close(p);
     expect(await a.settle()).toHaveLength(1);
+  });
+
+  it("never records baseline noise", async () => {
+    const { reader, psPgid } = makeReader();
+    const p = fakeProc(100);
+    const a = reader.attach(p, bash("c1"), { matchGroup: true });
+    reader.feed(line(100, "file-write-data", "/dev/dtracehelper", "sh"));
+    reader.feed(line(555, "file-write-data", "/dev/tty", "bash"));
+    await close(p);
+    expect(await a.settle()).toEqual([]);
+    expect(psPgid).not.toHaveBeenCalled();
   });
 
   it("leaves an ambiguous denial unattributed", async () => {

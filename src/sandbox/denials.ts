@@ -58,6 +58,21 @@ export function parseDenialLine(line: string, at: number = Date.now()): SandboxD
   return { proc: m[2], pid: Number(m[3]), op: m[4], target: (m[5] ?? "").trim(), count: m[1] ? Number(m[1]) : 1, at };
 }
 
+const SHELLS = new Set(["sh", "bash", "zsh", "dash"]);
+
+/**
+ * Denials every command produces, which say nothing: measured 2026-10-14, even
+ * `echo hi` under workspace-write logs `file-write-data /dev/dtracehelper`
+ * (DTrace probe registration at process start) and, from the shell, a
+ * `/dev/tty` write. Reported each time they would teach the user and the model
+ * to ignore the block. Narrow on purpose: a `/dev/tty` write from anything but
+ * a shell (a credential prompt, ssh) is a real refusal and stays.
+ */
+export function isBaselineNoise(d: Pick<SandboxDenial, "proc" | "op" | "target">): boolean {
+  if (d.op !== "file-write-data") return false;
+  return d.target === "/dev/dtracehelper" || (d.target === "/dev/tty" && SHELLS.has(d.proc));
+}
+
 export function opClassOf(op: string): DenialOpClass {
   if (op.startsWith("file-write")) return "write";
   if (op.startsWith("file-read")) return "read";
@@ -275,7 +290,7 @@ export class DenialReader {
   feed(line: string): void {
     if (this.entries.size === 0) return;
     const d = parseDenialLine(line, this.now());
-    if (!d) return;
+    if (!d || isBaselineNoise(d)) return;
     // Candidates are fixed now: a slow `ps` must not lose a denial to an entry
     // whose grace period ended while it ran.
     const candidates = [...this.entries];

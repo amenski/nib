@@ -15,6 +15,7 @@ import { containmentFailureError, spawnContained, type ReadinessOutcome, type Sa
 import { envelopeChangedError } from "../permissions/session-grant.js";
 import { wrapUntrusted, sanitizeControlChars } from "./untrusted-content.js";
 import { SANDBOX_TOOL_NOTE, sandboxBlockedHint } from "./sandbox-hint.js";
+import { denialReader, formatDenialBlock, type DenialAttachment } from "../sandbox/denials.js";
 
 const RUN_BASH_TIMEOUT_MS = 120_000;
 // run_bash keeps the most recent 512KB of output (the old exec maxBuffer
@@ -107,6 +108,10 @@ export function resolveTimeoutToBackground(v: boolean | undefined): boolean {
  * launch: a child that never confirmed its profile means the machine refused to
  * apply it, so the verdict is reported to the agent gate, which revokes any
  * session grant approved against that profile.
+ *
+ * `callId` ties the OS's sandbox-denial report (sandbox/denials.ts) to this
+ * call: a sandboxed command's result carries what the kernel refused while it
+ * ran, even when the command hid stderr or exited 0.
  */
 export function runBashTimed(
   command: string,
@@ -119,6 +124,7 @@ export function runBashTimed(
   sessionTempDir?: string,
   allowGitConfigWrite?: boolean,
   onSandboxFailure?: (reason: SandboxFailureReason) => void,
+  callId?: string,
 ): Promise<ToolOutput> {
   if (isSandboxedLevel(sandboxLevel)) {
     const checked = validateCwdWithinTrustedRoot(cwd, trustedRoot, writeRoots);
@@ -126,6 +132,7 @@ export function runBashTimed(
   }
   let proc: ChildProcess;
   let readiness: Promise<ReadinessOutcome>;
+  let denials: DenialAttachment | undefined;
   try {
     const env = sessionTempDir ? { ...process.env, TMPDIR: sessionTempDir, TMP: sessionTempDir, TEMP: sessionTempDir, npm_config_cache: `${sessionTempDir}/npm-cache` } : undefined;
     const sandbox = sandboxPrefix(command, cwd, trustedRoot, sandboxLevel, writeRoots, sessionTempDir, allowGitConfigWrite);
@@ -137,6 +144,7 @@ export function runBashTimed(
       const contained = spawnContained(sandbox, ["/bin/sh", "-c", command], { cwd, env, detached: true });
       proc = contained.proc;
       readiness = contained.readiness;
+      denials = denialReader.attach(proc, { kind: "bash", callId: callId ?? "" }, { matchGroup: true });
     } else {
       // No profile applies: exactly the previous spawn, with no frame and
       // nothing to wait for.
@@ -192,23 +200,33 @@ export function runBashTimed(
       if (closeCode !== undefined) {
         settled = true;
         clearTimeout(timer);
+        let out: ToolOutput;
         if (closeCode === 0) {
-          resolve({ content: wrapUntrusted(`${stdout || "(no output)"}${truncationNote()}`) });
+          out = { content: wrapUntrusted(`${stdout || "(no output)"}${truncationNote()}`) };
         } else if (stderr.trim() !== "") {
           // F5 delta: real failure (non-zero + stderr) — set `error` so the
           // bounded auto-fix loop engages, and prepend the grepped
           // <error_analysis> block inside the untrusted delimiters (the matched
           // lines are still command output). The full stdout/stderr body is kept.
           const analysis = buildErrorAnalysis(stderr, closeCode);
-          resolve({
+          out = {
             content: wrapUntrusted(`${analysis}Exit code: ${closeCode}\n${stdout}\n${stderr}${truncationNote()}`),
             error: `Exit code: ${closeCode}`,
-          });
+          };
         } else {
           // Silent non-zero exit (empty stderr) — grep -q / diff / test idioms:
           // content only, no error, no analysis block.
-          resolve({ content: wrapUntrusted(`Exit code: ${closeCode}\n${stdout}\n${stderr}${truncationNote()}`) });
+          out = { content: wrapUntrusted(`Exit code: ${closeCode}\n${stdout}\n${stderr}${truncationNote()}`) };
         }
+        if (!denials) {
+          resolve(out);
+          return;
+        }
+        // The kernel log trails the process by a few ms: wait out the grace
+        // period so a denial from a command that exited 0 is still reported.
+        void denials.settle().then((groups) => {
+          resolve(groups.length > 0 ? { ...out, sandboxDenials: groups } : out);
+        });
         return;
       }
       if (timedOut) {
@@ -225,6 +243,7 @@ export function runBashTimed(
             // The adopted child is the same process this launch sandboxed, so
             // check_job can still tell a later refusal was the sandbox's.
             sandboxed: isSandboxedLevel(sandboxLevel),
+            denials,
           });
           if (adopted.ok) {
             resolve({
@@ -311,12 +330,16 @@ const runBashHandler: ToolHandler = async (args, ctx, exec) => {
       return { content: wrapUntrusted(envelopeChangedError()), error: "SANDBOX_ENVELOPE_CHANGED" };
     }
   }
-  const out = await runBashTimed(command, cwd, root, RUN_BASH_TIMEOUT_MS, resolveTimeoutToBackground(ctx.timeoutToBackground), ctx.sandboxLevel, ctx.writeRoots, ctx.sessionTempDir, exec?.approvedGitConfigWrite, exec?.onSandboxFailure);
-  // A refusal the child hit reads as a plain EPERM in its own output; say what
-  // it means and which tools can reach the path. Appended after the wrapper —
-  // the delimited region must stay command output only.
-  const hint = sandboxBlockedHint(`${out.content}\n${out.error ?? ""}`, isSandboxedLevel(ctx.sandboxLevel));
-  return hint ? { ...out, content: `${out.content}\n${hint}` } : out;
+  const out = await runBashTimed(command, cwd, root, RUN_BASH_TIMEOUT_MS, resolveTimeoutToBackground(ctx.timeoutToBackground), ctx.sandboxLevel, ctx.writeRoots, ctx.sessionTempDir, exec?.approvedGitConfigWrite, exec?.onSandboxFailure, exec?.callId);
+  // Both notes are nib's own words, appended after the wrapper — the delimited
+  // region must stay command output only. The OS's report of what it refused is
+  // exact; a refusal the child hit reads as a plain EPERM in its own output, so
+  // the regex hint names what that means and which tools can reach the path —
+  // and stands in when the OS reported nothing.
+  const denialBlock = formatDenialBlock(out.sandboxDenials ?? []);
+  const hint = denialBlock ? "" : sandboxBlockedHint(`${out.content}\n${out.error ?? ""}`, isSandboxedLevel(ctx.sandboxLevel));
+  const note = denialBlock || hint;
+  return note ? { ...out, content: `${out.content}\n${note}` } : out;
 };
 
 const runBashDef: ToolDef = {

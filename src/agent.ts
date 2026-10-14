@@ -1007,7 +1007,7 @@ export async function runAgent(
         exec = gate.exec;
       }
 
-      const result = preResult ?? await executeTool(tc, exec);
+      const result = preResult ?? await executeTool(tc, { ...exec, callId: tc.id });
       executedAny = true;
       // PostToolUse / PostToolUseFailure: hook stdout appends to the result
       // (hooks-spec.md §2) before it reaches the model or the UI preview.
@@ -1142,7 +1142,7 @@ export async function runAgent(
       const preResults = new Map<string, ToolOutput>();
       const toExecute = parallelReads.filter((tc) => !preDenied.get(tc.id));
       const settled = await Promise.allSettled(
-        toExecute.map(tc => executeTool(tc)),
+        toExecute.map(tc => executeTool(tc, { callId: tc.id })),
       );
       for (let i = 0; i < toExecute.length; i++) {
         const r = settled[i];

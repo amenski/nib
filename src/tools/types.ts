@@ -57,6 +57,12 @@ export interface ToolExecOptions {
    * launch must use the envelope that was approved.
    */
   envelopeHash?: string;
+  /**
+   * The model's id for this tool call. Lets a handler tie a sandbox denial the
+   * OS reports to the call that caused it (sandbox/denials.ts). Set by
+   * agent.ts on every call.
+   */
+  callId?: string;
 }
 
 export interface AskQuestionOption {

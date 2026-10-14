@@ -706,7 +706,7 @@ describe("runAgent", () => {
 
       expect(executeTool).toHaveBeenCalledWith(
         expect.objectContaining({ name: "run_bash" }),
-        { approvedGitConfigWrite: true },
+        { approvedGitConfigWrite: true, callId: expect.any(String) },
       );
     });
 
@@ -722,7 +722,7 @@ describe("runAgent", () => {
 
       expect(executeTool).toHaveBeenCalledWith(
         expect.objectContaining({ name: "run_bash" }),
-        undefined,
+        { callId: expect.any(String) },
       );
     });
 
@@ -741,7 +741,7 @@ describe("runAgent", () => {
       // The call still runs (posture is an approval) — just without the grant.
       expect(executeTool).toHaveBeenCalledWith(
         expect.objectContaining({ name: "run_bash" }),
-        undefined,
+        { callId: expect.any(String) },
       );
       expect(sessionStore.appendPermission).toHaveBeenCalledWith("s1", expect.objectContaining({
         decision: "allow-by-posture",
@@ -766,7 +766,7 @@ describe("runAgent", () => {
       expect(askUser).not.toHaveBeenCalled();
       expect(executeTool).toHaveBeenCalledWith(
         expect.objectContaining({ name: "run_bash" }),
-        undefined,
+        { callId: expect.any(String) },
       );
     });
 
@@ -1010,7 +1010,7 @@ describe("runAgent", () => {
       }));
       // The denied call never executed; the parallel read did.
       expect(executeTool).toHaveBeenCalledTimes(1);
-      expect(executeTool).toHaveBeenCalledWith(expect.objectContaining({ name: "read_file" }));
+      expect(executeTool).toHaveBeenCalledWith(expect.objectContaining({ name: "read_file" }), { callId: expect.any(String) });
     });
 
     it("prompts exactly once for an ask call in a mixed batch", async () => {
@@ -1081,7 +1081,7 @@ describe("runAgent", () => {
       // The denied read was never partitioned into the parallel set and never
       // executed; the allowed read ran.
       expect(executeTool).toHaveBeenCalledTimes(1);
-      expect(executeTool).toHaveBeenCalledWith(expect.objectContaining({ name: "read_file", arguments: { path: "b.txt" } }));
+      expect(executeTool).toHaveBeenCalledWith(expect.objectContaining({ name: "read_file", arguments: { path: "b.txt" } }), { callId: expect.any(String) });
       expect(sessionStore.appendPermission).toHaveBeenCalledWith("s1", expect.objectContaining({
         tool: "read_file",
         subject: "a.env",
@@ -1119,12 +1119,12 @@ describe("runAgent", () => {
         tool: "run_bash",
         decision: "allow-by-posture",
       }));
-      // Upgraded by posture, not denied — the call still executed. (The
-      // trailing `undefined` is the second executor argument, which only an
-      // explicit interactive approval ever populates — see the
+      // Upgraded by posture, not denied — the call still executed. (The second
+      // executor argument carries only the call id: any grant on it is
+      // populated by an explicit interactive approval alone — see the
       // approved-operation grant block.)
       expect(askUser).toHaveBeenCalledTimes(1);
-      expect(executeTool).toHaveBeenCalledWith(expect.objectContaining({ name: "run_bash" }), undefined);
+      expect(executeTool).toHaveBeenCalledWith(expect.objectContaining({ name: "run_bash" }), { callId: expect.any(String) });
     });
 
     it("acts on failedStreak (5 consecutive failures) in a parallel batch", async () => {

@@ -1,5 +1,5 @@
 import type { SandboxLevel } from "../sandbox/seatbelt.js";
-import { isSandboxedLevel } from "../sandbox/seatbelt.js";
+import { isSandboxedLevel, sandboxAllowsBrowser } from "../sandbox/seatbelt.js";
 
 /**
  * What a sandboxed shell command cannot do, said in advance so a model does not
@@ -36,8 +36,32 @@ export const SANDBOX_BLOCKED_HINT =
  * added for a refusal an unsandboxed command genuinely hit.
  */
 export function sandboxBlockedHint(output: string, sandboxed: boolean): string {
-  return sandboxed && SANDBOX_BLOCKED.test(output) ? SANDBOX_BLOCKED_HINT : "";
+  if (!sandboxed) return "";
+  // Checked first: a failed Chrome launch also prints "Operation not
+  // permitted" (crashpad xattrs), and the path hint would mislead.
+  if (BROWSER_LAUNCH_FAILED.test(output)) return sandboxAllowsBrowser() ? BROWSER_NESTED_SANDBOX_HINT : BROWSER_BLOCKED_HINT;
+  return SANDBOX_BLOCKED.test(output) ? SANDBOX_BLOCKED_HINT : "";
 }
+
+/**
+ * A browser that died at launch: Playwright's `browserType.launch`, Puppeteer's
+ * "Failed to launch the browser process", or Chrome's own "Failed to initialize
+ * sandbox". Measured 2026-10-14 (session 2026-10-14T0415-c93a): the model read
+ * 17 such failures as flaky tests and reran them, and each launch put a macOS
+ * crash dialog on screen.
+ */
+const BROWSER_LAUNCH_FAILED = /browserType\.launch|Failed to launch the browser process|Failed to initialize sandbox/;
+
+/** The browser rules are off: the launch cannot succeed inside the sandbox. */
+export const BROWSER_BLOCKED_HINT =
+  "[nib] The OS sandbox stopped the browser from starting — rerunning will fail the same way and show the user a crash dialog each time. Do not rerun it. Tell the user browser tests need `\"sandbox\": { \"allowBrowser\": true }` in ~/.nib/settings.json, or that they can run them outside nib.";
+
+/**
+ * The browser rules are on, so the remaining cause is Chrome's own sandbox:
+ * macOS refuses a nested sandbox_init.
+ */
+export const BROWSER_NESTED_SANDBOX_HINT =
+  "[nib] The browser could not start its own sandbox inside nib's — macOS does not allow nesting. Launch it with its sandbox off (Playwright `chromiumSandbox: false`, Chrome `--no-sandbox`); nib's sandbox still contains it. Ask the user before changing their test configuration.";
 
 /** Whether a sandbox level means the spawn actually runs under a profile. */
 export function spawnWasSandboxed(level: SandboxLevel | undefined): boolean {

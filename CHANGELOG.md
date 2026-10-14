@@ -14,6 +14,10 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Without it each launch aborts and macOS shows a "quit unexpectedly" dialog.
   Launch Chrome with its own sandbox off (`chromiumSandbox: false`); nib's
   profile still contains it.
+- **A failed browser launch says why.** When a sandboxed Playwright or
+  Puppeteer launch fails, the result tells the model not to rerun it and names
+  the fix (`allowBrowser`, or Chrome's own sandbox off), instead of leaving it to
+  read the failures as flaky tests.
 
 ## [0.6.1] — 2026-10-13
 

@@ -328,6 +328,10 @@ const LOOPBACK_OUTBOUND_DENY = `(deny network-outbound (remote ip "localhost:*")
  *   - a private Gradle daemon registry in the session temp dir, because
  *     `~/.gradle/daemon` is denied ({@link TOOLCHAIN_SECRET_DENIES}) — the
  *     contained build starts and finds only its own daemons;
+ *   - `java.io.tmpdir` set to the session temp dir: the JVM derives its default
+ *     from `_CS_DARWIN_USER_TEMP_DIR` (`/private/var/folders/…/T`) and ignores
+ *     `TMPDIR`, so Gradle's Kotlin compiler (`kotlin-compiler-in-gradle-….alive`)
+ *     would otherwise write outside every write root;
  *   - with loopback allowed, Java forced onto IPv4: its default dual-stack
  *     sockets reach Seatbelt in a form the `localhost` rule does not match
  *     (measured: Gradle's daemon connect to 127.0.0.1 is denied without it).
@@ -335,12 +339,22 @@ const LOOPBACK_OUTBOUND_DENY = `(deny network-outbound (remote ip "localhost:*")
 export function withSandboxChildEnv(env: NodeJS.ProcessEnv | undefined): NodeJS.ProcessEnv | undefined {
   const base = env ?? process.env;
   const flags: string[] = [];
-  if (base.TMPDIR) flags.push(`-Dorg.gradle.daemon.registry.base=${join(base.TMPDIR, "gradle-daemon")}`);
+  if (base.TMPDIR) {
+    flags.push(`-Dorg.gradle.daemon.registry.base=${join(base.TMPDIR, "gradle-daemon")}`);
+    flags.push(`-Djava.io.tmpdir=${base.TMPDIR}`);
+  }
   if (allowLocalNetwork) flags.push("-Djava.net.preferIPv4Stack=true");
   const existing = base.JAVA_TOOL_OPTIONS;
   const missing = flags.filter((f) => !existing?.includes(f));
-  if (missing.length === 0) return env;
-  return { ...base, JAVA_TOOL_OPTIONS: [existing, ...missing].filter(Boolean).join(" ") };
+  // `xcrun` (Xcode's `git`/`clang` shims) keeps a lookup cache in the per-user
+  // temp dir, outside every write root and shared with the host's own xcrun.
+  // Writing it would let a contained command redirect the host's tool lookups,
+  // so the cache is switched off for the child rather than opened.
+  const needsNoCache = base.xcrun_nocache !== "1";
+  if (missing.length === 0 && !needsNoCache) return env;
+  const out: NodeJS.ProcessEnv = { ...base, xcrun_nocache: "1" };
+  if (missing.length > 0) out.JAVA_TOOL_OPTIONS = [existing, ...missing].filter(Boolean).join(" ");
+  return out;
 }
 
 /** Deny lines for the toolchain config/secret lists under `home`. */

@@ -39,7 +39,7 @@ const TOOLCHAINS: Toolchain[] = [
     markers: ["pubspec.yaml"],
     // <root>/bin/flutter: the SDK updates <root>/bin/cache and its own tool snapshots.
     sdk: { tool: "flutter", root: (bin) => dirname(dirname(bin)) },
-    homeDirs: [".flutter", ".dart-tool", ".dartServer"],
+    homeDirs: [".flutter", ".dart-tool", ".dartServer", ".config/flutter"],
   },
   {
     id: "toolchain:gradle",

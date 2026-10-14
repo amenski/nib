@@ -47,6 +47,14 @@ describe("detectPresets", () => {
     expect(detectPresets(ws, { home, which: () => join(root, ".asdf", "shims", "flutter") })).toEqual([]);
   });
 
+  it("includes Flutter's user config dir (~/.config/flutter) when it exists", () => {
+    const { ws, home } = fixture();
+    writeFileSync(join(ws, "pubspec.yaml"), "");
+    mkdirSync(join(home, ".config", "flutter"), { recursive: true });
+    const [preset] = detectPresets(ws, { home, which: () => null });
+    expect(preset.parts.map((p) => p.id)).toEqual([`write:${join(home, ".config", "flutter")}`]);
+  });
+
   it("leaves out an SDK in a never-grantable place", () => {
     const { ws, home } = fixture();
     writeFileSync(join(ws, "pubspec.yaml"), "");

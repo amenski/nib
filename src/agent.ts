@@ -1064,7 +1064,8 @@ export async function runAgent(
     const offerCapabilities = async (tc: ToolCall, result: ToolOutput): Promise<void> => {
       const command = typeof tc.arguments.command === "string" ? tc.arguments.command : "";
       const evidence = `${command}\n${result.content}\n${result.error ?? ""}`;
-      const failed = result.error !== undefined || /^Exit code: (?!0\b)/m.test(result.content);
+      // run_bash says `Exit code: N`; check_job says `Status: exited (exit N)`.
+      const failed = result.error !== undefined || /^Exit code: (?!0\b)/m.test(result.content) || /^Status: \S+ \(exit (?!0\))/m.test(result.content);
       const declined = options.sessionId !== undefined ? declinedCapabilitiesFor(options.sessionId) : new Set<string>();
       const notes: string[] = [];
       const seen = new Set<string>();

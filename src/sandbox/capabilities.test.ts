@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -6,6 +6,7 @@ import {
   NEVER_GRANTABLE_SERVICES,
   capabilityFor,
   isActionable,
+  isCaskDir,
   parseCapabilityId,
   resolveCapabilityId,
   resolveStoredGrants,
@@ -58,6 +59,42 @@ describe("capability ids", () => {
 
   itOnDarwin("builds the browser rules from the existing definition", () => {
     expect(parseCapabilityId("browser")!.lines.join("\n")).toContain('(global-name "com.apple.windowserver.active")');
+  });
+});
+
+describe("a write grant under $HOME also reads", () => {
+  it("emits a read line next to the write line inside home, and only the write line outside it", () => {
+    const home = mkdtempSync(join(homedir(), "nib-cap-home-"));
+    try {
+      const real = realpathSync(home);
+      const cap = parseCapabilityId(`write:${home}`)!;
+      expect(cap.lines).toEqual([`(allow file-write* (subpath "${real}"))`, `(allow file-read* (subpath "${real}"))`]);
+      expect(cap.risk).toMatch(/change, read and delete/);
+      expect(parseCapabilityId(`read:${home}`)!.lines).toEqual([`(allow file-read* (subpath "${real}"))`]);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+    const outside = join(scratch, "outside-home");
+    mkdirSync(outside);
+    expect(parseCapabilityId(`write:${outside}`)!.lines).toEqual([`(allow file-write* (subpath "${outside}"))`]);
+  });
+});
+
+describe("Homebrew cask directories", () => {
+  it("treats Caskroom/<name>/<version>/<x> as a cask dir, and nothing shallower or elsewhere", () => {
+    expect(isCaskDir("/opt/homebrew/Caskroom/flutter/3.7.6/flutter")).toBe(true);
+    expect(isCaskDir("/opt/homebrew/Caskroom/flutter/3.7.6/flutter/bin/cache")).toBe(true);
+    expect(isCaskDir("/opt/homebrew/Caskroom/flutter/3.7.6")).toBe(false);
+    expect(isCaskDir("/opt/homebrew/Caskroom/flutter")).toBe(false);
+    expect(isCaskDir("/opt/homebrew/Caskroom")).toBe(false);
+    expect(isCaskDir("/opt/homebrew/bin")).toBe(false);
+    expect(isCaskDir("/opt/homebrew/Cellar/x/1/y")).toBe(false);
+    expect(isCaskDir("/opt/homebrew/CaskroomX/a/b/c")).toBe(false);
+  });
+
+  it.skipIf(!existsSync("/opt/homebrew/bin"))("still refuses the rest of /opt/homebrew", () => {
+    expect(blocked(resolveCapabilityId("write:/opt/homebrew/bin"))).toMatch(/system or program/);
+    expect(blocked(resolveCapabilityId("write:/opt/homebrew"))).toMatch(/system or program/);
   });
 });
 

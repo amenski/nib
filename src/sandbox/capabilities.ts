@@ -92,13 +92,25 @@ function homeDir(): string {
 
 const inside = (path: string, tree: string): boolean => path === tree || path.startsWith(tree + sep);
 
+const CASK_ROOT = "/opt/homebrew/Caskroom";
+
+/**
+ * A Homebrew cask's own directory (`Caskroom/<name>/<version>/<something>`) is a
+ * self-contained SDK install — the same tamper class the toolchain presets
+ * already name ("the SDK files later builds run"). `Caskroom/<name>` alone,
+ * `bin`, `Cellar` and `lib` are not.
+ */
+export const isCaskDir = (dir: string): boolean => inside(dir, CASK_ROOT) && dir.slice(CASK_ROOT.length + 1).split(sep).length >= 3;
+
 /** Why `dir` (already realpath-resolved) must never be granted, or null. */
 function blockedDirReason(dir: string, home: string): string | null {
   if (!dir.startsWith("/") || CONTROL_CHARS.test(dir)) return "not a usable absolute path";
   if ((NEVER_EXACT as readonly string[]).includes(dir)) return "too broad";
   // The home directory, and everything above it.
   if (inside(home, dir)) return "contains your home directory";
+  const cask = isCaskDir(dir);
   for (const tree of NEVER_SYSTEM_TREES) {
+    if (cask && tree === "/opt/homebrew") continue;
     if (inside(dir, tree) || inside(tree, dir)) return "a system or program directory";
   }
   for (const rel of NEVER_HOME_TREES) {
@@ -125,12 +137,15 @@ function pathCapability(kind: "write" | "read", raw: string): Capability | Block
   const why = blockedDirReason(real, homeDir());
   if (why) return { blocked: `${quoteForDisplay(real)} is not grantable: ${why}` };
   const q = sbplQuote(real);
+  // Under $HOME the default profile denies reads outside the workspace, so a
+  // directory a command may write is useless unless it can read it back.
+  const homeRead = kind === "write" && inside(real, homeDir());
   return kind === "write"
     ? {
         id: `write:${real}`,
         title: `Write to ${quoteForDisplay(real)}`,
-        risk: `Commands can create, change and delete any file under ${quoteForDisplay(real)}, including files other programs later run or read.`,
-        lines: [`(allow file-write* (subpath "${q}"))`],
+        risk: `Commands can create, change${homeRead ? ", read" : ""} and delete any file under ${quoteForDisplay(real)}, including files other programs later run or read.`,
+        lines: [`(allow file-write* (subpath "${q}"))`, ...(homeRead ? [`(allow file-read* (subpath "${q}"))`] : [])],
       }
     : {
         id: `read:${real}`,

@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { runAgent } from "./agent.js";
@@ -153,6 +153,21 @@ describe("capability grants after a sandbox denial", () => {
     expect(bashEnvelopeGrants.lookup(sessionId, "run_bash", `hash:write:${target}`)).not.toBeNull();
     expect(sessionStore.appendPermission).toHaveBeenCalledWith(sessionId, expect.objectContaining({ decision: "grant-renewed", subject: `write:${target}` }));
     bashEnvelopeGrants.revoke(sessionId, "run_bash");
+  });
+
+  it("treats a failed background job as failed, so a denied read under $HOME is granted", async () => {
+    const dir = mkdtempSync(join(homedir(), "nib-cap-job-"));
+    try {
+      const real = realpathSync(dir);
+      const readGroup: DenialGroup = { opClass: "read", key: real, ops: ["file-read-data"], samples: [join(real, "f")], count: 1, probable: false };
+      const job = (status: string): ToolOutput => ({ content: `Job j1\nStatus: ${status}\n`, sandboxDenials: [readGroup] });
+      await run({ turns: [bashTurn("c1", "x"), textTurn("ok")], results: [job("exited (exit 0)")] });
+      expect(activeGrants()).toEqual([]);
+      await run({ turns: [bashTurn("c1", "x"), textTurn("ok")], results: [job("exited (exit 1)")] });
+      expect(activeGrants()).toEqual([`read:${real}`]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   describe("macOS service lookups", () => {

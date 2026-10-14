@@ -1435,19 +1435,27 @@ describe("toolchain access (2026-10-10)", () => {
     }
   });
 
-  it("gives contained JVMs a private Gradle daemon registry and IPv4, appending to existing options", () => {
+  it("gives contained JVMs a private Gradle daemon registry, the session temp dir and IPv4, appending to existing options", () => {
     expect(withSandboxChildEnv({ PATH: "/bin" })?.JAVA_TOOL_OPTIONS).toBe("-Djava.net.preferIPv4Stack=true");
     expect(withSandboxChildEnv({ TMPDIR: "/s", JAVA_TOOL_OPTIONS: "-Xmx1g" })?.JAVA_TOOL_OPTIONS).toBe(
-      "-Xmx1g -Dorg.gradle.daemon.registry.base=/s/gradle-daemon -Djava.net.preferIPv4Stack=true",
+      "-Xmx1g -Dorg.gradle.daemon.registry.base=/s/gradle-daemon -Djava.io.tmpdir=/s -Djava.net.preferIPv4Stack=true",
     );
     configureSandbox({ allowLocalNetwork: false });
     try {
       expect(withSandboxChildEnv({ TMPDIR: "/s" })?.JAVA_TOOL_OPTIONS).toBe(
-        "-Dorg.gradle.daemon.registry.base=/s/gradle-daemon",
+        "-Dorg.gradle.daemon.registry.base=/s/gradle-daemon -Djava.io.tmpdir=/s",
       );
     } finally {
       configureSandbox({});
     }
+  });
+
+  it("switches xcrun's shared cache off for contained children instead of opening it, and never adds a write rule for it", () => {
+    expect(withSandboxChildEnv({ PATH: "/bin" })?.xcrun_nocache).toBe("1");
+    expect(withSandboxChildEnv({ TMPDIR: "/s" })?.xcrun_nocache).toBe("1");
+    const already = { PATH: "/bin", xcrun_nocache: "1", JAVA_TOOL_OPTIONS: "-Djava.net.preferIPv4Stack=true" };
+    expect(withSandboxChildEnv(already)).toBe(already);
+    expect(buildSeatbeltProfile("workspace-write", "/private/tmp/ws")).not.toContain("xcrun_db");
   });
 
   it("hides the registry of Gradle daemons running outside the sandbox", () => {

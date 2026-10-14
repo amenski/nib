@@ -113,6 +113,9 @@ function writeSettings(settings: Record<string, unknown>): void {
 }
 
 async function run(opts?: { mode?: string; model?: string; debug?: boolean; prompt?: string }): Promise<{ code: number; stderr: string }> {
+  // Every run must read the fixture home, never the developer's ~/.nib: a
+  // stale variable name once let a real settings file decide these results.
+  if (process.env.NIB_HOME !== HOME_DIR) throw new Error("exec-runner test ran without NIB_HOME set to the fixture home");
   const { runExecMode } = await import("./exec-runner.js");
   const chunks: string[] = [];
   // console.error routes through process.stderr.write, so spying on write
@@ -662,14 +665,14 @@ describe("runExecMode wires self-reflection + error-recovery (engagement)", () =
   beforeEach(() => {
     mkdirSync(PROJECT_DIR, { recursive: true });
     mkdirSync(HOME_DIR, { recursive: true });
-    process.env.DEEPCODE_HOME = HOME_DIR;
+    process.env.NIB_HOME = HOME_DIR;
     executeToolSpy.mockClear();
     createProviderSpy.mockClear();
     scriptedCall = null;
   });
 
   afterEach(() => {
-    delete process.env.DEEPCODE_HOME;
+    delete process.env.NIB_HOME;
     rmSync(TEST_DIR, { recursive: true, force: true });
   });
 

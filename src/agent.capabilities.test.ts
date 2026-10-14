@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
@@ -75,14 +75,14 @@ async function run(opts: {
 describe("capability grants after a sandbox denial", () => {
   it("asks, grants for the session, and tells the model to rerun once", async () => {
     const ask = vi.fn(async () => "session" as const);
-    const { toolResults } = await run({ turns: [bashTurn("c1", `touch ${target}/f`), textTurn("ok")], results: [denied([writeGroup()])], askCapability: ask });
-    expect(ask).toHaveBeenCalledWith(expect.objectContaining({ capability: expect.objectContaining({ id: `write:${target}` }), probable: false, command: `touch ${target}/f` }));
+    const { toolResults } = await run({ turns: [bashTurn("c1", `touch ${target}/f`), textTurn("ok")], results: [denied([writeGroup({ probable: true })])], askCapability: ask });
+    expect(ask).toHaveBeenCalledWith(expect.objectContaining({ capability: expect.objectContaining({ id: `write:${target}` }), probable: true, command: `touch ${target}/f` }));
     expect(activeGrants()).toEqual([`write:${target}`]);
     expect(toolResults[0].content).toContain(`[nib] The user granted "Write to ${JSON.stringify(target)}" for this session. Rerun the command once; do not retry on a repeat denial.`);
   });
 
   it("'always' also saves the id to the global settings file", async () => {
-    await run({ turns: [bashTurn("c1", "x"), textTurn("ok")], results: [denied([writeGroup()])], askCapability: async () => "always" });
+    await run({ turns: [bashTurn("c1", `touch ${target}/f`), textTurn("ok")], results: [denied([writeGroup({ probable: true })])], askCapability: async () => "always" });
     const saved = JSON.parse(readFileSync(join(nibHome, "settings.json"), "utf8"));
     expect(saved.sandbox.grants).toEqual([`write:${target}`]);
     // The loader requires `enabled` whenever the block exists.
@@ -92,8 +92,8 @@ describe("capability grants after a sandbox denial", () => {
   it("a decline is remembered for the session and never asked twice", async () => {
     const ask = vi.fn(async () => "deny" as const);
     const { toolResults } = await run({
-      turns: [bashTurn("c1", "a"), bashTurn("c2", "b"), textTurn("ok")],
-      results: [denied([writeGroup()]), denied([writeGroup()])],
+      turns: [bashTurn("c1", `touch ${target}/f`), bashTurn("c2", `touch ${target}/f`), textTurn("ok")],
+      results: [denied([writeGroup({ probable: true })]), denied([writeGroup({ probable: true })])],
       askCapability: ask,
       sessionId: "decline-session",
     });
@@ -102,8 +102,19 @@ describe("capability grants after a sandbox denial", () => {
     expect(toolResults[0].content).toContain("[nib] The user declined");
   });
 
-  it("headless (no prompter) reports only", async () => {
-    const { toolResults } = await run({ turns: [bashTurn("c1", "x"), textTurn("ok")], results: [denied([writeGroup()])] });
+  it("grants a plain denied directory for the session without asking, headless included", async () => {
+    const ask = vi.fn(async () => "deny" as const);
+    const { toolResults } = await run({ turns: [bashTurn("c1", "x"), textTurn("ok")], results: [denied([writeGroup()])], askCapability: ask });
+    expect(ask).not.toHaveBeenCalled();
+    expect(activeGrants()).toEqual([`write:${target}`]);
+    expect(toolResults[0].content).toContain(`[nib] Allowed "Write to ${JSON.stringify(target)}" for this session.`);
+    configureSandbox({});
+    await run({ turns: [bashTurn("c1", "x"), textTurn("ok")], results: [denied([writeGroup()])] });
+    expect(activeGrants()).toEqual([`write:${target}`]);
+  });
+
+  it("headless (no prompter) reports only a probable denial", async () => {
+    const { toolResults } = await run({ turns: [bashTurn("c1", `touch ${target}/f`), textTurn("ok")], results: [denied([writeGroup({ probable: true })])] });
     expect(activeGrants()).toEqual([]);
     expect(toolResults[0].content).not.toContain("[nib] The user");
   });
@@ -123,8 +134,8 @@ describe("capability grants after a sandbox denial", () => {
     const ask = vi.fn(async () => "deny" as const);
     const dirs = ["a", "b", "c", "d"].map((n) => { const d = join(scratch, n); mkdirSync(d, { recursive: true }); return d; });
     await run({
-      turns: [bashTurn("c1", "x"), textTurn("ok")],
-      results: [denied([writeGroup({ probable: true, samples: ["/nowhere/q"] }), ...dirs.map((d) => writeGroup({ key: d, samples: [join(d, "f")] }))])],
+      turns: [bashTurn("c1", dirs.map((d) => join(d, "f")).join(" ")), textTurn("ok")],
+      results: [denied([writeGroup({ probable: true, samples: ["/nowhere/q"] }), ...dirs.map((d) => writeGroup({ probable: true, key: d, samples: [join(d, "f")] }))])],
       askCapability: ask,
     });
     expect(ask).toHaveBeenCalledTimes(3);
@@ -142,5 +153,42 @@ describe("capability grants after a sandbox denial", () => {
     expect(bashEnvelopeGrants.lookup(sessionId, "run_bash", `hash:write:${target}`)).not.toBeNull();
     expect(sessionStore.appendPermission).toHaveBeenCalledWith(sessionId, expect.objectContaining({ decision: "grant-renewed", subject: `write:${target}` }));
     bashEnvelopeGrants.revoke(sessionId, "run_bash");
+  });
+
+  describe("macOS service lookups", () => {
+    const machGroup = (service: string, over: Partial<DenialGroup> = {}): DenialGroup => ({
+      opClass: "mach", key: service, ops: ["mach-lookup"], samples: [service], count: 1, probable: false, ...over,
+    });
+    const ok = (groups: DenialGroup[]): ToolOutput => ({ content: "done", sandboxDenials: groups });
+    const service = "com.apple.coreservices.quarantine-resolver";
+
+    it("grants a harmless service for the session without asking, even when the command succeeded", async () => {
+      const ask = vi.fn(async () => "deny" as const);
+      const { toolResults } = await run({ turns: [bashTurn("c1", "flutter analyze"), textTurn("ok")], results: [ok([machGroup(service)])], askCapability: ask });
+      expect(ask).not.toHaveBeenCalled();
+      expect(activeGrants()).toEqual([`mach:${service}`]);
+      expect(toolResults[0].content).toContain(`[nib] Allowed "Look up ${JSON.stringify(service)}" for this session.`);
+      // The earlier "always" test left a settings file behind; this grant must not be added to it.
+      const saved = existsSync(join(nibHome, "settings.json")) ? readFileSync(join(nibHome, "settings.json"), "utf8") : "";
+      expect(saved).not.toContain("mach:");
+    });
+
+    it("grants without a prompter too (headless)", async () => {
+      await run({ turns: [bashTurn("c1", "x"), textTurn("ok")], results: [ok([machGroup(service)])] });
+      expect(activeGrants()).toEqual([`mach:${service}`]);
+    });
+
+    it("never grants a service that would act as the user", async () => {
+      const ask = vi.fn(async () => "session" as const);
+      const { toolResults } = await run({ turns: [bashTurn("c1", "x"), textTurn("ok")], results: [ok([machGroup("com.apple.pasteboard.1")])], askCapability: ask });
+      expect(ask).not.toHaveBeenCalled();
+      expect(activeGrants()).toEqual([]);
+      expect(toolResults[0].content).toContain("[nib] Not offered to the user:");
+    });
+
+    it("does not grant a probable (guessed) attribution", async () => {
+      await run({ turns: [bashTurn("c1", "x"), textTurn("ok")], results: [ok([machGroup(service, { probable: true })])] });
+      expect(activeGrants()).toEqual([]);
+    });
   });
 });

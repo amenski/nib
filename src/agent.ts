@@ -27,7 +27,7 @@ import {
 } from "./permissions/session-grant.js";
 import type { SandboxFailureReason } from "./sandbox/launcher.js";
 import { summarizeDenials } from "./sandbox/denials.js";
-import { capabilityFor, isActionable, type CapabilityAnswer, type CapabilityRequest } from "./sandbox/capabilities.js";
+import { capabilityFor, isActionable, type Capability, type CapabilityAnswer, type CapabilityRequest } from "./sandbox/capabilities.js";
 import { activeGrants, grantCapability } from "./sandbox/seatbelt.js";
 import { addSandboxGrants } from "./config/settings-writer.js";
 import type { ToolExecOptions } from "./tools/types.js";
@@ -1025,6 +1025,36 @@ export async function runAgent(
     const batchNotes: Message[] = [];
 
     /**
+     * Widen the profile by `cap` for this session (and, when `persist`, for
+     * later ones). A session grant covering the old envelope moves with it: the
+     * widening is the user's, or nib's own for a mach service, not a change the
+     * grant should be "invalidated" by.
+     */
+    const grantNow = async (tc: ToolCall, cap: Capability, persist: boolean): Promise<void> => {
+      const before = currentEnvelope();
+      grantCapability({ id: cap.id, lines: cap.lines });
+      if (persist) {
+        try {
+          addSandboxGrants([cap.id]);
+        } catch (err) {
+          options.onDiagnostic?.(`could not save the sandbox grant: ${(err as Error).message}`);
+        }
+      }
+      const after = currentEnvelope();
+      const sessionId = options.sessionId;
+      if (before && after && sessionId !== undefined && bashEnvelopeGrants.lookup(sessionId, "run_bash", before.profileHash)) {
+        bashEnvelopeGrants.grant({
+          sessionId, tool: "run_bash", profileHash: after.profileHash, level: after.level,
+          trustedRoot: after.trustedRoot, writeRoots: after.writeRoots, sessionTempDir: after.sessionTempDir,
+        });
+        await options.sessionStore?.appendPermission(sessionId, {
+          toolCallId: tc.id, tool: "run_bash", subject: cap.id, decision: "grant-renewed",
+          reason: `sandbox capability "${cap.id}" granted; the session grant moved to the new envelope`,
+        });
+      }
+    };
+
+    /**
      * The OS refused something during this call (sandbox/denials.ts). For each
      * denial worth asking about, offer the user the named capability that
      * would allow it; the model only ever sees the outcome. A grant is not
@@ -1050,6 +1080,17 @@ export async function runAgent(
         }
         if (seen.has(cap.id) || declined.has(cap.id) || activeGrants().includes(cap.id)) continue;
         seen.add(cap.id);
+        // Anything grantable is granted without asking. What must never be
+        // granted is a closed list already applied by capabilityFor (system and
+        // credential trees, services that act as the user), and a prompt per
+        // directory or daemon a toolchain happens to touch is noise. Session
+        // only; nothing is saved. A `probable` denial (attributed by
+        // elimination, possibly another process's) still asks.
+        if (!group.probable) {
+          await grantNow(tc, cap, false);
+          notes.push(`[nib] Allowed "${cap.title}" for this session. Rerun the command once only if it failed; do not retry on a repeat denial.`);
+          continue;
+        }
         // Headless and sub-agent runs report; only the user can grant.
         if (!options.askCapability || prompts >= MAX_CAPABILITY_PROMPTS_PER_CALL) continue;
         prompts++;
@@ -1059,30 +1100,7 @@ export async function runAgent(
           notes.push(`[nib] The user declined "${cap.title}". Do not ask for it again; work within the sandbox or ask the user how to proceed.`);
           continue;
         }
-        const before = currentEnvelope();
-        grantCapability({ id: cap.id, lines: cap.lines });
-        if (answer === "always") {
-          try {
-            addSandboxGrants([cap.id]);
-          } catch (err) {
-            options.onDiagnostic?.(`could not save the sandbox grant: ${(err as Error).message}`);
-          }
-        }
-        // The user just consented to the wider profile, so a session grant
-        // covering the old one moves with it — no second prompt, no
-        // "invalidated" row for a change the user made.
-        const after = currentEnvelope();
-        const sessionId = options.sessionId;
-        if (before && after && sessionId !== undefined && bashEnvelopeGrants.lookup(sessionId, "run_bash", before.profileHash)) {
-          bashEnvelopeGrants.grant({
-            sessionId, tool: "run_bash", profileHash: after.profileHash, level: after.level,
-            trustedRoot: after.trustedRoot, writeRoots: after.writeRoots, sessionTempDir: after.sessionTempDir,
-          });
-          await options.sessionStore?.appendPermission(sessionId, {
-            toolCallId: tc.id, tool: "run_bash", subject: cap.id, decision: "grant-renewed",
-            reason: `sandbox capability "${cap.id}" granted; the session grant moved to the new envelope`,
-          });
-        }
+        await grantNow(tc, cap, answer === "always");
         notes.push(`[nib] The user granted "${cap.title}" for this session${answer === "always" ? " and saved it for later ones" : ""}. Rerun the command once; do not retry on a repeat denial.`);
       }
       if (notes.length > 0) result.content = `${result.content}\n${notes.join("\n")}`;

@@ -461,7 +461,7 @@ describe("OS-reported sandbox denials", () => {
       // elimination. Other sandboxed processes on a busy machine (or in a
       // parallel test run) can add groups of their own, so look for ours.
       expect(out.sandboxDenials).toContainEqual(expect.objectContaining({ opClass: "write", key: "/opt", probable: true }));
-      expect(content).toContain("file-write-create under /opt (1×, probable)");
+      expect(content).toContain('file-write-create under "/opt" (1×, probable)');
     });
 
     itOnDarwin("reports a background job's denial through check_job", async () => {
@@ -484,7 +484,7 @@ describe("OS-reported sandbox denials", () => {
         registerJobs(registry);
         const out = await registry.execute({ id: "c1", name: "check_job", arguments: { job_id: jobId } }, mockCtx);
         expect(out.content).toContain("[nib] sandbox denied");
-        expect(out.content).toContain("file-write-create under /opt");
+        expect(out.content).toContain('file-write-create under "/opt"');
       } finally {
         jobManager.killAll();
         rmSync(workspace, { recursive: true, force: true });

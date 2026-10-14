@@ -53,13 +53,30 @@ export const GRACE_MS = 250;
 /** Groups shown in one block; the rest collapse into "+N more". */
 export const MAX_DISPLAYED_GROUPS = 8;
 
-const DENY_LINE = /(?:(\d+) duplicate reports? for )?Sandbox: (.+?)\((\d+)\) deny\(\d+\) (\S+)(?: (.*))?$/;
+/**
+ * A denial's target is a file name or service name chosen by whatever the
+ * command ran, and it ends up in text nib writes in its own voice (the
+ * `[nib] sandbox denied` line the model reads, the transcript, and the consent
+ * prompt). So it is untrusted: a name containing control characters is not
+ * carried at all, rather than cleaned — a cleaned path would no longer be the
+ * path the kernel refused, and a grant must never be derived from it.
+ */
+const UNPRINTABLE_TARGET = "(unprintable name)";
+const MAX_TARGET_CHARS = 1024;
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
+
+const DENY_LINE = /(?:(\d+) duplicate reports? for )?Sandbox: (.+?)\((\d+)\) deny\(\d+\) (\S+)(?: (.*))?$/s;
 
 /** One denial from one `log stream` line, or null for headers, `allow` lines and other senders. A duplicate-report line carries its repeat count. */
 export function parseDenialLine(line: string, at: number = Date.now()): SandboxDenial | null {
   const m = DENY_LINE.exec(line);
   if (!m) return null;
-  return { proc: m[2], pid: Number(m[3]), op: m[4], target: (m[5] ?? "").trim(), count: m[1] ? Number(m[1]) : 1, at };
+  // Operations are the kernel's fixed vocabulary; anything else is not a denial line.
+  if (!/^[a-z0-9*-]+$/.test(m[4])) return null;
+  const target = (m[5] ?? "").trim();
+  const safe = target.length <= MAX_TARGET_CHARS && !CONTROL_CHARS.test(target) && !CONTROL_CHARS.test(m[2]);
+  return { proc: safe ? m[2] : "?", pid: Number(m[3]), op: m[4], target: safe ? target : UNPRINTABLE_TARGET, count: m[1] ? Number(m[1]) : 1, at };
 }
 
 const SHELLS = new Set(["sh", "bash", "zsh", "dash"]);
@@ -123,10 +140,19 @@ export function groupDenials(denials: SandboxDenial[], home: string = homedir())
   return [...groups.values()].sort((a, b) => Number(a.probable) - Number(b.probable) || b.count - a.count);
 }
 
-/** `file-write-create under ~/.pub-cache (3×); mach-lookup com.apple.foo (1×)` — no `[nib]` prefix, for the transcript. */
+const MAX_DISPLAY_CHARS = 120;
+
+/** A name for display inside nib's own sentence: quoted, so text inside it reads as data, and bounded. */
+export function quoteForDisplay(name: string): string {
+  const shown = name.length > MAX_DISPLAY_CHARS ? `${name.slice(0, MAX_DISPLAY_CHARS)}…` : name;
+  return JSON.stringify(shown);
+}
+
+/** `file-write-create under "~/.pub-cache" (3×); mach-lookup "com.apple.foo" (1×)` — no `[nib]` prefix, for the transcript. */
 export function summarizeDenials(groups: DenialGroup[]): string {
   const shown = groups.slice(0, MAX_DISPLAYED_GROUPS).map((g) => {
-    const where = g.opClass === "write" || g.opClass === "read" || g.opClass === "exec" ? `under ${g.key}` : g.key;
+    const name = quoteForDisplay(g.key);
+    const where = g.opClass === "write" || g.opClass === "read" || g.opClass === "exec" ? `under ${name}` : name;
     return `${g.ops.join(",")} ${where}`.trim() + ` (${g.count}×${g.probable ? ", probable" : ""})`;
   });
   const extra = groups.length - shown.length;

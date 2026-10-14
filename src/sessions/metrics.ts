@@ -9,7 +9,7 @@ const CANONICAL_DECISIONS = new Set<PermissionAuditRecord["decision"]>([
   "allow-by-rule", "allow-by-posture", "ask-approved", "ask-denied",
   "deny-by-rule", "deny-by-profile", "headless-deny", "unresolved-ask",
   // Session-grant lifecycle (docs/permission-ux-redesign.md).
-  "allow-by-envelope-grant", "grant-invalidated", "grant-revoked", "sandbox-failure",
+  "allow-by-envelope-grant", "grant-invalidated", "grant-revoked", "grant-renewed", "sandbox-failure",
 ]);
 const LEGACY_DECISIONS = new Set<PermissionAuditRecord["decision"]>([
   "deny", "once", "session", "always",

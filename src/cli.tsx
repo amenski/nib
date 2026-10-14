@@ -447,8 +447,11 @@ async function main() {
     getSignal: () => shared.abort.signal,
     // Only an automatic grant is inherited (see OrchestratorOptions.getBashEnvelope):
     // it came from the setting, not from a human answering a prompt for one call.
-    // Read lazily — `bashEnvelope` is built further down this function.
-    getBashEnvelope: () => (bashEnvelope?.autoGrant ? bashEnvelope : undefined),
+    // Read lazily — `currentBashEnvelope` is defined further down this function.
+    getBashEnvelope: () => {
+      const envelope = currentBashEnvelope();
+      return envelope?.autoGrant ? envelope : undefined;
+    },
     hooks,
   });
   orchestrator.register(registry);
@@ -621,7 +624,9 @@ async function main() {
   // the spawn's profile cannot describe different things. Absent when the
   // session has no OS boundary to bind consent to — non-macOS, no level, or
   // `unrestricted` — and in that case no grant is ever offered or reused.
-  const bashEnvelope: BashEnvelope | undefined =
+  // A getter, read at gate time: a sandbox capability granted mid-session
+  // (sandbox/capabilities.ts) changes the profile, so the hash must be recomputed.
+  const currentBashEnvelope = (): BashEnvelope | undefined =>
     hasActiveSandboxContainment(configResult.config) &&
     isSandboxedLevel(bashSandboxLevel)
       ? {
@@ -1094,7 +1099,7 @@ async function main() {
           if (event.kind !== "text") cb.onSubagentProgress?.(event);
           appSubagentSink?.(event);
         });
-        return runAgentTurnBridge(input, cb, shared, permissions, permissionProfile, getProvider, getCompactor(), diagnostics, skills, agents, memoryInjection, memoryStore, sessionStore, sessionId, modeLoader, skillLoader, imageUrls, planMode, checkpoints, configResult.config.notify, configResult.config.env, notifySpawnOptions, errorReflector, errorRecovery, repomapInjection, dirtyBaseline, thinkingEnabled, getActiveModelCaps()?.contextWindow, hooks, bashEnvelope);
+        return runAgentTurnBridge(input, cb, shared, permissions, permissionProfile, getProvider, getCompactor(), diagnostics, skills, agents, memoryInjection, memoryStore, sessionStore, sessionId, modeLoader, skillLoader, imageUrls, planMode, checkpoints, configResult.config.notify, configResult.config.env, notifySpawnOptions, errorReflector, errorRecovery, repomapInjection, dirtyBaseline, thinkingEnabled, getActiveModelCaps()?.contextWindow, hooks, currentBashEnvelope);
       },
       // Async sub-agent delivery (async-subagents.md §2): the App registers its
       // session-scoped wake handler here; the orchestrator calls it once per
@@ -1870,7 +1875,7 @@ export async function handleSlashCore(
   }
 }
 
-async function runAgentTurnBridge(input: string, cb: any, shared: any, permissions: PermissionEngine, permissionProfile: ProfileEvaluator | undefined, getProvider: any, compactor: Compactor, diagnostics: DiagnosticRunner, skills: SkillDef[], agents: AgentDef[], memoryInjection: string | null | undefined, memoryStore: MemoryStore, sessionStore: SessionStore, sessionId: string, modeLoader: ModeLoader, skillLoader: SkillLoader, imageUrls?: string[], planMode?: boolean, checkpoints?: CheckpointManager, notifyScript?: string, notifyEnv?: Record<string, string | undefined>, notifySpawnOptions?: NotifySpawnOptions, errorReflector?: ErrorReflector, errorRecovery?: ErrorRecovery, repomapInjection?: string, dirtyBaseline?: string, thinkingEnabled?: boolean, contextWindow?: number, hooks?: HookRunner, bashEnvelope?: BashEnvelope): Promise<any> {
+async function runAgentTurnBridge(input: string, cb: any, shared: any, permissions: PermissionEngine, permissionProfile: ProfileEvaluator | undefined, getProvider: any, compactor: Compactor, diagnostics: DiagnosticRunner, skills: SkillDef[], agents: AgentDef[], memoryInjection: string | null | undefined, memoryStore: MemoryStore, sessionStore: SessionStore, sessionId: string, modeLoader: ModeLoader, skillLoader: SkillLoader, imageUrls?: string[], planMode?: boolean, checkpoints?: CheckpointManager, notifyScript?: string, notifyEnv?: Record<string, string | undefined>, notifySpawnOptions?: NotifySpawnOptions, errorReflector?: ErrorReflector, errorRecovery?: ErrorRecovery, repomapInjection?: string, dirtyBaseline?: string, thinkingEnabled?: boolean, contextWindow?: number, hooks?: HookRunner, bashEnvelope?: () => BashEnvelope | undefined): Promise<any> {
   if (checkpoints) {
     const convLen = shared.conversationHistory.length;
     await checkpoints.save(`[convLen:${convLen}] ${input.slice(0, 80)}`);
@@ -1952,6 +1957,7 @@ async function runAgentTurnBridge(input: string, cb: any, shared: any, permissio
       cb.onUsage(input, output);
     },
     askUser: cb.askUser,
+    askCapability: cb.askCapability,
     // Root run only (docs/permission-ux-redesign.md): the session grant is the
     // interactive user's consent, so only this run may reuse or create one.
     // Subagent runs (orchestrator) and headless exec runs are never handed an

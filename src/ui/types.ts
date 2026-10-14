@@ -1,5 +1,6 @@
 import type { Provider } from "../providers/types.js";
 import type { Message } from "../types.js";
+import type { CapabilityAnswer, CapabilityRequest } from "../sandbox/capabilities.js";
 import type { CommandDef } from "../commands/index.js";
 import type { ThemeContextValue, ThemeDefinition } from "./theme.js";
 import type { KeybindingMap, KeybindingConfig, KeybindingAction } from "./keybindings.js";
@@ -277,6 +278,8 @@ export interface AgentBridgeCallbacks {
    * third argument (docs/permission-ux-redesign.md) — the agent records that
    * one and stores the grant, so the UI writes no row for it.
    */
+  /** The capability grant prompt (sandbox/capabilities.ts); resolves with the user's choice. */
+  askCapability?: (req: CapabilityRequest) => Promise<CapabilityAnswer>;
   askUser: (toolName: string, args: Record<string, unknown>, envelope?: BashEnvelope, origin?: { subagent: string }) => Promise<boolean | "posture" | "envelope-grant">;
   /** Mid-turn steering mailbox: polled once per decision point by the agent
    *  loop; returns the next queued message or null (the queue head is consumed). */

@@ -60,6 +60,9 @@ export interface CompactionSummary {
  *   grant-invalidated — the envelope a grant was approved against changed, so
  *                      the grant was dropped and the call was asked again
  *   grant-revoked    — the user revoked the session grant
+ *   grant-renewed    — the user granted a sandbox capability, which changed
+ *                      the profile; the session grant moved to the new
+ *                      envelope instead of asking again
  *   sandbox-failure  — a sandboxed launch could not confirm its Seatbelt
  *                      profile, so the command did not run and any grant was
  *                      revoked; the specific error is in the tool result
@@ -79,6 +82,7 @@ export type PermissionDecision =
   | "deny-by-profile"
   | "grant-invalidated"
   | "grant-revoked"
+  | "grant-renewed"
   | "headless-deny"
   | "sandbox-failure"
   | "unresolved-ask"

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildPermissionRequest, capabilitySummary, grantConsentLines, permissionHeader, permissionOptions, riskLevel, scopeLine, type PermissionRequest } from "./PermissionPrompt.js";
+import { buildPermissionRequest, capabilityConsentLines, capabilitySummary, grantConsentLines, permissionHeader, permissionOptions, riskLevel, scopeLine, type PermissionRequest } from "./PermissionPrompt.js";
 import type { PermissionRule } from "../permissions/index.js";
 import type { BashEnvelope } from "../permissions/session-grant.js";
 import { extractCapabilityPlan, unknownCapabilityPlan } from "../permissions/capabilities.js";
@@ -236,5 +236,29 @@ describe("permissionHeader", () => {
 
   it("is unchanged for a root-run ask", () => {
     expect(permissionHeader(req("run_bash"))).toBe("△ Permission required");
+  });
+});
+
+describe("sandbox capability prompt", () => {
+  const capability = {
+    id: "write:/private/tmp/out", title: 'Write to "/private/tmp/out"',
+    risk: "Commands can create, change and delete any file under it.",
+    lines: ['(allow file-write* (subpath "/private/tmp/out"))'], probable: false,
+  };
+
+  it("offers this session / always / no — never once, never a rule scope", () => {
+    expect(permissionOptions({ toolName: "run_bash", command: "touch x", capability }).map((o) => o.decision)).toEqual(["session", "always", "deny"]);
+    expect(permissionOptions({ toolName: "run_bash", command: "touch x", capability })[0].label).toBe('Allow Write to "/private/tmp/out" this session');
+  });
+
+  it("states the risk and the exact profile lines", () => {
+    const lines = capabilityConsentLines(capability);
+    expect(lines[0]).toContain(capability.risk);
+    expect(lines).toContain(`  ${capability.lines[0]}`);
+    expect(lines.some((l) => l.startsWith("⚠"))).toBe(false);
+  });
+
+  it("warns when the denial was matched by elimination", () => {
+    expect(capabilityConsentLines({ ...capability, probable: true }).some((l) => l.startsWith("⚠ Probable"))).toBe(true);
   });
 });

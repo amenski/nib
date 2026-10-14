@@ -33,6 +33,17 @@ export interface Capability {
   lines: string[];
 }
 
+/** What the agent hands the prompt: the capability, and the call that hit the denial. */
+export interface CapabilityRequest {
+  capability: Capability;
+  /** The denial was attributed by elimination; the prompt says so. */
+  probable: boolean;
+  toolName: string;
+  command: string;
+}
+
+export type CapabilityAnswer = "session" | "always" | "deny";
+
 export interface Blocked {
   blocked: string;
 }

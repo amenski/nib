@@ -28,6 +28,7 @@ const DECISION_COLOR: Record<string, string> = {
   always: "#f59e0b",
   "unresolved-ask": "#f59e0b",
   "allow-by-envelope-grant": "#f59e0b",
+  "grant-renewed": "#f59e0b",
   // Posture — cyan (distinct from rule-based)
   "allow-by-posture": "#22d3ee",
   // Containment failures and revocations — red, they take authority away
@@ -50,6 +51,7 @@ const DECISION_LABEL: Record<string, string> = {
   "allow-by-envelope-grant": "session grant",
   "grant-invalidated": "grant invalidated",
   "grant-revoked": "grant revoked",
+  "grant-renewed": "grant renewed",
   "sandbox-failure": "sandbox failure",
 };
 

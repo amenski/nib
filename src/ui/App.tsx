@@ -104,6 +104,7 @@ import {
 } from "./keybindings.js";
 import { announceToScreenReader } from "./Accessibility.js";
 import { denialReader, groupDenials, summarizeDenials } from "../sandbox/denials.js";
+import type { Capability as SandboxCapability, CapabilityAnswer, CapabilityRequest } from "../sandbox/capabilities.js";
 
 // Display label for a queued item in the above-input stack. A large paste is
 // collapsed to a bracket summary ("[Pasted N lines]") rather than dumping the
@@ -276,6 +277,11 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
     oneTimeOnly?: boolean;
     /** The containment a session grant would cover (docs/permission-ux-redesign.md). */
     envelope?: BashEnvelope;
+    /**
+     * A sandbox capability grant (sandbox/capabilities.ts). `chosen` is set by
+     * the decision handler before the prompt resolves; Esc leaves it "deny".
+     */
+    capability?: SandboxCapability & { probable: boolean; chosen: CapabilityAnswer };
     /** True once the user picked session/always and is choosing file-vs-folder scope. */
     scopeStage?: boolean;
     /** The session/always decision carried into the scope stage. */
@@ -1333,6 +1339,20 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
         onHistoryUpdate: (messages: any[]) => {
           ctx.mutable.conversationHistory = messages;
         },
+        // The OS denied something and a named capability would allow it. Same
+        // modal as askUser, so a grant looks and audits like a permission.
+        askCapability: (req: CapabilityRequest) =>
+          new Promise<CapabilityAnswer>((resolve) => {
+            const capability = { ...req.capability, probable: req.probable, chosen: "deny" as CapabilityAnswer };
+            setAskPrompt({
+              resolve: () => resolve(capability.chosen),
+              toolName: req.toolName,
+              args: { command: req.command },
+              capability,
+              cursor: 0,
+              guardUntil: draftTextRef.current.trim() !== "" ? Date.now() + PERMISSION_TYPING_GUARD_MS : 0,
+            });
+          }),
         askUser: async (
           toolName: string,
           args: Record<string, unknown>,
@@ -2029,6 +2049,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
       workingDir: prompt.workingDir,
       allowPersistentApproval: !prompt.oneTimeOnly,
       envelope: prompt.envelope,
+      capability: prompt.capability,
       origin: prompt.origin,
       explain: prompt.explain,
     };
@@ -2036,6 +2057,21 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
 
   function handlePermissionDecision(decision: PermissionDecision): void {
     if (!askPrompt) return;
+
+    // A sandbox capability: no rule, no scope stage. The row is the record of
+    // the user's decision; agent.ts applies it.
+    if (askPrompt.capability) {
+      const answer: CapabilityAnswer = decision === "session" || decision === "always" ? decision : "deny";
+      askPrompt.capability.chosen = answer;
+      void ctx.sessionStore.appendPermission(ctx.sessionId, {
+        tool: "sandbox-capability",
+        subject: askPrompt.capability.id,
+        decision: answer,
+        reason: askPrompt.capability.probable ? "denial attributed by elimination (probable)" : undefined,
+      });
+      resolveAskPrompt(false);
+      return;
+    }
 
     if (askPrompt.oneTimeOnly && decision !== "once" && decision !== "deny") return;
 

@@ -73,21 +73,30 @@ describe("isBaselineNoise", () => {
 });
 
 describe("isAmbientGroup", () => {
-  const g = (...ops: string[]) => ({ ops });
+  const g = (op: string, key = "x", ...more: string[]) => ({ ops: [op, ...more], opClass: opClassOf(op), key });
 
   it("is true for the probes every toolchain makes at startup", () => {
     for (const op of ["system-socket", "job-creation", "ipc-posix-shm-read-data", "user-preference-read", "sysctl-write"]) {
       expect(isAmbientGroup(g(op)), op).toBe(true);
     }
-    expect(isAmbientGroup(g("system-socket", "job-creation"))).toBe(true);
+    expect(isAmbientGroup(g("system-socket", "x", "job-creation"))).toBe(true);
   });
 
-  it("is false for anything a user could act on, or a mix that includes one", () => {
+  it("is true for the known system services a build looks up, by exact name or family", () => {
+    for (const key of ["com.apple.coreservices.quarantine-resolver", "com.apple.analyticsd", "com.apple.CoreDevice.CoreDeviceService", "com.apple.mobileassetd.v2", "com.apple.mds"]) {
+      expect(isAmbientGroup(g("mach-lookup", key)), key).toBe(true);
+    }
+  });
+
+  it("is false for anything a user could act on, a service we do not know, or a mix that includes one", () => {
     for (const op of ["file-write-create", "file-read-data", "mach-lookup", "network-outbound", "process-exec"]) {
       expect(isAmbientGroup(g(op)), op).toBe(false);
     }
-    expect(isAmbientGroup(g("system-socket", "file-write-create"))).toBe(false);
-    expect(isAmbientGroup(g())).toBe(false);
+    expect(isAmbientGroup(g("mach-lookup", "com.apple.pasteboard.1"))).toBe(false);
+    expect(isAmbientGroup(g("mach-lookup", "com.apple.mdsX"))).toBe(false);
+    expect(isAmbientGroup(g("mach-lookup", "com.apple.CoreDeviceEvil"))).toBe(false);
+    expect(isAmbientGroup(g("system-socket", "x", "file-write-create"))).toBe(false);
+    expect(isAmbientGroup({ ops: [], opClass: "other", key: "x" })).toBe(false);
   });
 });
 

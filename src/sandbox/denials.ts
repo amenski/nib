@@ -107,11 +107,21 @@ export function isBaselineNoise(d: Pick<SandboxDenial, "proc" | "op" | "target">
 const AMBIENT_OPS = new Set(["system-socket", "job-creation", "ipc-posix-shm-read-data", "user-preference-read", "sysctl-write"]);
 
 /**
- * A group made only of {@link AMBIENT_OPS}. The model still gets it in the tool
- * result (it may be what explains a failure); the user's scrollback does not
- * repeat it after every command.
+ * Services Flutter's iOS device discovery, Gatekeeper and the system's own
+ * telemetry look up from inside any build (measured 2026-10-14: CoreDevice,
+ * mobileassetd, usbmuxd, automationmode, mds, quarantine-resolver, analyticsd,
+ * trustd, FSEvents). A family matches its own name and anything dotted under it; nothing that acts as the user.
  */
-export function isAmbientGroup(g: Pick<DenialGroup, "ops">): boolean {
+const AMBIENT_MACH_NAMES = new Set(["com.apple.coreservices.quarantine-resolver", "com.apple.analyticsd", "com.apple.trustd.agent", "com.apple.FSEvents"]);
+const AMBIENT_MACH_FAMILIES = ["com.apple.CoreDevice", "com.apple.mobileassetd", "com.apple.usbmuxd", "com.apple.automationmode", "com.apple.mds"];
+
+/**
+ * A group the user's scrollback need not repeat after every command: made only
+ * of {@link AMBIENT_OPS}, or a lookup of one of the ambient services above. The
+ * model still gets it in the tool result (it may be what explains a failure).
+ */
+export function isAmbientGroup(g: Pick<DenialGroup, "ops" | "opClass" | "key">): boolean {
+  if (g.opClass === "mach") return AMBIENT_MACH_NAMES.has(g.key) || AMBIENT_MACH_FAMILIES.some((f) => g.key === f || g.key.startsWith(`${f}.`));
   return g.ops.length > 0 && g.ops.every((op) => AMBIENT_OPS.has(op));
 }
 

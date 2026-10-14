@@ -1354,7 +1354,7 @@ export function loadConfig(projectDir?: string): LoadResult {
           errors.push("config.sandbox.allowLocalNetwork: must be a boolean");
         }
       }
-      // allowBrowser: global-only, absent = off (seatbelt.ts BROWSER_MACH_SERVICES).
+      // allowBrowser: global-only, absent = on, `false` opts out (seatbelt.ts BROWSER_MACH_SERVICES).
       if (isObject(globalRaw?.sandbox) && "allowBrowser" in (globalRaw.sandbox as Record<string, unknown>)) {
         const raw = (globalRaw.sandbox as Record<string, unknown>).allowBrowser;
         if (typeof raw === "boolean") {

@@ -41,13 +41,18 @@ describe("sandboxBlockedHint: browser launches", () => {
     "✖ renders a one-slide wall of text\n  browserType.launch: Target page, context or browser has been closed\n" +
     "  setxattr ... Crashpad: Operation not permitted (1)\n  exception while trying to kill process: Error: kill EPERM";
 
-  it("names the browser setting, not the path hint, when the rules are off", () => {
-    expect(sandboxBlockedHint(playwright, true)).toBe(BROWSER_BLOCKED_HINT);
-    expect(sandboxBlockedHint("Error: Failed to launch the browser process!", true)).toBe(BROWSER_BLOCKED_HINT);
+  it("names the browser setting, not the path hint, when the user turned the rules off", () => {
+    configureSandbox({ allowBrowser: false });
+    try {
+      expect(sandboxBlockedHint(playwright, true)).toBe(BROWSER_BLOCKED_HINT);
+      expect(sandboxBlockedHint("Error: Failed to launch the browser process!", true)).toBe(BROWSER_BLOCKED_HINT);
+    } finally {
+      configureSandbox({});
+    }
   });
 
   it.skipIf(process.platform !== "darwin")("points at Chrome's own sandbox when the rules are on", () => {
-    configureSandbox({ allowBrowser: true });
+    configureSandbox({});
     try {
       expect(sandboxBlockedHint("Failed to initialize sandbox.", true)).toBe(BROWSER_NESTED_SANDBOX_HINT);
     } finally {

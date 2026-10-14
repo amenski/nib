@@ -240,7 +240,7 @@ whether Bash asks at all. Each needs `enabled` alongside it.
 | `readRoots` | `[]` | Extra read-only directories under `$HOME`. |
 | `autoAllowBash` | `true` | Run eligible sandboxed Bash without the session prompt (permission-ux-redesign.md). |
 | `allowLocalNetwork` | `true` | Loopback (`localhost`) networking for `workspace-write` children; Java is forced to IPv4 so it matches. Needed by Gradle's daemon. `false` denies loopback only — other hosts stay reachable. |
-| `allowBrowser` | `false` | Lets `workspace-write` children launch headless Chrome (Playwright, Puppeteer): named system services incl. the window server, Chrome's own Mach names, three GPU/power IOKit clients, and its singleton dir in the per-user temp dir. Apple Events, the clipboard and the Keychain stay denied. Chrome's own sandbox cannot nest inside nib's, so launch with `--no-sandbox` (Playwright: `chromiumSandbox: false`, the default). Without it, every launch aborts and macOS shows a crash dialog. |
+| `allowBrowser` | `true` | Lets `workspace-write` children launch headless Chrome (Playwright, Puppeteer): named system services incl. the window server, Chrome's own Mach names, three GPU/power IOKit clients, and its singleton dir in the per-user temp dir. Apple Events, the clipboard and the Keychain stay denied. Chrome's own sandbox cannot nest inside nib's, so launch with `--no-sandbox` (Playwright: `chromiumSandbox: false`, the default). Set `false` to opt out; with the rules off, every launch aborts and macOS shows a crash dialog. |
 
 Built-in toolchain access (`src/sandbox/seatbelt.ts`, added 2026-10-10):
 installs under `$HOME` such as `.sdkman`, `.gradle`, `.m2`, `.rustup`,

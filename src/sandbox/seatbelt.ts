@@ -182,17 +182,17 @@ export function configureSandbox(opts: { readRoots?: string[]; allowLocalNetwork
     p === "~" || p.startsWith("~/") ? join(homedir(), p.slice(1)) : resolve(p),
   );
   allowLocalNetwork = opts.allowLocalNetwork !== false;
-  browserAllows = opts.allowBrowser === true ? browserAllowLines(darwinUserTempDir()) : [];
+  browserAllows = opts.allowBrowser !== false && process.platform === "darwin" ? browserAllowLines(darwinUserTempDir()) : [];
 }
 
-/** Whether `sandbox.allowBrowser` is on — for the session-grant consent text. */
+/** Whether the browser rules are on (`sandbox.allowBrowser`, default on) — for the session-grant consent text. */
 export function sandboxAllowsBrowser(): boolean {
   return browserAllows.length > 0;
 }
 
 /**
  * Headless Chrome for workspace-write children (`sandbox.allowBrowser`, default
- * off, user decision 2026-10-14): Playwright/Puppeteer tests launch it, and
+ * on, `false` opts out): Playwright/Puppeteer tests launch it, and
  * without these rules Chrome aborts in `HIServices _RegisterApplication` the
  * moment it starts — macOS shows a "quit unexpectedly" dialog per launch.
  * Measured 2026-10-14 by leave-one-out against the real workspace-write
@@ -207,6 +207,10 @@ export function sandboxAllowsBrowser(): boolean {
  * SecurityServer (Keychain), CoreAuthentication, the Dock, usernoted, tccd.
  * Risk accepted: a child can talk to the window server and the listed system
  * daemons; screen capture and synthetic input stay behind TCC.
+ *
+ * Default on because the rules are not an escape hatch: checked 2026-10-14
+ * under nib's real profile, `open -a`, `open x.command`, `osascript` and
+ * `launchctl submit` are all still refused.
  */
 const BROWSER_MACH_SERVICES = [
   "com.apple.windowserver.active", "com.apple.window_proxies", "com.apple.windowmanager.server",

@@ -52,9 +52,9 @@ export function sandboxBlockedHint(output: string, sandboxed: boolean): string {
  */
 const BROWSER_LAUNCH_FAILED = /browserType\.launch|Failed to launch the browser process|Failed to initialize sandbox/;
 
-/** The browser rules are off: the launch cannot succeed inside the sandbox. */
+/** The user turned the browser rules off: the launch cannot succeed inside the sandbox. */
 export const BROWSER_BLOCKED_HINT =
-  "[nib] The OS sandbox stopped the browser from starting — rerunning will fail the same way and show the user a crash dialog each time. Do not rerun it. Tell the user browser tests need `\"sandbox\": { \"allowBrowser\": true }` in ~/.nib/settings.json, or that they can run them outside nib.";
+  "[nib] The OS sandbox stopped the browser from starting — rerunning will fail the same way and show the user a crash dialog each time. Do not rerun it. The user turned browser support off (`sandbox.allowBrowser: false`) — ask them before changing it, or tell them they can run browser tests outside nib.";
 
 /**
  * The browser rules are on, so the remaining cause is Chrome's own sandbox:

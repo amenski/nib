@@ -153,24 +153,27 @@ describe("buildSeatbeltProfile", () => {
     }
   });
 
-  it("browser rules are off by default", () => {
-    expect(sandboxAllowsBrowser()).toBe(false);
-    expect(buildSeatbeltProfile("workspace-write", "/private/tmp/ws")).not.toContain("mach-lookup");
+  itOnDarwin("browser rules are on by default", () => {
+    configureSandbox({});
+    expect(sandboxAllowsBrowser()).toBe(true);
+    expect(buildSeatbeltProfile("workspace-write", "/private/tmp/ws")).toContain("mach-lookup");
   });
 
-  itOnDarwin("allowBrowser: workspace-write gets the browser rules, strict-sandbox never does, and the grant hash changes", () => {
-    const off = buildSeatbeltProfile("workspace-write", "/private/tmp/ws");
-    configureSandbox({ allowBrowser: true });
+  itOnDarwin("allowBrowser: false drops the browser rules from workspace-write, strict-sandbox never has them, and the grant hash changes", () => {
+    configureSandbox({});
+    const on = buildSeatbeltProfile("workspace-write", "/private/tmp/ws");
+    expect(on).toContain('(global-name "com.apple.windowserver.active")');
+    expect(on).toContain("com\\.google\\.Chrome\\.");
+    configureSandbox({ allowBrowser: false });
     try {
-      expect(sandboxAllowsBrowser()).toBe(true);
-      const on = buildSeatbeltProfile("workspace-write", "/private/tmp/ws");
-      expect(on).toContain('(global-name "com.apple.windowserver.active")');
-      expect(on).toContain("com\\.google\\.Chrome\\.");
+      expect(sandboxAllowsBrowser()).toBe(false);
+      const off = buildSeatbeltProfile("workspace-write", "/private/tmp/ws");
+      expect(off).not.toContain("mach-lookup");
       expect(sandboxEnvelopeHash(on)).not.toBe(sandboxEnvelopeHash(off));
-      expect(buildSeatbeltProfile("strict-sandbox", "/private/tmp/ws")).not.toContain("mach-lookup");
     } finally {
       configureSandbox({});
     }
+    expect(buildSeatbeltProfile("strict-sandbox", "/private/tmp/ws")).not.toContain("mach-lookup");
   });
 
   it("workspace-write: carries the battery-proven write carve-outs (literal /tmp, $TMPDIR, ~/.npm)", () => {
@@ -1073,7 +1076,10 @@ describe("git integrity (macOS)", () => {
     // Exactly the toolchain's one carve-out, the deny set's `.sample` allow,
     // plus the two granted ones — no allow for hook files, and none for
     // credentials.
-    const trustedAllows = trusted.split("\n").filter((l) => l.startsWith("(allow file-write* (regex"));
+    // (The browser rules, on by default, add their own Chrome-singleton regex.)
+    const trustedAllows = trusted
+      .split("\n")
+      .filter((l) => l.startsWith("(allow file-write* (regex") && !l.includes("com\\.google\\.Chrome"));
     expect(trustedAllows).toEqual([
       GRADLE_NATIVE_LOCK_ALLOW,
       `(allow file-write* (regex "^.*/\\.git(/.*)?/hooks/[^/]+\\.sample$"))`,

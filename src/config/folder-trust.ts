@@ -51,12 +51,9 @@ export interface FolderTrustEntry {
 
 export interface FolderTrustStore {
   folders: Record<string, FolderTrustEntry>;
-  /**
-   * Sandbox toolchain presets (sandbox/presets.ts) the user declined, per
-   * project realpath. Kept here rather than in project `.nib/settings.json`:
-   * writing that file would re-trigger the settings trust prompt.
-   */
-  presetDeclines?: Record<string, string[]>;
+  // A legacy `presetDeclines` key from the removed sandbox-preset flow may
+  // still exist in folder-trust.json; it is tolerated (never read) and gone
+  // the next time the store is rewritten.
 }
 
 function folderTrustFilePath(): string {
@@ -341,18 +338,4 @@ export function trustFolder(projectDir: string, summary: FolderContentSummary): 
     trusted: true,
   };
   saveFolderTrust(folderStore);
-}
-
-/** Whether the user already declined this sandbox preset for this project. */
-export function isPresetDeclined(projectDir: string, presetId: string): boolean {
-  return loadFolderTrust().presetDeclines?.[realProjectDir(projectDir)]?.includes(presetId) ?? false;
-}
-
-/** Remember a declined sandbox preset so it is not offered again for this project. */
-export function recordPresetDecline(projectDir: string, presetId: string): void {
-  const store = loadFolderTrust();
-  const key = realProjectDir(projectDir);
-  const declines = { ...(store.presetDeclines ?? {}) };
-  declines[key] = [...new Set([...(declines[key] ?? []), presetId])];
-  saveFolderTrust({ ...store, presetDeclines: declines });
 }

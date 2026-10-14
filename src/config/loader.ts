@@ -6,7 +6,6 @@ import { compileGlob } from "../permissions/index.js";
 import type { HooksConfig } from "../hooks/types.js";
 import { parseHooksConfig } from "../hooks/config.js";
 import { isPathWithinWriteRoots, realpathNearestAncestor } from "../sandbox/write-roots.js";
-import { resolveStoredGrants } from "../sandbox/capabilities.js";
 import { STATE_DIR_NAME, projectSettingsPath } from "./paths.js";
 
 // ── Deep Code settings.json schema ──
@@ -116,7 +115,7 @@ export interface DeepCodeSettings {
    *  loadConfig's sandbox block). This is deliberately separate from
    *  `permissionProfile.fs`, whose "explicit rules narrow only" invariant
    *  this must not weaken. */
-  sandbox?: { enabled: boolean; writeRoots?: string[]; readRoots?: string[]; autoAllowBash?: boolean; allowLocalNetwork?: boolean; allowBrowser?: boolean; grants?: string[] };
+  sandbox?: { enabled: boolean; writeRoots?: string[]; readRoots?: string[]; autoAllowBash?: boolean; allowLocalNetwork?: boolean; allowBrowser?: boolean };
 
   // ── MCP Servers ──
   mcpServers?: Record<string, McpServerConfig>;
@@ -1367,21 +1366,11 @@ export function loadConfig(projectDir?: string): LoadResult {
           errors.push("config.sandbox.allowBrowser: must be a boolean");
         }
       }
-      // grants: capabilities the user approved with "Allow always"
-      // (sandbox/capabilities.ts). Global-only — each one widens the profile,
-      // so a project file must not be able to add any.
-      if (isObject(globalRaw?.sandbox) && "grants" in (globalRaw.sandbox as Record<string, unknown>)) {
-        const raw = (globalRaw.sandbox as Record<string, unknown>).grants;
-        if (Array.isArray(raw) && raw.every((p) => typeof p === "string")) {
-          const { grants, warnings: dropped } = resolveStoredGrants(raw as string[]);
-          warnings.push(...dropped);
-          if (config.sandbox && grants.length > 0) config.sandbox.grants = grants.map((g) => g.id);
-        } else {
-          errors.push("config.sandbox.grants: must be an array of strings");
-        }
-      }
+      // Legacy `sandbox.grants` is migrated to the new schema at startup
+      // (sandbox-migrate.ts) and no longer parsed. A stale key is tolerated
+      // with a warning until the next release.
       if (isObject(projectRaw?.sandbox) && "grants" in (projectRaw.sandbox as Record<string, unknown>)) {
-        warnings.push("sandbox.grants is global-only and was ignored in project .nib/settings.json");
+        warnings.push("sandbox.grants is no longer used and was ignored in project .nib/settings.json");
       }
       if (isObject(projectRaw?.sandbox) && "writeRoots" in (projectRaw.sandbox as Record<string, unknown>)) {
         warnings.push(

@@ -40,13 +40,11 @@ import { SkillLoader, createLoadSkillTool, type SkillDef } from "./skills/index.
 import { AgentLoader, type AgentDef } from "./agents/index.js";
 import { CommandLoader, type CommandDef } from "./commands/index.js";
 import { denialReader } from "./sandbox/denials.js";
-import { resolveStoredGrants } from "./sandbox/capabilities.js";
-import { detectPresets } from "./sandbox/presets.js";
 import { checkForUpdate } from "./update-check.js";
 import { containmentWarning, hasActiveSandboxContainment, loadConfig, resolveHome, workspaceOutsideHomeWarning } from "./config/loader.js";
 import { projectSettingsPath } from "./config/paths.js";
 import { checkSettingsTrust, trustSettings, stripExecutionKeys } from "./config/settings-trust.js";
-import { checkFolderTrust, trustFolder, buildFolderContentSummary, hasGatedContent, isPresetDeclined } from "./config/folder-trust.js";
+import { checkFolderTrust, trustFolder, buildFolderContentSummary, hasGatedContent } from "./config/folder-trust.js";
 import { readCredentialsFile, getCredential } from "./config/credentials.js";
 import { readActiveSnapshot } from "./providers/catalog-update.js";
 import { getLiveModels, checkModelListed } from "./providers/live-models.js";
@@ -609,7 +607,7 @@ async function main() {
   const writeRoots = [...(configResult.config.sandbox?.writeRoots ?? []), ...additionalWriteRoots];
   // Global-only sandbox.readRoots / allowLocalNetwork / allowBrowser: set before any profile
   // is built so every launch and the session-grant hash agree.
-  configureSandbox({ readRoots: configResult.config.sandbox?.readRoots, allowLocalNetwork: configResult.config.sandbox?.allowLocalNetwork, allowBrowser: configResult.config.sandbox?.allowBrowser, grants: resolveStoredGrants(configResult.config.sandbox?.grants).grants });
+  configureSandbox({ readRoots: configResult.config.sandbox?.readRoots, allowLocalNetwork: configResult.config.sandbox?.allowLocalNetwork, allowBrowser: configResult.config.sandbox?.allowBrowser });
   setWriteRoots(writeRoots);
   // The kernel's own report of what the sandbox refuses (sandbox/denials.ts).
   // Without it the existing output-matching hint stays the only signal, and the
@@ -1149,11 +1147,6 @@ async function main() {
       },
       showResumeOnStart: showResumeChooserOnStart,
       initialNotice,
-      // Toolchain presets (sandbox/presets.ts): only where grants can apply —
-      // a live workspace-write profile — and not ones declined for this project.
-      sandboxPresets: hasActiveSandboxContainment(configResult.config) && bashSandboxLevel === "workspace-write"
-        ? detectPresets(process.cwd()).filter((p) => !isPresetDeclined(process.cwd(), p.id))
-        : [],
       // Background (non-blocking) startup checks, one dim line each after mount:
       // the live model-list check (when the provider no longer lists the active
       // model; skipped for a provider with no key or a non-openai-compatible
@@ -1971,7 +1964,6 @@ async function runAgentTurnBridge(input: string, cb: any, shared: any, permissio
       cb.onUsage(input, output);
     },
     askUser: cb.askUser,
-    askCapability: cb.askCapability,
     // Root run only (docs/permission-ux-redesign.md): the session grant is the
     // interactive user's consent, so only this run may reuse or create one.
     // Subagent runs (orchestrator) and headless exec runs are never handed an

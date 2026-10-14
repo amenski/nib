@@ -6,7 +6,6 @@ import type { Capability, CapabilityPlan } from "../permissions/capabilities.js"
 import type { BashEnvelope } from "../permissions/session-grant.js";
 import { extractToolSubject } from "../permissions/rules.js";
 import { sandboxAllowsBrowser } from "../sandbox/seatbelt.js";
-import type { Capability as SandboxCapability } from "../sandbox/capabilities.js";
 import { useTheme } from "./contexts.js";
 import { ansi256, type ThemeContextValue } from "./theme.js";
 import { toolDisplayName } from "./ToolCallFormatter.js";
@@ -33,12 +32,6 @@ export interface PermissionRequest {
    * so the profile's limits are what the prompt must state.
    */
   envelope?: BashEnvelope;
-  /**
-   * A sandbox capability to grant after the OS denied something
-   * (sandbox/capabilities.ts). The options become this-session / always / no,
-   * and the consent text is the capability's risk plus the exact SBPL it adds.
-   */
-  capability?: SandboxCapability & { probable: boolean };
   /**
    * Present when the call comes from a background sub-agent, named by its
    * task description. Shown in the header so a prompt that appears while the
@@ -229,13 +222,6 @@ const ENVELOPE_GRANT_OPTION: { decision: PermissionDecision; label: string } = {
 };
 
 export function permissionOptions(request: PermissionRequest): { decision: PermissionDecision; label: string }[] {
-  if (request.capability) {
-    return [
-      { decision: "session", label: `Allow ${request.capability.title} this session` },
-      { decision: "always", label: "Allow always (saved to ~/.nib/settings.json)" },
-      { decision: "deny", label: "No" },
-    ];
-  }
   if (request.envelope) {
     return [OPTIONS[0], ENVELOPE_GRANT_OPTION, OPTIONS[3]];
   }
@@ -304,35 +290,6 @@ export function grantConsentLines(envelope: BashEnvelope): string[] {
   return lines;
 }
 
-/**
- * The consent text for a sandbox capability: what it lets a command do, the
- * exact profile lines it adds, and — when the denial was attributed by
- * elimination — that it may not have been this command's. Pure for tests.
- */
-export function capabilityConsentLines(capability: SandboxCapability & { probable: boolean }): string[] {
-  const lines = [`The macOS sandbox refused this. ${capability.risk}`];
-  if (capability.probable) {
-    lines.push("⚠ Probable: the process that was refused had already exited, so nib matched it to this command by elimination — it may belong to another program.");
-  }
-  lines.push("Adds to the sandbox profile:", ...capability.lines.map((l) => `  ${l}`));
-  lines.push("Secret and Git denies still apply. Revoke by restarting nib (this session) or by editing sandbox.grants (always).");
-  return lines;
-}
-
-function CapabilityConsent({ capability }: { capability: SandboxCapability & { probable: boolean } }) {
-  const theme = useTheme();
-  const warningColor = slotColor(theme, "warning");
-  return (
-    <Box flexDirection="column" marginTop={1}>
-      {capabilityConsentLines(capability).map((line, i) => (
-        <Text key={i} color={line.startsWith("⚠") ? warningColor : slotColor(theme, "textDim")}>
-          {line}
-        </Text>
-      ))}
-    </Box>
-  );
-}
-
 /** Renders {@link grantConsentLines} beside the grant option. */
 function GrantConsent({ envelope }: { envelope: BashEnvelope }) {
   const theme = useTheme();
@@ -365,14 +322,10 @@ export default function PermissionPrompt({ request, cursor, onChoose, onCancel }
       {scopeLine(request) ? <Text color={slotColor(theme, "warning")}>{scopeLine(request)}</Text> : null}
       {request.defaultRule?.kind === "glob" ? <Text color={slotColor(theme, "textDim")}>Pattern: {request.defaultRule.pattern}</Text> : null}
       {request.description ? <Text color={slotColor(theme, "textDim")}>{request.description}</Text> : null}
-      {request.capability ? (
-        <CapabilityConsent capability={request.capability} />
-      ) : (
-        <Box marginTop={1}>
-          <Text color={slotColor(theme, "textDim")}>Effects: </Text>
-          <Text color={slotColor(theme, risk.slot)}>{capabilitySummary(request.capabilityPlan, request.workingDir).join("; ")}</Text>
-        </Box>
-      )}
+      <Box marginTop={1}>
+        <Text color={slotColor(theme, "textDim")}>Effects: </Text>
+        <Text color={slotColor(theme, risk.slot)}>{capabilitySummary(request.capabilityPlan, request.workingDir).join("; ")}</Text>
+      </Box>
       {request.envelope ? <GrantConsent envelope={request.envelope} /> : null}
       <ExplanationBlock explain={request.explain} />
       <Box marginTop={1}>

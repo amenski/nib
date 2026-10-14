@@ -6,11 +6,8 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, existsSync, lstatSync, sy
 import { join } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import {
-  activeGrants,
   browserAllowLines,
   buildSeatbeltProfile,
-  grantCapability,
-  revokeSessionGrants,
   configureSandbox,
   gradleExecutableDenyLines,
   GRADLE_NATIVE_LOCK_ALLOW,
@@ -160,45 +157,6 @@ describe("buildSeatbeltProfile", () => {
     configureSandbox({});
     expect(sandboxAllowsBrowser()).toBe(true);
     expect(buildSeatbeltProfile("workspace-write", "/private/tmp/ws")).toContain("mach-lookup");
-  });
-
-  itOnDarwin("capability grants: after the default allows, before the secret and git denies, workspace-write only", () => {
-    const ws = "/private/tmp/ws";
-    const grant = { id: "write:/private/tmp/nib-grant", lines: ['(allow file-write* (subpath "/private/tmp/nib-grant"))'] };
-    configureSandbox({});
-    const before = buildSeatbeltProfile("workspace-write", ws);
-    grantCapability(grant);
-    try {
-      expect(activeGrants()).toEqual([grant.id]);
-      const after = buildSeatbeltProfile("workspace-write", ws);
-      const at = after.indexOf(grant.lines[0]);
-      expect(at).toBeGreaterThan(-1);
-      // Last matching rule wins: every protective deny must come later.
-      expect(after.indexOf("(deny file-write* (regex \"^.*/\\.git(/.*)?/config")).toBeGreaterThan(at);
-      const secret = toolchainSecretDenyLines(realpathSync(homedir()))[0];
-      if (secret) expect(after.indexOf(secret)).toBeGreaterThan(at);
-      expect(sandboxEnvelopeHash(after)).not.toBe(sandboxEnvelopeHash(before));
-      expect(buildSeatbeltProfile("strict-sandbox", ws)).not.toContain(grant.lines[0]);
-      revokeSessionGrants();
-      expect(buildSeatbeltProfile("workspace-write", ws)).toBe(before);
-    } finally {
-      configureSandbox({});
-    }
-  });
-
-  itOnDarwin("persisted grants survive revoking the session's, and configureSandbox resets both", () => {
-    const persisted = { id: "mach:com.apple.foo", lines: ['(allow mach-lookup (global-name "com.apple.foo"))'] };
-    configureSandbox({ grants: [persisted] });
-    try {
-      grantCapability({ id: "mach:com.apple.bar", lines: ['(allow mach-lookup (global-name "com.apple.bar"))'] });
-      expect(activeGrants()).toEqual(["mach:com.apple.foo", "mach:com.apple.bar"]);
-      revokeSessionGrants();
-      expect(activeGrants()).toEqual(["mach:com.apple.foo"]);
-      expect(buildSeatbeltProfile("workspace-write", "/private/tmp/ws")).toContain(persisted.lines[0]);
-    } finally {
-      configureSandbox({});
-    }
-    expect(activeGrants()).toEqual([]);
   });
 
   itOnDarwin("allowBrowser: false drops the browser rules from workspace-write, strict-sandbox never has them, and the grant hash changes", () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, realpathSync, statSync, rmSync, symlinkSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, statSync, rmSync, symlinkSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { projectDirPath, projectSettingsPath } from "./paths.js";
 import { tmpdir } from "node:os";
@@ -967,35 +967,6 @@ describe("loadConfig sandbox.readRoots / allowLocalNetwork / allowBrowser (globa
     expect(errors.some((e) => e.includes("config.sandbox.readRoots: must be an array of strings"))).toBe(true);
     expect(errors.some((e) => e.includes("config.sandbox.allowLocalNetwork: must be a boolean"))).toBe(true);
     expect(errors.some((e) => e.includes("config.sandbox.allowBrowser: must be a boolean"))).toBe(true);
-  });
-});
-
-describe("loadConfig sandbox.grants (global-only)", () => {
-  function writeGlobalSettings(obj: unknown): void {
-    writeFileSync(join(homeDir, "settings.json"), JSON.stringify(obj), "utf-8");
-  }
-
-  it("keeps grantable ids from the global file and warns for the rest", () => {
-    const dir = realpathSync(projectDir);
-    writeGlobalSettings({ sandbox: { enabled: true, grants: [`write:${dir}`, "mach:com.apple.foo", "bogus", "mach:com.apple.tccd"] } });
-    const { config, errors, warnings } = loadConfig(projectDir);
-    expect(errors).toEqual([]);
-    expect(config.sandbox?.grants).toEqual([`write:${dir}`, "mach:com.apple.foo"]);
-    expect(warnings.some((w) => w.includes("unknown capability"))).toBe(true);
-    expect(warnings.some((w) => w.includes("not grantable"))).toBe(true);
-  });
-
-  it("ignores them in a PROJECT file", () => {
-    writeProjectSettings({ sandbox: { enabled: true, grants: ["mach:com.apple.foo"] } });
-    const { config, warnings } = loadConfig(projectDir);
-    expect(config.sandbox?.grants).toBeUndefined();
-    expect(warnings.some((w) => w.includes("sandbox.grants is global-only"))).toBe(true);
-  });
-
-  it("rejects a non-array", () => {
-    writeGlobalSettings({ sandbox: { enabled: true, grants: "mach:com.apple.foo" } });
-    const { errors } = loadConfig(projectDir);
-    expect(errors).toContain("config.sandbox.grants: must be an array of strings");
   });
 });
 

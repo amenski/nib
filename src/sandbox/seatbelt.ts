@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { ProfileLevel } from "../permissions/index.js";
 import { realpathNearestAncestor, resolveWriteRoots } from "./write-roots.js";
 
@@ -171,59 +171,37 @@ export function toolchainWriteRoots(home: string = homedir()): string[] {
 /**
  * Startup options from the global-only `sandbox.readRoots` and
  * `sandbox.allowLocalNetwork` settings, set once (cli.tsx, exec-runner.ts)
- * before any profile is built so every launch — Bash, jobs, MCP, hooks — and
- * the session-grant hash see the same profile.
+ * before any profile is built so every launch — Bash, jobs, MCP, hooks —
+ * sees the same profile.
  */
 let extraReadRoots: string[] = [];
 let allowLocalNetwork = true;
 let browserAllows: string[] = [];
-/** A capability the user granted: its id and the SBPL it adds (sandbox/capabilities.ts). */
-export interface CapabilityGrant {
-  id: string;
-  lines: string[];
-}
-let persistedGrants: CapabilityGrant[] = [];
-const sessionGrants = new Map<string, string[]>();
-export function configureSandbox(opts: { readRoots?: string[]; allowLocalNetwork?: boolean; allowBrowser?: boolean; grants?: CapabilityGrant[] }): void {
+export function configureSandbox(opts: { readRoots?: string[]; allowLocalNetwork?: boolean; allowBrowser?: boolean }): void {
   extraReadRoots = (opts.readRoots ?? []).map((p) =>
     p === "~" || p.startsWith("~/") ? join(homedir(), p.slice(1)) : resolve(p),
   );
   allowLocalNetwork = opts.allowLocalNetwork !== false;
   browserAllows = opts.allowBrowser !== false && process.platform === "darwin" ? browserAllowLines(darwinUserTempDir()) : [];
-  persistedGrants = opts.grants ?? [];
-  sessionGrants.clear();
-}
-
-/**
- * Add a capability for the rest of the session (the user approved it at the
- * prompt). Changes every profile built afterwards — and therefore the envelope
- * hash, which the caller must renew for any grant that covered the old one.
- */
-export function grantCapability(grant: CapabilityGrant): void {
-  sessionGrants.set(grant.id, grant.lines);
-}
-
-/** Drop every grant made this session; persisted ones (`sandbox.grants`) stay. */
-export function revokeSessionGrants(): void {
-  sessionGrants.clear();
-}
-
-/** Ids of the capabilities in force, persisted first. */
-export function activeGrants(): string[] {
-  return [...new Set([...persistedGrants.map((g) => g.id), ...sessionGrants.keys()])];
-}
-
-function grantLines(): string[] {
-  const byId = new Map<string, string[]>();
-  for (const g of persistedGrants) byId.set(g.id, g.lines);
-  for (const [id, lines] of sessionGrants) byId.set(id, lines);
-  return [...byId.values()].flat();
 }
 
 /** Whether the browser rules are on (`sandbox.allowBrowser`, default on) — for the session-grant consent text. */
 export function sandboxAllowsBrowser(): boolean {
   return browserAllows.length > 0;
 }
+
+const CASK_ROOT = "/opt/homebrew/Caskroom";
+
+const inside = (path: string, tree: string): boolean => path === tree || path.startsWith(tree + sep);
+
+/**
+ * A Homebrew cask's own directory (`Caskroom/<name>/<version>/<something>`) is a
+ * self-contained SDK install — the same tamper class the toolchain presets
+ * already name ("the SDK files later builds run"). `Caskroom/<name>` alone,
+ * `bin`, `Cellar` and `lib` are not. (Ported from sandbox/capabilities.ts,
+ * removed with the grant machinery; the Flutter SDK write root uses it.)
+ */
+export const isCaskDir = (dir: string): boolean => inside(dir, CASK_ROOT) && dir.slice(CASK_ROOT.length + 1).split(sep).length >= 3;
 
 /**
  * Headless Chrome for workspace-write children (`sandbox.allowBrowser`, default
@@ -602,10 +580,6 @@ export function buildSeatbeltProfile(
     // Last matching rule wins: the loopback deny must follow the IP allow.
     lines.push(...(allowLocalNetwork ? LOOPBACK_NETWORK_ALLOWS : [LOOPBACK_OUTBOUND_DENY]));
     lines.push(...browserAllows);
-    // User-granted capabilities: after every default allow, and before the
-    // toolchain secret and git denies below — last matching rule wins, so a
-    // grant can never reopen what those protect.
-    lines.push(...grantLines());
   }
   // Toolchain credentials/startup config: after every read and write allow.
   const home = realpathNearestAncestor(homedir());

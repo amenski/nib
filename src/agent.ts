@@ -27,9 +27,6 @@ import {
 } from "./permissions/session-grant.js";
 import type { SandboxFailureReason } from "./sandbox/launcher.js";
 import { isAmbientGroup, summarizeDenials } from "./sandbox/denials.js";
-import { capabilityFor, isActionable, type Capability, type CapabilityAnswer, type CapabilityRequest } from "./sandbox/capabilities.js";
-import { activeGrants, grantCapability } from "./sandbox/seatbelt.js";
-import { addSandboxGrants } from "./config/settings-writer.js";
 import type { ToolExecOptions } from "./tools/types.js";
 
 export type ToolExecutor = (call: ToolCall, exec?: ToolExecOptions) => Promise<ToolOutput>;
@@ -226,12 +223,6 @@ export interface AgentOptions {
    * autonomous work.
    */
   bashEnvelope?: BashEnvelope | (() => BashEnvelope | undefined);
-  /**
-   * Asks the user to grant a sandbox capability after the OS denied something
-   * (sandbox/capabilities.ts). Set by the interactive root run only: absent —
-   * headless, sub-agents — denials are reported and nothing is offered.
-   */
-  askCapability?: (req: CapabilityRequest) => Promise<CapabilityAnswer>;
   /** Live reader for the update_todo_list store; injected into the volatile
    *  prefix each sub-turn so the model always sees current plan state. */
   getTodos?: () => TodoItem[];
@@ -301,19 +292,6 @@ function isTransientNetworkError(err: Error): boolean {
  * the same thing twice and invite answering it twice.
  */
 /** A command that trips many denials must not become a stream of prompts. */
-const MAX_CAPABILITY_PROMPTS_PER_CALL = 3;
-
-/** Capabilities the user declined, per session: never offered twice. */
-const declinedCapabilities = new Map<string, Set<string>>();
-function declinedCapabilitiesFor(sessionId: string): Set<string> {
-  let set = declinedCapabilities.get(sessionId);
-  if (!set) {
-    set = new Set();
-    declinedCapabilities.set(sessionId, set);
-  }
-  return set;
-}
-
 const STEERING_NOTE =
   "The user's latest message was typed while you were working. Answer it once, then continue the task.";
 
@@ -1024,89 +1002,6 @@ export async function runAgent(
     // "Tool result is missing for tool call …" — the turn died mid-task.
     const batchNotes: Message[] = [];
 
-    /**
-     * Widen the profile by `cap` for this session (and, when `persist`, for
-     * later ones). A session grant covering the old envelope moves with it: the
-     * widening is the user's, or nib's own for a mach service, not a change the
-     * grant should be "invalidated" by.
-     */
-    const grantNow = async (tc: ToolCall, cap: Capability, persist: boolean): Promise<void> => {
-      const before = currentEnvelope();
-      grantCapability({ id: cap.id, lines: cap.lines });
-      if (persist) {
-        try {
-          addSandboxGrants([cap.id]);
-        } catch (err) {
-          options.onDiagnostic?.(`could not save the sandbox grant: ${(err as Error).message}`);
-        }
-      }
-      const after = currentEnvelope();
-      const sessionId = options.sessionId;
-      if (before && after && sessionId !== undefined && bashEnvelopeGrants.lookup(sessionId, "run_bash", before.profileHash)) {
-        bashEnvelopeGrants.grant({
-          sessionId, tool: "run_bash", profileHash: after.profileHash, level: after.level,
-          trustedRoot: after.trustedRoot, writeRoots: after.writeRoots, sessionTempDir: after.sessionTempDir,
-        });
-        await options.sessionStore?.appendPermission(sessionId, {
-          toolCallId: tc.id, tool: "run_bash", subject: cap.id, decision: "grant-renewed",
-          reason: `sandbox capability "${cap.id}" granted; the session grant moved to the new envelope`,
-        });
-      }
-    };
-
-    /**
-     * The OS refused something during this call (sandbox/denials.ts). For each
-     * denial worth asking about, offer the user the named capability that
-     * would allow it; the model only ever sees the outcome. A grant is not
-     * retried automatically — the model is told to rerun once. Notes go after
-     * the untrusted wrapper, in nib's own voice.
-     */
-    const offerCapabilities = async (tc: ToolCall, result: ToolOutput): Promise<void> => {
-      const command = typeof tc.arguments.command === "string" ? tc.arguments.command : "";
-      const evidence = `${command}\n${result.content}\n${result.error ?? ""}`;
-      // run_bash says `Exit code: N`; check_job says `Status: exited (exit N)`.
-      const failed = result.error !== undefined || /^Exit code: (?!0\b)/m.test(result.content) || /^Status: \S+ \(exit (?!0\))/m.test(result.content);
-      const declined = options.sessionId !== undefined ? declinedCapabilitiesFor(options.sessionId) : new Set<string>();
-      const notes: string[] = [];
-      const seen = new Set<string>();
-      let prompts = 0;
-      for (const group of result.sandboxDenials ?? []) {
-        if (!isActionable(group, { evidence, failed })) continue;
-        const cap = capabilityFor(group);
-        if (cap === null) continue;
-        if ("blocked" in cap) {
-          if (!seen.has(cap.blocked)) notes.push(`[nib] Not offered to the user: ${cap.blocked}.`);
-          seen.add(cap.blocked);
-          continue;
-        }
-        if (seen.has(cap.id) || declined.has(cap.id) || activeGrants().includes(cap.id)) continue;
-        seen.add(cap.id);
-        // Anything grantable is granted without asking. What must never be
-        // granted is a closed list already applied by capabilityFor (system and
-        // credential trees, services that act as the user), and a prompt per
-        // directory or daemon a toolchain happens to touch is noise. Session
-        // only; nothing is saved. A `probable` denial (attributed by
-        // elimination, possibly another process's) still asks.
-        if (!group.probable) {
-          await grantNow(tc, cap, false);
-          notes.push(`[nib] Allowed "${cap.title}" for this session. Rerun the command once only if it failed; do not retry on a repeat denial.`);
-          continue;
-        }
-        // Headless and sub-agent runs report; only the user can grant.
-        if (!options.askCapability || prompts >= MAX_CAPABILITY_PROMPTS_PER_CALL) continue;
-        prompts++;
-        const answer = await options.askCapability({ capability: cap, probable: group.probable, toolName: tc.name, command });
-        if (answer === "deny") {
-          declined.add(cap.id);
-          notes.push(`[nib] The user declined "${cap.title}". Do not ask for it again; work within the sandbox or ask the user how to proceed.`);
-          continue;
-        }
-        await grantNow(tc, cap, answer === "always");
-        notes.push(`[nib] The user granted "${cap.title}" for this session${answer === "always" ? " and saved it for later ones" : ""}. Rerun the command once; do not retry on a repeat denial.`);
-      }
-      if (notes.length > 0) result.content = `${result.content}\n${notes.join("\n")}`;
-    };
-
     // Shared per-call body for both execution paths — exactly the
     // sequential loop's behavior, including permission audit rows, askUser,
     // failedStreak escalation, repeat-call detection, and the reflection
@@ -1129,7 +1024,6 @@ export async function runAgent(
 
       const result = preResult ?? await executeTool(tc, { ...exec, callId: tc.id });
       executedAny = true;
-      if (result.sandboxDenials?.length) await offerCapabilities(tc, result);
       // PostToolUse / PostToolUseFailure: hook stdout appends to the result
       // (hooks-spec.md §2) before it reaches the model or the UI preview.
       if (options.hooks) {

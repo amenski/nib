@@ -6,7 +6,6 @@ import { executeTool, registry, setSessionId, setSignal, setTimeoutToBackground,
 import { createSessionTempDir } from "./sandbox/session-temp.js";
 import { configureSandbox } from "./sandbox/seatbelt.js";
 import { denialReader } from "./sandbox/denials.js";
-import { resolveStoredGrants } from "./sandbox/capabilities.js";
 import { filterToolDefs } from "./tools/filter.js";
 import { todoStore } from "./tools/todo.js";
 import { initPresets, createProvider, getPreset } from "./providers/presets.js";
@@ -162,7 +161,7 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
     // explicit CLI roots remain session-scoped trusted roots.
     // Global-only sandbox.readRoots / allowLocalNetwork / allowBrowser: set before any profile
     // is built so every launch and the session-grant hash agree.
-    configureSandbox({ readRoots: configResult.config.sandbox?.readRoots, allowLocalNetwork: configResult.config.sandbox?.allowLocalNetwork, allowBrowser: configResult.config.sandbox?.allowBrowser, grants: resolveStoredGrants(configResult.config.sandbox?.grants).grants });
+    configureSandbox({ readRoots: configResult.config.sandbox?.readRoots, allowLocalNetwork: configResult.config.sandbox?.allowLocalNetwork, allowBrowser: configResult.config.sandbox?.allowBrowser });
     setWriteRoots(writeRoots);
     // The kernel's report of what the sandbox refuses (sandbox/denials.ts); on
     // failure the output-matching hint stays the only signal.

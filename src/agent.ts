@@ -26,6 +26,7 @@ import {
   type BashEnvelope,
 } from "./permissions/session-grant.js";
 import type { SandboxFailureReason } from "./sandbox/launcher.js";
+import { summarizeDenials } from "./sandbox/denials.js";
 import type { ToolExecOptions } from "./tools/types.js";
 
 export type ToolExecutor = (call: ToolCall, exec?: ToolExecOptions) => Promise<ToolOutput>;
@@ -178,6 +179,12 @@ export interface AgentOptions {
   onToolStart?: (name: string, args: Record<string, unknown>) => void;
   onToolResult?: (name: string, result: ToolOutput) => void;
   onDiagnostic?: (msg: string) => void;
+  /**
+   * The OS refused something while a tool call ran (sandbox/denials.ts); the
+   * text is the one-line summary. Separate from `onDiagnostic` because it is
+   * routine information, not a warning — the UI renders it dim.
+   */
+  onSandboxDenial?: (summary: string) => void;
   onRetry?: (msg: string) => void;
   onCompacted?: (msg: string) => void;
   onLoopDetected?: (msg: string) => void;
@@ -471,6 +478,8 @@ export async function runAgent(
       break;
     }
     const seenCalls = new Map<string, number>();
+    // check_job reports a job's denials on every poll; say each once.
+    const reportedJobDenials = new Set<string>();
     let failedStreak = 0;
     let warnedRepeat = false;
     let warnedFailures = false;
@@ -1024,6 +1033,14 @@ export async function runAgent(
         }
       }
       options.onToolResult?.(tc.name, result);
+      if (result.sandboxDenials?.length) {
+        const summary = summarizeDenials(result.sandboxDenials);
+        const pollKey = tc.name === "check_job" ? `${String(tc.arguments.job_id)}:${summary}` : undefined;
+        if (pollKey === undefined || !reportedJobDenials.has(pollKey)) {
+          if (pollKey !== undefined) reportedJobDenials.add(pollKey);
+          options.onSandboxDenial?.(summary);
+        }
+      }
       const historyContent = toolResultForHistory(result);
 
       const callKey = `${tc.name}:${JSON.stringify(tc.arguments)}`;

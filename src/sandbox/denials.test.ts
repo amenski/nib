@@ -95,6 +95,15 @@ describe("groupDenials", () => {
     ]);
   });
 
+  it("keeps certain and probable denials apart, certain first, and says which in the summary", () => {
+    const g = groupDenials([
+      { ...d("file-write-create", "/opt/a", 9), probable: true },
+      d("file-write-create", "/opt/b"),
+    ], home);
+    expect(g.map((x) => [x.key, x.count, x.probable])).toEqual([["/opt", 1, false], ["/opt", 9, true]]);
+    expect(summarizeDenials(g)).toBe("file-write-create under /opt (1×); file-write-create under /opt (9×, probable)");
+  });
+
   it("keeps the same path under write and read apart and caps samples", () => {
     const g = groupDenials([d("file-write-create", "/opt/a"), d("file-read-data", "/opt/b"), ...["c", "d", "e", "f"].map((n) => d("file-write-create", `/opt/${n}`))], home);
     expect(g).toHaveLength(2);
@@ -181,6 +190,36 @@ describe("DenialReader attribution", () => {
     await close(p);
     expect(await a.settle()).toHaveLength(1);
     expect(seen).toEqual([{ surface: bash("c1"), probable: true }]);
+  });
+
+  it("ignores a vanished process older than the command (it cannot be its child)", async () => {
+    const { reader, seen } = makeReader();
+    const p = fakeProc(5000);
+    const a = reader.attach(p, bash("c1"), { matchGroup: true });
+    reader.feed(line(4000, "file-write-create", "/opt/x"));
+    reader.feed(line(5001, "file-write-create", "/opt/y"));
+    await close(p);
+    expect((await a.settle()).flatMap((g) => g.samples)).toEqual(["/opt/y"]);
+    expect(seen).toHaveLength(1);
+  });
+
+  it("accepts a lower pid only when the pid space wrapped", async () => {
+    const { reader } = makeReader();
+    const p = fakeProc(99_990);
+    const a = reader.attach(p, bash("c1"), { matchGroup: true });
+    reader.feed(line(12, "file-write-create", "/opt/x"));
+    await close(p);
+    expect(await a.settle()).toHaveLength(1);
+  });
+
+  it("flags elimination as probable and exact attribution as certain", async () => {
+    const { reader } = makeReader({ 555: 100 });
+    const p = fakeProc(100);
+    const a = reader.attach(p, bash("c1"), { matchGroup: true });
+    reader.feed(line(555, "file-write-create", "/opt/by-group"));
+    reader.feed(line(9001, "file-write-create", "/opt/by-elimination"));
+    await close(p);
+    expect((await a.settle()).map((g) => [g.samples[0], g.probable])).toEqual([["/opt/by-group", false], ["/opt/by-elimination", true]]);
   });
 
   it("prefers the foreground bash surface over background jobs", async () => {

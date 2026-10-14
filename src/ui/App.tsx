@@ -103,6 +103,7 @@ import {
   lookupAction,
 } from "./keybindings.js";
 import { announceToScreenReader } from "./Accessibility.js";
+import { denialReader, groupDenials, summarizeDenials } from "../sandbox/denials.js";
 
 // Display label for a queued item in the above-input stack. A large paste is
 // collapsed to a bracket summary ("[Pasted N lines]") rather than dumping the
@@ -463,6 +464,27 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
       }
     });
   }, [ctx]);
+
+  // Denials from surfaces that have no tool result to carry them — background
+  // jobs, hooks, MCP servers, the status line — reach the scrollback here, once
+  // per place. Foreground Bash reports through its own result (onSandboxDenial).
+  useEffect(() => {
+    const told = new Set<string>();
+    return denialReader.subscribe((surface, denial) => {
+      if (surface?.kind === "bash") return;
+      const label =
+        surface === null ? "during overlapping commands"
+        : surface.kind === "job" ? `job ${surface.jobId.slice(0, 8)}`
+        : surface.kind === "hook" ? `${surface.event} hook`
+        : surface.kind === "mcp" ? `MCP ${surface.server}`
+        : "status line";
+      const groups = groupDenials([denial]);
+      const key = `${label}|${groups[0]?.opClass}|${groups[0]?.key}`;
+      if (told.has(key)) return;
+      told.add(key);
+      pushOutput(theme.fg(theme.theme.textDim, `sandbox denied: ${summarizeDenials(groups)} (${label})`));
+    });
+  }, []);
 
   // Lifecycle hooks (hooks-spec.md): SessionStart fires once at session
   // startup, after the TOFU trust check, before the first turn. The App owns
@@ -1202,6 +1224,15 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           if (activeLineRef.current) scheduleOutput(activeLineRef.current);
           setActiveLineBoth("");
           scheduleOutput(theme.fg(theme.theme.warning, `⚠ ${msg}`));
+        },
+        // Routine, not a warning: what the OS sandbox refused during a tool
+        // call. Same flush sequence as onDiagnostic, dim and without the ⚠.
+        onSandboxDenial: (summary: string) => {
+          flushReasoning();
+          flushStream();
+          if (activeLineRef.current) scheduleOutput(activeLineRef.current);
+          setActiveLineBoth("");
+          scheduleOutput(theme.fg(theme.theme.textDim, `sandbox denied: ${summary}`));
         },
         onRetry: () => {},
         onCompacted: () => {},

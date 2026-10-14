@@ -5,6 +5,7 @@ import { buildRepoMap } from "./prompt.js";
 import { executeTool, registry, setSessionId, setSignal, setTimeoutToBackground, setSandboxLevel, setSessionTempDir, setWritePolicyLevel, setWriteRoots, setWebSearchConfig } from "./tools/index.js";
 import { createSessionTempDir } from "./sandbox/session-temp.js";
 import { configureSandbox } from "./sandbox/seatbelt.js";
+import { denialReader } from "./sandbox/denials.js";
 import { filterToolDefs } from "./tools/filter.js";
 import { todoStore } from "./tools/todo.js";
 import { initPresets, createProvider, getPreset } from "./providers/presets.js";
@@ -89,7 +90,7 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
   }
 
   try {
-    const { loadConfig, workspaceOutsideHomeWarning } = await import("./config/loader.js");
+    const { loadConfig, workspaceOutsideHomeWarning, hasActiveSandboxContainment } = await import("./config/loader.js");
     const configResult = loadConfig(options.projectRoot);
     // Fail fast on config errors, same message shape as the TUI (cli.tsx) —
     // e.g. an invalid matcher regex is fatal in headless mode too; it must
@@ -162,6 +163,12 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
     // is built so every launch and the session-grant hash agree.
     configureSandbox({ readRoots: configResult.config.sandbox?.readRoots, allowLocalNetwork: configResult.config.sandbox?.allowLocalNetwork, allowBrowser: configResult.config.sandbox?.allowBrowser });
     setWriteRoots(writeRoots);
+    // The kernel's report of what the sandbox refuses (sandbox/denials.ts); on
+    // failure the output-matching hint stays the only signal.
+    if (hasActiveSandboxContainment(effectiveConfig)) {
+      const denialStream = await denialReader.start();
+      if (!denialStream.ok) writeErr(`sandbox denial stream unavailable (${denialStream.reason}) — falling back to output matching`);
+    }
 
     // Read-boundary disclosure (see workspaceOutsideHomeWarning): the TUI
     // shows this in its scrollback, so headless prints it too — this is the

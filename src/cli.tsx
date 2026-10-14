@@ -39,6 +39,7 @@ import { MemoryStore } from "./memory/store.js";
 import { SkillLoader, createLoadSkillTool, type SkillDef } from "./skills/index.js";
 import { AgentLoader, type AgentDef } from "./agents/index.js";
 import { CommandLoader, type CommandDef } from "./commands/index.js";
+import { denialReader } from "./sandbox/denials.js";
 import { containmentWarning, hasActiveSandboxContainment, loadConfig, resolveHome, workspaceOutsideHomeWarning } from "./config/loader.js";
 import { projectSettingsPath } from "./config/paths.js";
 import { checkSettingsTrust, trustSettings, stripExecutionKeys } from "./config/settings-trust.js";
@@ -604,6 +605,11 @@ async function main() {
   // is built so every launch and the session-grant hash agree.
   configureSandbox({ readRoots: configResult.config.sandbox?.readRoots, allowLocalNetwork: configResult.config.sandbox?.allowLocalNetwork, allowBrowser: configResult.config.sandbox?.allowBrowser });
   setWriteRoots(writeRoots);
+  // The kernel's own report of what the sandbox refuses (sandbox/denials.ts).
+  // Without it the existing output-matching hint stays the only signal, and the
+  // user is told so once.
+  const denialStream = hasActiveSandboxContainment(configResult.config) ? await denialReader.start() : undefined;
+  const denialNotice = denialStream && !denialStream.ok ? `sandbox denial stream unavailable (${denialStream.reason}) — falling back to output matching` : undefined;
 
   // The session grant's envelope (docs/permission-ux-redesign.md): the profile
   // this session's foreground Bash launches run under, identified by the hash
@@ -810,7 +816,7 @@ async function main() {
   const resumeNotice = sessionLoaded
     ? `Resumed ${sessionId} · ${sessionMessages.length} messages · mode: ${shared.activeMode?.slug || "general"}`
     : undefined;
-  const initialNotice = [...skillLoader.notices, containmentWarning(configResult.config), workspaceOutsideHomeWarning(configResult.config, process.cwd()), resumeNotice].filter(Boolean).join("\n") || undefined;
+  const initialNotice = [...skillLoader.notices, containmentWarning(configResult.config), workspaceOutsideHomeWarning(configResult.config, process.cwd()), denialNotice, resumeNotice].filter(Boolean).join("\n") || undefined;
 
   let knownModeSlugs: string[] = [];
   try { knownModeSlugs = (await modeLoader.listAll()).map(m => m.slug); } catch {}
@@ -1934,7 +1940,7 @@ async function runAgentTurnBridge(input: string, cb: any, shared: any, permissio
     maxTurns: shared.maxTurns,
     getTodos: () => todoStore.getTodos(),
     onText: cb.onText, onReasoning: cb.onReasoning, onToolStart: (name, args) => { shared.toolUsage[name] = (shared.toolUsage[name] || 0) + 1; cb.onToolStart(name, args); }, onToolResult: cb.onToolResult,
-    onDiagnostic: cb.onDiagnostic, onRetry: cb.onRetry, onCompacted: cb.onCompacted,
+    onDiagnostic: cb.onDiagnostic, onSandboxDenial: cb.onSandboxDenial, onRetry: cb.onRetry, onCompacted: cb.onCompacted,
     onLoopDetected: cb.onLoopDetected, onMaxTurns: cb.onMaxTurns,
     onUsage: (input: number, output: number, cached?: number) => {
       shared.sessionInput += input; shared.sessionOutput += output; shared.lastContextTokens = input + output;

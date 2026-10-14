@@ -20,6 +20,7 @@ import {
 } from "./trust.js";
 import type { HookEntry, HookEvent, HooksConfig } from "./types.js";
 import { BLOCKABLE_EVENTS, CONTEXT_STDOUT_EVENTS } from "./types.js";
+import { denialReader } from "../sandbox/denials.js";
 
 /**
  * Hook dispatcher (docs/hooks-spec.md). Sequential per event, config order;
@@ -269,6 +270,9 @@ export class HookRunner {
         });
         child = contained.proc;
         readiness = contained.readiness;
+        // Report-only: a hook has no result channel for the denial, so the
+        // reader's subscribers (the transcript) are the only audience.
+        if (shell) denialReader.attach(child, { kind: "hook", event: entry.event }, { matchGroup: true });
       } catch (err) {
         resolve({ exitCode: null, timedOut: false, stdout: "", stderr: "", error: (err as Error).message });
         return;

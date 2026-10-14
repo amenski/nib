@@ -457,7 +457,11 @@ describe("OS-reported sandbox denials", () => {
       const lines = content.split("\n");
       const endMarker = lines.findIndex((l) => parseUntrustedMarker(l)?.role === "end");
       expect(lines.findIndex((l) => l.includes("[nib] sandbox denied"))).toBeGreaterThan(endMarker);
-      expect(out.sandboxDenials?.[0]).toMatchObject({ opClass: "write", key: "/opt" });
+      // `touch` is gone before the log line is read, so this is attribution by
+      // elimination. Other sandboxed processes on a busy machine (or in a
+      // parallel test run) can add groups of their own, so look for ours.
+      expect(out.sandboxDenials).toContainEqual(expect.objectContaining({ opClass: "write", key: "/opt", probable: true }));
+      expect(content).toContain("file-write-create under /opt (1×, probable)");
     });
 
     itOnDarwin("reports a background job's denial through check_job", async () => {

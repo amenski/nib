@@ -25,6 +25,8 @@ export interface SandboxDenial {
   target: string;
   count: number;
   at: number;
+  /** Attributed by elimination, not by pid or process group (see DenialReader.attribute). */
+  probable?: boolean;
 }
 
 export type DenialOpClass = "write" | "read" | "exec" | "mach" | "network" | "other";
@@ -35,6 +37,8 @@ export interface DenialGroup {
   ops: string[];
   samples: string[];
   count: number;
+  /** Every denial in the group was attributed by elimination; it may belong to another process. */
+  probable: boolean;
 }
 
 export type DenialSurface =
@@ -99,30 +103,31 @@ function keyFor(opClass: DenialOpClass, target: string, home: string): string {
 
 const MAX_SAMPLES = 3;
 
-/** Fold denials into one group per (operation class, key), most frequent first. */
+/** Fold denials into one group per (operation class, key, certainty), certain ones first, then most frequent. */
 export function groupDenials(denials: SandboxDenial[], home: string = homedir()): DenialGroup[] {
   const groups = new Map<string, DenialGroup>();
   for (const d of denials) {
     const opClass = opClassOf(d.op);
     const key = keyFor(opClass, d.target, home);
-    const id = `${opClass}\0${key}`;
+    const probable = d.probable === true;
+    const id = `${opClass}\0${key}\0${probable}`;
     let g = groups.get(id);
     if (!g) {
-      g = { opClass, key, ops: [], samples: [], count: 0 };
+      g = { opClass, key, ops: [], samples: [], count: 0, probable };
       groups.set(id, g);
     }
     g.count += d.count;
     if (!g.ops.includes(d.op)) g.ops.push(d.op);
     if (d.target !== "" && !g.samples.includes(d.target) && g.samples.length < MAX_SAMPLES) g.samples.push(d.target);
   }
-  return [...groups.values()].sort((a, b) => b.count - a.count);
+  return [...groups.values()].sort((a, b) => Number(a.probable) - Number(b.probable) || b.count - a.count);
 }
 
 /** `file-write-create under ~/.pub-cache (3×); mach-lookup com.apple.foo (1×)` — no `[nib]` prefix, for the transcript. */
 export function summarizeDenials(groups: DenialGroup[]): string {
   const shown = groups.slice(0, MAX_DISPLAYED_GROUPS).map((g) => {
     const where = g.opClass === "write" || g.opClass === "read" || g.opClass === "exec" ? `under ${g.key}` : g.key;
-    return `${g.ops.join(",")} ${where}`.trim() + ` (${g.count}×)`;
+    return `${g.ops.join(",")} ${where}`.trim() + ` (${g.count}×${g.probable ? ", probable" : ""})`;
   });
   const extra = groups.length - shown.length;
   return shown.join("; ") + (extra > 0 ? `; +${extra} more` : "");
@@ -175,6 +180,7 @@ function psPgid(pid: number): Promise<number | null> {
 }
 
 const PGID_CACHE_MAX = 500;
+const PID_WRAP_MARGIN = 30_000;
 const START_TIMEOUT_MS = 1500;
 
 export class DenialReader {
@@ -321,9 +327,14 @@ export class DenialReader {
       return;
     }
     // Gone before we could ask (`touch` lives ~1 ms). Only a long-lived daemon
-    // would have survived `ps`, so a short-lived stranger is almost certainly a
-    // child of whatever is running now.
-    const inFlight = candidates.filter((e) => e.matchGroup);
+    // would have survived `ps`, so a short-lived stranger is *likely* a child of
+    // whatever is running now — but not certainly: the log is system-wide, and
+    // other nib sessions or sandboxed helpers (Spotlight's workers) die just as
+    // fast. Measured 2026-10-14 under load: hundreds of another process's
+    // `mach-lookup` denials landed on one command. Two guards, and the result is
+    // flagged `probable` so it is never worded as fact: a child is spawned after
+    // its parent, so its pid is higher (pids only wrap far from here).
+    const inFlight = candidates.filter((e) => e.matchGroup && (d.pid > e.pid || e.pid - d.pid > PID_WRAP_MARGIN));
     if (inFlight.length === 1) {
       this.record(inFlight[0], d, true);
       return;
@@ -337,8 +348,9 @@ export class DenialReader {
   }
 
   private record(entry: Entry, d: SandboxDenial, probable: boolean): void {
-    entry.denials.push(d);
-    this.emit(entry.surface, d, probable);
+    const recorded = probable ? { ...d, probable } : d;
+    entry.denials.push(recorded);
+    this.emit(entry.surface, recorded, probable);
   }
 
   private emit(surface: DenialSurface | null, d: SandboxDenial, probable: boolean): void {

@@ -7,6 +7,7 @@ import {
   GRACE_MS,
   formatDenialBlock,
   groupDenials,
+  isAmbientGroup,
   isBaselineNoise,
   opClassOf,
   parseDenialLine,
@@ -23,6 +24,12 @@ describe("parseDenialLine", () => {
     expect(parseDenialLine(line(21540, "file-write-create", "/opt/x"), 5)).toEqual({
       proc: "touch", pid: 21540, op: "file-write-create", target: "/opt/x", count: 1, at: 5,
     });
+  });
+
+  it("drops the kernel's ` (xpc)` annotation from a mach target, and only there", () => {
+    expect(parseDenialLine(line(9, "mach-lookup", "com.apple.CoreDevice.CoreDeviceService (xpc)"))?.target).toBe("com.apple.CoreDevice.CoreDeviceService");
+    expect(parseDenialLine(line(9, "mach-lookup", "com.apple.analyticsd"))?.target).toBe("com.apple.analyticsd");
+    expect(parseDenialLine(line(9, "file-read-data", "/tmp/a (xpc)"))?.target).toBe("/tmp/a (xpc)");
   });
 
   it("keeps spaces in process names and targets", () => {
@@ -62,6 +69,25 @@ describe("isBaselineNoise", () => {
     expect(isBaselineNoise(d("git", "file-write-data", "/dev/tty"))).toBe(false);
     expect(isBaselineNoise(d("bash", "file-write-data", "/dev/ttys003"))).toBe(false);
     expect(isBaselineNoise(d("bash", "file-write-create", "/dev/tty"))).toBe(false);
+  });
+});
+
+describe("isAmbientGroup", () => {
+  const g = (...ops: string[]) => ({ ops });
+
+  it("is true for the probes every toolchain makes at startup", () => {
+    for (const op of ["system-socket", "job-creation", "ipc-posix-shm-read-data", "user-preference-read", "sysctl-write"]) {
+      expect(isAmbientGroup(g(op)), op).toBe(true);
+    }
+    expect(isAmbientGroup(g("system-socket", "job-creation"))).toBe(true);
+  });
+
+  it("is false for anything a user could act on, or a mix that includes one", () => {
+    for (const op of ["file-write-create", "file-read-data", "mach-lookup", "network-outbound", "process-exec"]) {
+      expect(isAmbientGroup(g(op)), op).toBe(false);
+    }
+    expect(isAmbientGroup(g("system-socket", "file-write-create"))).toBe(false);
+    expect(isAmbientGroup(g())).toBe(false);
   });
 });
 

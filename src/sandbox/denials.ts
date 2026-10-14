@@ -68,13 +68,17 @@ const CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
 
 const DENY_LINE = /(?:(\d+) duplicate reports? for )?Sandbox: (.+?)\((\d+)\) deny\(\d+\) (\S+)(?: (.*))?$/s;
 
+/** The kernel annotates a mach lookup made through an XPC connection: `mach-lookup com.apple.Foo (xpc)`. The name before it is the one to grant. */
+const XPC_SUFFIX = / \(xpc\)$/;
+
 /** One denial from one `log stream` line, or null for headers, `allow` lines and other senders. A duplicate-report line carries its repeat count. */
 export function parseDenialLine(line: string, at: number = Date.now()): SandboxDenial | null {
   const m = DENY_LINE.exec(line);
   if (!m) return null;
   // Operations are the kernel's fixed vocabulary; anything else is not a denial line.
   if (!/^[a-z0-9*-]+$/.test(m[4])) return null;
-  const target = (m[5] ?? "").trim();
+  let target = (m[5] ?? "").trim();
+  if (m[4].startsWith("mach-")) target = target.replace(XPC_SUFFIX, "");
   const safe = target.length <= MAX_TARGET_CHARS && !CONTROL_CHARS.test(target) && !CONTROL_CHARS.test(m[2]);
   return { proc: safe ? m[2] : "?", pid: Number(m[3]), op: m[4], target: safe ? target : UNPRINTABLE_TARGET, count: m[1] ? Number(m[1]) : 1, at };
 }
@@ -92,6 +96,23 @@ const SHELLS = new Set(["sh", "bash", "zsh", "dash"]);
 export function isBaselineNoise(d: Pick<SandboxDenial, "proc" | "op" | "target">): boolean {
   if (d.op !== "file-write-data") return false;
   return d.target === "/dev/dtracehelper" || (d.target === "/dev/tty" && SHELLS.has(d.proc));
+}
+
+/**
+ * Operations a toolchain probes as it starts (measured 2026-10-14 in a Flutter
+ * session: `system-socket domain:32`, the notification-centre and cfprefs shared
+ * memory, a preference read, one `vfs.nspace` sysctl — hundreds of lines in one
+ * session). No capability can allow them and none changes what a command does.
+ */
+const AMBIENT_OPS = new Set(["system-socket", "job-creation", "ipc-posix-shm-read-data", "user-preference-read", "sysctl-write"]);
+
+/**
+ * A group made only of {@link AMBIENT_OPS}. The model still gets it in the tool
+ * result (it may be what explains a failure); the user's scrollback does not
+ * repeat it after every command.
+ */
+export function isAmbientGroup(g: Pick<DenialGroup, "ops">): boolean {
+  return g.ops.length > 0 && g.ops.every((op) => AMBIENT_OPS.has(op));
 }
 
 export function opClassOf(op: string): DenialOpClass {

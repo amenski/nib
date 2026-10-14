@@ -26,7 +26,7 @@ import {
   type BashEnvelope,
 } from "./permissions/session-grant.js";
 import type { SandboxFailureReason } from "./sandbox/launcher.js";
-import { summarizeDenials } from "./sandbox/denials.js";
+import { isAmbientGroup, summarizeDenials } from "./sandbox/denials.js";
 import { capabilityFor, isActionable, type Capability, type CapabilityAnswer, type CapabilityRequest } from "./sandbox/capabilities.js";
 import { activeGrants, grantCapability } from "./sandbox/seatbelt.js";
 import { addSandboxGrants } from "./config/settings-writer.js";
@@ -1145,8 +1145,11 @@ export async function runAgent(
         }
       }
       options.onToolResult?.(tc.name, result);
-      if (result.sandboxDenials?.length) {
-        const summary = summarizeDenials(result.sandboxDenials);
+      // The user's scrollback skips probes of the kind every toolchain makes at
+      // startup (isAmbientGroup); the model's copy of the result keeps them.
+      const shown = result.sandboxDenials?.filter((g) => !isAmbientGroup(g)) ?? [];
+      if (shown.length > 0) {
+        const summary = summarizeDenials(shown);
         const pollKey = tc.name === "check_job" ? `${String(tc.arguments.job_id)}:${summary}` : undefined;
         if (pollKey === undefined || !reportedJobDenials.has(pollKey)) {
           if (pollKey !== undefined) reportedJobDenials.add(pollKey);

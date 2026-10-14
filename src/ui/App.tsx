@@ -103,7 +103,7 @@ import {
   lookupAction,
 } from "./keybindings.js";
 import { announceToScreenReader } from "./Accessibility.js";
-import { denialReader, groupDenials, summarizeDenials } from "../sandbox/denials.js";
+import { denialReader, groupDenials, isAmbientGroup, summarizeDenials } from "../sandbox/denials.js";
 import type { Capability as SandboxCapability, CapabilityAnswer, CapabilityRequest } from "../sandbox/capabilities.js";
 import { activeGrants, grantCapability } from "../sandbox/seatbelt.js";
 import { recordPresetDecline } from "../config/folder-trust.js";
@@ -488,6 +488,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
         : surface.kind === "mcp" ? `MCP ${surface.server}`
         : "status line";
       const groups = groupDenials([denial]);
+      if (groups.every(isAmbientGroup)) return;
       const key = `${label}|${groups[0]?.opClass}|${groups[0]?.key}`;
       if (told.has(key)) return;
       told.add(key);

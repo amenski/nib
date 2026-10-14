@@ -607,9 +607,9 @@ async function main() {
   // are session-scoped and already resolved from startup cwd. Threaded into
   // ctx so Seatbelt and file-tool containment consult the same set.
   const writeRoots = [...(configResult.config.sandbox?.writeRoots ?? []), ...additionalWriteRoots];
-  // Global-only sandbox.readRoots / allowLocalNetwork: set before any profile
+  // Global-only sandbox.readRoots / allowLocalNetwork / allowBrowser: set before any profile
   // is built so every launch and the session-grant hash agree.
-  configureSandbox({ readRoots: configResult.config.sandbox?.readRoots, allowLocalNetwork: configResult.config.sandbox?.allowLocalNetwork });
+  configureSandbox({ readRoots: configResult.config.sandbox?.readRoots, allowLocalNetwork: configResult.config.sandbox?.allowLocalNetwork, allowBrowser: configResult.config.sandbox?.allowBrowser });
   setWriteRoots(writeRoots);
 
   // The session grant's envelope (docs/permission-ux-redesign.md): the profile

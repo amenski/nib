@@ -115,7 +115,7 @@ export interface DeepCodeSettings {
    *  loadConfig's sandbox block). This is deliberately separate from
    *  `permissionProfile.fs`, whose "explicit rules narrow only" invariant
    *  this must not weaken. */
-  sandbox?: { enabled: boolean; writeRoots?: string[]; readRoots?: string[]; autoAllowBash?: boolean; allowLocalNetwork?: boolean };
+  sandbox?: { enabled: boolean; writeRoots?: string[]; readRoots?: string[]; autoAllowBash?: boolean; allowLocalNetwork?: boolean; allowBrowser?: boolean };
 
   // ── MCP Servers ──
   mcpServers?: Record<string, McpServerConfig>;
@@ -1352,6 +1352,15 @@ export function loadConfig(projectDir?: string): LoadResult {
           if (config.sandbox) config.sandbox.allowLocalNetwork = raw;
         } else {
           errors.push("config.sandbox.allowLocalNetwork: must be a boolean");
+        }
+      }
+      // allowBrowser: global-only, absent = off (seatbelt.ts BROWSER_MACH_SERVICES).
+      if (isObject(globalRaw?.sandbox) && "allowBrowser" in (globalRaw.sandbox as Record<string, unknown>)) {
+        const raw = (globalRaw.sandbox as Record<string, unknown>).allowBrowser;
+        if (typeof raw === "boolean") {
+          if (config.sandbox) config.sandbox.allowBrowser = raw;
+        } else {
+          errors.push("config.sandbox.allowBrowser: must be a boolean");
         }
       }
       if (isObject(projectRaw?.sandbox) && "writeRoots" in (projectRaw.sandbox as Record<string, unknown>)) {

@@ -5,6 +5,7 @@ import type { PermissionRule } from "../permissions/index.js";
 import type { Capability, CapabilityPlan } from "../permissions/capabilities.js";
 import type { BashEnvelope } from "../permissions/session-grant.js";
 import { extractToolSubject } from "../permissions/rules.js";
+import { sandboxAllowsBrowser } from "../sandbox/seatbelt.js";
 import { useTheme } from "./contexts.js";
 import { ansi256, type ThemeContextValue } from "./theme.js";
 import { toolDisplayName } from "./ToolCallFormatter.js";
@@ -266,6 +267,9 @@ export function grantConsentLines(envelope: BashEnvelope): string[] {
     "Those children have outbound network: they can connect to any host and send any file they can read. Services on this Mac (localhost) are reachable unless sandbox.allowLocalNetwork is off; Unix sockets such as Docker's are not.",
     "Reads are only partly contained: files outside your home directory can still be readable, toolchain folders in it (SDKMAN, Gradle, Maven, Cargo, pub, CocoaPods) are readable — including Gradle/Maven credentials files — and files inside the project, including .env, can be read by a script even though the file tools guard them.",
   ];
+  if (sandboxAllowsBrowser()) {
+    lines.push("sandbox.allowBrowser is on: children can launch Chrome and reach the window server and the system services it needs (not Apple Events, the clipboard or the Keychain).");
+  }
 
   // Decision 8: the outside-$HOME warning is repeated here, because consent is
   // the moment the authority is actually granted.

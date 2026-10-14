@@ -6,10 +6,13 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, existsSync, lstatSync, sy
 import { join } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import {
+  browserAllowLines,
   buildSeatbeltProfile,
   configureSandbox,
   gradleExecutableDenyLines,
   GRADLE_NATIVE_LOCK_ALLOW,
+  sandboxAllowsBrowser,
+  sandboxEnvelopeHash,
   sandboxPrefix,
   toolchainSecretDenyLines,
   toolchainWriteRoots,
@@ -134,6 +137,40 @@ describe("buildSeatbeltProfile", () => {
 
   it("strict-sandbox never gets loopback, whatever the setting", () => {
     expect(buildSeatbeltProfile("strict-sandbox", "/private/tmp/ws")).not.toContain("network-");
+  });
+
+  it("browser rules: named services only, the Chrome singleton dir regex-escaped", () => {
+    const lines = browserAllowLines("/private/var/folders/a.b/T");
+    const text = lines.join("\n");
+    expect(text).toContain('(global-name "com.apple.windowserver.active")');
+    expect(text).toContain('(global-name-prefix "com.google.Chrome.")');
+    expect(text).toContain('(regex #"^/private/var/folders/a\\.b/T/com\\.google\\.Chrome\\.[^/]+(/.*)?$")');
+    // Never a blanket allow, and never the services that reach other apps or secrets.
+    expect(lines).not.toContain("(allow mach-lookup)");
+    expect(lines).not.toContain("(allow mach-register)");
+    for (const name of ["appleevents", "pasteboard", "SecurityServer", "CoreAuthentication", "dock.server", "usernoted", "tccd"]) {
+      expect(text).not.toContain(name);
+    }
+  });
+
+  it("browser rules are off by default", () => {
+    expect(sandboxAllowsBrowser()).toBe(false);
+    expect(buildSeatbeltProfile("workspace-write", "/private/tmp/ws")).not.toContain("mach-lookup");
+  });
+
+  itOnDarwin("allowBrowser: workspace-write gets the browser rules, strict-sandbox never does, and the grant hash changes", () => {
+    const off = buildSeatbeltProfile("workspace-write", "/private/tmp/ws");
+    configureSandbox({ allowBrowser: true });
+    try {
+      expect(sandboxAllowsBrowser()).toBe(true);
+      const on = buildSeatbeltProfile("workspace-write", "/private/tmp/ws");
+      expect(on).toContain('(global-name "com.apple.windowserver.active")');
+      expect(on).toContain("com\\.google\\.Chrome\\.");
+      expect(sandboxEnvelopeHash(on)).not.toBe(sandboxEnvelopeHash(off));
+      expect(buildSeatbeltProfile("strict-sandbox", "/private/tmp/ws")).not.toContain("mach-lookup");
+    } finally {
+      configureSandbox({});
+    }
   });
 
   it("workspace-write: carries the battery-proven write carve-outs (literal /tmp, $TMPDIR, ~/.npm)", () => {

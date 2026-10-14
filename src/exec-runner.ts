@@ -158,9 +158,9 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
     // Merge global sandbox.writeRoots with the startup-resolved --add-dir
     // roots. Project TOFU stripping can narrow only the config contribution;
     // explicit CLI roots remain session-scoped trusted roots.
-    // Global-only sandbox.readRoots / allowLocalNetwork: set before any profile
+    // Global-only sandbox.readRoots / allowLocalNetwork / allowBrowser: set before any profile
     // is built so every launch and the session-grant hash agree.
-    configureSandbox({ readRoots: configResult.config.sandbox?.readRoots, allowLocalNetwork: configResult.config.sandbox?.allowLocalNetwork });
+    configureSandbox({ readRoots: configResult.config.sandbox?.readRoots, allowLocalNetwork: configResult.config.sandbox?.allowLocalNetwork, allowBrowser: configResult.config.sandbox?.allowBrowser });
     setWriteRoots(writeRoots);
 
     // Read-boundary disclosure (see workspaceOutsideHomeWarning): the TUI

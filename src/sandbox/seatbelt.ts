@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
@@ -175,11 +176,76 @@ export function toolchainWriteRoots(home: string = homedir()): string[] {
  */
 let extraReadRoots: string[] = [];
 let allowLocalNetwork = true;
-export function configureSandbox(opts: { readRoots?: string[]; allowLocalNetwork?: boolean }): void {
+let browserAllows: string[] = [];
+export function configureSandbox(opts: { readRoots?: string[]; allowLocalNetwork?: boolean; allowBrowser?: boolean }): void {
   extraReadRoots = (opts.readRoots ?? []).map((p) =>
     p === "~" || p.startsWith("~/") ? join(homedir(), p.slice(1)) : resolve(p),
   );
   allowLocalNetwork = opts.allowLocalNetwork !== false;
+  browserAllows = opts.allowBrowser === true ? browserAllowLines(darwinUserTempDir()) : [];
+}
+
+/** Whether `sandbox.allowBrowser` is on — for the session-grant consent text. */
+export function sandboxAllowsBrowser(): boolean {
+  return browserAllows.length > 0;
+}
+
+/**
+ * Headless Chrome for workspace-write children (`sandbox.allowBrowser`, default
+ * off, user decision 2026-10-14): Playwright/Puppeteer tests launch it, and
+ * without these rules Chrome aborts in `HIServices _RegisterApplication` the
+ * moment it starts — macOS shows a "quit unexpectedly" dialog per launch.
+ * Measured 2026-10-14 by leave-one-out against the real workspace-write
+ * profile: each group below is required, and with them Playwright launches
+ * `channel: 'chrome'` and renders a page. Chrome's own sandbox must be off
+ * (`--no-sandbox`, Playwright's `chromiumSandbox: false`): macOS refuses a
+ * nested sandbox_init, so it cannot start inside this one — nib's profile
+ * still contains the whole browser.
+ *
+ * Services are named, never `(allow mach-lookup)`. Left out on purpose, and
+ * not needed by Chrome: Apple Events (drives other apps), the pasteboard,
+ * SecurityServer (Keychain), CoreAuthentication, the Dock, usernoted, tccd.
+ * Risk accepted: a child can talk to the window server and the listed system
+ * daemons; screen capture and synthetic input stay behind TCC.
+ */
+const BROWSER_MACH_SERVICES = [
+  "com.apple.windowserver.active", "com.apple.window_proxies", "com.apple.windowmanager.server",
+  "com.apple.CARenderServer", "com.apple.MTLCompilerService", "com.apple.fonts",
+  "com.apple.coreservices.launchservicesd", "com.apple.CoreServices.coreservicesd",
+  "com.apple.lsd.mapdb", "com.apple.hiservices-xpcservice",
+  "com.apple.cfprefsd.daemon", "com.apple.cfprefsd.agent",
+  "com.apple.logd", "com.apple.diagnosticd",
+  "com.apple.system.notification_center", "com.apple.distributed_notifications@Uv3",
+  "com.apple.system.opendirectoryd.libinfo", "com.apple.system.opendirectoryd.membership",
+  "com.apple.SystemConfiguration.configd", "com.apple.SystemConfiguration.DNSConfiguration",
+  "com.apple.PowerManagement.control",
+] as const;
+
+/**
+ * The rules for {@link BROWSER_MACH_SERVICES}, plus Chrome's ProcessSingleton
+ * directory and socket: `<DARWIN_USER_TEMP_DIR>/com.google.Chrome.*`, which
+ * Chrome creates there regardless of TMPDIR.
+ */
+export function browserAllowLines(userTempDir: string): string[] {
+  // `#"…"` is a raw SBPL string: backslashes reach the regex as written.
+  const singleton = `^${regexEscape(userTempDir)}/com\\.google\\.Chrome\\.[^/]+(/.*)?$`;
+  return [
+    `(allow mach-lookup ${BROWSER_MACH_SERVICES.map((n) => `(global-name "${n}")`).join(" ")} (global-name-prefix "com.google.Chrome."))`,
+    `(allow mach-register (global-name-prefix "com.google.Chrome.") (global-name "com.apple.tsm.portname") (global-name "com.apple.axserver"))`,
+    `(allow iokit-open-user-client (iokit-user-client-class "IOSurfaceRootUserClient" "AGXDeviceUserClient" "RootDomainUserClient"))`,
+    `(allow file-write* (regex #"${singleton}"))`,
+    `(allow network-bind network-outbound (local unix-socket (path-regex #"${singleton}")) (remote unix-socket (path-regex #"${singleton}")))`,
+  ];
+}
+
+/** Per-user temp dir (`/private/var/folders/…/T`), realpath-resolved. */
+function darwinUserTempDir(): string {
+  const raw = execFileSync("getconf", ["DARWIN_USER_TEMP_DIR"], { encoding: "utf8" }).trim();
+  return realpathSync(raw).replace(/\/+$/, "");
+}
+
+function regexEscape(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /**
@@ -482,6 +548,7 @@ export function buildSeatbeltProfile(
     lines.push(...NETWORK_OUTBOUND_ALLOWS);
     // Last matching rule wins: the loopback deny must follow the IP allow.
     lines.push(...(allowLocalNetwork ? LOOPBACK_NETWORK_ALLOWS : [LOOPBACK_OUTBOUND_DENY]));
+    lines.push(...browserAllows);
   }
   // Toolchain credentials/startup config: after every read and write allow.
   const home = realpathNearestAncestor(homedir());

@@ -7,6 +7,14 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **`sandbox.allowBrowser` (global-only, default off).** Sandboxed commands can
+  launch headless Chrome, so Playwright and Puppeteer tests run inside nib.
+  Without it each launch aborts and macOS shows a "quit unexpectedly" dialog.
+  Launch Chrome with its own sandbox off (`chromiumSandbox: false`); nib's
+  profile still contains it.
+
 ## [0.6.1] — 2026-10-13
 
 ### Changed

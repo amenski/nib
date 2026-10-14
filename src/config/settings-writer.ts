@@ -41,3 +41,19 @@ export function updateSettings(
   writePrivateFileSync(tmpPath, JSON.stringify(config, null, 2));
   renameSync(tmpPath, settingsPath);
 }
+
+/**
+ * Append sandbox capability ids to `sandbox.grants` ("Allow always" at the
+ * capability prompt). A settings file with no `sandbox` block gets
+ * `enabled: true` — the default an absent block means — because the loader
+ * requires `enabled` whenever the block exists, and a grant must not switch the
+ * sandbox off or make the file invalid.
+ */
+export function addSandboxGrants(ids: string[], homeDir?: string): void {
+  updateSettings((config) => {
+    const sandbox = (config.sandbox && typeof config.sandbox === "object" && !Array.isArray(config.sandbox) ? config.sandbox : {}) as Record<string, unknown>;
+    const grants = Array.isArray(sandbox.grants) ? sandbox.grants.filter((g): g is string => typeof g === "string") : [];
+    for (const id of ids) if (!grants.includes(id)) grants.push(id);
+    config.sandbox = { enabled: true, ...sandbox, grants };
+  }, homeDir);
+}

@@ -29,7 +29,7 @@ import type { SandboxFailureReason } from "./sandbox/launcher.js";
 import { summarizeDenials } from "./sandbox/denials.js";
 import { capabilityFor, isActionable, type CapabilityAnswer, type CapabilityRequest } from "./sandbox/capabilities.js";
 import { activeGrants, grantCapability } from "./sandbox/seatbelt.js";
-import { updateSettings } from "./config/settings-writer.js";
+import { addSandboxGrants } from "./config/settings-writer.js";
 import type { ToolExecOptions } from "./tools/types.js";
 
 export type ToolExecutor = (call: ToolCall, exec?: ToolExecOptions) => Promise<ToolOutput>;
@@ -1063,12 +1063,7 @@ export async function runAgent(
         grantCapability({ id: cap.id, lines: cap.lines });
         if (answer === "always") {
           try {
-            updateSettings((config) => {
-              const sandbox = (config.sandbox && typeof config.sandbox === "object" ? config.sandbox : {}) as Record<string, unknown>;
-              const grants = Array.isArray(sandbox.grants) ? sandbox.grants.filter((g): g is string => typeof g === "string") : [];
-              if (!grants.includes(cap.id)) grants.push(cap.id);
-              config.sandbox = { ...sandbox, grants };
-            });
+            addSandboxGrants([cap.id]);
           } catch (err) {
             options.onDiagnostic?.(`could not save the sandbox grant: ${(err as Error).message}`);
           }

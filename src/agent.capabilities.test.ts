@@ -85,6 +85,8 @@ describe("capability grants after a sandbox denial", () => {
     await run({ turns: [bashTurn("c1", "x"), textTurn("ok")], results: [denied([writeGroup()])], askCapability: async () => "always" });
     const saved = JSON.parse(readFileSync(join(nibHome, "settings.json"), "utf8"));
     expect(saved.sandbox.grants).toEqual([`write:${target}`]);
+    // The loader requires `enabled` whenever the block exists.
+    expect(saved.sandbox.enabled).toBe(true);
   });
 
   it("a decline is remembered for the session and never asked twice", async () => {

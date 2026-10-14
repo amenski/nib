@@ -107,7 +107,7 @@ import { denialReader, groupDenials, summarizeDenials } from "../sandbox/denials
 import type { Capability as SandboxCapability, CapabilityAnswer, CapabilityRequest } from "../sandbox/capabilities.js";
 import { activeGrants, grantCapability } from "../sandbox/seatbelt.js";
 import { recordPresetDecline } from "../config/folder-trust.js";
-import { updateSettings } from "../config/settings-writer.js";
+import { addSandboxGrants } from "../config/settings-writer.js";
 
 // Display label for a queued item in the above-input stack. A large paste is
 // collapsed to a bracket summary ("[Pasted N lines]") rather than dumping the
@@ -2003,12 +2003,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
       for (const part of preset.parts) grantCapability({ id: part.id, lines: part.lines });
       if (answer === "always") {
         try {
-          updateSettings((config) => {
-            const sandbox = (config.sandbox && typeof config.sandbox === "object" ? config.sandbox : {}) as Record<string, unknown>;
-            const grants = Array.isArray(sandbox.grants) ? sandbox.grants.filter((g): g is string => typeof g === "string") : [];
-            for (const part of preset.parts) if (!grants.includes(part.id)) grants.push(part.id);
-            config.sandbox = { ...sandbox, grants };
-          });
+          addSandboxGrants(preset.parts.map((p) => p.id));
         } catch (err) {
           pushOutput(theme.fg(theme.theme.warning, `⚠ could not save the sandbox grant: ${(err as Error).message}`));
         }

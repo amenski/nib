@@ -6,7 +6,7 @@ import { createElement } from "react";
 import { pkg } from "./version.js";
 import { parseArguments, resolveAdditionalDirs } from "./cli-args.js";
 import { runExecMode } from "./exec-runner.js";
-import { initPresets, createProvider, getPreset, getKnownProviderNames, getProviderModels, getConfiguredProviders, type ProviderOptions } from "./providers/presets.js";
+import { initPresets, createProvider, getPreset, getKnownProviderNames, getListedProviderNames, getProviderModels, getConfiguredProviders, type ProviderOptions } from "./providers/presets.js";
 import { getProviderCapabilities, imageSupportWarning } from "./providers/registry.js";
 import { runAgent } from "./agent.js";
 import { buildRepoMap, captureGitStatus, loadProjectResearch } from "./prompt.js";
@@ -77,30 +77,30 @@ import { GENERAL_MODEL_ID, GENERAL_REASONING_EFFORT, parseModelId, resolveRestor
 // threading a new field through `shared`'s type.
 let stallWatchdog: ReturnType<typeof startStallWatchdog> | null = null;
 
-export function syncModeModel(shared: any, mode: ModeConfig | undefined): void {
-  if (!mode) return;
+/**
+ * Seed a NEW session's model and effort from its starting mode. Only General
+ * carries defaults (Flash/low). Called at startup only: switching mode
+ * mid-session never changes the model or effort — only /model, /effort,
+ * --model or settings do. A resumed session's selection counts as explicit
+ * (see resolveRestoredSelection), so it is never re-seeded.
+ */
+export function applyModeDefaults(shared: any, mode: ModeConfig | undefined): void {
+  if (!mode || mode.slug !== "general") return;
   if (!shared.modelExplicit) {
-    if (mode.slug === "general") {
-      const configuredModeModel = parseModelId(mode.model || GENERAL_MODEL_ID, shared.baselineProviderName);
-      const modeModel = configuredModeModel &&
-        (!shared.providerExplicit || shared.baselineProviderName === configuredModeModel.provider)
-        ? configuredModeModel
-        : undefined;
-      if (modeModel) {
-        shared.providerName = modeModel.provider;
-        shared.activeModel = modeModel.model;
-      }
-    } else {
-      shared.providerName = shared.baselineProviderName;
-      shared.activeModel = shared.baselineModel;
+    const configuredModeModel = parseModelId(mode.model || GENERAL_MODEL_ID, shared.providerName);
+    const modeModel = configuredModeModel &&
+      (!shared.providerExplicit || shared.providerName === configuredModeModel.provider)
+      ? configuredModeModel
+      : undefined;
+    if (modeModel) {
+      shared.providerName = modeModel.provider;
+      shared.activeModel = modeModel.model;
     }
   }
   if (!shared.effortExplicit) {
     const preset = getPreset(shared.providerName);
     const caps = preset?.models[shared.activeModel ?? preset.defaultModel];
-    shared.activeEffort = mode.slug === "general"
-      ? (caps?.effort ? (mode.reasoningEffort || GENERAL_REASONING_EFFORT) : undefined)
-      : (shared.baselineEffort || caps?.effort?.default);
+    shared.activeEffort = caps?.effort ? (mode.reasoningEffort || GENERAL_REASONING_EFFORT) : undefined;
   }
 }
 
@@ -501,9 +501,7 @@ async function main() {
   let resumedProvider: string | undefined;
   let resumedModel: string | undefined;
   let resumedMode: string | undefined;
-  let resumedModelExplicit: boolean | undefined;
   let resumedEffort: string | undefined;
-  let resumedEffortExplicit: boolean | undefined;
 
   if (typeof resumeSessionId === "string") {
     try {
@@ -514,9 +512,7 @@ async function main() {
       resumedProvider = loaded.meta?.provider;
       resumedModel = loaded.meta?.model;
       resumedMode = loaded.meta?.mode;
-      resumedModelExplicit = loaded.meta?.modelExplicit;
       resumedEffort = loaded.meta?.effort;
-      resumedEffortExplicit = loaded.meta?.effortExplicit;
     } catch {
       process.stderr.write(`Session not found: ${resumeSessionId}\n`);
       process.exit(1);
@@ -532,9 +528,7 @@ async function main() {
         resumedProvider = loaded.meta?.provider;
         resumedModel = loaded.meta?.model;
         resumedMode = loaded.meta?.mode;
-        resumedModelExplicit = loaded.meta?.modelExplicit;
         resumedEffort = loaded.meta?.effort;
-        resumedEffortExplicit = loaded.meta?.effortExplicit;
       } catch (err) {
         process.stderr.write(`Failed to load session ${sessionId}: ${(err as Error).message}\n`);
         process.exit(1);
@@ -557,8 +551,8 @@ async function main() {
     await sessionStore.renameSession(sessionId, parsed.name);
   }
 
-  const resumedModelSelection = resolveRestoredSelection(resumedModel, resumedModelExplicit);
-  const resumedEffortSelection = resolveRestoredSelection(resumedEffort, resumedEffortExplicit);
+  const resumedModelSelection = resolveRestoredSelection(resumedModel);
+  const resumedEffortSelection = resolveRestoredSelection(resumedEffort);
 
   if (parsed.debug) enableDebug(sessionId);
 
@@ -582,7 +576,6 @@ async function main() {
     const mode = await modeLoader.load(slug);
     if (!mode) return null;
     shared.activeMode = { ...mode };
-    syncModeModel(shared, shared.activeMode);
     await sessionStore.appendState(sessionId, { mode: slug });
     return mode.name;
   });
@@ -736,9 +729,6 @@ async function main() {
     modelExplicit: (rawInitialModel !== undefined || resumedModelSelection.explicit) as boolean,
     effortExplicit: (reasoningEffort !== undefined || resumedEffortSelection.explicit) as boolean,
     providerExplicit: (configResult.config.provider !== undefined || detected !== undefined) as boolean,
-    baselineProviderName: ((configResult.config.provider || rawInitialModel ? providerName : resumedProvider) ?? providerName) as string,
-    baselineModel: (initialModel ?? resumedModelSelection.value) as string | undefined,
-    baselineEffort: (reasoningEffort ?? resumedEffortSelection.value) as string | undefined,
     // Live mode: /mode and the /modes picker mutate this so the running agent
     // (runAgentTurnBridge reads shared.activeMode) picks up the switch mid-
     // session. A plain closure var here would stay stale until restart.
@@ -765,7 +755,7 @@ async function main() {
     shared.activeMode = (await modeLoader.load(resumedMode || "general")) ?? (await modeLoader.load("general")) ?? undefined;
   }
 
-  syncModeModel(shared, shared.activeMode);
+  applyModeDefaults(shared, shared.activeMode);
 
   // A session resumed at startup (--resume/--continue) must seed the live history so
   // the model actually sees the prior turns on the very first message. Without
@@ -806,7 +796,13 @@ async function main() {
 
   if (parsed.mode) {
     const mode = await modeLoader.load(parsed.mode);
-    if (mode) { shared.activeMode = mode; syncModeModel(shared, shared.activeMode); await sessionStore.appendState(sessionId, { mode: parsed.mode }); }
+    if (mode) { shared.activeMode = mode; applyModeDefaults(shared, shared.activeMode); await sessionStore.appendState(sessionId, { mode: parsed.mode }); }
+  }
+
+  // The session record only stores an explicit effort, so persist a seeded
+  // one too: a resumed session must come back on the effort it was using.
+  if (!sessionLoaded && !shared.effortExplicit && shared.activeEffort !== undefined) {
+    await sessionStore.appendState(sessionId, { effort: shared.activeEffort, effortExplicit: false });
   }
 
   // Shown inside the app's scrollback after mount — printing to stdout here
@@ -1055,7 +1051,7 @@ async function main() {
         try { await handleSlashCore(input, getProvider, configResult, modeLoader, permissions, sessionStore, sessionId, checkpoints, memoryStore, memoryInjection, getCompactor, diagnostics, skills, skillLoader, shared, getActiveModelCaps, getCostStr, colorEnabled, reasoningEffort, resetCompactor, getOverheadTokens, agents); } finally { console.log = origLog; }
         return lines;
       },
-      getModelEntries: () => listKnownModels(),
+      getModelEntries: () => listKnownModels(shared.providerName),
       getConfiguredProviders: () => getConfiguredProviders(),
       getProviderLabels: () => getProviderLabels(),
       getKeyEnvByProvider: () => getKeyEnvByProvider(),
@@ -1345,9 +1341,10 @@ function recordRecentModel(id: string): void {
   }
 }
 
-function listKnownModels(): ModelEntry[] {
+/** Models of the listed providers (see getListedProviderNames), for the picker, `/model` and completion. */
+function listKnownModels(activeProvider?: string): ModelEntry[] {
   const entries: ModelEntry[] = [];
-  for (const provName of getKnownProviderNames()) {
+  for (const provName of getListedProviderNames(activeProvider)) {
     const preset = getPreset(provName);
     const seen = new Set<string>();
     if (preset) {
@@ -1798,7 +1795,7 @@ export async function handleSlashCore(
         return;
       }
       const mode = await modeLoader.load(slug);
-      if (mode) { shared.activeMode = mode; syncModeModel(shared, shared.activeMode); await sessionStore.appendState(sessionId, { mode: slug }); console.log(`Switched to ${mode.name} mode.`); }
+      if (mode) { shared.activeMode = mode; await sessionStore.appendState(sessionId, { mode: slug }); console.log(`Switched to ${mode.name} mode.`); }
       else console.log(`Unknown mode: ${slug}.`);
       return;
     }
@@ -1807,7 +1804,7 @@ export async function handleSlashCore(
       if (!modelArg) {
         const currentModel = shared.activeModel ?? getPreset(shared.providerName)?.defaultModel ?? "unknown";
         console.log(`Current: ${shared.providerName}/${currentModel}`);
-        for (const entry of listKnownModels()) {
+        for (const entry of listKnownModels(shared.providerName)) {
           console.log(`  ${entry.provider}/${entry.model}`);
         }
         return;
@@ -1829,8 +1826,18 @@ export async function handleSlashCore(
         return;
       }
       shared.modelExplicit = true;
-      syncModeModel(shared, shared.activeMode);
-      await sessionStore.appendState(sessionId, { provider, model, modelExplicit: true });
+      // A non-explicit effort follows the new model: kept when the model
+      // accepts it, otherwise that model's default.
+      if (!shared.effortExplicit) {
+        const caps = getActiveModelCaps();
+        shared.activeEffort = caps?.effort
+          ? (caps.effort.values.includes(shared.activeEffort) ? shared.activeEffort : caps.effort.default)
+          : undefined;
+      }
+      await sessionStore.appendState(sessionId, {
+        provider, model, modelExplicit: true,
+        ...(!shared.effortExplicit && shared.activeEffort !== undefined ? { effort: shared.activeEffort } : {}),
+      });
       resetCompactor();
       recordRecentModel(toModelId(provider, model));
       console.log(`Model changed to ${shared.providerName}/${shared.activeModel}`);

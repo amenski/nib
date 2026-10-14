@@ -5,6 +5,7 @@ import { loadModelCatalog, type CatalogModel } from "./catalog.js";
 
 export interface ProviderPreset {
   label?: string;
+  featured?: boolean;
   api: string;
   baseUrl: string;
   keyEnv: string;
@@ -26,7 +27,7 @@ export interface ProviderPreset {
 export const BUILTIN_PRESETS: Record<string, ProviderPreset> = Object.fromEntries(
   Object.entries(loadModelCatalog().providers).map(([name, p]) => [
     name,
-    { label: p.label, api: p.api, baseUrl: p.baseUrl, keyEnv: p.keyEnv, defaultModel: p.defaultModel, models: p.models },
+    { label: p.label, featured: p.featured, api: p.api, baseUrl: p.baseUrl, keyEnv: p.keyEnv, defaultModel: p.defaultModel, models: p.models },
   ]),
 );
 
@@ -67,6 +68,20 @@ export function getConfiguredProviders(): Record<string, boolean> {
     out[name] = !!(process.env[preset.keyEnv] || getCredential(name));
   }
   return out;
+}
+
+/**
+ * Providers the model picker, `/model` and completion list: the featured
+ * ones, every one with a key (env var or credentials.yaml), and `active`.
+ * Listing all ~190 catalog providers would bury the usable ones; any of them
+ * still resolves when named in full (`/model zai/glm-5.3`).
+ */
+export function getListedProviderNames(active?: string): string[] {
+  return getKnownProviderNames().filter((name) => {
+    const preset = BUILTIN_PRESETS[name];
+    if (name === active || preset?.featured) return true;
+    return !!((preset?.keyEnv && process.env[preset.keyEnv]) || getCredential(name));
+  });
 }
 
 export function getPreset(name: string): ProviderPreset | undefined {

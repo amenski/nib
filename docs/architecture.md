@@ -235,10 +235,10 @@ src/
 │   ├── types.ts                # Provider interface, StreamEvent, ModelCapabilities
 │   ├── presets.ts              # BUILTIN_PRESETS, createProvider, key resolution
 │   ├── aisdk.ts                # AI SDK v7 streamText → StreamEvent mapping
-│   ├── catalog.ts              # ~/.nib/models.json merge
+│   ├── catalog.ts              # bundled + update cache + ~/.nib/models.json merge
 │   ├── registry.ts             # capability lookup
-│   ├── provider-presets.json   # bundled provider connection settings
-│   └── models.json             # generated bundled model metadata snapshot
+│   ├── provider-overlay.ts     # featured providers' hand-owned facts (build time)
+│   └── models.json             # generated Models.dev catalog: providers + models
 │
 ├── tools/
 │   ├── types.ts                # ToolContext, ToolHandler, ToolGroup

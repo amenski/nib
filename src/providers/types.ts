@@ -26,7 +26,7 @@ export interface ModelCapabilities {
    * that omit it carry no modality data, and guessing from a model's name
    * would be inventing a fact. Consumers therefore treat "not declared
    * capable" as the case worth mentioning (see imageSupportWarning) rather than
-   * assuming either way. Declare it per model in provider-presets.json (or a
+   * assuming either way. Declare it per model in the fixture's ollama block (or a
    * user catalog override) to record the truth for models the feed doesn't
    * describe.
    */

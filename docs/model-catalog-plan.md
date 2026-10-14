@@ -33,9 +33,23 @@ changes model routing, credential resolution, permissions, or billing.
 3. **Only implemented providers are shipped.** Initially: DeepSeek, OpenAI,
    OpenRouter, Groq, and Ollama. Models.dev records for other providers are
    not selectable until Nib supports their API/authentication contract.
+   *Amended 2026-10-14:* Models.dev is the only provider and model source.
+   The bundled snapshot covers every Models.dev provider on the
+   `@ai-sdk/openai-compatible` contract nib already implements, with an https
+   (or local http) `api` URL and at least one tool-capable model (~190), plus
+   the featured providers from `src/providers/provider-overlay.ts` (deepseek,
+   openai, openrouter, groq, ollama). Review the snapshot diff after a capture
+   — each base URL is a host keys are sent to. `nib auth` only saves the key
+   (and a non-default default model) — it never fetches. `nib models update`
+   refreshes models for the bundled providers only: base URLs and the provider
+   list never come from a live fetch.
 4. **Provider configuration remains hand-owned.** Base URL, API shape, key
    environment variable, and default model are integration facts, not model
-   catalog data. Keep them in a compact checked-in provider-preset source.
+   catalog data. *Amended 2026-10-14:* they are taken from the feed for an
+   openai-compatible provider (`api`, `env[0]`, `name`; the newest
+   tool-capable model is its default) and from the overlay for a featured one,
+   and generated into `models.json` with its models; `provider-presets.json`
+   is gone. Keep them in a compact checked-in provider-preset source.
 5. **User overrides win.** `~/.nib/models.json` stays the last merge
    layer. It can add a model or override any generated value without copying
    the full provider catalog.
@@ -109,6 +123,12 @@ temp-file-then-rename) after confirmation. `nib models status` reports
 whether the active snapshot is bundled or an updated cache, its source
 revision/date, and provider/model counts.
 
+*Amended 2026-10-14:* `SUPPORTED_PROVIDERS` is gone. Update regenerates
+exactly the bundled providers (`only`), with connection fields taken from the
+bundled snapshot (`overlay`), and caches just `defaultModel` + `models` per
+provider; the loader reads nothing else from the cache. The diff prints one
+line per changed provider (`--verbose` for every model).
+
 - `nib models update` downloads the official Models.dev feed with a
   timeout and schema validation; regenerates in memory; shows added, removed,
   and changed models and prices; requires confirmation before replacing the
@@ -156,9 +176,10 @@ live-feed comparison found 8 of the 12 bundled models measurably wrong
 - Fetches `https://models.dev/api.json` by default; an argv override accepts
   either an alternate URL or a local file path, so a capture is testable and
   re-runnable fully offline against a saved copy of the feed.
-- Keeps only `SUPPORTED_PROVIDERS`, dropping the other ~189 providers the live
-  feed carries — the four hosted providers are ~270 KB of the 4.2 MB feed,
-  which is the honest cost of a deterministic checked-in fixture.
+- Keeps the providers the generator emits (featured, plus openai-compatible
+  ones with a tool-capable model) and only the fields it reads — ~4.9 MB,
+  the honest cost of a deterministic checked-in fixture. (Before 2026-10-14 it
+  kept only the five featured providers.)
 - Drops any individual model the strict generator could not normalize (no
   positive `limit.context`, or a half-specified cost pair) by running the
   feed through `generateCatalogReport(..., { lenient: true })` and excluding
@@ -196,7 +217,10 @@ live-feed comparison found 8 of the 12 bundled models measurably wrong
 
 ## 5. Explicit non-goals
 
-- Supporting all Models.dev providers automatically.
+- Supporting Models.dev providers off the openai-compatible contract
+  (anthropic- or google-shaped APIs) without a featured overlay entry.
+- Adding providers at runtime: a new Models.dev provider arrives with the next
+  nib release, never through `nib models update`.
 - Silent background catalog updates.
 - Treating catalog prices as invoices or reconciling them with provider bills.
 - Replacing OpenRouter's live credits query.

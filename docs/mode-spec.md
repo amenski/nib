@@ -19,8 +19,11 @@ rules — system-prompt.md) and the tool set offered to the model
   an available tool may be used. `Shift+Tab` changes posture without changing
   the persona; plan posture prevents execution and asks for a proposed plan.
 - The **provider/model** generates the response. A persona may supply a model
-  and reasoning-effort default, but an explicit user selection takes
-  precedence.
+  and reasoning-effort default, but it applies only when a **new** session
+  starts in that mode, and an explicit user selection takes precedence.
+  Switching mode (`/mode`, the `/modes` picker, the `switch_mode` tool) never
+  changes the model or effort; only `/model`, `/effort`, `--model` or settings
+  do. A resumed session comes back on the model and effort it last used.
 
 This separation is why “Code + plan” is meaningful: Code supplies engineering
 context and implementation tools, while plan posture temporarily blocks those
@@ -42,8 +45,8 @@ description: string      # Short summary for the mode selector
 groups: string[]         # Allowed tool groups: read, edit, command, mcp, workflow
 fileRegex: string        # Restrict file modifications to matching paths
 customInstructions: string  # Additional rules appended to the system prompt
-model: string            # Sticky model (provider/model)
-reasoningEffort: string  # Mode effort default when the user has not selected one
+model: string            # New-session model default (provider/model); General only today
+reasoningEffort: string  # New-session effort default when the user has not selected one
 hidden: boolean          # Excluded from listAll() (the picker/`/modes` listing);
                           # still reachable by slug via load() — a compatibility
                           # alias for a retired mode name (e.g. ask.yaml)
@@ -104,6 +107,8 @@ reasoningEffort: low
 A session with no explicit `--mode`/`/mode` starts here — `activeMode` is
 never left `undefined` at startup (`src/cli.tsx`); a resumed session's last
 mode wins over this default, and an explicit `--mode` wins over both.
+Its Flash/low default seeds a new session only (`applyModeDefaults`,
+`src/cli.tsx`); switching to another mode keeps that model and effort.
 Headless (`nib -p`, `src/exec-runner.ts`) resolves the same default: an
 unrecognized `--mode` still exits 1 with the "unknown mode" message, and a
 valid explicit `--mode` gates tools to its own groups instead.

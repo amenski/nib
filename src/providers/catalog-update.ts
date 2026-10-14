@@ -47,7 +47,22 @@ export interface SnapshotSource {
  */
 export interface GeneratedSnapshot {
   source?: SnapshotSource;
-  providers?: Record<string, { models?: Record<string, unknown> }>;
+  providers?: Record<string, SnapshotProvider>;
+}
+
+/**
+ * One provider in a snapshot. The bundled file carries connection fields too;
+ * the cache `models update` writes holds only `defaultModel` and `models`
+ * (see toCacheSnapshot), so a base URL only ever comes from the bundle.
+ */
+export interface SnapshotProvider {
+  featured?: boolean;
+  label?: string;
+  api?: string;
+  baseUrl?: string;
+  keyEnv?: string;
+  defaultModel?: string;
+  models?: Record<string, unknown>;
 }
 
 export interface ActiveSnapshot {
@@ -66,8 +81,21 @@ export function readActiveSnapshot(homeDir?: string): ActiveSnapshot {
   const home = homeDir ?? resolveHome();
   const cached = readJsonFile(join(home, CATALOG_CACHE_FILENAME));
   if (cached) return { origin: "cached", snapshot: cached as GeneratedSnapshot };
-  const bundled = readJsonFile(BUNDLED_SNAPSHOT_PATH);
-  return { origin: "bundled", snapshot: (bundled as GeneratedSnapshot) ?? { providers: {} } };
+  return { origin: "bundled", snapshot: readBundledSnapshot() };
+}
+
+/** The snapshot shipped with nib — the only source of provider connection fields. */
+export function readBundledSnapshot(): GeneratedSnapshot {
+  return (readJsonFile(BUNDLED_SNAPSHOT_PATH) as GeneratedSnapshot) ?? { providers: {} };
+}
+
+/** Reduce a generated catalog to what the cache may hold: `source`, and per provider `defaultModel` + `models`. */
+export function toCacheSnapshot(snapshot: GeneratedSnapshot): GeneratedSnapshot {
+  const providers: Record<string, SnapshotProvider> = {};
+  for (const [name, p] of Object.entries(snapshot.providers ?? {})) {
+    providers[name] = { ...(p.defaultModel ? { defaultModel: p.defaultModel } : {}), models: p.models ?? {} };
+  }
+  return { ...(snapshot.source ? { source: snapshot.source } : {}), providers };
 }
 
 /**
@@ -182,6 +210,32 @@ export function diffCatalogs(active: GeneratedSnapshot, updated: GeneratedSnapsh
 
 export function isDiffEmpty(diff: CatalogDiff): boolean {
   return diff.added.length === 0 && diff.removed.length === 0 && diff.changed.length === 0;
+}
+
+/**
+ * One line per provider with any change — what `models update` prints by
+ * default, since a full per-model listing across ~190 providers runs to
+ * thousands of lines. An empty diff gets the same wording as formatDiff.
+ */
+export function formatDiffSummary(diff: CatalogDiff): string {
+  if (isDiffEmpty(diff)) return "catalog is already up to date";
+  const counts = new Map<string, { added: number; removed: number; changed: number }>();
+  const bump = (id: string, key: "added" | "removed" | "changed") => {
+    const provider = id.slice(0, id.indexOf("/"));
+    const entry = counts.get(provider) ?? { added: 0, removed: 0, changed: 0 };
+    entry[key]++;
+    counts.set(provider, entry);
+  };
+  for (const id of diff.added) bump(id, "added");
+  for (const id of diff.removed) bump(id, "removed");
+  for (const entry of diff.changed) bump(entry.id, "changed");
+  const lines = [`Changes in ${counts.size} provider${counts.size === 1 ? "" : "s"} (--verbose lists each model):`];
+  for (const provider of [...counts.keys()].sort()) {
+    const c = counts.get(provider)!;
+    const parts = [c.added && `${c.added} added`, c.removed && `${c.removed} removed`, c.changed && `${c.changed} changed`].filter(Boolean);
+    lines.push(`  ${provider}: ${parts.join(", ")}`);
+  }
+  return lines.join("\n");
 }
 
 /**

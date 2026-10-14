@@ -10,9 +10,17 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - **`nib auth` → custom registers the provider.** It now also asks for an
-  OpenAI-compatible base URL and a model id and writes them to
+  OpenAI-compatible base URL and model ids and writes them to
   `~/.nib/models.json`, so `nib --model <name>/<model>` works right away.
   Before, it only saved a key that nothing used.
+- **Every OpenAI-compatible Models.dev provider is built in.** The bundled
+  catalog now holds ~190 providers (e.g. `zai`, `alibaba-coding-plan`) with
+  their base URL, key variable and models, refreshed together by
+  `nib models update`. `nib auth` lists them in a type-to-filter picker like
+  `/model`; picking one saves the key and your default model, with no
+  network fetch. `/model` and its picker show the featured providers plus
+  every provider you have a key for. The unusable `anthropic` and `together`
+  entries are gone from the wizard.
 - **`sandbox.allowBrowser` (global-only, default off).** Sandboxed commands can
   launch headless Chrome, so Playwright and Puppeteer tests run inside nib.
   Without it each launch aborts and macOS shows a "quit unexpectedly" dialog.
@@ -22,6 +30,22 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Puppeteer launch fails, the result tells the model not to rerun it and names
   the fix (`allowBrowser`, or Chrome's own sandbox off), instead of leaving it to
   read the failures as flaky tests.
+
+### Changed
+
+- **`nib models update` prints one line per changed provider.** With ~190
+  providers a per-model listing ran to thousands of lines; `--verbose` still
+  lists every model. The update cache now holds only models and default
+  models, so base URLs always come from the installed nib.
+
+### Fixed
+
+- **Switching mode no longer changes the model.** Going from General to Code
+  used to move the session from `deepseek-flash` to `deepseek-v4-pro` and its
+  effort from `low` to `high`. A mode's model/effort default now applies only
+  when a new session starts; `/mode`, the `/modes` picker and the
+  `switch_mode` tool keep whatever is active, and a resumed session comes
+  back on the model and effort it last used.
 
 ## [0.6.1] — 2026-10-13
 

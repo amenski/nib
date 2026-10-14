@@ -1,6 +1,6 @@
 # Provider Specification
 
-**Status:** current · verified 2026-08-21 · covers `src/providers/{types,presets,aisdk,catalog,registry}.ts`, `src/providers/{models,provider-presets}.json`, `src/config/credentials.ts`
+**Status:** current · verified 2026-08-21 · covers `src/providers/{types,presets,aisdk,catalog,registry,provider-overlay}.ts`, `src/providers/models.json`, `src/config/credentials.ts`
 
 ## 1. Overview
 
@@ -11,10 +11,12 @@ model catalog, and key resolution on top.
 
 - **Provider** — a named config entry: an API (`openai-compatible` or
   `anthropic`), a base URL, a key environment variable, and a model list.
-- **Catalog** — `src/providers/provider-presets.json` ships provider
-  connection settings, while `src/providers/models.json` is a generated,
-  Models.dev-shaped metadata snapshot for the supported providers (deepseek,
-  openai, openrouter, groq, ollama). A user file
+- **Catalog** — `src/providers/models.json` is one generated Models.dev
+  snapshot holding every provider's connection settings and models: the
+  featured providers (deepseek, openai, openrouter, groq, ollama — hand-owned
+  facts in `provider-overlay.ts`) plus every openai-compatible Models.dev
+  provider (~190). `nib models update` refreshes models only, into
+  `~/.nib/models-catalog.json`. A user file
   `~/.nib/models.json` deep-merges last over the combined catalog
   (`src/providers/catalog.ts`) — add or override providers/models without
   touching code.
@@ -129,8 +131,8 @@ local) need none.
 
 ## 4. Bundled catalog
 
-`src/providers/provider-presets.json` + generated `src/providers/models.json`
-(5 providers):
+Generated `src/providers/models.json`. The featured providers (always listed
+in the model picker; others appear once they have a key):
 
 | Provider | API | Key env | Default model |
 |----------|-----|---------|---------------|
@@ -180,8 +182,9 @@ re-prompt.
 
 ### 4.2 Catalog generation
 
-`npm run models:generate` deterministically regenerates the checked-in
-snapshot from `scripts/fixtures/models.dev.json`. To generate from a fresh
+`npm run models:capture` refreshes `scripts/fixtures/models.dev.json` from
+the live feed; `npm run models:generate` deterministically regenerates the
+checked-in snapshot from it, applying `provider-overlay.ts`. To generate from a fresh
 Models.dev feed, pass its URL explicitly:
 
 ```bash
@@ -196,15 +199,17 @@ runtime fallback; an inspectable user-facing update command is planned in
 ## 5. Adding a provider
 
 **OpenAI-compatible service** (zero code):
-1. Add a preset entry to `~/.nib/models.json` (or the bundled catalog).
-   `nib auth` → **custom** does this for you: it asks for a name, base URL,
-   model id and key, writes the provider to `~/.nib/models.json`
-   (`saveUserProvider`, `catalog.ts`) and the key to `credentials.yaml`.
+1. If Models.dev lists it, it is already in the bundled catalog: `nib auth`
+   → pick it, choose a default model, paste the key (`credentials.yaml`). A
+   default other than the bundled one is written to `~/.nib/models.json`
+   (`saveUserDefaultModel`, `catalog.ts`).
+2. Otherwise `nib auth` → **Custom URL…** takes a name, base URL and model ids
+   and writes the provider to `~/.nib/models.json` (`saveUserProvider`).
 
 **A provider the catalog can't express** (code change):
-1. Add the connection preset to `src/providers/provider-presets.json`, the
-   provider's metadata to the generator input, and a test in
-   `presets.test.ts`.
+1. Add a featured entry to `src/providers/provider-overlay.ts`, recapture
+   and regenerate (`npm run models:capture && npm run models:generate`), and
+   add a test in `presets.test.ts`.
 2. If the wire format is new, extend `src/providers/aisdk.ts` — the AI SDK
    already covers OpenAI-compatible and Anthropic shapes.
 

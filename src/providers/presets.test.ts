@@ -141,6 +141,39 @@ describe("createProvider key resolution", () => {
   });
 });
 
+describe("getListedProviderNames", () => {
+  const saved = { ZHIPU_API_KEY: process.env.ZHIPU_API_KEY, NIB_HOME: process.env.NIB_HOME };
+
+  beforeEach(() => {
+    delete process.env.ZHIPU_API_KEY;
+    delete process.env.NIB_HOME;
+    mkdirSync(join(FAKE_HOME, ".nib"), { recursive: true });
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+    rmSync(join(FAKE_HOME, ".nib"), { recursive: true, force: true });
+  });
+
+  it("lists featured providers, hides an unconfigured catalog provider, and shows the active one", async () => {
+    const { getListedProviderNames } = await import("./presets.js");
+    const listed = getListedProviderNames();
+    expect(listed).toEqual(expect.arrayContaining(["deepseek", "openai", "openrouter", "groq", "ollama"]));
+    expect(listed).not.toContain("zai");
+    expect(getListedProviderNames("zai")).toContain("zai");
+  });
+
+  it("lists a catalog provider once its key is in the env or credentials.yaml", async () => {
+    const { getListedProviderNames } = await import("./presets.js");
+    process.env.ZHIPU_API_KEY = "sk-test-dummy";
+    expect(getListedProviderNames()).toContain("zai");
+    delete process.env.ZHIPU_API_KEY;
+    writeFileSync(join(FAKE_HOME, ".nib", "credentials.yaml"), "lmstudio: sk-test-dummy\n");
+    expect(getListedProviderNames()).toContain("lmstudio");
+  });
+});
+
 describe("BUILTIN_PRESETS models map", () => {
   it("deepseek preset carries both v4 models with correct capabilities", async () => {
     const { BUILTIN_PRESETS } = await import("./presets.js");

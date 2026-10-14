@@ -1,13 +1,15 @@
 import { createInterface } from "node:readline/promises";
-import { loadProviderPresets } from "./catalog.js";
-import { generateCatalogReport, type GeneratorOptions } from "./catalog-generator.js";
+import { generateCatalogReport, type ProviderOverlay } from "./catalog-generator.js";
 import {
   DEFAULT_MODELS_DEV_URL,
   fetchModelsDevFeed,
   diffCatalogs,
   formatDiff,
+  formatDiffSummary,
   isDiffEmpty,
   readActiveSnapshot,
+  readBundledSnapshot,
+  toCacheSnapshot,
   writeCachedSnapshot,
   type GeneratedSnapshot,
 } from "./catalog-update.js";
@@ -24,13 +26,9 @@ export interface ModelsCommandDeps {
   confirm?: (question: string) => Promise<boolean>;
 }
 
-function isObject(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null && !Array.isArray(v);
-}
-
 function usage(): void {
   console.error("Usage: nib models <update|status>");
-  console.error("  nib models update [--url <url>] [--yes]");
+  console.error("  nib models update [--url <url>] [--yes] [--verbose]");
   console.error("  nib models status");
 }
 
@@ -42,23 +40,27 @@ export async function runModels(argv: string[], deps: ModelsCommandDeps = {}): P
   return 1;
 }
 
-// Mirrors scripts/generate-models.ts's defaultModels construction exactly,
-// reading through catalog.ts's loadProviderPresets() (see D2 in the slice
-// brief) instead of re-deriving PRESETS_PATH here.
-function buildDefaultModels(): GeneratorOptions["defaultModels"] {
-  const presets = loadProviderPresets();
-  const presetProviders = isObject(presets.providers) ? (presets.providers as Record<string, unknown>) : {};
-  const defaultModels: Record<string, string> = {};
-  for (const [name, value] of Object.entries(presetProviders)) {
-    const defaultModel = isObject(value) ? value.defaultModel : undefined;
-    if (typeof defaultModel === "string") defaultModels[name] = defaultModel;
+/**
+ * The generator overlay for an update: every bundled provider with its
+ * bundled connection fields, and the active snapshot's default model. The
+ * live feed then only refreshes models — it can neither add a provider nor
+ * change a base URL (the host a key is sent to).
+ */
+function buildUpdateOverlay(active: GeneratedSnapshot): Record<string, ProviderOverlay> {
+  const overlay: Record<string, ProviderOverlay> = {};
+  for (const [name, p] of Object.entries(readBundledSnapshot().providers ?? {})) {
+    overlay[name] = {
+      featured: p.featured, label: p.label, api: p.api, baseUrl: p.baseUrl, keyEnv: p.keyEnv,
+      defaultModel: active.providers?.[name]?.defaultModel ?? p.defaultModel,
+    };
   }
-  return defaultModels;
+  return overlay;
 }
 
 async function runUpdate(args: string[], deps: ModelsCommandDeps): Promise<number> {
   let url = DEFAULT_MODELS_DEV_URL;
   let yes = false;
+  let verbose = false;
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === "--url") {
@@ -72,6 +74,7 @@ async function runUpdate(args: string[], deps: ModelsCommandDeps): Promise<numbe
       url = value;
     }
     else if (a === "--yes") { yes = true; }
+    else if (a === "--verbose") { verbose = true; }
     else { console.error(`Unknown argument: ${a}`); usage(); return 1; }
   }
 
@@ -85,10 +88,10 @@ async function runUpdate(args: string[], deps: ModelsCommandDeps): Promise<numbe
 
   // Validation = reuse generateCatalog's core (D2), in lenient mode: it still
   // throws on non-object root or a present provider missing its configured
-  // default (AC4 — invalid data can't replace the snapshot), but tolerates
+  // featured default (AC4 — invalid data can't replace the snapshot), but tolerates
   // upstream data strict mode would reject outright — individual models with
   // no usable context limit (the live feed's image/audio entries), and a
-  // SUPPORTED_PROVIDERS entry that comes back with nothing usable whether
+  // provider that comes back with nothing usable whether
   // the feed doesn't list it at all (`ollama`, local inference, never hosted
   // upstream) or lists it with an empty models object (upstream glitch or a
   // provider mid-deprecation) — one bad provider must not block every other
@@ -96,12 +99,15 @@ async function runUpdate(args: string[], deps: ModelsCommandDeps): Promise<numbe
   // models:generate — see catalog-generator.ts.
   const now = deps.now ?? new Date();
   const day = now.toISOString().slice(0, 10);
+  const { snapshot: active } = readActiveSnapshot(deps.homeDir);
+  const overlay = buildUpdateOverlay(active);
   let report: ReturnType<typeof generateCatalogReport>;
   try {
     report = generateCatalogReport(feed, {
       sourceRevision: `models.dev:${day}`,
       generatedAt: day,
-      defaultModels: buildDefaultModels(),
+      overlay,
+      only: Object.keys(overlay),
       lenient: true,
     });
   } catch (err) {
@@ -109,20 +115,18 @@ async function runUpdate(args: string[], deps: ModelsCommandDeps): Promise<numbe
     return 1;
   }
 
-  const { snapshot: active } = readActiveSnapshot(deps.homeDir);
-
   // Carry forward each provider lenient mode skipped — feed doesn't list it,
   // or lists it with nothing usable — from the active snapshot BEFORE
   // diffing/writing, so it keeps its bundled entry instead of showing up as
   // a spurious removal in every single diff.
-  const updated = report.catalog as { providers: Record<string, unknown> };
+  const updated = toCacheSnapshot(report.catalog as GeneratedSnapshot);
   for (const { provider } of report.skippedProviders) {
     const carried = active.providers?.[provider];
-    if (carried) updated.providers[provider] = carried;
+    if (carried) updated.providers![provider] = toCacheSnapshot({ providers: { [provider]: carried } }).providers![provider];
   }
 
-  const diff = diffCatalogs(active, report.catalog as GeneratedSnapshot);
-  console.log(formatDiff(diff));
+  const diff = diffCatalogs(active, updated);
+  console.log(verbose ? formatDiff(diff) : formatDiffSummary(diff));
   if (report.skippedModels.length > 0) {
     console.log(`skipped ${report.skippedModels.length} models with no usable context limit (image/audio)`);
   }

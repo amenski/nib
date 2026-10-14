@@ -9,6 +9,10 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`nib auth` → custom registers the provider.** It now also asks for an
+  OpenAI-compatible base URL and a model id and writes them to
+  `~/.nib/models.json`, so `nib --model <name>/<model>` works right away.
+  Before, it only saved a key that nothing used.
 - **`sandbox.allowBrowser` (global-only, default off).** Sandboxed commands can
   launch headless Chrome, so Playwright and Puppeteer tests run inside nib.
   Without it each launch aborts and macOS shows a "quit unexpectedly" dialog.

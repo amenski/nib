@@ -1,6 +1,7 @@
 import { createInterface } from "node:readline/promises";
 import { existsSync } from "node:fs";
 import { BUILTIN_PRESETS } from "../providers/presets.js";
+import { loadProviderPresets, saveUserProvider } from "../providers/catalog.js";
 import { readHiddenLine } from "./hidden-input.js";
 import { credsDir, credsFile, readCredentialsFile } from "../config/credentials.js";
 import { ensurePrivateDirectoryAsync, writePrivateFile } from "../config/state-permissions.js";
@@ -56,6 +57,8 @@ export async function authWizard(): Promise<void> {
   console.log(`  ${WIZARD_PRESETS.length + 1}. custom`);
 
   let name: string;
+  // Set only on the "custom" path: the endpoint written to ~/.nib/models.json.
+  let custom: { baseUrl: string; model: string } | undefined;
   const choice = await rl.question("\nSelect a preset (1-8): ");
   const idx = parseInt(choice, 10);
 
@@ -69,6 +72,27 @@ export async function authWizard(): Promise<void> {
       rl.close();
       return;
     }
+    const bundled = loadProviderPresets().providers as Record<string, unknown>;
+    if (name in bundled) {
+      console.log(`"${name}" is a built-in preset — pick it from the list.`);
+      rl.close();
+      return;
+    }
+    const rawUrl = (await rl.question("Base URL (OpenAI-compatible, e.g. https://host/v1): ")).trim();
+    let url: URL | undefined;
+    try { url = new URL(rawUrl); } catch { /* reported below */ }
+    if (!url || (url.protocol !== "http:" && url.protocol !== "https:")) {
+      console.log("Base URL must be an http(s) URL.");
+      rl.close();
+      return;
+    }
+    const model = (await rl.question("Model id: ")).trim();
+    if (!model) {
+      console.log("Model id cannot be empty.");
+      rl.close();
+      return;
+    }
+    custom = { baseUrl: rawUrl.replace(/\/+$/, ""), model };
   } else {
     console.log("Invalid selection.");
     rl.close();
@@ -90,7 +114,23 @@ export async function authWizard(): Promise<void> {
     return;
   }
 
+  // Register the endpoint before the key, so a models.json we refuse to
+  // overwrite leaves nothing half-saved.
+  let catalogPath: string | undefined;
+  if (custom) {
+    try {
+      catalogPath = await saveUserProvider(name, custom.baseUrl, custom.model);
+    } catch (err) {
+      console.log((err as Error).message);
+      return;
+    }
+  }
+
   await authSaveKey(name, trimmedKey);
+  if (custom && catalogPath) {
+    console.log(`Provider ${name} added to ${catalogPath}`);
+    console.log(`Use it with: nib --model ${name}/${custom.model}`);
+  }
 }
 
 export async function authList(): Promise<void> {

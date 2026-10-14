@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { ModelCapabilities } from "./types.js";
 import { resolveHome } from "../config/loader.js";
 import { CATALOG_CACHE_FILENAME } from "./catalog-update.js";
+import { ensurePrivateDirectoryAsync, writePrivateFile } from "../config/state-permissions.js";
 
 /**
  * The on-disk shape of models.json (generated bundle and user override).
@@ -154,4 +155,57 @@ function readUserCatalog(path: string): Record<string, unknown> | null {
     console.warn(`warning: failed to parse ${path} (${(err as Error).message}) — using the bundled model catalog`);
     return null;
   }
+}
+
+/**
+ * Add (or update) an OpenAI-compatible provider in `~/.nib/models.json` —
+ * the `nib auth` "custom" path. Other providers, and other models of this
+ * provider, are kept. A present-but-malformed file throws instead of being
+ * overwritten: it is the user's hand-edited file. Returns the file path.
+ */
+export async function saveUserProvider(
+  name: string,
+  baseUrl: string,
+  model: string,
+  homeDir?: string,
+): Promise<string> {
+  const home = homeDir ?? resolveHome();
+  const path = join(home, "models.json");
+
+  let root: Record<string, unknown> = { providers: {} };
+  let content: string | null = null;
+  try {
+    content = readFileSync(path, "utf-8");
+  } catch {
+    // Missing file: start from an empty catalog.
+  }
+  if (content !== null) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(content);
+    } catch (err) {
+      throw new Error(`${path} is not valid JSON (${(err as Error).message}) — fix or remove it first`);
+    }
+    if (!isObject(parsed)) throw new Error(`${path} must be a JSON object — fix or remove it first`);
+    root = parsed;
+  }
+
+  const providers = isObject(root.providers) ? root.providers : {};
+  const existing = isObject(providers[name]) ? providers[name] : {};
+  const existingModels = isObject(existing.models) ? existing.models : {};
+  providers[name] = {
+    ...existing,
+    label: name,
+    api: "openai-compatible",
+    baseUrl,
+    keyEnv: `${name.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_API_KEY`,
+    defaultModel: model,
+    // Keep a hand-tuned entry for this model; otherwise registry.ts's defaults.
+    models: { ...existingModels, [model]: existingModels[model] ?? { supportsTools: true, contextWindow: 128000 } },
+  };
+  root.providers = providers;
+
+  await ensurePrivateDirectoryAsync(home);
+  await writePrivateFile(path, JSON.stringify(root, null, 2) + "\n");
+  return path;
 }

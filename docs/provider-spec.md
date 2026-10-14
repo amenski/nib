@@ -197,6 +197,9 @@ runtime fallback; an inspectable user-facing update command is planned in
 
 **OpenAI-compatible service** (zero code):
 1. Add a preset entry to `~/.nib/models.json` (or the bundled catalog).
+   `nib auth` → **custom** does this for you: it asks for a name, base URL,
+   model id and key, writes the provider to `~/.nib/models.json`
+   (`saveUserProvider`, `catalog.ts`) and the key to `credentials.yaml`.
 
 **A provider the catalog can't express** (code change):
 1. Add the connection preset to `src/providers/provider-presets.json`, the

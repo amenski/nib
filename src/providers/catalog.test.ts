@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadModelCatalog } from "./catalog.js";
+import { loadModelCatalog, saveUserProvider } from "./catalog.js";
 import { CATALOG_CACHE_FILENAME } from "./catalog-update.js";
 
 describe("loadModelCatalog", () => {
@@ -191,5 +191,62 @@ describe("loadModelCatalog", () => {
     expect(() => loadModelCatalog(dir)).not.toThrow();
     const catalog = loadModelCatalog(dir);
     expect(catalog.providers.deepseek.models["deepseek-v4-pro"].contextWindow).toBe(1000000);
+  });
+});
+
+describe("saveUserProvider", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "nib-catalog-save-test-"));
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  it("creates models.json and registers the provider in the catalog", async () => {
+    const path = await saveUserProvider("my-qwen", "https://example.com/v1", "qwen3-coder-plus", dir);
+    expect(path).toBe(join(dir, "models.json"));
+
+    const provider = loadModelCatalog(dir).providers["my-qwen"];
+    expect(provider).toMatchObject({
+      api: "openai-compatible",
+      baseUrl: "https://example.com/v1",
+      keyEnv: "MY_QWEN_API_KEY",
+      defaultModel: "qwen3-coder-plus",
+    });
+    expect(provider.models["qwen3-coder-plus"]).toEqual({ supportsTools: true, contextWindow: 128000 });
+  });
+
+  it("keeps other providers and existing models of the same provider", async () => {
+    writeFileSync(
+      join(dir, "models.json"),
+      JSON.stringify({
+        providers: {
+          other: { baseUrl: "https://other/v1", models: {} },
+          qwen: { baseUrl: "https://old/v1", models: { "qwen-max": { supportsTools: true, contextWindow: 32000 } } },
+        },
+      }),
+    );
+
+    await saveUserProvider("qwen", "https://new/v1", "qwen3-coder-plus", dir);
+
+    const saved = JSON.parse(readFileSync(join(dir, "models.json"), "utf-8"));
+    expect(saved.providers.other).toEqual({ baseUrl: "https://other/v1", models: {} });
+    expect(saved.providers.qwen.baseUrl).toBe("https://new/v1");
+    expect(saved.providers.qwen.defaultModel).toBe("qwen3-coder-plus");
+    expect(saved.providers.qwen.models["qwen-max"]).toEqual({ supportsTools: true, contextWindow: 32000 });
+    expect(saved.providers.qwen.models["qwen3-coder-plus"]).toBeDefined();
+  });
+
+  it("refuses to overwrite a malformed models.json", async () => {
+    const path = join(dir, "models.json");
+    writeFileSync(path, "{ not json");
+
+    await expect(saveUserProvider("qwen", "https://x/v1", "m", dir)).rejects.toThrow(path);
+    expect(readFileSync(path, "utf-8")).toBe("{ not json");
   });
 });

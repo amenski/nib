@@ -550,7 +550,7 @@ describe("Orchestrator", () => {
       ]);
       await writeFile(
         join(projectDirPath(project), "agents", "reviewer.md"),
-        "---\nname: reviewer\ndescription: reviews code\nmode: code\nmodel: deepseek/deepseek-v4-flash\ninstructions: |\n  Be critical.\n  Cite paths.\n---\n",
+        "---\nname: reviewer\ndescription: reviews code\nmode: code\nmodel: deepseek/deepseek-flash\ninstructions: |\n  Be critical.\n  Cite paths.\n---\n",
       );
       const agentLoader = new AgentLoader();
       await agentLoader.load(project);
@@ -577,7 +577,7 @@ describe("Orchestrator", () => {
       const delivered = await deliveries.delivered();
       expect(delivered).toContain("**Result**: review done");
       // The def's model override reached the provider factory as "provider/model".
-      expect(modelIds).toEqual(["deepseek/deepseek-v4-flash"]);
+      expect(modelIds).toEqual(["deepseek/deepseek-flash"]);
       // The sub-agent ran with the def mode's toolset plus new_task.
       const subTools = received[0].tools.map((t) => t.name);
       expect(subTools).toEqual(expect.arrayContaining(["read_file", "run_bash", "new_task"]));

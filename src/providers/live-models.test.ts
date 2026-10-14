@@ -142,12 +142,12 @@ describe("checkModelListed", () => {
   it("reports unknown for a null list, ok for a present model, missing otherwise", () => {
     expect(checkModelListed(null, "deepseek-flash")).toBe("unknown");
     expect(checkModelListed(["deepseek-flash", "deepseek-v4-pro"], "deepseek-flash")).toBe("ok");
-    expect(checkModelListed(["deepseek-flash", "deepseek-v4-pro"], "deepseek-v4-flash")).toBe("missing");
+    expect(checkModelListed(["deepseek-flash", "deepseek-v4-pro"], "deepseek-v4-lite")).toBe("missing");
   });
 
   it("treats a full / bare id match in EITHER direction as listed, case-insensitively", () => {
-    expect(checkModelListed(["deepseek/deepseek-v4-flash"], "deepseek-v4-flash")).toBe("ok");
-    expect(checkModelListed(["deepseek-v4-flash"], "deepseek/deepseek-v4-flash")).toBe("ok");
+    expect(checkModelListed(["deepseek/deepseek-flash"], "deepseek-flash")).toBe("ok");
+    expect(checkModelListed(["deepseek-flash"], "deepseek/deepseek-flash")).toBe("ok");
     expect(checkModelListed(["DeepSeek-Flash"], "deepseek-flash")).toBe("ok");
   });
 });

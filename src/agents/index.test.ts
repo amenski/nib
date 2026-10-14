@@ -121,13 +121,13 @@ describe("AgentLoader (feature-plans.md §F4)", () => {
   it("accepts a known model without a warning", async () => {
     writeFileSync(
       join(projectDirPath(project), "agents", "a.md"),
-      "---\nname: a\ndescription: Agent A\nmode: code\nmodel: deepseek/deepseek-v4-flash\n---\n",
+      "---\nname: a\ndescription: Agent A\nmode: code\nmodel: deepseek/deepseek-flash\n---\n",
     );
 
     const loader = new AgentLoader();
     const defs = await loader.load(project);
 
-    expect(defs[0].model).toBe("deepseek/deepseek-v4-flash");
+    expect(defs[0].model).toBe("deepseek/deepseek-flash");
     expect(warns).toEqual([]);
   });
 

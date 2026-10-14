@@ -19,7 +19,7 @@ const flush = () => new Promise((r) => setTimeout(r, 25));
 
 const entries: ModelEntry[] = [
   { provider: "deepseek", model: "deepseek-v4-pro", contextWindow: 1000000 },
-  { provider: "deepseek", model: "deepseek-v4-flash", contextWindow: 1000000 },
+  { provider: "deepseek", model: "deepseek-flash", contextWindow: 1000000 },
   { provider: "openai", model: "gpt-5.6-sol", contextWindow: 256000 },
   { provider: "groq", model: "llama-3.3-70b-versatile", contextWindow: 128000 },
 ];
@@ -122,7 +122,7 @@ describe("ModelsDropdown — searchable, provider-grouped picker", () => {
       />,
     );
     // Models are sorted within each provider, so the rows are:
-    //   [DeepSeek] deepseek-v4-flash  deepseek-v4-pro  [OpenAI] gpt-5.6-sol
+    //   [DeepSeek] deepseek-flash  deepseek-v4-pro  [OpenAI] gpt-5.6-sol
     //   [Groq] llama-3.3-70b-versatile
     // The cursor starts on the current model (deepseek-v4-pro). One down lands
     // on gpt-5.6-sol and a second on llama — proving arrow keys step OVER both
@@ -152,7 +152,7 @@ describe("ModelsDropdown — searchable, provider-grouped picker", () => {
     // emphasising what you CANNOT pick fought the panel's job. The state column
     // is blank for them, and filled for a usable provider.
     const noKeyRow = lines.find((l) => l.includes("gpt-5.6-sol"));
-    const usableRow = lines.find((l) => l.includes("deepseek-v4-flash"));
+    const usableRow = lines.find((l) => l.includes("deepseek-flash"));
     expect(noKeyRow).not.toMatch(/[●◉]/);
     expect(usableRow).toMatch(/[●◉]/);
   });
@@ -198,7 +198,7 @@ describe("ModelsDropdown — searchable, provider-grouped picker", () => {
 
   it("shows a Free tag for models flagged free", () => {
     const withFree: ModelEntry[] = [
-      { provider: "deepseek", model: "deepseek-v4-flash", displayName: "DeepSeek V4 Flash", free: true },
+      { provider: "deepseek", model: "deepseek-flash", displayName: "DeepSeek V4 Flash", free: true },
       { provider: "deepseek", model: "deepseek-v4-pro", displayName: "DeepSeek V4 Pro" },
     ];
     const { lastFrame } = render(
@@ -284,7 +284,7 @@ describe("ModelsDropdown — Favorites, Recent, Connect provider", () => {
       <ModelsDropdown
         open providerName="deepseek" currentModel="deepseek-v4-pro"
         entries={entries} labels={labels} width={80} onClose={vi.fn()} onSelect={vi.fn()}
-        getFavoriteModels={() => ["deepseek/deepseek-v4-flash"]}
+        getFavoriteModels={() => ["deepseek/deepseek-flash"]}
         getRecentModels={() => [{ id: "groq/llama-3.3-70b-versatile", at: 1 }]}
       />,
     );
@@ -304,11 +304,11 @@ describe("ModelsDropdown — Favorites, Recent, Connect provider", () => {
       <ModelsDropdown
         open providerName="deepseek" currentModel="deepseek-v4-pro"
         entries={entries} labels={labels} width={80} onClose={vi.fn()} onSelect={vi.fn()}
-        getFavoriteModels={() => ["deepseek/deepseek-v4-flash"]}
+        getFavoriteModels={() => ["deepseek/deepseek-flash"]}
       />,
     );
     const lines = stripAnsi(lastFrame() ?? "").split("\n");
-    const occurrences = lines.filter((l) => l.includes("deepseek-v4-flash"));
+    const occurrences = lines.filter((l) => l.includes("deepseek-flash"));
     expect(occurrences).toHaveLength(2);
   });
 

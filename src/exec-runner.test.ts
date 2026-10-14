@@ -67,7 +67,6 @@ vi.mock("./providers/presets.js", () => ({
     defaultModel: "deepseek-v4-pro",
     models: {
       "deepseek-flash": { effort: { values: ["low", "high", "max"], default: "high" } },
-      "deepseek-v4-flash": { effort: { values: ["low", "high", "max"], default: "high" } },
       "deepseek-v4-pro": { effort: { values: ["low", "high", "max"], default: "high" } },
     },
   } : undefined,

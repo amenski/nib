@@ -25,42 +25,6 @@
             "default": "high"
           }
         },
-        "deepseek-v4-flash": {
-          "displayName": "DeepSeek V4 Flash",
-          "supportsTools": true,
-          "contextWindow": 1000000,
-          "vision": true,
-          "pricing": {
-            "inputPerM": 0.15,
-            "outputPerM": 0.6
-          },
-          "effort": {
-            "values": [
-              "high",
-              "low",
-              "max"
-            ],
-            "default": "high"
-          }
-        },
-        "deepseek-v4-flash-vision-exp": {
-          "displayName": "DeepSeek V4 Flash Vision Exp",
-          "supportsTools": true,
-          "contextWindow": 1000000,
-          "vision": true,
-          "pricing": {
-            "inputPerM": 0.15,
-            "outputPerM": 0.6
-          },
-          "effort": {
-            "values": [
-              "high",
-              "low",
-              "max"
-            ],
-            "default": "high"
-          }
-        },
         "deepseek-v4-pro": {
           "displayName": "DeepSeek V4 Pro",
           "supportsTools": true,

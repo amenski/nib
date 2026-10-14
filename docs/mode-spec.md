@@ -98,7 +98,7 @@ personas.
 slug: general
 name: General
 groups: [read]
-model: deepseek/deepseek-v4-flash
+model: deepseek/deepseek-flash
 reasoningEffort: low
 ```
 A session with no explicit `--mode`/`/mode` starts here — `activeMode` is

@@ -121,7 +121,7 @@ it is called at `cli.tsx:641`.)
 
 - **Effort coverage beyond DeepSeek — closed, not deferred.** This was a finished
   investigation filed as if it were pending work. Effort caps are declared per-model on
-  `deepseek-v4-flash` / `deepseek-v4-pro` (verified low/high/max) and Groq's two
+  `deepseek-flash` / `deepseek-v4-pro` (verified low/high/max) and Groq's two
   `openai/gpt-oss-*`. Deliberately NOT on OpenAI: its chat-completions API rejects
   `reasoning_effort` when function tools are present ("Function tools with reasoning_effort
   are not supported for gpt-5.6-sol in /v1/chat/completions") and Heirloom always sends

@@ -461,7 +461,7 @@ becomes a guarded ask instead of a hard deny.
 ### Added
 
 - **`general` mode, the new default.** A session with no explicit `--mode` or
-  `/mode` starts in read-only chat on `deepseek/deepseek-v4-flash` with
+  `/mode` starts in read-only chat on `deepseek/deepseek-flash` with
   `reasoningEffort: low`. A resumed session's last mode wins over the default;
   an explicit `--mode` wins over both. Headless (`-x`) runs resolve the same
   default instead of falling back to the every-tool registry.

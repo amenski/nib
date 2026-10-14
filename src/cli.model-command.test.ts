@@ -106,16 +106,16 @@ describe("mode model defaults on resume", () => {
   }
 
   it("recomputes General's Flash/low defaults for a known mode-derived resume", () => {
-    const restored = resolveRestoredSelection("deepseek-v4-flash", false);
+    const restored = resolveRestoredSelection("deepseek-flash", false);
     expect(restored).toEqual({ value: undefined, explicit: false });
 
     const state = shared();
-    syncModeModel(state, { slug: "general", name: "General", roleDefinition: "", model: "deepseek/deepseek-v4-flash", reasoningEffort: "low" });
-    expect(state).toMatchObject({ activeModel: "deepseek-v4-flash", activeEffort: "low" });
+    syncModeModel(state, { slug: "general", name: "General", roleDefinition: "", model: "deepseek/deepseek-flash", reasoningEffort: "low" });
+    expect(state).toMatchObject({ activeModel: "deepseek-flash", activeEffort: "low" });
   });
 
   it("recomputes a specialist default when Code follows a mode-derived Flash session", () => {
-    const restored = resolveRestoredSelection("deepseek-v4-flash", false);
+    const restored = resolveRestoredSelection("deepseek-flash", false);
     const state = { ...shared(), activeModel: restored.value };
     syncModeModel(state, { slug: "code", name: "Code", roleDefinition: "" });
     expect(state.activeModel).toBeUndefined();

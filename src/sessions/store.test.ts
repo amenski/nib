@@ -108,7 +108,7 @@ describe("SessionStore", () => {
       const modeDerived = await store.create({
         cwd: TEST_CWD,
         provider: "deepseek",
-        model: "deepseek-v4-flash",
+        model: "deepseek-flash",
         mode: "general",
         modelExplicit: false,
       });

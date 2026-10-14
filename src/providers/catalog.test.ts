@@ -86,7 +86,7 @@ describe("loadModelCatalog", () => {
     });
     // Bundled models are still present.
     expect(catalog.providers.deepseek.models["deepseek-v4-pro"]).toBeDefined();
-    expect(catalog.providers.deepseek.models["deepseek-v4-flash"]).toBeDefined();
+    expect(catalog.providers.deepseek.models["deepseek-flash"]).toBeDefined();
   });
 
   it("lets a user add a whole new provider", () => {
@@ -142,14 +142,14 @@ describe("loadModelCatalog", () => {
         providers: {
           deepseek: {
             models: {
-              "deepseek-v4-flash": { free: true },
+              "deepseek-flash": { free: true },
             },
           },
         },
       }),
     );
     const catalog = loadModelCatalog(dir);
-    expect(catalog.providers.deepseek.models["deepseek-v4-flash"].free).toBe(true);
+    expect(catalog.providers.deepseek.models["deepseek-flash"].free).toBe(true);
     expect(catalog.providers.deepseek.models["deepseek-v4-pro"].free).toBeUndefined();
   });
 
@@ -171,7 +171,7 @@ describe("loadModelCatalog", () => {
     expect(catalog.providers.deepseek.models["deepseek-v4-pro"].contextWindow).toBe(2000000);
     expect(catalog.providers.deepseek.models["deepseek-v5-new"]).toMatchObject({ displayName: "DeepSeek V5 New" });
     // Untouched sibling still present.
-    expect(catalog.providers.deepseek.models["deepseek-v4-flash"]).toBeDefined();
+    expect(catalog.providers.deepseek.models["deepseek-flash"]).toBeDefined();
   });
 
   it("lets the user override win over a cached updated snapshot", () => {

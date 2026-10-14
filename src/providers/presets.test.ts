@@ -145,7 +145,7 @@ describe("BUILTIN_PRESETS models map", () => {
   it("deepseek preset carries both v4 models with correct capabilities", async () => {
     const { BUILTIN_PRESETS } = await import("./presets.js");
     expect(BUILTIN_PRESETS.deepseek_reasoner).toBeUndefined();
-    expect(BUILTIN_PRESETS.deepseek.models["deepseek-v4-flash"]).toMatchObject({
+    expect(BUILTIN_PRESETS.deepseek.models["deepseek-flash"]).toMatchObject({
       supportsTools: true,
       contextWindow: 1000000,
       pricing: { inputPerM: 0.15, outputPerM: 0.6 },
@@ -159,7 +159,7 @@ describe("BUILTIN_PRESETS models map", () => {
 
   it("getContextWindowForModel resolves deepseek models from the preset", async () => {
     const { getContextWindowForModel } = await import("./presets.js");
-    expect(getContextWindowForModel("deepseek", "deepseek-v4-flash", -1)).toBe(1000000);
+    expect(getContextWindowForModel("deepseek", "deepseek-flash", -1)).toBe(1000000);
     expect(getContextWindowForModel("deepseek", "deepseek-v4-pro", -1)).toBe(1000000);
   });
 
@@ -172,7 +172,7 @@ describe("BUILTIN_PRESETS models map", () => {
 describe("getProviderCapabilities per model", () => {
   it("resolves supportsTools per model instead of per provider", async () => {
     const { getProviderCapabilities } = await import("./registry.js");
-    expect(getProviderCapabilities("deepseek", "deepseek-v4-flash").supportsTools).toBe(true);
+    expect(getProviderCapabilities("deepseek", "deepseek-flash").supportsTools).toBe(true);
     expect(getProviderCapabilities("deepseek", "deepseek-v4-pro").supportsTools).toBe(true);
   });
 
@@ -188,7 +188,7 @@ describe("getProviderCapabilities per model", () => {
 describe("imageSupportWarning", () => {
   it("is silent when the model is declared vision-capable", async () => {
     const { imageSupportWarning } = await import("./registry.js");
-    expect(imageSupportWarning("deepseek", "deepseek-v4-flash-vision-exp", 1)).toBeUndefined();
+    expect(imageSupportWarning("deepseek", "deepseek-flash", 1)).toBeUndefined();
   });
 
   it("is silent when no images are being sent", async () => {

@@ -16,7 +16,7 @@ import type { ModelEntry } from "../types.js";
 
 const entries: ModelEntry[] = [
   { provider: "deepseek", model: "deepseek-v4-pro", contextWindow: 1000000 },
-  { provider: "deepseek", model: "deepseek-v4-flash", contextWindow: 1000000 },
+  { provider: "deepseek", model: "deepseek-flash", contextWindow: 1000000 },
   { provider: "openai", model: "gpt-5.6-sol", contextWindow: 256000 },
   { provider: "groq", model: "llama-3.3-70b-versatile", contextWindow: 128000 },
 ];
@@ -140,11 +140,11 @@ describe("buildRows", () => {
 
   it("carries the free flag onto the model row", () => {
     const withFree: ModelEntry[] = [
-      { provider: "deepseek", model: "deepseek-v4-flash", free: true },
+      { provider: "deepseek", model: "deepseek-flash", free: true },
       { provider: "deepseek", model: "deepseek-v4-pro" },
     ];
     const rows = buildRows({ entries: withFree, query: "", currentProvider: "deepseek" });
-    expect(rows.find((r) => r.kind === "model" && r.model === "deepseek-v4-flash")).toMatchObject({ free: true });
+    expect(rows.find((r) => r.kind === "model" && r.model === "deepseek-flash")).toMatchObject({ free: true });
     expect(rows.find((r) => r.kind === "model" && r.model === "deepseek-v4-pro")).toMatchObject({ free: undefined });
   });
 });
@@ -238,28 +238,28 @@ describe("buildRows — Favorites and Recent groups", () => {
   it("pins a Favorites group first when favoriteModels is set", () => {
     const rows = buildRows({
       entries, query: "", currentProvider: "deepseek", currentModel: "deepseek-v4-pro",
-      favoriteModels: ["deepseek/deepseek-v4-flash"],
+      favoriteModels: ["deepseek/deepseek-flash"],
     });
     expect(rows[0]).toMatchObject({ kind: "header", label: "Favorites" });
-    expect(rows[1]).toMatchObject({ kind: "model", group: "favorites", model: "deepseek-v4-flash", favorite: true });
+    expect(rows[1]).toMatchObject({ kind: "model", group: "favorites", model: "deepseek-flash", favorite: true });
   });
 
   it("keeps a favorited model in its own provider group too", () => {
     const rows = buildRows({
       entries, query: "", currentProvider: "deepseek", currentModel: "deepseek-v4-pro",
-      favoriteModels: ["deepseek/deepseek-v4-flash"],
+      favoriteModels: ["deepseek/deepseek-flash"],
     });
-    const providerGroupRow = rows.find((r) => r.kind === "model" && r.group === "deepseek" && r.model === "deepseek-v4-flash");
+    const providerGroupRow = rows.find((r) => r.kind === "model" && r.group === "deepseek" && r.model === "deepseek-flash");
     expect(providerGroupRow).toMatchObject({ favorite: true });
     // Present in both groups: once under favorites, once under deepseek.
-    const allFlash = rows.filter((r) => r.kind === "model" && r.model === "deepseek-v4-flash");
+    const allFlash = rows.filter((r) => r.kind === "model" && r.model === "deepseek-flash");
     expect(allFlash).toHaveLength(2);
   });
 
   it("marks favorite:false on rows that are not favorited", () => {
     const rows = buildRows({
       entries, query: "", currentProvider: "deepseek", currentModel: "deepseek-v4-pro",
-      favoriteModels: ["deepseek/deepseek-v4-flash"],
+      favoriteModels: ["deepseek/deepseek-flash"],
     });
     const pro = rows.find((r) => r.kind === "model" && r.model === "deepseek-v4-pro");
     expect(pro).toMatchObject({ favorite: false });
@@ -277,7 +277,7 @@ describe("buildRows — Favorites and Recent groups", () => {
     ];
     const rows = buildRows({
       entries, query: "", currentProvider: "deepseek", currentModel: "deepseek-v4-pro",
-      favoriteModels: ["deepseek/deepseek-v4-flash"],
+      favoriteModels: ["deepseek/deepseek-flash"],
       recentModels,
     });
     const favIdx = rows.findIndex((r) => r.kind === "header" && r.label === "Favorites");
@@ -290,10 +290,10 @@ describe("buildRows — Favorites and Recent groups", () => {
   });
 
   it("excludes a favorited model from Recent so the two groups stay disjoint", () => {
-    const recentModels: RecentModel[] = [{ id: "deepseek/deepseek-v4-flash", at: 100 }];
+    const recentModels: RecentModel[] = [{ id: "deepseek/deepseek-flash", at: 100 }];
     const rows = buildRows({
       entries, query: "", currentProvider: "deepseek", currentModel: "deepseek-v4-pro",
-      favoriteModels: ["deepseek/deepseek-v4-flash"],
+      favoriteModels: ["deepseek/deepseek-flash"],
       recentModels,
     });
     expect(rows.find((r) => r.kind === "header" && r.label === "Recent")).toBeUndefined();
@@ -318,7 +318,7 @@ describe("buildRows — Favorites and Recent groups", () => {
   it("Favorites and Recent rows stay navigable alongside provider rows", () => {
     const rows = buildRows({
       entries, query: "", currentProvider: "deepseek", currentModel: "deepseek-v4-pro",
-      favoriteModels: ["deepseek/deepseek-v4-flash"],
+      favoriteModels: ["deepseek/deepseek-flash"],
       recentModels: [{ id: "groq/llama-3.3-70b-versatile", at: 1 }],
     });
     const idx = selectableIndices(rows);
@@ -330,7 +330,7 @@ describe("buildRows — Favorites and Recent groups", () => {
   it("Favorites/Recent groups also filter with the search query", () => {
     const rows = buildRows({
       entries, query: "llama", currentProvider: "deepseek",
-      favoriteModels: ["deepseek/deepseek-v4-flash"],
+      favoriteModels: ["deepseek/deepseek-flash"],
       recentModels: [{ id: "groq/llama-3.3-70b-versatile", at: 1 }],
     });
     // The favorite doesn't match "llama", so its group is dropped entirely.

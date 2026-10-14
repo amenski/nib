@@ -12,6 +12,9 @@ import { homedir, tmpdir } from "node:os";
 import { createSessionTempDir } from "../sandbox/session-temp.js";
 import { parseUntrustedMarker } from "./untrusted-content.js";
 import { denialReader } from "../sandbox/denials.js";
+import { parseCapabilityId } from "../sandbox/capabilities.js";
+import { configureSandbox, grantCapability } from "../sandbox/seatbelt.js";
+import { existsSync, mkdirSync } from "node:fs";
 
 const onDarwin = process.platform === "darwin";
 const itOnDarwin = it.skipIf(!onDarwin);
@@ -487,6 +490,36 @@ describe("OS-reported sandbox denials", () => {
         expect(out.content).toContain('file-write-create under "/opt"');
       } finally {
         jobManager.killAll();
+        rmSync(workspace, { recursive: true, force: true });
+        tmp.cleanup();
+      }
+    });
+
+    itOnDarwin("a granted directory is writable on the rerun, with nothing denied", async () => {
+      // Outside $HOME, outside the workspace, not the session temp dir: denied by default.
+      const target = mkdtempSync("/private/tmp/nib-grant-");
+      mkdirSync(join(target, "out"));
+      const registry = new ToolRegistry();
+      registerBash(registry);
+      const tmp = createSessionTempDir();
+      const workspace = mkdtempSync(join(tmpdir(), "nib-grant-ws-"));
+      const ctx: ToolContext = {
+        workingDir: workspace, sessionId: "grant", signal: new AbortController().signal,
+        sandboxLevel: "workspace-write", writeRoots: [], sessionTempDir: tmp.path,
+      };
+      const command = `touch ${join(target, "out", "f")}`;
+      try {
+        const denied = await registry.execute({ id: "g1", name: "run_bash", arguments: { command } }, ctx, { callId: "g1" });
+        expect(denied.content).toContain("[nib] sandbox denied");
+        const cap = parseCapabilityId(`write:${join(target, "out")}`)!;
+        grantCapability({ id: cap.id, lines: cap.lines });
+        const rerun = await registry.execute({ id: "g2", name: "run_bash", arguments: { command } }, ctx, { callId: "g2" });
+        expect(rerun.error).toBeUndefined();
+        expect(existsSync(join(target, "out", "f"))).toBe(true);
+        expect(rerun.sandboxDenials?.some((g) => g.opClass === "write" && g.samples.some((x) => x.startsWith(target)))).not.toBe(true);
+      } finally {
+        configureSandbox({});
+        rmSync(target, { recursive: true, force: true });
         rmSync(workspace, { recursive: true, force: true });
         tmp.cleanup();
       }

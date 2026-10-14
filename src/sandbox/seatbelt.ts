@@ -138,7 +138,7 @@ const TOOLCHAIN_WRITE_ROOTS: ReadonlyArray<readonly [string, string]> = [
  * often hold repository credentials — user decision. Writing them, or an
  * init script, would run code on every later build: persistence.
  */
-const TOOLCHAIN_CONFIG_WRITE_DENIES = [
+export const TOOLCHAIN_CONFIG_WRITE_DENIES = [
   ".gradle/gradle.properties", ".gradle/init.d", ".gradle/init.gradle", ".gradle/init.gradle.kts",
   ".m2/settings.xml", ".m2/settings-security.xml",
 ] as const;
@@ -153,7 +153,7 @@ const TOOLCHAIN_CONFIG_WRITE_DENIES = [
  * Measured 2026-10-10: with an outside daemon running, the contained build
  * used its own daemon and the outside registry read was denied.
  */
-const TOOLCHAIN_SECRET_DENIES = [
+export const TOOLCHAIN_SECRET_DENIES = [
   ".cargo/credentials", ".cargo/credentials.toml",
   ".pub-cache/credentials.json",
   ".gradle/daemon",
@@ -177,12 +177,47 @@ export function toolchainWriteRoots(home: string = homedir()): string[] {
 let extraReadRoots: string[] = [];
 let allowLocalNetwork = true;
 let browserAllows: string[] = [];
-export function configureSandbox(opts: { readRoots?: string[]; allowLocalNetwork?: boolean; allowBrowser?: boolean }): void {
+/** A capability the user granted: its id and the SBPL it adds (sandbox/capabilities.ts). */
+export interface CapabilityGrant {
+  id: string;
+  lines: string[];
+}
+let persistedGrants: CapabilityGrant[] = [];
+const sessionGrants = new Map<string, string[]>();
+export function configureSandbox(opts: { readRoots?: string[]; allowLocalNetwork?: boolean; allowBrowser?: boolean; grants?: CapabilityGrant[] }): void {
   extraReadRoots = (opts.readRoots ?? []).map((p) =>
     p === "~" || p.startsWith("~/") ? join(homedir(), p.slice(1)) : resolve(p),
   );
   allowLocalNetwork = opts.allowLocalNetwork !== false;
   browserAllows = opts.allowBrowser !== false && process.platform === "darwin" ? browserAllowLines(darwinUserTempDir()) : [];
+  persistedGrants = opts.grants ?? [];
+  sessionGrants.clear();
+}
+
+/**
+ * Add a capability for the rest of the session (the user approved it at the
+ * prompt). Changes every profile built afterwards — and therefore the envelope
+ * hash, which the caller must renew for any grant that covered the old one.
+ */
+export function grantCapability(grant: CapabilityGrant): void {
+  sessionGrants.set(grant.id, grant.lines);
+}
+
+/** Drop every grant made this session; persisted ones (`sandbox.grants`) stay. */
+export function revokeSessionGrants(): void {
+  sessionGrants.clear();
+}
+
+/** Ids of the capabilities in force, persisted first. */
+export function activeGrants(): string[] {
+  return [...new Set([...persistedGrants.map((g) => g.id), ...sessionGrants.keys()])];
+}
+
+function grantLines(): string[] {
+  const byId = new Map<string, string[]>();
+  for (const g of persistedGrants) byId.set(g.id, g.lines);
+  for (const [id, lines] of sessionGrants) byId.set(id, lines);
+  return [...byId.values()].flat();
 }
 
 /** Whether the browser rules are on (`sandbox.allowBrowser`, default on) — for the session-grant consent text. */
@@ -212,7 +247,7 @@ export function sandboxAllowsBrowser(): boolean {
  * under nib's real profile, `open -a`, `open x.command`, `osascript` and
  * `launchctl submit` are all still refused.
  */
-const BROWSER_MACH_SERVICES = [
+export const BROWSER_MACH_SERVICES = [
   "com.apple.windowserver.active", "com.apple.window_proxies", "com.apple.windowmanager.server",
   "com.apple.CARenderServer", "com.apple.MTLCompilerService", "com.apple.fonts",
   "com.apple.coreservices.launchservicesd", "com.apple.CoreServices.coreservicesd",
@@ -243,7 +278,7 @@ export function browserAllowLines(userTempDir: string): string[] {
 }
 
 /** Per-user temp dir (`/private/var/folders/…/T`), realpath-resolved. */
-function darwinUserTempDir(): string {
+export function darwinUserTempDir(): string {
   const raw = execFileSync("getconf", ["DARWIN_USER_TEMP_DIR"], { encoding: "utf8" }).trim();
   return realpathSync(raw).replace(/\/+$/, "");
 }
@@ -263,7 +298,7 @@ function regexEscape(s: string): string {
  * API, a local proxy that itself has egress). Opt out with
  * `sandbox.allowLocalNetwork: false`.
  */
-const LOOPBACK_NETWORK_ALLOWS = [
+export const LOOPBACK_NETWORK_ALLOWS = [
   `(allow network-bind (local ip "localhost:*"))`,
   `(allow network-inbound (local ip "localhost:*"))`,
   `(allow network-outbound (remote ip "localhost:*"))`,
@@ -494,7 +529,7 @@ function isUsableHomeDeny(home: string): boolean {
 }
 
 /** Escapes a path for embedding in an SBPL double-quoted string. */
-function sbplQuote(path: string): string {
+export function sbplQuote(path: string): string {
   return path.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
@@ -553,6 +588,10 @@ export function buildSeatbeltProfile(
     // Last matching rule wins: the loopback deny must follow the IP allow.
     lines.push(...(allowLocalNetwork ? LOOPBACK_NETWORK_ALLOWS : [LOOPBACK_OUTBOUND_DENY]));
     lines.push(...browserAllows);
+    // User-granted capabilities: after every default allow, and before the
+    // toolchain secret and git denies below — last matching rule wins, so a
+    // grant can never reopen what those protect.
+    lines.push(...grantLines());
   }
   // Toolchain credentials/startup config: after every read and write allow.
   const home = realpathNearestAncestor(homedir());

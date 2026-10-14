@@ -1,6 +1,7 @@
 import type { Provider } from "../providers/types.js";
 import type { Message } from "../types.js";
 import type { CapabilityAnswer, CapabilityRequest } from "../sandbox/capabilities.js";
+import type { Preset } from "../sandbox/presets.js";
 import type { CommandDef } from "../commands/index.js";
 import type { ThemeContextValue, ThemeDefinition } from "./theme.js";
 import type { KeybindingMap, KeybindingConfig, KeybindingAction } from "./keybindings.js";
@@ -212,6 +213,12 @@ export interface AppContext {
   showResumeOnStart?: boolean;
   /** One-time notice (e.g. "Resumed <id>") shown in the scrollback on mount. */
   initialNotice?: string;
+  /**
+   * Sandbox toolchain presets this project calls for (sandbox/presets.ts),
+   * offered once at startup after the trust prompts; declined ones are already
+   * filtered out.
+   */
+  sandboxPresets?: Preset[];
   /**
    * A background startup check whose result is emitted into the scrollback when
    * it resolves — the live model-list probe, which must not block startup. The

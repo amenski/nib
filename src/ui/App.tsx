@@ -105,6 +105,9 @@ import {
 import { announceToScreenReader } from "./Accessibility.js";
 import { denialReader, groupDenials, summarizeDenials } from "../sandbox/denials.js";
 import type { Capability as SandboxCapability, CapabilityAnswer, CapabilityRequest } from "../sandbox/capabilities.js";
+import { activeGrants, grantCapability } from "../sandbox/seatbelt.js";
+import { recordPresetDecline } from "../config/folder-trust.js";
+import { updateSettings } from "../config/settings-writer.js";
 
 // Display label for a queued item in the above-input stack. A large paste is
 // collapsed to a bracket summary ("[Pasted N lines]") rather than dumping the
@@ -511,19 +514,22 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
   // answered, so no turn — and no system prompt containing the skill's index
   // line — can start before every decision lands. Same Promise+modal pattern
   // as the hook trust ask.
+  //
+  // Sandbox toolchain presets follow, in the same sequence, so the two
+  // startup modals never compete for the keyboard.
   useEffect(() => {
     const loader = ctx.skillLoader;
-    if (!loader || loader.pendingTrust.length === 0) return;
     let cancelled = false;
     void (async () => {
-      for (const pending of [...loader.pendingTrust]) {
+      for (const pending of [...(loader?.pendingTrust ?? [])]) {
         if (cancelled) return;
         const trusted = await new Promise<boolean>((resolve) => {
           setSkillTrustPrompt({ skill: pending.skill, status: pending.status, resolve });
         });
         if (cancelled) return;
-        loader.acceptTrust(pending.skill, trusted);
+        loader!.acceptTrust(pending.skill, trusted);
       }
+      await offerSandboxPresets(() => cancelled);
     })();
     return () => {
       cancelled = true;
@@ -1341,18 +1347,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
         },
         // The OS denied something and a named capability would allow it. Same
         // modal as askUser, so a grant looks and audits like a permission.
-        askCapability: (req: CapabilityRequest) =>
-          new Promise<CapabilityAnswer>((resolve) => {
-            const capability = { ...req.capability, probable: req.probable, chosen: "deny" as CapabilityAnswer };
-            setAskPrompt({
-              resolve: () => resolve(capability.chosen),
-              toolName: req.toolName,
-              args: { command: req.command },
-              capability,
-              cursor: 0,
-              guardUntil: draftTextRef.current.trim() !== "" ? Date.now() + PERMISSION_TYPING_GUARD_MS : 0,
-            });
-          }),
+        askCapability: promptCapability,
         askUser: async (
           toolName: string,
           args: Record<string, unknown>,
@@ -1974,6 +1969,53 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
     ],
     [ctx, exit],
   );
+
+  /** Shows the capability prompt (sandbox/capabilities.ts); Esc answers "deny". */
+  function promptCapability(req: CapabilityRequest): Promise<CapabilityAnswer> {
+    return new Promise<CapabilityAnswer>((resolve) => {
+      const capability = { ...req.capability, probable: req.probable, chosen: "deny" as CapabilityAnswer };
+      setAskPrompt({
+        resolve: () => resolve(capability.chosen),
+        toolName: req.toolName,
+        args: { command: req.command },
+        capability,
+        cursor: 0,
+        guardUntil: draftTextRef.current.trim() !== "" ? Date.now() + PERMISSION_TYPING_GUARD_MS : 0,
+      });
+    });
+  }
+
+  /**
+   * Offer each toolchain preset this project calls for (sandbox/presets.ts),
+   * once. A grant adds its directories for the session; "always" saves them
+   * to sandbox.grants; "no" is remembered for this project.
+   */
+  async function offerSandboxPresets(cancelled: () => boolean): Promise<void> {
+    for (const preset of ctx.sandboxPresets ?? []) {
+      if (cancelled()) return;
+      if (preset.parts.every((p) => activeGrants().includes(p.id))) continue;
+      const answer = await promptCapability({ capability: preset, probable: false, toolName: "sandbox-preset", command: preset.title });
+      if (cancelled()) return;
+      if (answer === "deny") {
+        recordPresetDecline(process.cwd(), preset.id);
+        continue;
+      }
+      for (const part of preset.parts) grantCapability({ id: part.id, lines: part.lines });
+      if (answer === "always") {
+        try {
+          updateSettings((config) => {
+            const sandbox = (config.sandbox && typeof config.sandbox === "object" ? config.sandbox : {}) as Record<string, unknown>;
+            const grants = Array.isArray(sandbox.grants) ? sandbox.grants.filter((g): g is string => typeof g === "string") : [];
+            for (const part of preset.parts) if (!grants.includes(part.id)) grants.push(part.id);
+            config.sandbox = { ...sandbox, grants };
+          });
+        } catch (err) {
+          pushOutput(theme.fg(theme.theme.warning, `⚠ could not save the sandbox grant: ${(err as Error).message}`));
+        }
+      }
+      pushOutput(theme.fg(theme.theme.textDim, `sandbox: ${preset.title} allowed${answer === "always" ? " (saved)" : " for this session"}`));
+    }
+  }
 
   function resolveAskPrompt(allowed: boolean | "envelope-grant"): void {
     // Cancel any in-flight Ctrl+E explanation — its prompt is going away.

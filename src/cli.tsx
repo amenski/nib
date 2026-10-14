@@ -41,10 +41,11 @@ import { AgentLoader, type AgentDef } from "./agents/index.js";
 import { CommandLoader, type CommandDef } from "./commands/index.js";
 import { denialReader } from "./sandbox/denials.js";
 import { resolveStoredGrants } from "./sandbox/capabilities.js";
+import { detectPresets } from "./sandbox/presets.js";
 import { containmentWarning, hasActiveSandboxContainment, loadConfig, resolveHome, workspaceOutsideHomeWarning } from "./config/loader.js";
 import { projectSettingsPath } from "./config/paths.js";
 import { checkSettingsTrust, trustSettings, stripExecutionKeys } from "./config/settings-trust.js";
-import { checkFolderTrust, trustFolder, buildFolderContentSummary, hasGatedContent } from "./config/folder-trust.js";
+import { checkFolderTrust, trustFolder, buildFolderContentSummary, hasGatedContent, isPresetDeclined } from "./config/folder-trust.js";
 import { readCredentialsFile, getCredential } from "./config/credentials.js";
 import { readActiveSnapshot } from "./providers/catalog-update.js";
 import { getLiveModels, checkModelListed } from "./providers/live-models.js";
@@ -1147,6 +1148,11 @@ async function main() {
       },
       showResumeOnStart: showResumeChooserOnStart,
       initialNotice,
+      // Toolchain presets (sandbox/presets.ts): only where grants can apply —
+      // a live workspace-write profile — and not ones declined for this project.
+      sandboxPresets: hasActiveSandboxContainment(configResult.config) && bashSandboxLevel === "workspace-write"
+        ? detectPresets(process.cwd()).filter((p) => !isPresetDeclined(process.cwd(), p.id))
+        : [],
       // Background (non-blocking) live model-list check: when the provider no
       // longer lists the active model, the App prints one dim line after mount.
       // Skipped for a provider with no key or a non-openai-compatible API.

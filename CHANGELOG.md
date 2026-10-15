@@ -33,12 +33,36 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Sandboxed commands can read everything except credential stores.** The
+  read boundary used to subtract all of `$HOME`; it now denies only `~/.ssh`,
+  `~/.aws`, `~/.gnupg`, `~/.azure`, `~/.kube`, `~/.config/gcloud`,
+  `~/.config/gh`, `Library/Keychains` and a few credential files. Flutter,
+  Dart and SDK installs under `$HOME` work without extra settings.
+  `sandbox.readRoots` and the "workspace outside your home directory" warning
+  are removed.
+- **A blocked command can be rerun outside the sandbox, after you approve it.**
+  `run_bash` and `run_bash_background` take `unsandboxed: true`; the prompt
+  says it runs outside the OS sandbox, offers once/deny only, and the session
+  grant never covers it. New global-only settings: `sandbox.excludedCommands`
+  (commands that always run outside, e.g. `flutter`) and
+  `sandbox.allowUnsandboxedCommands` (default `true`).
+- **The kernel sandbox-denial reporter is removed.** The `sandbox denied: …`
+  lines in the transcript and the `[nib] sandbox denied` block in tool results
+  are gone, along with the `log stream` subprocess behind them. A refused
+  command still gets the `Operation not permitted` hint, which now points at
+  `unsandboxed: true`.
 - **`nib models update` prints one line per changed provider.** With ~190
   providers a per-model listing ran to thousands of lines; `--verbose` still
   lists every model. The update cache now holds only models and default
   models, so base URLs always come from the installed nib.
 
 ### Fixed
+
+- **`mktemp`, `xcrun`, Xcode-shim `git` and Flutter work in the sandbox again.**
+  Turning `sandbox.allowBrowser` on by default allowed a Mach service that let
+  macOS report the real per-user temp dir, which the sandbox denies, so tools
+  stopped falling back to the sandbox's `$TMPDIR`. That service is removed from
+  the browser rules.
 
 - **Switching mode no longer changes the model.** Going from General to Code
   used to move the session from `deepseek-flash` to `deepseek-v4-pro` and its

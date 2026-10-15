@@ -5,7 +5,6 @@ import type { PermissionConfig, PermissionRule, PatternKind, PermissionAction, P
 import { compileGlob } from "../permissions/index.js";
 import type { HooksConfig } from "../hooks/types.js";
 import { parseHooksConfig } from "../hooks/config.js";
-import { isPathWithinWriteRoots, realpathNearestAncestor } from "../sandbox/write-roots.js";
 import { STATE_DIR_NAME, projectSettingsPath } from "./paths.js";
 
 // ── Deep Code settings.json schema ──
@@ -115,7 +114,7 @@ export interface DeepCodeSettings {
    *  loadConfig's sandbox block). This is deliberately separate from
    *  `permissionProfile.fs`, whose "explicit rules narrow only" invariant
    *  this must not weaken. */
-  sandbox?: { enabled: boolean; writeRoots?: string[]; readRoots?: string[]; autoAllowBash?: boolean; allowLocalNetwork?: boolean; allowBrowser?: boolean };
+  sandbox?: { enabled: boolean; writeRoots?: string[]; autoAllowBash?: boolean; allowLocalNetwork?: boolean; allowBrowser?: boolean; allowUnsandboxedCommands?: boolean; excludedCommands?: string[] };
 
   // ── MCP Servers ──
   mcpServers?: Record<string, McpServerConfig>;
@@ -333,35 +332,6 @@ export function containmentWarning(
     return "⚠ OS containment is configured, but the platform cannot enforce it — approvals run policy-only.";
   }
   return undefined;
-}
-
-/**
- * Discloses the recorded read-boundary residual: the child read boundary is
- * `$HOME`-shaped (seatbelt.ts denies `file-read*` on the real home and
- * re-allows the workspace plus an allowlist), so when the trusted workspace
- * root sits outside that home nothing denies reads of the files beside it —
- * they stay readable by a contained child, unlike siblings of an in-home
- * workspace. Reports the boundary; it does not narrow it.
- *
- * Gated on `hasActiveSandboxContainment`, so this partitions the space with
- * {@link containmentWarning}: that function answers when there is no boundary,
- * this one only speaks when there is. The two can never both fire, and neither
- * fires off darwin.
- *
- * `home` defaults to the real home the Seatbelt deny actually subtracts
- * (seatbelt.ts's `realpathNearestAncestor(homedir())`) — never `resolveHome()`
- * or `NIB_HOME`, which point at the state directory and are unrelated to the
- * read boundary.
- */
-export function workspaceOutsideHomeWarning(
-  config: Pick<DeepCodeSettings, "permissionProfile" | "sandbox">,
-  trustedRoot: string,
-  platform: NodeJS.Platform = process.platform,
-  home: string = homedir(),
-): string | undefined {
-  if (!hasActiveSandboxContainment(config, platform)) return undefined;
-  if (isPathWithinWriteRoots(trustedRoot, [realpathNearestAncestor(home)])) return undefined;
-  return "⚠ Workspace is outside your home directory — the sandbox's child read boundary is $HOME, so files beside this workspace stay readable.";
 }
 
 /**
@@ -1338,17 +1308,9 @@ export function loadConfig(projectDir?: string): LoadResult {
           errors.push("config.sandbox.autoAllowBash: must be a boolean");
         }
       }
-      // readRoots / allowLocalNetwork: global-only like writeRoots — they widen
-      // what a sandboxed child may read or connect to, so a project file must
-      // not be able to set them. allowLocalNetwork absent = on (seatbelt.ts).
-      if (isObject(globalRaw?.sandbox) && "readRoots" in (globalRaw.sandbox as Record<string, unknown>)) {
-        const raw = (globalRaw.sandbox as Record<string, unknown>).readRoots;
-        if (Array.isArray(raw) && raw.every((p) => typeof p === "string")) {
-          if (config.sandbox && raw.length > 0) config.sandbox.readRoots = raw as string[];
-        } else {
-          errors.push("config.sandbox.readRoots: must be an array of strings");
-        }
-      }
+      // allowLocalNetwork: global-only like writeRoots — it widens what a
+      // sandboxed child may connect to, so a project file must not be able to
+      // set it. Absent = on (seatbelt.ts).
       if (isObject(globalRaw?.sandbox) && "allowLocalNetwork" in (globalRaw.sandbox as Record<string, unknown>)) {
         const raw = (globalRaw.sandbox as Record<string, unknown>).allowLocalNetwork;
         if (typeof raw === "boolean") {
@@ -1364,6 +1326,25 @@ export function loadConfig(projectDir?: string): LoadResult {
           if (config.sandbox) config.sandbox.allowBrowser = raw;
         } else {
           errors.push("config.sandbox.allowBrowser: must be a boolean");
+        }
+      }
+      // allowUnsandboxedCommands / excludedCommands: global-only — they decide
+      // what may run outside the sandbox, so a project file must not set them
+      // (sandbox/unsandboxed.ts). allowUnsandboxedCommands absent = on.
+      if (isObject(globalRaw?.sandbox) && "allowUnsandboxedCommands" in (globalRaw.sandbox as Record<string, unknown>)) {
+        const raw = (globalRaw.sandbox as Record<string, unknown>).allowUnsandboxedCommands;
+        if (typeof raw === "boolean") {
+          if (config.sandbox) config.sandbox.allowUnsandboxedCommands = raw;
+        } else {
+          errors.push("config.sandbox.allowUnsandboxedCommands: must be a boolean");
+        }
+      }
+      if (isObject(globalRaw?.sandbox) && "excludedCommands" in (globalRaw.sandbox as Record<string, unknown>)) {
+        const raw = (globalRaw.sandbox as Record<string, unknown>).excludedCommands;
+        if (Array.isArray(raw) && raw.every((c) => typeof c === "string")) {
+          if (config.sandbox && raw.length > 0) config.sandbox.excludedCommands = raw as string[];
+        } else {
+          errors.push("config.sandbox.excludedCommands: must be an array of strings");
         }
       }
       // Legacy `sandbox.grants` is migrated to the new schema at startup

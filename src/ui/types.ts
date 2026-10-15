@@ -261,8 +261,6 @@ export interface AgentBridgeCallbacks {
   onToolStart: (name: string, args: Record<string, unknown>) => void;
   onToolResult: (name: string, result: { content: string; error?: string }) => void;
   onDiagnostic: (m: string) => void;
-  /** One-line summary of what the OS sandbox refused during a tool call; rendered dim. */
-  onSandboxDenial?: (summary: string) => void;
   onRetry: (m: string) => void;
   onCompacted: (m: string) => void;
   onLoopDetected: (m: string) => void;

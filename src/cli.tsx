@@ -16,6 +16,7 @@ import { HookRunner, fireNotificationHooks } from "./hooks/index.js";
 import { executeTool, TOOL_DEFS, registry, setSessionId, setCheckpointManager, setSignal, setSessionStore, setSetMode, setTimeoutToBackground, setSandboxLevel, setSessionTempDir, setWritePolicyLevel, setWriteRoots, setWebSearchConfig } from "./tools/index.js";
 import { createSessionTempDir } from "./sandbox/session-temp.js";
 import { buildSandboxProfile, configureSandbox, isSandboxedLevel, profileWriteSet, sandboxEnvelopeHash } from "./sandbox/seatbelt.js";
+import { configureUnsandboxed } from "./sandbox/unsandboxed.js";
 import type { BashEnvelope } from "./permissions/session-grant.js";
 import { filterToolDefs } from "./tools/filter.js";
 import { jobManager } from "./tools/jobs.js";
@@ -39,9 +40,8 @@ import { MemoryStore } from "./memory/store.js";
 import { SkillLoader, createLoadSkillTool, type SkillDef } from "./skills/index.js";
 import { AgentLoader, type AgentDef } from "./agents/index.js";
 import { CommandLoader, type CommandDef } from "./commands/index.js";
-import { denialReader } from "./sandbox/denials.js";
 import { checkForUpdate } from "./update-check.js";
-import { containmentWarning, hasActiveSandboxContainment, loadConfig, resolveHome, workspaceOutsideHomeWarning } from "./config/loader.js";
+import { containmentWarning, hasActiveSandboxContainment, loadConfig, resolveHome } from "./config/loader.js";
 import { projectSettingsPath } from "./config/paths.js";
 import { checkSettingsTrust, trustSettings, stripExecutionKeys } from "./config/settings-trust.js";
 import { checkFolderTrust, trustFolder, buildFolderContentSummary, hasGatedContent } from "./config/folder-trust.js";
@@ -605,15 +605,11 @@ async function main() {
   // are session-scoped and already resolved from startup cwd. Threaded into
   // ctx so Seatbelt and file-tool containment consult the same set.
   const writeRoots = [...(configResult.config.sandbox?.writeRoots ?? []), ...additionalWriteRoots];
-  // Global-only sandbox.readRoots / allowLocalNetwork / allowBrowser: set before any profile
+  // Global-only sandbox.allowLocalNetwork / allowBrowser: set before any profile
   // is built so every launch and the session-grant hash agree.
-  configureSandbox({ readRoots: configResult.config.sandbox?.readRoots, allowLocalNetwork: configResult.config.sandbox?.allowLocalNetwork, allowBrowser: configResult.config.sandbox?.allowBrowser });
+  configureSandbox({ allowLocalNetwork: configResult.config.sandbox?.allowLocalNetwork, allowBrowser: configResult.config.sandbox?.allowBrowser });
+  configureUnsandboxed({ sandboxLevel: bashSandboxLevel, allowUnsandboxedCommands: configResult.config.sandbox?.allowUnsandboxedCommands, excludedCommands: configResult.config.sandbox?.excludedCommands });
   setWriteRoots(writeRoots);
-  // The kernel's own report of what the sandbox refuses (sandbox/denials.ts).
-  // Without it the existing output-matching hint stays the only signal, and the
-  // user is told so once.
-  const denialStream = hasActiveSandboxContainment(configResult.config) ? await denialReader.start() : undefined;
-  const denialNotice = denialStream && !denialStream.ok ? `sandbox denial stream unavailable (${denialStream.reason}) — falling back to output matching` : undefined;
 
   // The session grant's envelope (docs/permission-ux-redesign.md): the profile
   // this session's foreground Bash launches run under, identified by the hash
@@ -822,7 +818,7 @@ async function main() {
   const resumeNotice = sessionLoaded
     ? `Resumed ${sessionId} · ${sessionMessages.length} messages · mode: ${shared.activeMode?.slug || "general"}`
     : undefined;
-  const initialNotice = [...skillLoader.notices, containmentWarning(configResult.config), workspaceOutsideHomeWarning(configResult.config, process.cwd()), denialNotice, resumeNotice].filter(Boolean).join("\n") || undefined;
+  const initialNotice = [...skillLoader.notices, containmentWarning(configResult.config), resumeNotice].filter(Boolean).join("\n") || undefined;
 
   let knownModeSlugs: string[] = [];
   try { knownModeSlugs = (await modeLoader.listAll()).map(m => m.slug); } catch {}
@@ -1953,7 +1949,7 @@ async function runAgentTurnBridge(input: string, cb: any, shared: any, permissio
     maxTurns: shared.maxTurns,
     getTodos: () => todoStore.getTodos(),
     onText: cb.onText, onReasoning: cb.onReasoning, onToolStart: (name, args) => { shared.toolUsage[name] = (shared.toolUsage[name] || 0) + 1; cb.onToolStart(name, args); }, onToolResult: cb.onToolResult,
-    onDiagnostic: cb.onDiagnostic, onSandboxDenial: cb.onSandboxDenial, onRetry: cb.onRetry, onCompacted: cb.onCompacted,
+    onDiagnostic: cb.onDiagnostic, onRetry: cb.onRetry, onCompacted: cb.onCompacted,
     onLoopDetected: cb.onLoopDetected, onMaxTurns: cb.onMaxTurns,
     onUsage: (input: number, output: number, cached?: number) => {
       shared.sessionInput += input; shared.sessionOutput += output; shared.lastContextTokens = input + output;

@@ -242,20 +242,23 @@ whether Bash asks at all. Each needs `enabled` alongside it.
 | Key | Default | Effect |
 |---|---|---|
 | `writeRoots` | `[]` | Extra writable (and readable) directories. |
-| `readRoots` | `[]` | Extra read-only directories under `$HOME`. |
 | `autoAllowBash` | `true` | Run eligible sandboxed Bash without the session prompt (permission-ux-redesign.md). |
 | `allowLocalNetwork` | `true` | Loopback (`localhost`) networking for `workspace-write` children; Java is forced to IPv4 so it matches. Needed by Gradle's daemon. `false` denies loopback only — other hosts stay reachable. |
 | `allowBrowser` | `true` | Lets `workspace-write` children launch headless Chrome (Playwright, Puppeteer): named system services incl. the window server, Chrome's own Mach names, three GPU/power IOKit clients, and its singleton dir in the per-user temp dir. Apple Events, the clipboard and the Keychain stay denied. Chrome's own sandbox cannot nest inside nib's, so launch with `--no-sandbox` (Playwright: `chromiumSandbox: false`, the default). Set `false` to opt out; with the rules off, every launch aborts and macOS shows a crash dialog. |
+| `allowUnsandboxedCommands` | `true` | Lets the model rerun a command outside the sandbox with `unsandboxed: true` (`run_bash`, `run_bash_background`). Every such call asks the user, is one-time only, and is never covered by the session grant. `false` refuses the request outright. Always off at `strict-sandbox`. |
+| `excludedCommands` | `[]` | Commands that always run outside the sandbox (and always ask), e.g. `["flutter", "docker *"]`. Matched by command prefix after leading `VAR=value`; a command that chains another (`;`, `&&`, `\|`, `` ` ``, `$(…)`) never matches. |
 
-Built-in toolchain access (`src/sandbox/seatbelt.ts`, added 2026-10-10):
-installs under `$HOME` such as `.sdkman`, `.gradle`, `.m2`, `.rustup`,
-`.cargo`, `.bun`, `.pub-cache`, `.cocoapods`, `Library/Android/sdk` and the
-version managers are readable when present; the build caches
-(`.gradle`, `.m2/repository`, `.cargo/registry|git`, `.pub-cache/hosted|git`,
-`.bun/install/cache`, `Library/Caches/CocoaPods`) are writable. Gradle/Maven
-config (`gradle.properties`, `init.d`, `settings.xml`) stays readable but is
-never writable; cargo/pub registry tokens and `~/.gradle/daemon` (outside daemons' ports and tokens) are neither — contained JVMs get a private daemon registry under `$TMPDIR`. `~/.android` (holds
-`adbkey`) is not included.
+Reads (`src/sandbox/seatbelt.ts`): a sandboxed child may read everything
+except credential stores under `$HOME` (`.ssh`, `.aws`, `.gnupg`, `.azure`,
+`.kube`, `.config/gcloud`, `.config/gh`, `Library/Keychains`, `.netrc`,
+`.git-credentials`, `.npmrc`, `.docker/config.json`, `.android/adbkey`, nib's
+own `credentials.yaml`). Writes stay limited to the write roots plus built-in
+toolchain build caches under `$HOME` (`.gradle`, `.m2/repository`,
+`.cargo/registry|git`, `.pub-cache/hosted|git`, `.bun/install/cache`,
+`Library/Caches/CocoaPods`). Gradle/Maven config (`gradle.properties`,
+`init.d`, `settings.xml`) is never writable; cargo/pub registry tokens and
+`~/.gradle/daemon` are neither readable nor writable (contained JVMs get a
+private daemon registry under `$TMPDIR`).
 
 ## 4. `refresh` (repaint cadence)
 

@@ -29,7 +29,7 @@ describe("sandboxBlockedHint", () => {
   it("keeps the tool note byte-stable and free of interpolation", () => {
     // It rides in the cached prefix of every request, so any per-call variation
     // would invalidate the cache from that message onward.
-    expect(SANDBOX_TOOL_NOTE).toContain("read_file, list_files or glob");
+    expect(SANDBOX_TOOL_NOTE).toContain("unsandboxed: true");
     expect(SANDBOX_TOOL_NOTE).not.toMatch(/\$\{/);
     expect(SANDBOX_TOOL_NOTE.endsWith(".")).toBe(true);
   });

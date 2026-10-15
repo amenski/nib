@@ -538,7 +538,11 @@ denials below are causally attributable to the profile rather than to the
 runner. The "managed runner cannot nest Seatbelt" observation is therefore
 environment-specific, not a property of the product tests.
 
-**Child read boundary (gate 1) — addressed.** The profile now subtracts
+**Child read boundary (gate 1) — addressed, then relaxed 2026-10-15.** The
+`$HOME`-subtraction described here was replaced by a deny list of credential
+stores (`HOME_READ_DENIES` in `seatbelt.ts`) so toolchains under `$HOME`
+(Flutter, Dart, SDKs) can read their own installs; the probe table below is
+the earlier model. The profile now subtracts
 `$HOME` from `(allow file-read*)` and re-allows only the workspace, the level's
 authorized roots, and a narrow Git/npm home set. Probed with a disposable
 fake-home fixture containing synthetic canaries only:
@@ -997,7 +1001,9 @@ injected-seam cases above prove the code path; the capability matrix is still
 verified by two different machines, never by one. Treat a single-machine run as
 evidence about that machine only.
 
-**Residual 1 — the child read boundary is `$HOME`-shaped.** Reads under the real
+**Residual 1 — the child read boundary is `$HOME`-shaped.** (Superseded
+2026-10-15: reads are now allowed everywhere except credential stores, and the
+startup warning below was removed. Kept as history.) Reads under the real
 `$HOME` are denied except for a toolchain allowlist, but the profile's core still
 allows `file-read*` generally, so a secret outside `$HOME` (under `/tmp`, `/opt`,
 `/Volumes`, or another configured write root) remains readable by a contained

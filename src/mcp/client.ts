@@ -10,7 +10,6 @@ import {
   type ReadinessOutcome,
 } from "../sandbox/launcher.js";
 import type { SandboxLevel } from "../sandbox/seatbelt.js";
-import { denialReader } from "../sandbox/denials.js";
 
 export interface McpServerConfig {
   name: string;
@@ -217,8 +216,6 @@ export class MCPClient {
         stdio: { stdin: "pipe" },
       });
       this.process = contained.proc;
-      // Pid-exact only: the server is not detached, so its process group is nib's own.
-      if (spec) denialReader.attach(this.process, { kind: "mcp", server: command }, { matchGroup: false });
       // An MCP server whose profile never applied did not start — the readiness
       // outcome, not its exit status, is what says which failure this is.
       let readiness: ReadinessOutcome | undefined;

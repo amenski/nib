@@ -22,6 +22,8 @@ import {
 } from "./seatbelt.js";
 import { runBashTimed } from "../tools/bash.js";
 import { jobManager } from "../tools/jobs.js";
+import { enterFakeHome } from "./test-fake-home.js";
+import { createSessionTempDir } from "./session-temp.js";
 
 const onDarwin = process.platform === "darwin";
 const itOnDarwin = it.skipIf(!onDarwin);
@@ -102,9 +104,8 @@ describe("buildSeatbeltProfile", () => {
     expect(p).toContain('(allow file-write* (literal "/dev/null"))');
     expect(p).not.toContain("network-outbound");
     // "No write-set" is the invariant — not "no subpaths at all". The child
-    // read boundary (readBoundaryLines) deliberately contributes *read*
-    // subpaths at every sandboxed level; it subtracts $HOME from the blanket
-    // read grant and re-allows the workspace. Only writes stay absolute.
+    // read boundary (homeReadDenyLines) contributes *read* denies at every
+    // sandboxed level. Only writes stay absolute.
     expect(p).not.toContain("(allow file-write* (subpath");
   });
 
@@ -159,6 +160,25 @@ describe("buildSeatbeltProfile", () => {
     expect(buildSeatbeltProfile("workspace-write", "/private/tmp/ws")).toContain("mach-lookup");
   });
 
+  itOnDarwin("browser rules do not let temp-dir tools find the real per-user temp dir", async () => {
+    // Allowing com.apple.system.opendirectoryd.membership makes
+    // confstr(_CS_DARWIN_USER_TEMP_DIR) succeed, so mktemp/xcrun write to the
+    // (denied) real temp dir instead of $TMPDIR. Regression 2026-10-15.
+    configureSandbox({});
+    const tmp = createSessionTempDir();
+    const ws = mkdtempSync(join(tmpdir(), "nib-mktemp-ws-"));
+    try {
+      for (const command of ["mktemp -d", "mktemp -t nibprobe"]) {
+        const out = await runBashTimed(command, ws, ws, 30_000, false, "workspace-write", [], tmp.path);
+        expect(out.error, command).toBeUndefined();
+        expect(out.content, command).toContain(tmp.path);
+      }
+    } finally {
+      rmSync(ws, { recursive: true, force: true });
+      tmp.cleanup();
+    }
+  });
+
   itOnDarwin("allowBrowser: false drops the browser rules from workspace-write, strict-sandbox never has them, and the grant hash changes", () => {
     configureSandbox({});
     const on = buildSeatbeltProfile("workspace-write", "/private/tmp/ws");
@@ -207,27 +227,20 @@ describe("buildSeatbeltProfile", () => {
   it("strict-sandbox: gains none of the write carve-outs (read-only stays absolute)", () => {
     const p = buildSeatbeltProfile("strict-sandbox", "/ws");
     // The write carve-outs are temp + ~/.npm. strict-sandbox gets neither as
-    // a *write* set. `~/.npm` does still appear as one of the read-boundary
-    // allows (HOME_READ_ALLOWS), which is level-independent by design — so
-    // assert on the write form specifically rather than on the substring.
+    // a *write* set — assert on the write form specifically.
     expect(p).not.toContain("(allow file-write* (subpath");
     expect(p).not.toContain("/private/tmp");
     expect(p).not.toContain(`(allow file-write* (subpath "${seatbeltWorkspaceRoot(join(homedir(), ".npm"))}"))`);
     expect(p).toContain('(allow file-write* (literal "/dev/null"))');
   });
 
-  it("read boundary: never re-allows $HOME itself, so a missing narrow entry cannot widen it", () => {
-    // The re-allow list is resolved with realpathSync and an absent entry is
-    // skipped. Resolving through the nearest *existing* ancestor instead —
-    // which is what a naive shared helper does — maps a missing `~/.cache`
-    // to `$HOME` and emits an allow for the entire home directory AFTER the
-    // deny. SBPL is last-matching-rule-wins, so that silently voids the
-    // whole read boundary. This test fails if that regression returns.
+  it("read boundary: denies the credential stores, never the whole home", () => {
     const home = realpathSync(homedir());
     for (const level of ["strict-sandbox", "workspace-write"] as const) {
       const p = buildSeatbeltProfile(level, "/private/tmp/ws");
-      expect(p).toContain(`(deny file-read* (subpath "${home}"))`);
-      expect(p).not.toContain(`(allow file-read* (subpath "${home}"))`);
+      expect(p).toContain(`(deny file-read* (subpath "${home}/.ssh"))`);
+      expect(p).toContain(`(deny file-read* (literal "${home}/.netrc"))`);
+      expect(p).not.toContain(`(deny file-read* (subpath "${home}"))`);
     }
   });
 
@@ -462,39 +475,34 @@ describe("seatbelt enforcement (macOS)", () => {
   }, 25_000);
 });
 
-// ── child read boundary (macOS) — release gate 1 ──
+// ── child read boundary (macOS) ──
 //
-// The release-gate probe of 2026-09-16 found that `(allow file-read*)` let a
-// sandboxed child read a sibling directory's canary. These tests reproduce
-// that read and pin the fix in both directions: denied under a sandboxed
-// level, readable under `unrestricted`, so a failure can never be a fixture
-// artifact.
+// A sandboxed child may read anything except credential stores
+// (HOME_READ_DENIES). The fixture is a throwaway $HOME whose `.ssh` holds the
+// canary (test-fake-home.ts). Both directions are pinned: denied under a
+// sandboxed level, readable under `unrestricted`, so a failure can never be a
+// fixture artifact.
 
 describe("child read boundary (macOS)", () => {
   const CANARY = "SYNTHETIC_CANARY_9f3a1c_not_a_real_secret";
   const nodeRead = (p: string) =>
     `node -e 'try{process.stdout.write(require("fs").readFileSync(${JSON.stringify(p)},"utf8"))}catch(e){process.stderr.write("ERR "+e.code);process.exit(3)}'`;
 
-  /**
-   * The boundary is `$HOME`-shaped, so the fixture has to live *under the
-   * real home* for the deny rule to apply at all — a fixture in $TMPDIR sits
-   * outside the boundary and reads happily. Disposable, synthetic, and
-   * removed in `finally`; never a real credential.
-   */
+  /** A throwaway $HOME with a credential store (`.ssh`) holding the canary and a workspace. */
   function fixture() {
-    const root = mkdtempSync(join(homedir(), ".nib-readgate-"));
-    const ws = join(root, "ws");
-    const sibling = join(root, "sibling");
+    const home = enterFakeHome(".nib-readgate-");
+    const ws = join(home.root, "ws");
+    const sibling = join(home.root, ".ssh");
     mkdirSync(ws, { recursive: true });
     mkdirSync(sibling, { recursive: true });
     const canaryPath = join(sibling, "canary.txt");
     writeFileSync(canaryPath, CANARY + "\n");
     writeFileSync(join(ws, "normal.txt"), "normal project file\n");
-    return { root, ws, sibling, canaryPath, cleanup: () => rmSync(root, { recursive: true, force: true }) };
+    return { root: home.root, ws, sibling, canaryPath, cleanup: home.restore };
   }
 
   itOnDarwin(
-    "workspace-write: sibling canary is denied via Node and shell; unsandboxed control still reads it",
+    "workspace-write: a credential-store canary is denied via Node and shell; unsandboxed control still reads it",
     async () => {
       const f = fixture();
       try {
@@ -527,7 +535,7 @@ describe("child read boundary (macOS)", () => {
     40_000,
   );
 
-  itOnDarwin("strict-sandbox: the same sibling denial holds at the read-only level", async () => {
+  itOnDarwin("strict-sandbox: the same credential denial holds at the read-only level", async () => {
     const f = fixture();
     try {
       const viaNode = await runCommand(nodeRead(f.canaryPath), f.ws, "strict-sandbox");
@@ -558,68 +566,22 @@ describe("child read boundary (macOS)", () => {
     }
   }, 30_000);
 
-  itOnDarwin("a synthetic canary in $HOME itself (outside the workspace) is unreadable", async () => {
-    // Proves the deny covers the home directory itself, not just the
-    // workspace's parent. The trusted root is the fixture workspace, so the
-    // bare home directory is outside it. Synthetic; removed immediately.
+  itOnDarwin("reads outside the credential stores are allowed: a sibling project, a home file, a path outside $HOME", async () => {
     const f = fixture();
-    const name = `.nib-readgate-home-${process.pid}.txt`;
-    const homeCanary = join(homedir(), name);
-    writeFileSync(homeCanary, CANARY + "\n");
-    try {
-      const control = await runCommand(`cat ${JSON.stringify(homeCanary)}`, f.ws, "unrestricted");
-      expect(control.stdout).toContain(CANARY);
-
-      const denied = await runCommand(`cat ${JSON.stringify(homeCanary)}`, f.ws, "workspace-write");
-      expect(denied.stdout).not.toContain(CANARY);
-      expect(denied.exit).not.toBe(0);
-
-      // `~` / $HOME expansion must not be a way around the boundary either.
-      const viaHomeExpansion = await runCommand(`cat "$HOME/${name}"`, f.ws, "workspace-write");
-      expect(viaHomeExpansion.stdout).not.toContain(CANARY);
-      expect(viaHomeExpansion.exit).not.toBe(0);
-    } finally {
-      rmSync(homeCanary, { force: true });
-      f.cleanup();
-    }
-  }, 30_000);
-
-  itOnDarwin("a canary outside $HOME is still readable when contained (recorded residual)", async () => {
-    // This test pins the *limit* of the boundary, not a protection. The deny
-    // rule subtracts $HOME; it does not enumerate the filesystem, so a path
-    // outside $HOME — here $TMPDIR — stays readable by a sandboxed child even
-    // though it is outside the workspace and outside every write root. That
-    // is residual 1 in docs/security-architecture-plan.md and the reason
-    // permission-ux-redesign.md discloses a "$HOME-shaped" read boundary
-    // instead of claiming general read isolation.
-    //
-    // It is asserted rather than merely observed so that tightening the
-    // boundary in future cannot pass silently: a change here must come with a
-    // doc change, and a regression in the other direction (a child that can
-    // no longer read its own scratch space) fails loudly too. Synthetic and
-    // disposable, like the fixtures above.
-    const f = fixture();
+    const sibling = join(f.root, "other-project");
+    mkdirSync(sibling);
+    writeFileSync(join(sibling, "notes.txt"), CANARY + "\n");
+    writeFileSync(join(f.root, "home-file.txt"), CANARY + "\n");
     const outsideDir = mkdtempSync(join(tmpdir(), "nib-readgate-outside-"));
-    const outsideCanary = join(outsideDir, "canary.txt");
-    writeFileSync(outsideCanary, CANARY + "\n");
+    writeFileSync(join(outsideDir, "notes.txt"), CANARY + "\n");
     try {
-      // Control: the same read with no profile. Both directions must read it;
-      // the point of the row is that containment does not change the answer.
-      const control = await runCommand(`cat ${JSON.stringify(outsideCanary)}`, f.ws, "unrestricted");
-      expect(control.stdout).toContain(CANARY);
-
-      const contained = await runCommand(`cat ${JSON.stringify(outsideCanary)}`, f.ws, "workspace-write");
-      expect(contained.exit).toBe(0);
-      expect(contained.stdout).toContain(CANARY);
-
-      const containedNode = await runCommand(nodeRead(outsideCanary), f.ws, "workspace-write");
-      expect(containedNode.exit).toBe(0);
-      expect(containedNode.stdout).toContain(CANARY);
-
-      // Pair the success with a denial in the same launch configuration. A
-      // "read succeeds" assertion is satisfied by a profile that never
-      // applied, so without this leg the test could pass for the wrong
-      // reason; the $HOME sibling canary must still be denied here.
+      for (const path of [join(sibling, "notes.txt"), join(f.root, "home-file.txt"), join(outsideDir, "notes.txt")]) {
+        const read = await runCommand(`cat ${JSON.stringify(path)}`, f.ws, "workspace-write");
+        expect(read.exit).toBe(0);
+        expect(read.stdout).toContain(CANARY);
+      }
+      // Pair the successes with a denial in the same launch configuration: a
+      // "read succeeds" assertion is satisfied by a profile that never applied.
       const denied = await runCommand(`cat ${JSON.stringify(f.canaryPath)}`, f.ws, "workspace-write");
       expect(denied.stdout).not.toContain(CANARY);
       expect(denied.exit).not.toBe(0);
@@ -629,7 +591,7 @@ describe("child read boundary (macOS)", () => {
     }
   }, 30_000);
 
-  itOnDarwin("listing the sibling directory is denied (readdir is not metadata)", async () => {
+  itOnDarwin("listing a credential directory is denied (readdir is not metadata)", async () => {
     const f = fixture();
     try {
       const listing = await runCommand(
@@ -1511,18 +1473,5 @@ describe("toolchain access (2026-10-10)", () => {
         h.cleanup();
       }
     });
-  });
-
-  it("adds configured readRoots to the read boundary", () => {
-    const h = fakeHome(["extra"]);
-    configureSandbox({ readRoots: [join(h.home, "extra")] });
-    try {
-      expect(buildSeatbeltProfile("workspace-write", "/private/tmp/ws")).toContain(
-        `(allow file-read* (subpath "${join(h.home, "extra")}"))`,
-      );
-    } finally {
-      configureSandbox({});
-      h.cleanup();
-    }
   });
 });

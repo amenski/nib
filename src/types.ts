@@ -1,4 +1,3 @@
-import type { DenialGroup } from "./sandbox/denials.js";
 
 export type Role = "system" | "user" | "assistant" | "tool";
 
@@ -62,13 +61,6 @@ export interface ToolOutput {
   error?: string;
   /** True ends the agent's turn after this tool result (attempt_completion). */
   stop?: boolean;
-  /**
-   * What the OS sandbox refused while this call ran, as reported by the kernel
-   * (sandbox/denials.ts). For display and decisions only: the model sees the
-   * `[nib] sandbox denied` line the handler already put in `content`, and
-   * `toolResultForHistory` ignores this field.
-   */
-  sandboxDenials?: DenialGroup[];
   /**
    * Data URLs (e.g. "data:image/png;base64,…") the model should see as images.
    * Tool results are text-only on the wire, so the agent loop re-emits these as

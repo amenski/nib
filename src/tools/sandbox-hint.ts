@@ -5,12 +5,16 @@ import { isSandboxedLevel, sandboxAllowsBrowser } from "../sandbox/seatbelt.js";
  * What a sandboxed shell command cannot do, said in advance so a model does not
  * spend a call discovering it. Byte-stable on purpose: it sits in the cached
  * prefix of every request (about 35 tokens), so it must never interpolate
- * anything. Measured 2026-10-10 — a session read a file under `$HOME` outside
- * the workspace with `cat … 2>/dev/null`, which hid the refusal and cost a
- * round trip before the model fell back to `read_file`.
+ * anything.
  */
 export const SANDBOX_TOOL_NOTE =
-  "When the OS sandbox is active, commands cannot read files in your home directory outside the workspace or write outside it — use read_file, list_files or glob for those paths.";
+  "When the OS sandbox is active, commands can write only inside the workspace and cannot read credential stores such as ~/.ssh. If a command fails with \"Operation not permitted\" and needs more, rerun it with unsandboxed: true — the user is asked first.";
+
+/** The `unsandboxed` argument both shell tools accept (run_bash, run_bash_background). */
+export const UNSANDBOXED_PARAM = {
+  type: "boolean",
+  description: "Run outside the OS sandbox. Only after the sandbox blocked this command; the user is asked to approve it.",
+} as const;
 
 /**
  * macOS reports a Seatbelt refusal as a plain EPERM, so the child's own output
@@ -27,7 +31,7 @@ const SANDBOX_BLOCKED = /Operation not permitted/;
  * a command produced, and this sentence is not.
  */
 export const SANDBOX_BLOCKED_HINT =
-  "[nib] The OS sandbox blocked that path. Files in your home directory outside the workspace can be read with read_file, list_files or glob — a shell command cannot reach them.";
+  "[nib] The OS sandbox blocked that. If the command needs it (a toolchain writing to its SDK or cache directory, say), rerun it with unsandboxed: true — the user is asked first.";
 
 /**
  * The note to append to a tool result, or "" when there is nothing to say: the

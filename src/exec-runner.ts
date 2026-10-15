@@ -5,7 +5,7 @@ import { buildRepoMap } from "./prompt.js";
 import { executeTool, registry, setSessionId, setSignal, setTimeoutToBackground, setSandboxLevel, setSessionTempDir, setWritePolicyLevel, setWriteRoots, setWebSearchConfig } from "./tools/index.js";
 import { createSessionTempDir } from "./sandbox/session-temp.js";
 import { configureSandbox } from "./sandbox/seatbelt.js";
-import { denialReader } from "./sandbox/denials.js";
+import { configureUnsandboxed } from "./sandbox/unsandboxed.js";
 import { filterToolDefs } from "./tools/filter.js";
 import { todoStore } from "./tools/todo.js";
 import { initPresets, createProvider, getPreset } from "./providers/presets.js";
@@ -90,7 +90,7 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
   }
 
   try {
-    const { loadConfig, workspaceOutsideHomeWarning, hasActiveSandboxContainment } = await import("./config/loader.js");
+    const { loadConfig, hasActiveSandboxContainment } = await import("./config/loader.js");
     const configResult = loadConfig(options.projectRoot);
     // Fail fast on config errors, same message shape as the TUI (cli.tsx) —
     // e.g. an invalid matcher regex is fatal in headless mode too; it must
@@ -149,35 +149,21 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
 
     // sandbox (permission-profile.md §8, phase (e)) — same resolution the
     // TUI uses; Seatbelt enforcement is identical headless.
-    setSandboxLevel(
+    const bashSandboxLevel =
       effectiveConfig.sandbox?.enabled &&
       effectiveConfig.permissionProfile &&
       effectiveConfig.permissionProfile.level !== "unrestricted"
         ? effectiveConfig.permissionProfile.level
-        : undefined,
-    );
+        : undefined;
+    setSandboxLevel(bashSandboxLevel);
     // Merge global sandbox.writeRoots with the startup-resolved --add-dir
     // roots. Project TOFU stripping can narrow only the config contribution;
     // explicit CLI roots remain session-scoped trusted roots.
-    // Global-only sandbox.readRoots / allowLocalNetwork / allowBrowser: set before any profile
+    // Global-only sandbox.allowLocalNetwork / allowBrowser: set before any profile
     // is built so every launch and the session-grant hash agree.
-    configureSandbox({ readRoots: configResult.config.sandbox?.readRoots, allowLocalNetwork: configResult.config.sandbox?.allowLocalNetwork, allowBrowser: configResult.config.sandbox?.allowBrowser });
+    configureSandbox({ allowLocalNetwork: configResult.config.sandbox?.allowLocalNetwork, allowBrowser: configResult.config.sandbox?.allowBrowser });
+    configureUnsandboxed({ sandboxLevel: bashSandboxLevel, allowUnsandboxedCommands: configResult.config.sandbox?.allowUnsandboxedCommands, excludedCommands: configResult.config.sandbox?.excludedCommands });
     setWriteRoots(writeRoots);
-    // The kernel's report of what the sandbox refuses (sandbox/denials.ts); on
-    // failure the output-matching hint stays the only signal.
-    if (hasActiveSandboxContainment(effectiveConfig)) {
-      const denialStream = await denialReader.start();
-      if (!denialStream.ok) writeErr(`sandbox denial stream unavailable (${denialStream.reason}) — falling back to output matching`);
-    }
-
-    // Read-boundary disclosure (see workspaceOutsideHomeWarning): the TUI
-    // shows this in its scrollback, so headless prints it too — this is the
-    // path where approvals run with nobody watching. Emitted as-is rather than
-    // under this file's `[warn]` prefix, because the copy carries its own
-    // marker like containmentWarning does.
-    const outsideHome = workspaceOutsideHomeWarning(effectiveConfig, options.projectRoot);
-    if (outsideHome) writeErr(outsideHome);
-
     const notifySpawnOptions: NotifySpawnOptions = {
       cwd: options.projectRoot,
       trustedRoot: options.projectRoot,

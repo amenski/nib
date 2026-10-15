@@ -58,11 +58,12 @@ export interface ToolExecOptions {
    */
   envelopeHash?: string;
   /**
-   * The model's id for this tool call. Lets a handler tie a sandbox denial the
-   * OS reports to the call that caused it (sandbox/denials.ts). Set by
-   * agent.ts on every call.
+   * Run this shell command outside the OS sandbox. Set only by agent.ts, after
+   * the permission flow approved this call — the model's `unsandboxed`
+   * argument alone changes nothing. The call carries no `envelopeHash` and no
+   * `onSandboxFailure`: it has no profile to bind either to.
    */
-  callId?: string;
+  unsandboxed?: boolean;
 }
 
 export interface AskQuestionOption {

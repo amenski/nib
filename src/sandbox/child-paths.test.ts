@@ -10,6 +10,7 @@ import { parseHooksConfig } from "../hooks/config.js";
 import { defaultCommandRunner } from "../ui/statusline/manager.js";
 import { fireNotify } from "../notify.js";
 import type { SandboxLevel } from "./seatbelt.js";
+import { enterFakeHome } from "./test-fake-home.js";
 
 // ── child launch paths (macOS) — release gate 3 ──
 //
@@ -24,7 +25,7 @@ import type { SandboxLevel } from "./seatbelt.js";
 // surface — runBashTimed, jobManager, MCPClient.connect, HookRunner.dispatch,
 // defaultCommandRunner, fireNotify — and the child does three things:
 //
-//   1. read a synthetic canary in a sibling directory under the real $HOME
+//   1. read a synthetic canary in a credential store (`.ssh`) under a throwaway $HOME
 //      → must be DENIED                                   (gate 1)
 //   2. create and write `.git/hooks/pre-commit`
 //      → must be DENIED                                   (gate 2)
@@ -77,9 +78,10 @@ interface ProbeFixture {
 }
 
 /**
- * The boundary is `$HOME`-shaped, so the fixture has to live *under the real
- * home* for the read deny to apply at all — a fixture in $TMPDIR sits outside
- * the boundary and reads happily, which would make the read probe vacuous.
+ * The boundary denies credential stores under `$HOME`, so the fixture runs
+ * under a throwaway `$HOME` whose `.ssh` holds the canary (see
+ * test-fake-home.ts) — a canary anywhere else would read happily and make the
+ * read probe vacuous.
  * `ws` doubles as the trusted root in every call below, so the writes under
  * test are permitted by the workspace grant, not by the temp carve-outs.
  *
@@ -88,9 +90,10 @@ interface ProbeFixture {
  * the same deny against a real repository and a real submodule gitdir.)
  */
 function fixture(): ProbeFixture {
-  const root = mkdtempSync(join(homedir(), ".nib-childpaths-"));
+  const home = enterFakeHome(".nib-childpaths-");
+  const root = home.root;
   const ws = join(root, "ws");
-  const sibling = join(root, "sibling");
+  const sibling = join(root, ".ssh");
   const scratch = join(root, "scratch");
   mkdirSync(ws, { recursive: true });
   mkdirSync(sibling, { recursive: true });
@@ -104,7 +107,7 @@ function fixture(): ProbeFixture {
     scratch,
     canaryPath,
     hookPath: join(ws, ".git", "hooks", "pre-commit"),
-    cleanup: () => rmSync(root, { recursive: true, force: true }),
+    cleanup: home.restore,
   };
 }
 

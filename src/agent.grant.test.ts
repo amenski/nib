@@ -18,6 +18,7 @@ vi.mock("./prompt.js", () => ({
 import { runAgent, type AgentOptions } from "./agent.js";
 import { PermissionEngine } from "./permissions/index.js";
 import { bashEnvelopeGrants, isEligibleForGrant, type BashEnvelope } from "./permissions/session-grant.js";
+import { configureUnsandboxed } from "./sandbox/unsandboxed.js";
 import { buildSandboxProfile, isSandboxedLevel, sandboxEnvelopeHash, type SandboxLevel } from "./sandbox/seatbelt.js";
 import { executeTool, setSandboxLevel, setSessionId, setSessionTempDir, setWriteRoots } from "./tools/index.js";
 import type { Message } from "./types.js";
@@ -145,12 +146,13 @@ async function drive(
     askUser?: ReturnType<typeof grantOnOffer>;
     permissions?: PermissionEngine;
     tool?: string;
+    extraArgs?: Record<string, unknown>;
   } = {},
 ): Promise<Driven> {
   launches = [];
   const askUser = overrides.askUser ?? grantOnOffer();
   const { provider } = makeProvider([
-    ...commands.map((command, i) => callTurn(`call_${i}`, overrides.tool ?? "run_bash", { command })),
+    ...commands.map((command, i) => callTurn(`call_${i}`, overrides.tool ?? "run_bash", { command, ...overrides.extraArgs })),
     textTurn("done"),
   ]);
   const appendPermission = vi.fn(async (_sessionId: string, _record: Record<string, unknown>) => {});
@@ -528,6 +530,87 @@ describe("sandboxed Bash session grant", () => {
     const after = await drive([OPAQUE], { envelope, askUser: grantOnOffer() });
     expect(after.askUser).toHaveBeenCalledTimes(1);
     expect(decisions(after)).toEqual(["granted"]);
+  });
+});
+
+describe("unsandboxed Bash", () => {
+  beforeEach(() => {
+    writeRoots = [];
+    clearGrants();
+    spawnSpy.mockReset();
+    onLaunch = (child) => {
+      setImmediate(() => child.close(0, "ok"));
+    };
+    spawnSpy.mockImplementation((file: string, args: string[]) => {
+      const child = new FakeChild();
+      launches.push({ file, args, child });
+      onLaunch(child);
+      return child;
+    });
+    setSessionId(SESSION);
+    setSandboxLevel("workspace-write");
+    setWriteRoots(writeRoots);
+    setSessionTempDir(SCRATCH);
+    configureUnsandboxed({ sandboxLevel: "workspace-write" });
+  });
+
+  afterEach(() => {
+    clearGrants();
+    setSandboxLevel(undefined);
+    setWriteRoots(undefined);
+    setSessionTempDir(undefined);
+    configureUnsandboxed({});
+  });
+
+  it("asks even when the envelope auto-grants, offers no grant, and launches with no profile", async () => {
+    const driven = await drive([OPAQUE], { envelope: makeEnvelope({ autoGrant: true }), extraArgs: { unsandboxed: true } });
+
+    expect(driven.askUser).toHaveBeenCalledTimes(1);
+    expect((driven.askUser.mock.calls[0] as unknown[])[2]).toBeUndefined();
+    expect(driven.rows.some((row) => row.decision === "allow-by-envelope-grant")).toBe(false);
+    expect(bashEnvelopeGrants.active(SESSION, "run_bash")).toBeNull();
+    // The one launch is the bare command, not sandbox-exec.
+    expect(driven.launches.map((l) => l.file)).toEqual([OPAQUE]);
+  });
+
+  it("does not run when the user declines", async () => {
+    const driven = await drive([OPAQUE], {
+      envelope: makeEnvelope({ autoGrant: true }),
+      extraArgs: { unsandboxed: true },
+      askUser: vi.fn(async () => false) as never,
+    });
+
+    expect(driven.launches).toEqual([]);
+  });
+
+  it("is asked about even under an allow rule, which alone would run a plain call without a prompt", async () => {
+    const permissions = new PermissionEngine(
+      { rules: [{ tool: "run_bash", kind: "any", pattern: "", action: "allow", origin: "config" }] },
+      ROOT,
+    );
+    const plain = await drive(["echo hi"], { permissions });
+    expect(plain.askUser).not.toHaveBeenCalled();
+
+    const unsandboxed = await drive(["echo hi"], { permissions, extraArgs: { unsandboxed: true } });
+    expect(unsandboxed.askUser).toHaveBeenCalledTimes(1);
+    expect(unsandboxed.launches.map((l) => l.file)).toEqual(["echo hi"]);
+  });
+
+  it("asks for a command on sandbox.excludedCommands without the model asking", async () => {
+    configureUnsandboxed({ sandboxLevel: "workspace-write", excludedCommands: ["flutter"] });
+    const driven = await drive(["flutter build apk"], { envelope: makeEnvelope({ autoGrant: true }) });
+
+    expect(driven.askUser).toHaveBeenCalledTimes(1);
+    expect(driven.launches.map((l) => l.file)).toEqual(["flutter build apk"]);
+  });
+
+  it("refuses the request, without asking, when sandbox.allowUnsandboxedCommands is false", async () => {
+    configureUnsandboxed({ sandboxLevel: "workspace-write", allowUnsandboxedCommands: false });
+    const driven = await drive([OPAQUE], { envelope: makeEnvelope({ autoGrant: true }), extraArgs: { unsandboxed: true } });
+
+    expect(driven.askUser).not.toHaveBeenCalled();
+    expect(driven.launches).toEqual([]);
+    expect(String(driven.messages.find((m) => m.role === "tool")?.content)).toContain("UNSANDBOXED_NOT_ALLOWED");
   });
 });
 

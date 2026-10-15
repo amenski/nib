@@ -17,7 +17,6 @@ import type {
   StatusLineProviderConfig,
 } from "./types.js";
 import { sanitizeText } from "./sanitize.js";
-import { denialReader } from "../../sandbox/denials.js";
 
 export type SegmentProvider = (info: SessionInfo | null) => StatusSegment[];
 
@@ -94,9 +93,6 @@ export const defaultCommandRunner: CommandRunner = (command, opts) =>
       cwd,
       env: sessionTempDir ? buildChildEnvironment(sessionTempDir) : process.env,
     });
-
-    // Pid-exact only: the provider is not detached, so its group is nib's own.
-    if (spec) denialReader.attach(proc, { kind: "statusline" }, { matchGroup: false });
 
     let stdout = "";
     let stderr = "";

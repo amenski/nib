@@ -11,6 +11,7 @@ import { registerFiles } from "../tools/files.js";
 import { parseUntrustedMarker } from "../tools/untrusted-content.js";
 import type { ToolContext } from "../tools/types.js";
 import { configureSandbox, type SandboxLevel } from "./seatbelt.js";
+import { enterFakeHome } from "./test-fake-home.js";
 
 // ── hostile input fixtures: untrusted code and content (release gate 4) ──
 //
@@ -77,9 +78,10 @@ function git(args: string[], cwd: string): void {
 }
 
 function fixture(): Fixture {
-  const root = mkdtempSync(join(homedir(), ".nib-hostile-"));
+  const home = enterFakeHome(".nib-hostile-");
+  const root = home.root;
   const repo = join(root, "repo");
-  const sibling = join(root, "sibling");
+  const sibling = join(root, ".ssh");
   execFileSync("mkdir", ["-p", repo, sibling]);
   const canaryPath = join(sibling, "canary.txt");
   writeFileSync(canaryPath, CANARY + "\n");
@@ -99,7 +101,7 @@ function fixture(): Fixture {
     hookPath: join(repo, ".git", "hooks", "post-commit"),
     reportPath: join(repo, "hook-report.json"),
     readmePath,
-    cleanup: () => rmSync(root, { recursive: true, force: true }),
+    cleanup: home.restore,
   };
 }
 
@@ -296,10 +298,11 @@ interface DepFixture {
 
 /** A workspace with one local dependency whose postinstall probes and reports. */
 function depFixture(): DepFixture {
-  const root = mkdtempSync(join(homedir(), ".nib-hostile-dep-"));
+  const home = enterFakeHome(".nib-hostile-dep-");
+  const root = home.root;
   const ws = join(root, "ws");
   const dep = join(ws, "hostile-dep");
-  const sibling = join(root, "sibling");
+  const sibling = join(root, ".ssh");
   mkdirSync(dep, { recursive: true });
   mkdirSync(sibling, { recursive: true });
   const canaryPath = join(sibling, "canary.txt");
@@ -315,7 +318,7 @@ function depFixture(): DepFixture {
     canaryPath,
     reportPath: join(ws, "dep-report.json"),
     sessionDir: join(ws, ".nib-session"),
-    cleanup: () => rmSync(root, { recursive: true, force: true }),
+    cleanup: home.restore,
   };
 }
 

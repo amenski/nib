@@ -26,7 +26,7 @@ import {
   type BashEnvelope,
 } from "./permissions/session-grant.js";
 import type { SandboxFailureReason } from "./sandbox/launcher.js";
-import { isAmbientGroup, summarizeDenials } from "./sandbox/denials.js";
+import { unsandboxedRequestsAllowed, unsandboxedRun } from "./sandbox/unsandboxed.js";
 import type { ToolExecOptions } from "./tools/types.js";
 
 export type ToolExecutor = (call: ToolCall, exec?: ToolExecOptions) => Promise<ToolOutput>;
@@ -179,12 +179,6 @@ export interface AgentOptions {
   onToolStart?: (name: string, args: Record<string, unknown>) => void;
   onToolResult?: (name: string, result: ToolOutput) => void;
   onDiagnostic?: (msg: string) => void;
-  /**
-   * The OS refused something while a tool call ran (sandbox/denials.ts); the
-   * text is the one-line summary. Separate from `onDiagnostic` because it is
-   * routine information, not a warning — the UI renders it dim.
-   */
-  onSandboxDenial?: (summary: string) => void;
   onRetry?: (msg: string) => void;
   onCompacted?: (msg: string) => void;
   onLoopDetected?: (msg: string) => void;
@@ -291,7 +285,6 @@ function isTransientNetworkError(err: Error): boolean {
  * injects a whole SKILL.md body), so repeating even its first line would send
  * the same thing twice and invite answering it twice.
  */
-/** A command that trips many denials must not become a stream of prompts. */
 const STEERING_NOTE =
   "The user's latest message was typed while you were working. Answer it once, then continue the task.";
 
@@ -481,8 +474,6 @@ export async function runAgent(
     const seenCalls = new Map<string, number>();
     const currentEnvelope = (): BashEnvelope | undefined =>
       typeof options.bashEnvelope === "function" ? options.bashEnvelope() : options.bashEnvelope;
-    // check_job reports a job's denials on every poll; say each once.
-    const reportedJobDenials = new Set<string>();
     let failedStreak = 0;
     let warnedRepeat = false;
     let warnedFailures = false;
@@ -746,11 +737,17 @@ export async function runAgent(
         // decision L): the profile gate (layer 1) denies terminally before
         // rule resolution — no profile (feature off) passes straight through
         // to the unchanged engine, so today's behavior is byte-for-byte.
-        const { action, winningRule, wasUnresolved, reason, isGuarded } = authorize(
+        const { action: resolvedAction, winningRule, wasUnresolved, reason, isGuarded } = authorize(
           { tool: tc.name, arguments: tc.arguments },
           permissions,
           permissionProfile,
         );
+        // A shell call that leaves the OS sandbox (sandbox/unsandboxed.ts). It
+        // takes no envelope grant — there is no profile to bind consent to —
+        // and an unsandboxed run the model asked for is never quieted by an
+        // allow rule: it is always asked about, and never remembered.
+        const unsandboxedKind = unsandboxedRun(tc.name, tc.arguments);
+        const action = unsandboxedKind === "requested" && resolvedAction === "allow" ? "ask" : resolvedAction;
         const subject = permissionSubjectText(tc.name, tc.arguments);
         const audit = async (
           decision: PermissionDecision,
@@ -800,8 +797,17 @@ export async function runAgent(
         // approval path, so the channel is open for every sandboxed Bash call —
         // including one a rule allowed without a prompt. Grant coverage is
         // decided separately, below.
-        if (tc.name === "run_bash" && currentEnvelope() !== undefined) {
+        if (tc.name === "run_bash" && currentEnvelope() !== undefined && unsandboxedKind === undefined) {
           exec = { onSandboxFailure };
+        }
+
+        // The model asked to leave the sandbox where that is switched off.
+        if (unsandboxedKind === "requested" && !unsandboxedRequestsAllowed()) {
+          const msg = "UNSANDBOXED_NOT_ALLOWED: running outside the sandbox is turned off here (sandbox.allowUnsandboxedCommands is false, or the level is strict-sandbox). Work within the sandbox or ask the user to run the command themselves.";
+          options.onDiagnostic?.("denied");
+          await audit("deny-by-rule", "unsandboxed run refused: not allowed at this level or by sandbox.allowUnsandboxedCommands");
+          appendFreshToolResult(tc.id, tc.name, msg);
+          return { denied: true };
         }
 
         if (action === "deny") {
@@ -837,6 +843,7 @@ export async function runAgent(
             const liveEnvelope = currentEnvelope();
             const envelope =
               options.sessionId !== undefined &&
+              unsandboxedKind === undefined &&
               isEligibleForGrant({
                 toolName: tc.name,
                 args: tc.arguments,
@@ -987,6 +994,9 @@ export async function runAgent(
             return { denied: true };
           }
         }
+        // Set after every approval path above, so the launch drops its profile
+        // only for a call the permission flow let through.
+        if (unsandboxedKind !== undefined) exec = { ...exec, unsandboxed: true };
       } else if (await hookBlocks(tc, "PreToolUse")) {
         // No permission engine — the hook is the only gate.
         hookDenied(tc, "PreToolUse");
@@ -1022,7 +1032,7 @@ export async function runAgent(
         exec = gate.exec;
       }
 
-      const result = preResult ?? await executeTool(tc, { ...exec, callId: tc.id });
+      const result = preResult ?? await executeTool(tc, exec);
       executedAny = true;
       // PostToolUse / PostToolUseFailure: hook stdout appends to the result
       // (hooks-spec.md §2) before it reaches the model or the UI preview.
@@ -1039,17 +1049,6 @@ export async function runAgent(
         }
       }
       options.onToolResult?.(tc.name, result);
-      // The user's scrollback skips probes of the kind every toolchain makes at
-      // startup (isAmbientGroup); the model's copy of the result keeps them.
-      const shown = result.sandboxDenials?.filter((g) => !isAmbientGroup(g)) ?? [];
-      if (shown.length > 0) {
-        const summary = summarizeDenials(shown);
-        const pollKey = tc.name === "check_job" ? `${String(tc.arguments.job_id)}:${summary}` : undefined;
-        if (pollKey === undefined || !reportedJobDenials.has(pollKey)) {
-          if (pollKey !== undefined) reportedJobDenials.add(pollKey);
-          options.onSandboxDenial?.(summary);
-        }
-      }
       const historyContent = toolResultForHistory(result);
 
       const callKey = `${tc.name}:${JSON.stringify(tc.arguments)}`;
@@ -1168,7 +1167,7 @@ export async function runAgent(
       const preResults = new Map<string, ToolOutput>();
       const toExecute = parallelReads.filter((tc) => !preDenied.get(tc.id));
       const settled = await Promise.allSettled(
-        toExecute.map(tc => executeTool(tc, { callId: tc.id })),
+        toExecute.map(tc => executeTool(tc)),
       );
       for (let i = 0; i < toExecute.length; i++) {
         const r = settled[i];

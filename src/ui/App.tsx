@@ -78,6 +78,7 @@ import { toolResultForHistory } from "../agent.js";
 import type { Message } from "../types.js";
 import type { AskQuestionItem } from "../tools/types.js";
 import { setAskQuestion } from "../tools/index.js";
+import { unsandboxedRun } from "../sandbox/unsandboxed.js";
 import { ModelsDropdown, EffortSelector } from "./components/index.js";
 import ThemeDropdown, { persistThemeChoice } from "./components/ThemeDropdown/index.js";
 import { USER_ECHO_TAG, COMMAND_ECHO_TAG, BULLET_TAG, ANSWER_CONT_TAG, TOOL_HEADER_TAG, TOOL_RESULT_TAG, ANSI_CLEAR_SCREEN } from "./constants.js";
@@ -103,7 +104,6 @@ import {
   lookupAction,
 } from "./keybindings.js";
 import { announceToScreenReader } from "./Accessibility.js";
-import { denialReader, groupDenials, isAmbientGroup, summarizeDenials } from "../sandbox/denials.js";
 
 // Display label for a queued item in the above-input stack. A large paste is
 // collapsed to a bracket summary ("[Pasted N lines]") rather than dumping the
@@ -464,28 +464,6 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
       }
     });
   }, [ctx]);
-
-  // Denials from surfaces that have no tool result to carry them — background
-  // jobs, hooks, MCP servers, the status line — reach the scrollback here, once
-  // per place. Foreground Bash reports through its own result (onSandboxDenial).
-  useEffect(() => {
-    const told = new Set<string>();
-    return denialReader.subscribe((surface, denial) => {
-      if (surface?.kind === "bash") return;
-      const label =
-        surface === null ? "during overlapping commands"
-        : surface.kind === "job" ? `job ${surface.jobId.slice(0, 8)}`
-        : surface.kind === "hook" ? `${surface.event} hook`
-        : surface.kind === "mcp" ? `MCP ${surface.server}`
-        : "status line";
-      const groups = groupDenials([denial]);
-      if (groups.every(isAmbientGroup)) return;
-      const key = `${label}|${groups[0]?.opClass}|${groups[0]?.key}`;
-      if (told.has(key)) return;
-      told.add(key);
-      pushOutput(theme.fg(theme.theme.textDim, `sandbox denied: ${summarizeDenials(groups)} (${label})`));
-    });
-  }, []);
 
   // Lifecycle hooks (hooks-spec.md): SessionStart fires once at session
   // startup, after the TOFU trust check, before the first turn. The App owns
@@ -1225,15 +1203,6 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           setActiveLineBoth("");
           scheduleOutput(theme.fg(theme.theme.warning, `⚠ ${msg}`));
         },
-        // Routine, not a warning: what the OS sandbox refused during a tool
-        // call. Same flush sequence as onDiagnostic, dim and without the ⚠.
-        onSandboxDenial: (summary: string) => {
-          flushReasoning();
-          flushStream();
-          if (activeLineRef.current) scheduleOutput(activeLineRef.current);
-          setActiveLineBoth("");
-          scheduleOutput(theme.fg(theme.theme.textDim, `sandbox denied: ${summary}`));
-        },
         onRetry: () => {},
         onCompacted: () => {},
         // Live sub-agent activity, styled after Claude Code's inline agent
@@ -1385,7 +1354,8 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           // never become a persisted rule — offering only once/deny is what
           // makes agent.ts's plain `true` an unambiguous per-call grant.
           const oneTimeOnly = toolName === "run_bash_background" || toolName === "apply_patch"
-            || isGitConfigOperation(toolName, args);
+            || isGitConfigOperation(toolName, args)
+            || unsandboxedRun(toolName, args) === "requested";
 
           // Auto-approve posture bypasses an ordinary rule-derived ask, but
           // never a result the bash normalizer couldn't safely classify, and
@@ -2028,6 +1998,9 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
       capabilityPlan: prompt.capabilityPlan,
       workingDir: prompt.workingDir,
       allowPersistentApproval: !prompt.oneTimeOnly,
+      description: unsandboxedRun(prompt.toolName, prompt.args) !== undefined
+        ? "Runs OUTSIDE the OS sandbox: full access to your files and accounts."
+        : undefined,
       envelope: prompt.envelope,
       origin: prompt.origin,
       explain: prompt.explain,

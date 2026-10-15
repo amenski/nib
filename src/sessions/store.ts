@@ -173,6 +173,21 @@ export interface SessionPermissionMetrics {
   envelopeGrantRevocations: number;
   /** Launches that could not confirm their Seatbelt profile; the command did not run. */
   sandboxFailures: number;
+  /** How many classified calls reached each tier (docs/command-risk-classifier.md §8). */
+  riskTierCounts: Record<RiskTier, number>;
+  /**
+   * Calls the classifier is what made ask: the engine resolved to allow and
+   * the verdict is `confirm`. These are the prompts the classifier adds, and
+   * the denominator of its false-positive rate (§11).
+   */
+  classifierCausedAsks: number;
+  /**
+   * Of those, the ones a user approved. Zero in shadow mode by construction —
+   * nothing was actually asked — so this reads as a rate only under `enforce`.
+   */
+  classifierCausedAsksApproved: number;
+  /** Calls whose verdict was `block`. */
+  blocks: number;
 }
 
 export interface TokenUsageRecord {

@@ -29,7 +29,43 @@ describe("session permission metrics", () => {
       envelopeGrantInvalidations: 0,
       envelopeGrantRevocations: 0,
       sandboxFailures: 0,
+      riskTierCounts: { safe: 0, benign: 0, confirm: 0, block: 0 },
+      classifierCausedAsks: 0,
+      classifierCausedAsksApproved: 0,
+      blocks: 0,
     });
+  });
+
+  it("counts the risk tiers, the asks it caused, and the blocks", () => {
+    const riskOf = (engineAction: string, nativeAction: string, tier: string, reasons: string[] = []) => ({
+      tier, engineAction, nativeAction, action: nativeAction,
+      score: 0.7, reasons, stage: "rules", version: "risk-1", parseStatus: "parsed",
+      features: {},
+    });
+    const metrics = computeSessionPermissionMetrics([
+      { tool: "run_bash", subject: "ls", decision: "allow-by-rule", risk: riskOf("allow", "allow", "safe") } as never,
+      // The classifier's own product: the engine would have allowed, the
+      // verdict asks, and the user then approved it.
+      { tool: "run_bash", subject: "cat .env", decision: "ask-approved", risk: riskOf("allow", "ask", "confirm", ["fs.secret-ref"]) } as never,
+      { tool: "run_bash", subject: "npm publish", decision: "ask-denied", reason: "denied by user at prompt", risk: riskOf("allow", "ask", "confirm", ["pkg.publish"]) } as never,
+      { tool: "run_bash", subject: "rm -rf /", decision: "deny-by-rule", risk: riskOf("deny", "deny", "block", ["rm.critical-path"]) } as never,
+      // The engine already asked: the classifier is not what made this a prompt.
+      { tool: "run_bash", subject: "curl https://x.example", decision: "ask-approved", risk: riskOf("ask", "ask", "confirm", ["net.egress"]) } as never,
+    ]);
+
+    expect(metrics.riskTierCounts).toEqual({ safe: 1, benign: 0, confirm: 3, block: 1 });
+    expect(metrics.classifierCausedAsks).toBe(2);
+    expect(metrics.classifierCausedAsksApproved).toBe(1);
+    expect(metrics.blocks).toBe(1);
+  });
+
+  it("counts rows written before the classifier existed nowhere, not as a tier", () => {
+    const metrics = computeSessionPermissionMetrics([
+      { tool: "run_bash", subject: "ls", decision: "allow-by-rule" },
+    ]);
+    expect(metrics.riskTierCounts).toEqual({ safe: 0, benign: 0, confirm: 0, block: 0 });
+    expect(metrics.classifierCausedAsks).toBe(0);
+    expect(metrics.blocks).toBe(0);
   });
 
   it("counts the session-grant lifecycle: consent prompts, reuse does not", () => {

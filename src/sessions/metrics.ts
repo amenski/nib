@@ -1,4 +1,5 @@
 import type { PermissionAuditRecord, SessionPermissionMetrics } from "./store.js";
+import type { RiskTier } from "../permissions/risk/rules.js";
 
 /**
  * Decisions a session's metrics count, exactly once each. Membership is
@@ -91,6 +92,10 @@ export function computeSessionPermissionMetrics(
   let envelopeGrantInvalidations = 0;
   let envelopeGrantRevocations = 0;
   let sandboxFailures = 0;
+  const riskTierCounts: Record<RiskTier, number> = { safe: 0, benign: 0, confirm: 0, block: 0 };
+  let classifierCausedAsks = 0;
+  let classifierCausedAsksApproved = 0;
+  let blocks = 0;
 
   for (const row of selected) {
     if (isPrompt(row)) permissionPrompts++;
@@ -104,6 +109,18 @@ export function computeSessionPermissionMetrics(
     if (row.decision === "grant-invalidated") envelopeGrantInvalidations++;
     if (row.decision === "grant-revoked") envelopeGrantRevocations++;
     if (row.decision === "sandbox-failure") sandboxFailures++;
+
+    // Rows written before the classifier existed carry no verdict; they are
+    // counted nowhere rather than folded into a tier they were never given.
+    const risk = row.risk;
+    if (risk !== undefined) {
+      riskTierCounts[risk.tier]++;
+      if (risk.tier === "block") blocks++;
+      if (risk.nativeAction === "ask" && risk.engineAction === "allow") {
+        classifierCausedAsks++;
+        if (isApproval(row)) classifierCausedAsksApproved++;
+      }
+    }
   }
 
   return {
@@ -115,5 +132,9 @@ export function computeSessionPermissionMetrics(
     envelopeGrantInvalidations,
     envelopeGrantRevocations,
     sandboxFailures,
+    riskTierCounts,
+    classifierCausedAsks,
+    classifierCausedAsksApproved,
+    blocks,
   };
 }

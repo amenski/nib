@@ -28,6 +28,13 @@ export const RISK_MODES: readonly RiskMode[] = ["off", "shadow", "enforce"];
 
 export interface RiskVerdict {
   tier: RiskTier;
+  /**
+   * What the rule engine resolved to on its own, before the clamp. Persisted
+   * so a shadow-mode row is readable without reconstructing the engine's
+   * answer from the decision vocabulary (proposal §8, and the baseline
+   * script's (features, tier, engineAction, userDecision) dump).
+   */
+  engineAction: PermissionAction;
   /** The action this tier would apply in enforce mode, before the clamp. */
   nativeAction: PermissionAction;
   /** §3.3's clamped action: `max(engine, native)`, what enforce mode returns. */
@@ -98,6 +105,7 @@ export function classifyRisk(input: RiskInput): RiskVerdict {
 
   return {
     tier,
+    engineAction: input.engine.action,
     nativeAction,
     action,
     score,

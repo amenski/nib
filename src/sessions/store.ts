@@ -147,6 +147,8 @@ export interface ClassifierEvidenceRecord {
  */
 export interface PermissionRiskRecord {
   tier: RiskTier;
+  /** What the rule engine resolved to on its own, before the clamp. */
+  engineAction: PermissionAction;
   /** The action the tier applies under `enforce`, and the clamped action. */
   nativeAction: PermissionAction;
   action: PermissionAction;

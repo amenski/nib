@@ -91,8 +91,12 @@ const SHORT_FLAG_CLUSTER = /^-[a-zA-Z]+$/;
  * arguments and tokens outside the run are left untouched; this only
  * targets the specific reordering/case/long-form evasion, not general
  * argument parsing.
+ *
+ * Exported for the risk classifier (permissions/risk/features.ts), which asks
+ * the same question — "does this invocation carry both r and f?" — and must
+ * not answer it with a second, differently-buggy flag reader.
  */
-function normalizeShortFlagCluster(tokens: string[]): string[] {
+export function normalizeShortFlagCluster(tokens: string[]): string[] {
   const command = tokens[0];
   const longMap = LONG_FLAG_MAP[command];
   const mapped = longMap ? tokens.map((t) => longMap[t] ?? t) : tokens;

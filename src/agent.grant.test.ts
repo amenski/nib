@@ -596,6 +596,17 @@ describe("unsandboxed Bash", () => {
     expect(unsandboxed.launches.map((l) => l.file)).toEqual(["echo hi"]);
   });
 
+  it("asks for an excluded command even under an allow rule", async () => {
+    configureUnsandboxed({ sandboxLevel: "workspace-write", excludedCommands: ["echo"] });
+    const permissions = new PermissionEngine(
+      { rules: [{ tool: "run_bash", kind: "any", pattern: "", action: "allow", origin: "config" }] },
+      ROOT,
+    );
+    const driven = await drive(["echo hi"], { permissions });
+    expect(driven.askUser).toHaveBeenCalledTimes(1);
+    expect(driven.launches.map((l) => l.file)).toEqual(["echo hi"]);
+  });
+
   it("asks for a command on sandbox.excludedCommands without the model asking", async () => {
     configureUnsandboxed({ sandboxLevel: "workspace-write", excludedCommands: ["flutter"] });
     const driven = await drive(["flutter build apk"], { envelope: makeEnvelope({ autoGrant: true }) });

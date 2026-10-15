@@ -744,10 +744,10 @@ export async function runAgent(
         );
         // A shell call that leaves the OS sandbox (sandbox/unsandboxed.ts). It
         // takes no envelope grant — there is no profile to bind consent to —
-        // and an unsandboxed run the model asked for is never quieted by an
-        // allow rule: it is always asked about, and never remembered.
+        // and is never quieted by an allow rule: whether the model asked for it
+        // or sandbox.excludedCommands matched, it is always asked about.
         const unsandboxedKind = unsandboxedRun(tc.name, tc.arguments);
-        const action = unsandboxedKind === "requested" && resolvedAction === "allow" ? "ask" : resolvedAction;
+        const action = unsandboxedKind !== undefined && resolvedAction === "allow" ? "ask" : resolvedAction;
         const subject = permissionSubjectText(tc.name, tc.arguments);
         const audit = async (
           decision: PermissionDecision,

@@ -39,9 +39,10 @@ export function unsandboxedRequestsAllowed(): boolean {
 }
 
 const ENV_ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=\S*\s+/;
-// Anything that chains, backgrounds or substitutes another command: a prefix
-// match must not smuggle a second command out of the sandbox.
-const CHAINING = /[;&|`\n]|\$\(/;
+// Anything that chains, backgrounds or substitutes another command (incl.
+// process substitution `<(…)`): a prefix match must not smuggle a second
+// command out of the sandbox.
+const CHAINING = /[;&|`\n\r]|\$\(|[<>]\(/;
 
 /**
  * Whether `command` starts with one of the excluded commands. Leading

@@ -31,8 +31,11 @@ describe("isExcludedCommand", () => {
   });
 });
 
+/** The run/allow predicates only answer where a sandbox exists — see seatbelt. */
+const itOnDarwin = it.skipIf(process.platform !== "darwin");
+
 describe("unsandboxedRun", () => {
-  it("reports a model request and an excluded command, for both shell tools", () => {
+  itOnDarwin("reports a model request and an excluded command, for both shell tools", () => {
     configureUnsandboxed({ sandboxLevel: "workspace-write", excludedCommands: ["flutter"] });
     expect(unsandboxedRun("run_bash", { command: "ls", unsandboxed: true })).toBe("requested");
     expect(unsandboxedRun("run_bash_background", { command: "ls", unsandboxed: true })).toBe("requested");
@@ -53,11 +56,14 @@ describe("unsandboxedRun", () => {
 });
 
 describe("unsandboxedRequestsAllowed", () => {
-  it("is on by default, off when the setting is false, and off at strict-sandbox", () => {
+  it("is on by default, and off when the setting is false", () => {
     configureUnsandboxed({ sandboxLevel: "workspace-write" });
     expect(unsandboxedRequestsAllowed()).toBe(true);
     configureUnsandboxed({ sandboxLevel: "workspace-write", allowUnsandboxedCommands: false });
     expect(unsandboxedRequestsAllowed()).toBe(false);
+  });
+
+  itOnDarwin("is off at strict-sandbox, which is read-only and has nothing to widen", () => {
     configureUnsandboxed({ sandboxLevel: "strict-sandbox" });
     expect(unsandboxedRequestsAllowed()).toBe(false);
   });

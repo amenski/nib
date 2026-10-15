@@ -557,7 +557,11 @@ describe("sandboxed Bash session grant", () => {
   });
 });
 
-describe("unsandboxed Bash", () => {
+// `unsandboxedRun` only ever answers where a sandbox exists to leave:
+// `configureUnsandboxed` gates its level through `isSandboxedLevel`, which is
+// false off darwin (seatbelt.ts). Skipped rather than asserted so the Linux
+// suite stays green without claiming the feature exists there.
+describe.skipIf(process.platform !== "darwin")("unsandboxed Bash", () => {
   beforeEach(() => {
     writeRoots = [];
     clearGrants();

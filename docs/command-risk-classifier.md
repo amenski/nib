@@ -446,16 +446,39 @@ destructive tier, `wasUnresolved`, unsandboxed, the session grant) resolves to
 This is pinned by a test (`agent.grant.test.ts`, "skips a shell call an explicit
 user allow rule produced") rather than left to be rediscovered.
 
-Two readings, for the owner:
+Three readings, for the owner:
 
 1. **Keep §6.1 and treat the stage as a data collector.** In `shadow` it still
-   labels every benign/safe shell and MCP call, which is exactly the shadow data
-   §13.1 said to gather before deciding. Its value is the judge's measured
-   false-positive rate on real traffic, not any change to today's decisions.
+   labels every benign/safe shell and MCP call, which is the shadow data §13.1
+   asked for. Its value is the judge's measured flag rate on real traffic, not
+   any change to today's decisions.
 2. **Loosen the exclusion** so an engine `allow` from a user rule is also
    judged — on the argument that a user rule answers "may this *shape* of
    command run", which is not the same question as "is *this* call what they
-   meant". That contradicts §6.1 as written and is the owner's call.
+   meant". That contradicts §6.1 as written. It also has a cost §12.2 predicts:
+   a `FLAG` would override the user's own rule, so `allow npm test:*` would
+   sometimes prompt anyway, which is how a classifier gets switched off.
+3. **Measure first, then decide** — the reading this build takes, and the reason
+   it ships on `enabled: false`.
+
+**How to answer it without changing any code.** Keeping §6.1 makes the
+counters unable to answer this: the judge skips the very population the decision
+is about, in *both* modes. But the evidence is already on every audit row — the
+calls loosening would affect are exactly the `benign`/`safe` ones a user rule
+allowed, and both facts are recorded:
+
+```bash
+jq -r 'select(.type=="permission" and (.risk.tier=="safe" or .risk.tier=="benign")
+        and .winningRule.action=="allow"
+        and (.winningRule.origin=="config" or .winningRule.origin=="session"))
+       | .subject' ~/.nib/sessions/*/*.jsonl | sort | uniq -c | sort -rn
+```
+
+Broad prefixes covering subcommands the rules cannot see (`make deploy`,
+`npm run publish:prod`, `docker push`) are the case for reading 2. `npm test`
+and `git status` are the case for leaving §6.1 alone. Read that before either
+changing the gate or paying for judge calls on a population that does not need
+them.
 
 Nothing here affects Decision 5: the stage cannot widen either way.
 

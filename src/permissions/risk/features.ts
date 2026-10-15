@@ -312,6 +312,76 @@ function hasRecursiveFlag(tokens: string[]): boolean {
  * lines become their own segments, which is imprecise but fail-closed — an
  * unparseable body reports a parse failure rather than a clean read.
  */
+/**
+ * Masks the shell noise that carries no command structure, keeping the text the
+ * same length so nothing else in the line shifts.
+ *
+ *   - **fd duplication** (`2>&1`, `>&-`, `<&3`). It contains the `&` that
+ *     `splitCompound` reads as a background separator, so splitting first turns
+ *     `cmd 2>&1` into the segments `cmd 2>` and `1` — a phantom command on the
+ *     audit row, for the most common redirect there is. Masks only inside double
+ *     quotes and unquoted text: in single quotes the text is literal.
+ *   - **`&>`** (bash's redirect-both) holds the same `&`; masked to a bare `>`
+ *     so its target is still read as a file redirect.
+ *   - **`$?`, `$$`, `$!`, `$#`** are always numeric and can carry no word, but
+ *     the tokenizer rejects any `$` in double quotes, so `; echo "exit: $?"`
+ *     reported a parse failure for an entirely ordinary command. Positional
+ *     parameters and `$@`/`$*` are deliberately NOT masked: those expand to
+ *     arbitrary words, and hiding them would fail open.
+ */
+function maskShellNoise(command: string): string {
+  let out = "";
+  let i = 0;
+  let inSingle = false;
+
+  while (i < command.length) {
+    const ch = command[i];
+    if (ch === "'" && !inSingle) {
+      inSingle = true;
+      out += ch;
+      i++;
+      continue;
+    }
+    if (ch === "'" && inSingle) {
+      inSingle = false;
+      out += ch;
+      i++;
+      continue;
+    }
+    if (inSingle) {
+      out += ch;
+      i++;
+      continue;
+    }
+
+    const rest = command.slice(i);
+    const fd = /^(\d*>&\d+|\d*>&-|<&\d+|\d*<&-)/.exec(rest);
+    if (fd) {
+      out += " ".repeat(fd[0].length);
+      i += fd[0].length;
+      continue;
+    }
+    if (rest.startsWith("&>")) {
+      out += " >";
+      i += 2;
+      continue;
+    }
+    const special = /^\$[?$!#]/.exec(rest);
+    if (special) {
+      // A visible placeholder, not spaces: these sit *inside* a word
+      // (`"exit: $?"`), and the audit row should show that something was
+      // masked rather than looking like it lost a word.
+      out += "__";
+      i += special[0].length;
+      continue;
+    }
+
+    out += ch;
+    i++;
+  }
+  return out;
+}
+
 function stripRedirects(segment: string): { cleaned: string; redirects: RiskRedirect[] } {
   const redirects: RiskRedirect[] = [];
   let cleaned = "";
@@ -901,7 +971,7 @@ function shellFeatures(command: string, input: RiskInput): Partial<RiskFeatures>
   const body = failedUnwrap ? extractQuotedArgLoose(commandText) : text;
   if (body === null) return { parse: "failed", longCommand, interpreterInline: false };
 
-  const rawSegments = splitCompound(body);
+  const rawSegments = splitCompound(maskShellNoise(body));
   const stripped = rawSegments.map(stripRedirects);
   const cleanedSegments = stripped.map((s) => s.cleaned).filter((s) => s !== "");
   if (cleanedSegments.length === 0) return { parse: "failed", longCommand, interpreterInline: false };

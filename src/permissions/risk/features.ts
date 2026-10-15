@@ -1,6 +1,6 @@
 import { homedir, tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { detectWrapper, splitCompound } from "../bash-normalize.js";
+import { detectWrapper, extractQuotedArgLoose, splitCompound } from "../bash-normalize.js";
 import { classifyCommandSegment, tokenize } from "../command-classifier.js";
 import { normalizeShortFlagCluster, type PermissionAction, type PermissionRule } from "../rules.js";
 
@@ -120,6 +120,13 @@ export interface RiskFeatures {
   interpreterInline: boolean;
   runner?: string;
   expansion: boolean;
+  /**
+   * The `$(…)`, backtick and `<(…)` subset of `expansion` — a body whose text
+   * is not the argv that runs. §5.2's `shell.expansion` confirm is scoped to
+   * this rather than to every `${VAR}`: a parameter expansion the surrounding
+   * words make visible is not the same hazard.
+   */
+  substitution: boolean;
   glob: boolean;
   absBinary: boolean;
   envAssign?: { name: string; value: string; safe: boolean };
@@ -498,6 +505,9 @@ interface StrippedSegment {
  * `sudo -u user`), and an unrecognized shape stops the walk with the wrapper
  * recorded — the rules then see a program they do not recognize rather than a
  * wrong one.
+ *
+ * An assignment ending in an operator is a statement of its own
+ * (`D=$(pwd); rm -rf "$D"`), not a prefix, and ends the walk untouched.
  */
 function stripWrappers(tokens: string[]): StrippedSegment {
   const wrappers: string[] = [];
@@ -508,8 +518,8 @@ function stripWrappers(tokens: string[]): StrippedSegment {
     const token = tokens[i];
     if (token === undefined) break;
 
-    const assign = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(token);
-    if (assign) {
+    const assign = /^([A-Za-z_][A-Za-z0-9_]*)=(.+)$/.exec(token);
+    if (assign && !/[;&|]$/.test(token)) {
       envAssigns.push([assign[1], assign[2]]);
       i++;
       continue;
@@ -526,6 +536,28 @@ function stripWrappers(tokens: string[]): StrippedSegment {
   }
 
   return { program: basenameLower(tokens[i] ?? ""), tokens: tokens.slice(i), wrappers, envAssigns };
+}
+
+/**
+ * Splits a whole command into its leading wrappers/assignments and the rest.
+ *
+ * The wrapper strip has to happen on the *command*, before `detectWrapper`,
+ * not only per segment: `FOO=1 bash -c 'rm -rf ~'` does not begin with `bash`,
+ * so the unwrap that catches `bash -c 'rm -rf ~'` would miss it and the call
+ * would fall through to a weaker verdict. Doing it here is what makes §5.1's
+ * "sudo rm, FOO=1 rm and bash -c 'rm …' all hit" true of a wrapped compound
+ * and not just of a bare program.
+ */
+function splitLeading(text: string): StrippedSegment & { rest: string } {
+  const tokens = text.trim().split(/\s+/).filter(Boolean);
+  const stripped = stripWrappers(tokens);
+  const consumed = tokens.length - stripped.tokens.length;
+  return { ...stripped, rest: tokens.slice(consumed).join(" ") };
+}
+
+function toEnvAssign(pair: [string, string] | undefined): RiskFeatures["envAssign"] {
+  if (!pair) return undefined;
+  return { name: pair[0], value: pair[1], safe: SAFE_ENV_VARS.has(pair[0]) };
 }
 
 // ── per-segment semantics (§4.2) ──
@@ -591,7 +623,12 @@ function secretRefsIn(tokens: string[]): string[] {
   return found;
 }
 
-function segmentFeatures(segment: string, redirects: RiskRedirect[], ctx: TargetContext): SegmentFeatures {
+function segmentFeatures(
+  segment: string,
+  redirects: RiskRedirect[],
+  ctx: TargetContext,
+  outerWrappers: readonly string[],
+): SegmentFeatures {
   const tokens = tokenize(segment) ?? segment.trim().split(/\s+/).filter(Boolean);
   const { program, tokens: after, wrappers, envAssigns } = stripWrappers(tokens);
   const args = after.slice(1);
@@ -624,10 +661,13 @@ function segmentFeatures(segment: string, redirects: RiskRedirect[], ctx: Target
     pkgFromLock: isPkgFromLock(program, verb, args),
     pkgPublish: isPkgPublish(program, verb),
     gitDiscard: program === "git" ? gitDiscardTags(after) : [],
-    gitRemoteWrite: program === "git" && verb === "remote" && ["add", "set-url"].includes(args[0]?.toLowerCase() ?? ""),
+    gitRemoteWrite: program === "git" && verb === "remote" && ["add", "set-url"].includes(args[1]?.toLowerCase() ?? ""),
     gitAmend: program === "git" && verb === "commit" && args.includes("--amend"),
     infraDestroy: isInfraDestroy(program, verb, args),
-    privEsc: wrappers.includes("sudo") || ["su", "doas", "launchctl", "systemctl"].includes(program) ||
+    privEsc:
+      outerWrappers.includes("sudo") ||
+      wrappers.includes("sudo") ||
+      ["su", "doas", "launchctl", "systemctl"].includes(program) ||
       (program === "chmod" && args.some((t) => t === "+s" || t === "u+s" || t === "g+s")) ||
       (program === "crontab" && args.some((t) => /^-[er]$/.test(t))),
     disarm: disarmFlags(after, program),
@@ -783,6 +823,7 @@ export function extractRiskFeatures(input: RiskInput): RiskFeatures {
     redirects: [],
     wrappers: [],
     expansion: false,
+    substitution: false,
     glob: false,
     absBinary: false,
     interpreterInline: false,
@@ -832,15 +873,39 @@ function shellFeatures(command: string, input: RiskInput): Partial<RiskFeatures>
   const longCommand = command.length > 2000;
   if (trimmed === "") return { parse: "failed", longCommand, interpreterInline: false };
 
-  const { text, failedUnwrap } = detectWrapper(trimmed);
-  if (failedUnwrap) return { parse: "failed", longCommand, interpreterInline: false };
+  const leading = splitLeading(trimmed);
+  // bash-normalize anchors its wrapper detection on the bare spelling, and
+  // deliberately so: its approval patterns are built against `bash -c '…'`,
+  // and `/bin/bash` would produce a different subject. For *recognition* the
+  // two are the same call, so the interpreter token is folded to its bare form
+  // here — only when it is the wrapper itself and carries `-c`, so
+  // `/bin/bash script.sh` is left as the opaque binary it is. The visible
+  // consequence is that `absBinary` does not see a path-qualified shell.
+  const commandText = leading.rest.replace(/^\S+\/(bash|sh)(\s+-c\s+)/, "$1$2");
+  const { text, failedUnwrap } = detectWrapper(commandText);
+  // A `bash -c '…'` whose body contains a substitution cannot be unwrapped as
+  // an approval subject (bash-normalize's extractQuotedArg refuses it), but the
+  // body is still *visible*, and reading it can only add risk, never remove it.
+  // So the features are extracted from it and the parse is reported as failed:
+  // `bash -c 'D=$(pwd); rm -rf "$D"'` blocks, and `bash -c "$(cat x)"` stays the
+  // fail-closed confirm it already was.
+  const body = failedUnwrap ? extractQuotedArgLoose(commandText) : text;
+  if (body === null) return { parse: "failed", longCommand, interpreterInline: false };
 
-  const rawSegments = splitCompound(text);
+  const rawSegments = splitCompound(body);
   const stripped = rawSegments.map(stripRedirects);
   const cleanedSegments = stripped.map((s) => s.cleaned).filter((s) => s !== "");
+  if (cleanedSegments.length === 0) return { parse: "failed", longCommand, interpreterInline: false };
 
-  const ctx: TargetContext = { ...targetContext(input), vars: collectVars(cleanedSegments) };
-  const segments = cleanedSegments.map((segment) => segmentFeatures(segment, stripped.flatMap((s) => s.redirects), ctx));
+  // The leading assignments are part of the command's variable environment:
+  // `D=$(pwd) rm -rf "$D"` resolves the same way as the two-statement form.
+  const ctx: TargetContext = {
+    ...targetContext(input),
+    vars: new Map([...leading.envAssigns, ...collectVars(cleanedSegments)]),
+  };
+  const segments = cleanedSegments.map((segment) =>
+    segmentFeatures(segment, stripped.flatMap((s) => s.redirects), ctx, leading.wrappers),
+  );
 
   // Redirect targets need the same path classification the command's own
   // arguments get, so `> /etc/hosts` and `rm -rf /etc` are measured against
@@ -850,20 +915,25 @@ function shellFeatures(command: string, input: RiskInput): Partial<RiskFeatures>
     .map((r) => (r.target ? { ...r, class: classifyTarget(r.target, ctx, { cwdCritical: false }).class } : r));
 
   const { interpreter, inline } = interpreterOf(segments);
+  const specialVars = unique([
+    ...leading.envAssigns.map(([name]) => name),
+    ...cleanedSegments.flatMap(specialVarNamesOf),
+  ]).filter(isSpecialVar);
 
   return {
-    parse: parseStatus(cleanedSegments, command.length, dangling),
+    parse: failedUnwrap ? "failed" : parseStatus(cleanedSegments, command.length, dangling),
     segments,
     redirects,
-    wrappers: unique(cleanedSegments.flatMap((s) => stripWrappersFor(s).wrappers)),
+    wrappers: unique([...leading.wrappers, ...cleanedSegments.flatMap((s) => stripWrappersFor(s).wrappers)]),
     ...(interpreter !== undefined ? { interpreter } : {}),
     interpreterInline: inline,
     runner: runnerOf(segments),
-    expansion: hasExpansion(trimmed),
-    glob: hasUnquotedGlob(trimmed),
+    expansion: hasExpansion(body),
+    substitution: hasSubstitution(body),
+    glob: hasUnquotedGlob(body),
     absBinary: absBinaryOf(segments),
-    envAssign: leadingEnvAssign(cleanedSegments),
-    specialVars: specialVarsOf(cleanedSegments),
+    envAssign: toEnvAssign(leading.envAssigns[0]) ?? leadingEnvAssign(cleanedSegments),
+    specialVars,
     longCommand,
     pipeToShell: hasPipeToShell(segments),
     secretEgress: hasSecretEgress(segments),
@@ -903,9 +973,14 @@ export function isDanglingOperator(command: string): boolean {
 }
 
 function hasExpansion(command: string): boolean {
-  if (/\$\(|`|<\(|>\(|\$\{/.test(command)) return true;
+  if (hasSubstitution(command)) return true;
+  if (/\$\{/.test(command)) return true;
   // An unquoted $VAR, as opposed to one a shell would not re-split.
   return /(^|[^"'])\$[A-Za-z_][A-Za-z0-9_]*/.test(command);
+}
+
+function hasSubstitution(command: string): boolean {
+  return /\$\(|`|<\(|>\(/.test(command);
 }
 
 function hasUnquotedGlob(command: string): boolean {
@@ -971,17 +1046,18 @@ function leadingEnvAssign(segments: string[]): RiskFeatures["envAssign"] {
   return undefined;
 }
 
-function specialVarsOf(segments: string[]): string[] {
-  const found = new Set<string>();
-  for (const segment of segments) {
-    for (const token of segment.trim().split(/\s+/)) {
-      const assign = /^([A-Za-z_][A-Za-z0-9_]*)=/.exec(token);
-      if (!assign) continue;
-      const name = assign[1];
-      if (SPECIAL_VARS.has(name) || name === "LD_PRELOAD" || name.startsWith("DYLD_")) found.add(name);
-    }
+/** The names an assignment-token list defines, e.g. ["PATH", "LD_PRELOAD"]. */
+function specialVarNamesOf(segment: string): string[] {
+  const names: string[] = [];
+  for (const token of segment.trim().split(/\s+/)) {
+    const assign = /^([A-Za-z_][A-Za-z0-9_]*)=/.exec(token);
+    if (assign) names.push(assign[1]);
   }
-  return [...found];
+  return names;
+}
+
+function isSpecialVar(name: string): boolean {
+  return SPECIAL_VARS.has(name) || name === "LD_PRELOAD" || name.startsWith("DYLD_");
 }
 
 /**

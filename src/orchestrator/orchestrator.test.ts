@@ -291,12 +291,11 @@ describe("Orchestrator", () => {
     // `getBashEnvelope` was wired, and a sub-run is handed one only when it is
     // an automatic grant (docs/permission-ux-redesign.md). The fourth names the
     // asking background task, so the prompt can say whose call it is. The fifth
-    // carries the risk classifier's reason and is `undefined` when the
-    // classifier is not why the call is being asked about.
+    // carries what the risk classifier read, which every prompt it ran on has.
     await deliveries.delivered();
     expect(currentAsk).toHaveBeenCalledWith("run_bash", { command: "npm test" }, undefined, {
       subagent: "run tests",
-    }, undefined);
+    }, expect.objectContaining({ tier: expect.any(String) }));
     expect(staleAsk).not.toHaveBeenCalled();
   });
 

@@ -134,7 +134,7 @@ type Prompter = (
   args: Record<string, unknown>,
   envelope?: BashEnvelope,
   origin?: { subagent: string },
-  policyRisk?: { tier: string; reason: string },
+  policyRisk?: { tier: string; reasons: string[]; message?: string },
 ) => Promise<boolean | "posture" | "envelope-grant">;
 
 function grantOnOffer() {
@@ -930,7 +930,7 @@ describe("command risk classifier: shadow logging (docs/command-risk-classifier.
       expect(driven.askUser).toHaveBeenCalledTimes(1);
       const tip = driven.askUser.mock.calls[0][4];
       expect(tip?.tier).toBe("confirm");
-      expect(tip?.reason).toContain("[fs.secret-ref]");
+      expect(tip?.message).toContain("[fs.secret-ref]");
       // Answered no, so it did not run.
       expect(driven.launches).toHaveLength(0);
       expect(driven.rows[0].decision).toBe("ask-denied");
@@ -959,7 +959,7 @@ describe("command risk classifier: shadow logging (docs/command-risk-classifier.
       expect(askUser).toHaveBeenCalledTimes(1);
       const tip = askUser.mock.calls[0][4];
       expect(tip?.tier).toBe("confirm");
-      expect(tip?.reason).toContain("rewrites a remote repository");
+      expect(tip?.message).toContain("rewrites a remote repository");
       expect(driven.rows[0].risk).toMatchObject({
         tier: "confirm",
         engineAction: "allow",
@@ -989,6 +989,21 @@ describe("command risk classifier: shadow logging (docs/command-risk-classifier.
       // The attempt is recorded (the counters read it) and the verdict is the
       // rules'.
       expect(risk.tier).not.toBe("confirm");
+    });
+
+    it("shows what it read in shadow mode, and never says it acted", async () => {
+      // The case that makes this distinction load-bearing: the classifier
+      // *would* block `git checkout -- .`, but under shadow the engine asked —
+      // and a sentence saying "Blocked by nib policy" on a prompt the engine
+      // created would be a lie about who is asking.
+      const askUser = vi.fn<Prompter>(async () => false);
+      const driven = await drive(["git checkout -- ."], { askUser, classifierMode: "shadow" });
+
+      // Exact, not `toMatchObject`: the point is that there is no fourth field
+      // carrying a sentence about an action that never happened.
+      expect(askUser.mock.calls[0][4]).toEqual({ tier: "block", reasons: ["git.history-rewrite"] });
+      // The read is still recorded on the row, which is shadow mode's product.
+      expect(driven.rows[0].decision).toBe("ask-denied");
     });
 
     it("skips a shell call an explicit user allow rule produced", async () => {

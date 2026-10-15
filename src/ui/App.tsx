@@ -1307,7 +1307,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           args: Record<string, unknown>,
           envelope?: BashEnvelope,
           origin?: { subagent: string },
-          policyRisk?: { tier: string; reason: string },
+          policyRisk?: { tier: string; reasons: string[]; message?: string },
         ) => {
           if (
             [

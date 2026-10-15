@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildPermissionRequest, capabilitySummary, grantConsentLines, permissionHeader, permissionOptions, riskLevel, scopeLine, type PermissionRequest } from "./PermissionPrompt.js";
+import { buildPermissionRequest, capabilitySummary, grantConsentLines, permissionHeader, permissionOptions, riskLevel, riskLine, scopeLine, type PermissionRequest } from "./PermissionPrompt.js";
 import type { PermissionRule } from "../permissions/index.js";
 import type { BashEnvelope } from "../permissions/session-grant.js";
 import { extractCapabilityPlan, unknownCapabilityPlan } from "../permissions/capabilities.js";
@@ -236,5 +236,37 @@ describe("permissionHeader", () => {
 
   it("is unchanged for a root-run ask", () => {
     expect(permissionHeader(req("run_bash"))).toBe("△ Permission required");
+  });
+});
+
+describe("the risk line", () => {
+  const base: PermissionRequest = { toolName: "run_bash", command: "cd /x && corepack pnpm exec vitest run > ../out.log" };
+
+  it("shows the tier and tags for a verdict that changed nothing", () => {
+    // The read is advisory: it is shown even when the classifier decided
+    // nothing, which is the case a user is most likely to hit — a verdict that
+    // merely agrees with the engine.
+    const request: PermissionRequest = {
+      ...base,
+      policyRisk: { tier: "confirm", reasons: ["fs.write-outside-roots", "unsandboxed"] },
+    };
+    expect(riskLine(request)).toBe("risk: confirm · fs.write-outside-roots, unsandboxed");
+    expect(request.policyRisk?.message).toBeUndefined();
+  });
+
+  it("shows only the tier when no rule matched", () => {
+    expect(riskLine({ ...base, policyRisk: { tier: "benign", reasons: [] } })).toBe("risk: benign");
+  });
+
+  it("carries the sentence only when the classifier is why the call is stricter", () => {
+    const request: PermissionRequest = {
+      ...base,
+      policyRisk: { tier: "confirm", reasons: ["fs.secret-ref"], message: "Asking first [fs.secret-ref]: this references a credential file." },
+    };
+    expect(request.policyRisk?.message).toContain("Asking first");
+  });
+
+  it("renders nothing at all when the classifier did not run", () => {
+    expect(riskLine(base)).toBeUndefined();
   });
 });

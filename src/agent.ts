@@ -272,8 +272,11 @@ export interface AgentOptions {
     args: Record<string, unknown>,
     envelope?: BashEnvelope,
     origin?: { subagent: string },
-    /** Present only when the risk classifier is why this call is being asked. */
-    policyRisk?: { tier: string; reason: string },
+    /**
+     * What the risk classifier read (always, when it ran), and — only when it
+     * is why this call is stricter — the sentence saying so.
+     */
+    policyRisk?: { tier: string; reasons: string[]; message?: string },
   ) => Promise<boolean | "posture" | "envelope-grant">;
   /**
    * Set by the orchestrator on a sub-agent's run: the label the permission
@@ -878,15 +881,29 @@ export async function runAgent(
         const action = applyRiskVerdict(engineAction, riskVerdict, riskMode);
 
         /**
-         * The classifier's own verdict, as the prompt and the tool error need
-         * it: present only when the classifier is what made this call stricter
-         * than the engine's own answer, so an ordinary ask keeps the reason the
-         * engine gave.
+         * Whether the classifier *acted* on this call: it applied a clamp, which
+         * takes enforce mode. Kept separate from what it *read*, because the two
+         * are shown differently and, under `shadow`, only one of them is true —
+         * a shadow verdict never made anything stricter, so a prompt must not
+         * say it did.
+         */
+        const riskActed =
+          riskMode === "enforce" && riskVerdict !== undefined && riskNarrowed(engineAction, riskVerdict);
+
+        /**
+         * What the prompt is shown about the classifier: its tier and reason
+         * tags whenever it ran (advisory — the user can see the read even in
+         * shadow mode), plus the sentence explaining *why this call is stricter*
+         * only when it is what made it stricter.
          */
         const policyRisk =
-          riskVerdict !== undefined && riskNarrowed(engineAction, riskVerdict) && riskVerdict.message !== undefined
-            ? { tier: riskVerdict.tier, reason: riskVerdict.message }
-            : undefined;
+          riskVerdict === undefined
+            ? undefined
+            : {
+                tier: riskVerdict.tier,
+                reasons: riskVerdict.reasons,
+                ...(riskActed && riskVerdict.message !== undefined ? { message: riskVerdict.message } : {}),
+              };
 
         const audit = async (
           decision: PermissionDecision,
@@ -973,7 +990,10 @@ export async function runAgent(
           // sentence says which rule fired and how to rewrite the call, which
           // is what keeps a block from becoming a retry loop. An engine deny
           // keeps its existing message — there the rule is the whole answer.
-          const msg = policyRisk ? `Permission denied. ${policyRisk.reason}` : `Permission denied for ${tc.name}`;
+          const msg =
+            riskActed && policyRisk?.message !== undefined
+              ? `Permission denied. ${policyRisk.message}`
+              : `Permission denied for ${tc.name}`;
           options.onDiagnostic?.("denied");
           // Layer 1 (profile) and layer 2 (rule) denies share the same tool
           // message; the audit row names the winning layer so the trail stays
@@ -982,7 +1002,7 @@ export async function runAgent(
           // acted — and the verdict on the row says which rule and why.
           if (reason === "deny-by-profile") {
             await audit("deny-by-profile", "deny by profile (layer 1)");
-          } else if (policyRisk) {
+          } else if (riskActed) {
             await audit("deny-by-rule", `denied by the risk classifier (${riskVerdict?.reasons.join(", ")})`);
           } else {
             await audit("deny-by-rule", `deny rule matched (${winningRule?.origin ?? "rule"})`);
@@ -1148,13 +1168,14 @@ export async function runAgent(
             // line — the run is still going, so the model gets the sentence
             // that says how to rewrite the call rather than one that just says
             // no (docs/command-risk-classifier.md §7, §12.6).
-            const msg = policyRisk
-              ? `PERMISSION_DENIED: ${policyRisk.reason}`
+            const deniedByClassifier = riskActed && policyRisk?.message !== undefined;
+            const msg = deniedByClassifier
+              ? `PERMISSION_DENIED: ${policyRisk!.message}`
               : "PERMISSION_DENIED: headless — rule resolved to ask";
             options.onDiagnostic?.("denied");
             await audit(
               "headless-deny",
-              policyRisk
+              deniedByClassifier
                 ? `headless: denied by the risk classifier (${riskVerdict?.reasons.join(", ")})`
                 : "resolved to ask with no interactive prompter (headless)",
             );

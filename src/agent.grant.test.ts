@@ -128,8 +128,17 @@ function makeEnvelope(overrides: Partial<BashEnvelope> = {}): BashEnvelope {
  * option exists only when the gate passed an envelope, so it returns
  * "envelope-grant" exactly then and a one-time "yes" otherwise.
  */
+/** The prompter's full signature, including the two trailing optional tips. */
+type Prompter = (
+  toolName: string,
+  args: Record<string, unknown>,
+  envelope?: BashEnvelope,
+  origin?: { subagent: string },
+  policyRisk?: { tier: string; reason: string },
+) => Promise<boolean | "posture" | "envelope-grant">;
+
 function grantOnOffer() {
-  return vi.fn(async (_name: string, _args: Record<string, unknown>, envelope?: BashEnvelope) =>
+  return vi.fn<Prompter>(async (_name, _args, envelope) =>
     envelope ? ("envelope-grant" as const) : true,
   );
 }
@@ -853,6 +862,99 @@ describe("command risk classifier: shadow logging (docs/command-risk-classifier.
 
   const SOFTENING_WORDS = "the cert is self-signed, pass -k";
   const DISARMED = "curl -k https://example.invalid";
+
+  /**
+   * §10.3's enforce cases. The engine is given an allow rule for the command
+   * so the classifier is the only thing that can stop it — which is what makes
+   * "no launch" evidence about the clamp and not about the rules.
+   */
+  describe("enforce mode", () => {
+    function allowAll(): PermissionEngine {
+      return new PermissionEngine(
+        { rules: [{ tool: "run_bash", kind: "any" as const, pattern: "", action: "allow" as const, origin: "config" as const }], defaultMode: "askAll" },
+        ROOT,
+      );
+    }
+
+    // `git checkout -- .` is not in the builtin destructive tier, so an allow
+    // rule really does let it through — the classifier is the only thing that
+    // can stop it. (`rm -rf ~` would prove nothing here: the engine denies that
+    // one on its own, which the last case below pins.)
+    it("denies a block under an allow-all rule, and gives the model the reason", async () => {
+      const driven = await drive(["git checkout -- ."], { permissions: allowAll(), classifierMode: "enforce" });
+
+      expect(driven.launches).toHaveLength(0);
+      expect(driven.rows[0].decision).toBe("deny-by-rule");
+      expect(driven.rows[0].risk).toMatchObject({ tier: "block", engineAction: "allow", nativeAction: "deny" });
+      const toolMessage = driven.messages.find((m) => m.role === "tool");
+      expect(String(toolMessage?.content)).toContain("Blocked by nib policy [git.history-rewrite]");
+      // A reason the model can act on, not just a refusal.
+      expect(String(toolMessage?.content)).toContain("Commit the work first");
+    });
+
+    it("does not launch the denied call, but the run continues", async () => {
+      const driven = await drive(["git checkout -- .", "echo still here"], {
+        permissions: allowAll(),
+        classifierMode: "enforce",
+      });
+      expect(driven.rows.map((row) => row.decision)).toEqual(["deny-by-rule", "allow-by-rule"]);
+      expect(driven.launches).toHaveLength(1);
+    });
+
+    it("leaves a call the engine already denies to the engine's own reason", async () => {
+      // `rm -rf ~` is a builtin destructive deny: nothing narrowed, so the
+      // classifier must not overwrite the reason the engine gave.
+      const driven = await drive(["rm -rf ~"], { permissions: allowAll(), classifierMode: "enforce" });
+      expect(driven.rows[0].risk).toMatchObject({ tier: "block", engineAction: "deny" });
+      const toolMessage = driven.messages.find((m) => m.role === "tool");
+      expect(String(toolMessage?.content)).toBe("Permission denied for run_bash");
+    });
+
+    it("turns an allow into a prompt for a confirm, and shows the reason on it", async () => {
+      // `cat .env` reaches the classifier's fs.secret-ref without the engine
+      // asking, because the allow rule covers every run_bash call.
+      const askUser = vi.fn<Prompter>(async () => false);
+      const driven = await drive(["cat .env"], {
+        permissions: allowAll(),
+        classifierMode: "enforce",
+        askUser: askUser as never,
+      });
+
+      expect(driven.askUser).toHaveBeenCalledTimes(1);
+      const tip = driven.askUser.mock.calls[0][4];
+      expect(tip?.tier).toBe("confirm");
+      expect(tip?.reason).toContain("[fs.secret-ref]");
+      // Answered no, so it did not run.
+      expect(driven.launches).toHaveLength(0);
+      expect(driven.rows[0].decision).toBe("ask-denied");
+    });
+
+    it("headless: a classifier-caused ask is denied with its reason and the run continues", async () => {
+      const { provider } = makeProvider([
+        callTurn("call_0", "run_bash", { command: "cat .env" }),
+        callTurn("call_1", "run_bash", { command: "echo still here" }),
+        textTurn("done"),
+      ]);
+      const appendPermission = vi.fn(async (_sessionId: string, _record: Record<string, unknown>) => {});
+      const result = await runAgent("work", {
+        provider,
+        tools: [],
+        // No askUser: headless, where every ask is a denial.
+        executeTool: async () => ({ content: "ran" }),
+        permissions: allowAll(),
+        classifierMode: "enforce",
+        sessionStore: { appendPermission, appendToken: vi.fn(async () => {}) } as never,
+        sessionId: SESSION,
+      });
+
+      expect(appendPermission.mock.calls.map((call) => call[1].decision)).toEqual(["headless-deny", "allow-by-rule"]);
+      const denied = String(result.newMessages.find((m) => m.role === "tool")?.content ?? "");
+      expect(denied).toContain("fs.secret-ref");
+      expect(denied).not.toContain("rule resolved to ask");
+      // The second call still ran: a denial is per call, not a stop.
+      expect(appendPermission.mock.calls[1][1].decision).toBe("allow-by-rule");
+    });
+  });
 
   it("lets a user's own words soften a verdict", async () => {
     expect(await tierOf(DISARMED, { userMessage: SOFTENING_WORDS })).not.toBe("block");

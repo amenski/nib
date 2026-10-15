@@ -1,0 +1,8 @@
+{
+  "name": "nib-fixture-risky",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test src/sum.test.js"
+  }
+}

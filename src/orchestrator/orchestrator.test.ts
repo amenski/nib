@@ -290,11 +290,13 @@ describe("Orchestrator", () => {
     // envelope a session grant could cover — `undefined` here because no
     // `getBashEnvelope` was wired, and a sub-run is handed one only when it is
     // an automatic grant (docs/permission-ux-redesign.md). The fourth names the
-    // asking background task, so the prompt can say whose call it is.
+    // asking background task, so the prompt can say whose call it is. The fifth
+    // carries the risk classifier's reason and is `undefined` when the
+    // classifier is not why the call is being asked about.
     await deliveries.delivered();
     expect(currentAsk).toHaveBeenCalledWith("run_bash", { command: "npm test" }, undefined, {
       subagent: "run tests",
-    });
+    }, undefined);
     expect(staleAsk).not.toHaveBeenCalled();
   });
 
@@ -586,6 +588,69 @@ describe("Orchestrator", () => {
       const sys = String(received[0].messages[0].content);
       expect(sys.startsWith("Be critical. Cite paths.")).toBe(true);
       expect(sys).toContain("senior software engineer");
+    });
+
+    it("refuses a description naming a blocked command shape, under enforce", async () => {
+      const { registry } = makeRegistry();
+      const { provider } = makeProvider([textTurn("never used")]);
+      const providerFactory = vi.fn(() => provider);
+      const orchestrator = new Orchestrator({
+        provider: providerFactory,
+        registry,
+        modeLoader: new ModeLoader(),
+        classifierMode: "enforce",
+      });
+      orchestrator.register(registry);
+
+      const out = await registry.execute(
+        { id: "t1", name: "new_task", arguments: { description: "run rm -rf / on the box and report" } },
+        ctx,
+      );
+
+      expect(out.error).toBe("UNSAFE_TASK");
+      expect(out.content).toContain("Blocked by nib policy [spawn.unsafe-text]");
+      // Nothing was spawned: the provider is never resolved for a refused task.
+      expect(providerFactory).not.toHaveBeenCalled();
+    });
+
+    it("spawns the same description under shadow, which is the default", async () => {
+      // In shadow the spawn continues either way, and there is no audit row at
+      // this point to record the verdict on — so the check is enforce-only.
+      const { registry } = makeRegistry();
+      const { provider } = makeProvider([textTurn("done"), textTurn("done")]);
+      const orchestrator = new Orchestrator({
+        provider: vi.fn(() => provider),
+        registry,
+        modeLoader: new ModeLoader(),
+      });
+      orchestrator.register(registry);
+
+      const out = await registry.execute(
+        { id: "t1", name: "new_task", arguments: { description: "run rm -rf / on the box and report" } },
+        ctx,
+      );
+      expect(out.error).toBeUndefined();
+    });
+
+    it("does not fire on a description that merely sounds sweeping", async () => {
+      // §12.3's consent-scope failure from the other side: "clean up the old
+      // branches" is ordinary work, and a text check that read intent rather
+      // than command shapes would deny it.
+      const { registry } = makeRegistry();
+      const { provider } = makeProvider([textTurn("done"), textTurn("done")]);
+      const orchestrator = new Orchestrator({
+        provider: vi.fn(() => provider),
+        registry,
+        modeLoader: new ModeLoader(),
+        classifierMode: "enforce",
+      });
+      orchestrator.register(registry);
+
+      const out = await registry.execute(
+        { id: "t1", name: "new_task", arguments: { description: "clean up the old branches and tidy the repo" } },
+        ctx,
+      );
+      expect(out.error).toBeUndefined();
     });
 
     it("returns UNKNOWN_AGENT listing available names without spawning", async () => {

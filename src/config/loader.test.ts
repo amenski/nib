@@ -836,6 +836,50 @@ describe("loadConfig sandbox (permission-profile.md §8, phase (e))", () => {
   });
 });
 
+describe("loadConfig classifier.mode (global-only, docs/command-risk-classifier.md §9)", () => {
+  function writeGlobalSettings(obj: unknown): void {
+    writeFileSync(join(homeDir, "settings.json"), JSON.stringify(obj), "utf-8");
+  }
+
+  it("defaults to shadow without an unknown-field warning", () => {
+    const { config, errors, warnings } = loadConfig(projectDir);
+    expect(errors).toEqual([]);
+    expect(config.classifier).toEqual({ mode: "shadow" });
+    expect(warnings.some((w) => w.includes('unknown field "classifier"'))).toBe(false);
+  });
+
+  it("honors each valid mode from the global settings file", () => {
+    for (const mode of ["off", "shadow", "enforce"]) {
+      writeGlobalSettings({ classifier: { mode } });
+      const { config, errors } = loadConfig(projectDir);
+      expect(errors, mode).toEqual([]);
+      expect(config.classifier?.mode, mode).toBe(mode);
+    }
+  });
+
+  it("rejects an unknown mode rather than falling back quietly", () => {
+    writeGlobalSettings({ classifier: { mode: "audit" } });
+    const { config, errors } = loadConfig(projectDir);
+    expect(errors.some((e) => e.includes("config.classifier.mode: must be one of"))).toBe(true);
+    expect(config.classifier?.mode).toBe("shadow");
+  });
+
+  it("ignores a PROJECT mode — a project cannot switch a safety layer off", () => {
+    writeGlobalSettings({ classifier: { mode: "enforce" } });
+    writeProjectSettings({ classifier: { mode: "off" } });
+    const { config, warnings } = loadConfig(projectDir);
+    expect(config.classifier?.mode).toBe("enforce");
+    expect(warnings.some((w) => w.includes("classifier.mode is global-only"))).toBe(true);
+  });
+
+  it("rejects a non-object classifier", () => {
+    writeGlobalSettings({ classifier: "shadow" });
+    const { config, errors } = loadConfig(projectDir);
+    expect(config.classifier?.mode).toBe("shadow");
+    expect(errors).toEqual([]);
+  });
+});
+
 describe("loadConfig sandbox.autoAllowBash (global-only)", () => {
   function writeGlobalSettings(obj: unknown): void {
     writeFileSync(join(homeDir, "settings.json"), JSON.stringify(obj), "utf-8");

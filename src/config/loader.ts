@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { PermissionConfig, PermissionRule, PatternKind, PermissionAction, PermissionProfileConfig, PermissionProfileFsRule, PermissionProfileNetwork, ProfileLevel, FsAction } from "../permissions/index.js";
 import { compileGlob } from "../permissions/index.js";
+import { RISK_MODES, type RiskMode } from "../permissions/risk/index.js";
 import type { HooksConfig } from "../hooks/types.js";
 import { parseHooksConfig } from "../hooks/config.js";
 import { STATE_DIR_NAME, projectSettingsPath } from "./paths.js";
@@ -115,6 +116,13 @@ export interface DeepCodeSettings {
    *  `permissionProfile.fs`, whose "explicit rules narrow only" invariant
    *  this must not weaken. */
   sandbox?: { enabled: boolean; writeRoots?: string[]; autoAllowBash?: boolean; allowLocalNetwork?: boolean; allowBrowser?: boolean; allowUnsandboxedCommands?: boolean; excludedCommands?: string[] };
+
+  // ── Command risk classifier (docs/command-risk-classifier.md §9) ──
+  /** How the risk classifier acts on its verdict: `off`, `shadow` (label and
+   *  log only, the default), or `enforce` (clamp live). GLOBAL-only, read from
+   *  the user's own `~/.nib/settings.json` — a project setting `off` would
+   *  switch off a safety layer, the same reason `sandbox`'s keys are. */
+  classifier?: { mode: RiskMode };
 
   // ── MCP Servers ──
   mcpServers?: Record<string, McpServerConfig>;
@@ -403,6 +411,7 @@ const KNOWN_KEYS = new Set([
   "retention",
   "permissionProfile",
   "sandbox",
+  "classifier",
   "mcpServers",
   "notify",
   "webSearchTool",
@@ -1366,6 +1375,26 @@ export function loadConfig(projectDir?: string): LoadResult {
     if (!sandboxSupportedOnPlatform()) {
       warnings.push("sandbox is macOS-only; running policy-only");
     }
+  }
+
+  // ── classifier (docs/command-risk-classifier.md §9) ──
+  // `mode` decides whether the risk classifier only labels calls (`shadow`,
+  // the default), labels and clamps them (`enforce`), or does not run (`off`).
+  // GLOBAL-only, like sandbox.writeRoots and for the same reason: a project
+  // file that could set `off` would switch off a narrowing safety layer.
+  config.classifier = { mode: "shadow" };
+  if (isObject(globalRaw?.classifier) && "mode" in (globalRaw.classifier as Record<string, unknown>)) {
+    const raw = (globalRaw.classifier as Record<string, unknown>).mode;
+    if (typeof raw === "string" && RISK_MODES.includes(raw as RiskMode)) {
+      config.classifier.mode = raw as RiskMode;
+    } else {
+      errors.push(`config.classifier.mode: must be one of ${RISK_MODES.map((m) => `"${m}"`).join(" | ")}`);
+    }
+  }
+  if (isObject(projectRaw?.classifier) && "mode" in (projectRaw.classifier as Record<string, unknown>)) {
+    warnings.push(
+      "classifier.mode is global-only and was ignored in project .nib/settings.json — set it in ~/.nib/settings.json instead",
+    );
   }
 
   // ── mcpServers ──

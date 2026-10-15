@@ -81,6 +81,11 @@ are fatal — `main()` exits 1 (`src/cli.tsx`).
   // startup and runs policy-only. Default false.
   "sandbox": { "enabled": true },
 
+  // Command risk classifier (command-risk-classifier.md §9): labels every
+  // tool call safe/benign/confirm/block and, in "enforce", narrows what the
+  // rules already decided. Global-only. Default "shadow".
+  "classifier": { "mode": "shadow" },      // "off" | "shadow" | "enforce"
+
   // MCP servers for external tool discovery
   "mcpServers": {
     "filesystem": {
@@ -261,6 +266,26 @@ toolchain build caches under `$HOME` (`.gradle`, `.m2/repository`,
 `init.d`, `settings.xml`) is never writable; cargo/pub registry tokens and
 `~/.gradle/daemon` are neither readable nor writable (contained JVMs get a
 private daemon registry under `$TMPDIR`).
+
+### `classifier` (command risk)
+
+`"classifier": { "mode": "shadow" }` (**default `shadow`**) controls the
+command risk classifier (docs/command-risk-classifier.md). Every tool call
+gets a deterministic feature vector and a tier — `safe`, `benign`, `confirm`
+or `block` — recorded on its permission audit row. The tier only ever makes a
+call *more* restrictive than the rules already did (locked Decision 5,
+security-architecture-plan.md): `confirm` can turn an allow into an ask,
+`block` denies, and nothing here can quiet a prompt the rules wanted.
+
+| Mode | Effect |
+|---|---|
+| `off` | The classifier does not run. |
+| `shadow` | Labels and logs only; every decision is unchanged. |
+| `enforce` | The clamped action is applied, and the reason (§3.4) reaches the prompt and the model. |
+
+`mode` is **global-only** (`~/.nib/settings.json`); a project file's value is
+ignored with a warning, because setting `off` there would switch off a safety
+layer. An unrecognized value is an error rather than a silent fallback.
 
 ## 4. `refresh` (repaint cadence)
 

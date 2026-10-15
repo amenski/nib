@@ -80,10 +80,10 @@ export function riskNativeAction(tier: RiskTier): PermissionAction {
 
 export function applyRiskVerdict(
   engineAction: PermissionAction,
-  verdict: RiskVerdict,
+  verdict: RiskVerdict | undefined,
   mode: RiskMode,
 ): PermissionAction {
-  if (mode !== "enforce") return engineAction;
+  if (mode !== "enforce" || verdict === undefined) return engineAction;
   return mostRestrictive(engineAction, verdict.nativeAction);
 }
 

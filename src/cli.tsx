@@ -454,6 +454,7 @@ async function main() {
       return envelope?.autoGrant ? envelope : undefined;
     },
     hooks,
+    classifierMode: configResult.config.classifier?.mode,
   });
   orchestrator.register(registry);
 

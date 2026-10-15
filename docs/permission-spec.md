@@ -171,7 +171,11 @@ it from the raw command text.
    make the result *more* restrictive: `confirm` turns an `allow` into an
    `ask`, `block` denies. It can never quiet a prompt the rules asked for.
    Inactive under `classifier.mode: shadow` (the default), where the verdict is
-   recorded on the audit row and the engine's action stands unchanged.
+   recorded on the audit row and the engine's action stands unchanged. With
+   `classifier.model.enabled` the same step may also consult a small model, which
+   is *additive* to the clamp: it can move `safe|benign` to `confirm` and nothing
+   else, so it has no path to an allow and none to a deny
+   (docs/command-risk-classifier.md §6).
 
 ```
 resolve(tool, args)

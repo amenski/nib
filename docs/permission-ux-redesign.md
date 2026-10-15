@@ -342,3 +342,15 @@ No LLM permission judge, hostname guessing from command names, automatic
 approval of arbitrary scripts, persistent `allow all Bash`, or new network
 exception. The future network broker remains governed by
 `docs/security-network-broker.md`.
+
+> **Amended 2026-10-15 (owner decision).** The "no LLM permission judge" line
+> was scoped to *this redesign*, and the owner has since built one as the
+> command risk classifier's optional second stage
+> (`docs/command-risk-classifier.md` §6, `classifier.model.enabled`, default
+> **off**). What the line was protecting still holds, and is what bounds the
+> stage: it can only move a verdict *toward* a confirmation, never toward an
+> allow, so it cannot approve anything — Decision 5
+> (`security-architecture-plan.md:121`) and the "no automatic approval"
+> commitment above are both intact. The other three items are unchanged.
+> The stage's own implementation notes, including why it is close to inert
+> under `enforce`, are in the proposal's §6.3.

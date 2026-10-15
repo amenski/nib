@@ -95,7 +95,8 @@ transcript stays on disk for rewind and audit.
  "source":"subagent",
  "risk":{"tier":"block","engineAction":"deny","nativeAction":"deny","action":"deny",
          "score":1,"reasons":["rm.critical-path"],"stage":"rules","version":"risk-1",
-         "parseStatus":"parsed","features":{...}}}
+         "parseStatus":"parsed","features":{...},
+         "model":{"outcome":"ok","latencyMs":412}}}
 ```
 
 One row per permission decision. The canonical agent-emitted `decision`
@@ -123,6 +124,15 @@ before it existed, which must be read as "no verdict", not as a tier.
 `engineAction` is what the rule engine resolved to on its own, `nativeAction`
 what the tier applies under `enforce`, and `action` their clamped combination —
 so a row says both what happened and what `enforce` would have done.
+
+`stage` is `"rules+model"` once the optional second stage ran, and `model` then
+carries the attempt: `outcome` is one of `ok`, `flag`, `timeout`, `error`,
+`unparseable`, with `latencyMs` and, on a flag, the model's `reason` and the
+`tag` it chose. The field is present for the *failures* too, which is the point —
+every outcome but `flag` leaves the verdict unchanged, so without recording them
+a judge that silently times out would look identical to one that never ran.
+Rows written before the stage existed carry no `model`, which means the stage was
+inactive, not that it succeeded.
 
 **`source` — writer identity (decision H, subsystems.md §7).** Rows written
 by sub-agents spawned via `new_task` carry `"source":"subagent"`; top-level

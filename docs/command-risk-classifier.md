@@ -1,7 +1,11 @@
 # Command risk classifier — implementation proposal
 
-Status: **phases 0-2 built**, 2026-10-15. Phases 3 (stage-2 model judge) and 4
-(widening) are not built and remain the owner decisions listed in §13.
+Status: **phases 0-3 built**, 2026-10-15. Phase 3 (the stage-2 model judge) was
+an owner decision (§13.1) and the owner took it, amending the "no LLM permission
+judge" line in `docs/permission-ux-redesign.md` accordingly; it ships behind
+`classifier.model.enabled`, default **off**. Read §6.3 first — implementing §6.1
+verbatim showed the stage is nearly inert under `enforce`. Phase 4 (widening)
+is not built and remains open.
 Implementation: `src/permissions/risk/{features,rules,reasons,index}.ts`,
 `classifier.mode` (global-only, default `shadow`), the `risk` field on
 `PermissionAuditRecord`, the clamp in `agent.ts`'s `gateCall`, the headless
@@ -421,6 +425,40 @@ because stage 2 can only move `safe|benign → confirm`.
   is passed as a JSON string field, the prompt says it is data, and the model
   can only *escalate*. An injected "this is safe" buys the attacker nothing.
 
+### 6.3 As built: what §6.1's gate actually lets the stage do
+
+Implementing §6.1 verbatim produced a result worth stating plainly, because it
+changes what `classifier.model.enabled` is for.
+
+The stage runs only where the rules reached `safe`/`benign` **and** no explicit
+user allow rule produced the call (§6.1). But for `run_bash` the engine can only
+reach `allow` *through* a user allow rule — every other path (builtin guards, the
+destructive tier, `wasUnresolved`, unsandboxed, the session grant) resolves to
+`ask` or `deny`. So under `enforce`:
+
+- on a shell call the judge can run, but a `FLAG` cannot change anything: the
+  engine already asks, and `confirm` is also an ask;
+- the one place it *can* change an outcome is an MCP call allowed by
+  `defaultMode: allowAll` with no rule at all;
+- where the engine allowed a shell call through a user rule, the stage is
+  skipped by §6.1's own exclusion.
+
+This is pinned by a test (`agent.grant.test.ts`, "skips a shell call an explicit
+user allow rule produced") rather than left to be rediscovered.
+
+Two readings, for the owner:
+
+1. **Keep §6.1 and treat the stage as a data collector.** In `shadow` it still
+   labels every benign/safe shell and MCP call, which is exactly the shadow data
+   §13.1 said to gather before deciding. Its value is the judge's measured
+   false-positive rate on real traffic, not any change to today's decisions.
+2. **Loosen the exclusion** so an engine `allow` from a user rule is also
+   judged — on the argument that a user rule answers "may this *shape* of
+   command run", which is not the same question as "is *this* call what they
+   meant". That contradicts §6.1 as written and is the owner's call.
+
+Nothing here affects Decision 5: the stage cannot widen either way.
+
 ### 6.2 Bootstrapping without labelled data
 
 1. **Natural labels from `~/.nib/sessions/**/*.jsonl`.** Every
@@ -685,9 +723,10 @@ magnitude, not a target: their denominator is a different action mix.
 
 ## 13. Open decisions for the owner
 
-1. Stage 2 model judge at all (contradicts `permission-ux-redesign.md:339`).
-   Recommendation: build phases 0-2 without it, decide after seeing shadow
-   data.
+1. ~~Stage 2 model judge at all (contradicts `permission-ux-redesign.md:339`).~~
+   **Decided 2026-10-15:** built, behind `classifier.model.enabled` (default
+   off), with §339 amended rather than deleted. The open part is now narrower:
+   see §6.3 on whether §6.1's user-allow-rule exclusion should stand.
 2. Phase 4 widening for `safe` sandboxed commands. Recommendation: no, until
    the envelope grant's prompt count shows a residual worth it.
 3. `git.history-rewrite` as block vs confirm. Recommendation: block in MVP,

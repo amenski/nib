@@ -84,7 +84,14 @@ are fatal — `main()` exits 1 (`src/cli.tsx`).
   // Command risk classifier (command-risk-classifier.md §9): labels every
   // tool call safe/benign/confirm/block and, in "enforce", narrows what the
   // rules already decided. Global-only. Default "shadow".
-  "classifier": { "mode": "shadow" },      // "off" | "shadow" | "enforce"
+  "classifier": {
+    "mode": "shadow",                      // "off" | "shadow" | "enforce"
+    // The optional second stage (§6): a small model call that can only add a
+    // confirmation, never remove one. Default off. `id` names the judge as
+    // "provider/model"; absent picks a cheap-class model from a provider you
+    // have a key for.
+    "model": { "enabled": false, "id": "anthropic/claude-haiku-5-5" }
+  },
 
   // MCP servers for external tool discovery
   "mcpServers": {
@@ -286,6 +293,26 @@ security-architecture-plan.md): `confirm` can turn an allow into an ask,
 `mode` is **global-only** (`~/.nib/settings.json`); a project file's value is
 ignored with a warning, because setting `off` there would switch off a safety
 layer. An unrecognized value is an error rather than a silent fallback.
+
+#### `classifier.model` (the second stage)
+
+`"model": { "enabled": false }` (**default `false`**) turns on the optional model
+judge (command-risk-classifier.md §6). It exists to catch the long tail the rule
+lists miss, and it can only move `safe|benign` to `confirm` — never to a denial,
+never away from a confirmation, so it cannot widen access. Read §6.3 of the
+proposal before enabling it: under `enforce`, §6.1's gate leaves it able to
+change the outcome only for an MCP call allowed by `defaultMode`.
+
+| Key | Default | Effect |
+|---|---|---|
+| `enabled` | `false` | Runs the judge. Off means the classifier is rules-only, byte for byte as before. |
+| `id` | absent | The judge as `"provider/model"`. Absent picks a cheap-class model (`haiku`/`flash`/`mini`/`nano`/`small`/`lite`/`tiny`) from a provider you have a key for, preferring the session's own provider. |
+
+Both are **global-only** for the same reason as `mode`. Every failure mode —
+timeout (3 s), provider error, an answer that is not `OK`/`FLAG` — resolves to
+"no change": the rules already bounded the call, and a flaky model must never
+create a prompt. The attempt, its outcome and its latency are recorded on the
+audit row either way, and `/permissions` reports calls, flags and p95.
 
 ## 4. `refresh` (repaint cadence)
 

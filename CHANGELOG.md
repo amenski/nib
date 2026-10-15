@@ -24,6 +24,19 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Headless runs deny a classifier-caused ask with the reason rather than a bare
   no, and a sub-agent whose task description names a destructive command is
   refused at spawn under `enforce`. See docs/command-risk-classifier.md.
+- **An optional model judge behind the classifier, off by default.** With
+  `classifier.model.enabled` the classifier may ask a small, cheap model about a
+  call the rules called `safe` or `benign` — the long tail a rule list misses (a
+  new CLI's destroy verb, a cleverly spelled exfiltration). It sees the user's
+  recent messages, the pending call as JSON and the feature vector, never tool
+  results or file contents, and its answer can only add a confirmation: a
+  `FLAG` is a prompt, never a denial, and a timeout (3 s), a provider error or an
+  unreadable answer all mean "no change", so a flaky model cannot create prompts.
+  `classifier.model.id` names the judge as `"provider/model"`; absent picks a
+  cheap-class model from a provider you have a key for. The attempt, its outcome
+  and its latency are on the audit row, and `/permissions` reports calls, flags
+  and p95. Before enabling it, read §6.3 of the proposal for what the stage's own
+  gate leaves it able to change.
 
 - **`nib auth` → custom registers the provider.** It now also asks for an
   OpenAI-compatible base URL and model ids and writes them to

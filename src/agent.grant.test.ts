@@ -16,8 +16,12 @@ vi.mock("./prompt.js", () => ({
 }));
 
 import { runAgent, type AgentOptions } from "./agent.js";
+import type { ToolCall } from "./types.js";
+import { ErrorReflector } from "./selfreflection/index.js";
 import { PermissionEngine } from "./permissions/index.js";
+import type { RiskMode, Stage2Options } from "./permissions/risk/index.js";
 import { bashEnvelopeGrants, isEligibleForGrant, type BashEnvelope } from "./permissions/session-grant.js";
+import { configureUnsandboxed } from "./sandbox/unsandboxed.js";
 import { buildSandboxProfile, isSandboxedLevel, sandboxEnvelopeHash, type SandboxLevel } from "./sandbox/seatbelt.js";
 import { executeTool, setSandboxLevel, setSessionId, setSessionTempDir, setWriteRoots } from "./tools/index.js";
 import type { Message } from "./types.js";
@@ -124,8 +128,17 @@ function makeEnvelope(overrides: Partial<BashEnvelope> = {}): BashEnvelope {
  * option exists only when the gate passed an envelope, so it returns
  * "envelope-grant" exactly then and a one-time "yes" otherwise.
  */
+/** The prompter's full signature, including the two trailing optional tips. */
+type Prompter = (
+  toolName: string,
+  args: Record<string, unknown>,
+  envelope?: BashEnvelope,
+  origin?: { subagent: string },
+  policyRisk?: { tier: string; reasons: string[]; message?: string },
+) => Promise<boolean | "posture" | "envelope-grant">;
+
 function grantOnOffer() {
-  return vi.fn(async (_name: string, _args: Record<string, unknown>, envelope?: BashEnvelope) =>
+  return vi.fn<Prompter>(async (_name, _args, envelope) =>
     envelope ? ("envelope-grant" as const) : true,
   );
 }
@@ -145,12 +158,18 @@ async function drive(
     askUser?: ReturnType<typeof grantOnOffer>;
     permissions?: PermissionEngine;
     tool?: string;
+    extraArgs?: Record<string, unknown>;
+    classifierMode?: RiskMode;
+    /** The classifier's optional model stage (docs/command-risk-classifier.md §6). */
+    classifierModel?: Stage2Options;
+    /** Extra session-store methods (e.g. appendClassifierEvidence). */
+    store?: Record<string, unknown>;
   } = {},
 ): Promise<Driven> {
   launches = [];
   const askUser = overrides.askUser ?? grantOnOffer();
   const { provider } = makeProvider([
-    ...commands.map((command, i) => callTurn(`call_${i}`, overrides.tool ?? "run_bash", { command })),
+    ...commands.map((command, i) => callTurn(`call_${i}`, overrides.tool ?? "run_bash", { command, ...overrides.extraArgs })),
     textTurn("done"),
   ]);
   const appendPermission = vi.fn(async (_sessionId: string, _record: Record<string, unknown>) => {});
@@ -160,9 +179,16 @@ async function drive(
     executeTool,
     permissions: overrides.permissions ?? new PermissionEngine(undefined, ROOT),
     askUser,
-    sessionStore: { appendPermission, appendToken: vi.fn(async () => {}) } as never,
+    sessionStore: {
+      appendPermission,
+      appendToken: vi.fn(async () => {}),
+      appendClassifierEvidence: vi.fn(async () => {}),
+      ...overrides.store,
+    } as never,
     sessionId: SESSION,
     ...(overrides.envelope !== undefined ? { bashEnvelope: overrides.envelope } : {}),
+    ...(overrides.classifierMode !== undefined ? { classifierMode: overrides.classifierMode } : {}),
+    ...(overrides.classifierModel !== undefined ? { classifierModel: overrides.classifierModel } : {}),
   };
   const result = await runAgent("work", options);
   return {
@@ -531,6 +557,102 @@ describe("sandboxed Bash session grant", () => {
   });
 });
 
+// `unsandboxedRun` only ever answers where a sandbox exists to leave:
+// `configureUnsandboxed` gates its level through `isSandboxedLevel`, which is
+// false off darwin (seatbelt.ts). Skipped rather than asserted so the Linux
+// suite stays green without claiming the feature exists there.
+describe.skipIf(process.platform !== "darwin")("unsandboxed Bash", () => {
+  beforeEach(() => {
+    writeRoots = [];
+    clearGrants();
+    spawnSpy.mockReset();
+    onLaunch = (child) => {
+      setImmediate(() => child.close(0, "ok"));
+    };
+    spawnSpy.mockImplementation((file: string, args: string[]) => {
+      const child = new FakeChild();
+      launches.push({ file, args, child });
+      onLaunch(child);
+      return child;
+    });
+    setSessionId(SESSION);
+    setSandboxLevel("workspace-write");
+    setWriteRoots(writeRoots);
+    setSessionTempDir(SCRATCH);
+    configureUnsandboxed({ sandboxLevel: "workspace-write" });
+  });
+
+  afterEach(() => {
+    clearGrants();
+    setSandboxLevel(undefined);
+    setWriteRoots(undefined);
+    setSessionTempDir(undefined);
+    configureUnsandboxed({});
+  });
+
+  it("asks even when the envelope auto-grants, offers no grant, and launches with no profile", async () => {
+    const driven = await drive([OPAQUE], { envelope: makeEnvelope({ autoGrant: true }), extraArgs: { unsandboxed: true } });
+
+    expect(driven.askUser).toHaveBeenCalledTimes(1);
+    expect((driven.askUser.mock.calls[0] as unknown[])[2]).toBeUndefined();
+    expect(driven.rows.some((row) => row.decision === "allow-by-envelope-grant")).toBe(false);
+    expect(bashEnvelopeGrants.active(SESSION, "run_bash")).toBeNull();
+    // The one launch is the bare command, not sandbox-exec.
+    expect(driven.launches.map((l) => l.file)).toEqual([OPAQUE]);
+  });
+
+  it("does not run when the user declines", async () => {
+    const driven = await drive([OPAQUE], {
+      envelope: makeEnvelope({ autoGrant: true }),
+      extraArgs: { unsandboxed: true },
+      askUser: vi.fn(async () => false) as never,
+    });
+
+    expect(driven.launches).toEqual([]);
+  });
+
+  it("is asked about even under an allow rule, which alone would run a plain call without a prompt", async () => {
+    const permissions = new PermissionEngine(
+      { rules: [{ tool: "run_bash", kind: "any", pattern: "", action: "allow", origin: "config" }] },
+      ROOT,
+    );
+    const plain = await drive(["echo hi"], { permissions });
+    expect(plain.askUser).not.toHaveBeenCalled();
+
+    const unsandboxed = await drive(["echo hi"], { permissions, extraArgs: { unsandboxed: true } });
+    expect(unsandboxed.askUser).toHaveBeenCalledTimes(1);
+    expect(unsandboxed.launches.map((l) => l.file)).toEqual(["echo hi"]);
+  });
+
+  it("asks for an excluded command even under an allow rule", async () => {
+    configureUnsandboxed({ sandboxLevel: "workspace-write", excludedCommands: ["echo"] });
+    const permissions = new PermissionEngine(
+      { rules: [{ tool: "run_bash", kind: "any", pattern: "", action: "allow", origin: "config" }] },
+      ROOT,
+    );
+    const driven = await drive(["echo hi"], { permissions });
+    expect(driven.askUser).toHaveBeenCalledTimes(1);
+    expect(driven.launches.map((l) => l.file)).toEqual(["echo hi"]);
+  });
+
+  it("asks for a command on sandbox.excludedCommands without the model asking", async () => {
+    configureUnsandboxed({ sandboxLevel: "workspace-write", excludedCommands: ["flutter"] });
+    const driven = await drive(["flutter build apk"], { envelope: makeEnvelope({ autoGrant: true }) });
+
+    expect(driven.askUser).toHaveBeenCalledTimes(1);
+    expect(driven.launches.map((l) => l.file)).toEqual(["flutter build apk"]);
+  });
+
+  it("refuses the request, without asking, when sandbox.allowUnsandboxedCommands is false", async () => {
+    configureUnsandboxed({ sandboxLevel: "workspace-write", allowUnsandboxedCommands: false });
+    const driven = await drive([OPAQUE], { envelope: makeEnvelope({ autoGrant: true }), extraArgs: { unsandboxed: true } });
+
+    expect(driven.askUser).not.toHaveBeenCalled();
+    expect(driven.launches).toEqual([]);
+    expect(String(driven.messages.find((m) => m.role === "tool")?.content)).toContain("UNSANDBOXED_NOT_ALLOWED");
+  });
+});
+
 describe("isEligibleForGrant", () => {
   const eligible = {
     toolName: "run_bash",
@@ -580,5 +702,362 @@ describe("containment capability", () => {
     // decision (docs/permission-ux-redesign.md: "unsupported"), which is what
     // these skipped rows record rather than a gap in coverage.
     expect(isSandboxedLevel("workspace-write")).toBe(process.platform === "darwin");
+  });
+});
+
+describe("command risk classifier: shadow logging (docs/command-risk-classifier.md §9)", () => {
+  beforeEach(() => {
+    writeRoots = [];
+    clearGrants();
+    spawnSpy.mockReset();
+    onLaunch = (child) => {
+      setImmediate(() => child.close(0, "ok"));
+    };
+    spawnSpy.mockImplementation((file: string, args: string[]) => {
+      const child = new FakeChild();
+      launches.push({ file, args, child });
+      onLaunch(child);
+      return child;
+    });
+    setSessionId(SESSION);
+    setSandboxLevel(undefined);
+  });
+
+  afterEach(() => {
+    setSandboxLevel(undefined);
+  });
+
+  /** An allow rule for `npm publish`, so the engine allows what the classifier questions. */
+  function allowPublish(): PermissionEngine {
+    return new PermissionEngine(
+      {
+        rules: [{ tool: "run_bash", kind: "prefix", pattern: "npm publish", action: "allow", origin: "config" }],
+        defaultMode: "askAll",
+      },
+      ROOT,
+    );
+  }
+
+  it("records the tier, reasons and feature vector on the audit row", async () => {
+    const driven = await drive(["npm publish"], { permissions: allowPublish() });
+
+    expect(driven.rows[0].decision).toBe("allow-by-rule");
+    expect(driven.rows[0].risk).toMatchObject({
+      tier: "confirm",
+      nativeAction: "ask",
+      action: "ask",
+      reasons: ["pkg.publish"],
+      stage: "rules",
+      version: "risk-1",
+      parseStatus: "parsed",
+    });
+    // The vector is what makes a verdict replayable, so the delete targets and
+    // the program are on it — not just the tier.
+    expect((driven.rows[0].risk as { features: { segments: { program: string }[] } }).features.segments[0].program).toBe("npm");
+  });
+
+  it("changes nothing about what runs, and logs the disagreement as evidence", async () => {
+    const evidence = vi.fn(async (_sessionId: string, _record: Record<string, unknown>) => {});
+    const driven = await drive(["npm publish"], {
+      permissions: allowPublish(),
+      store: { appendClassifierEvidence: evidence },
+    });
+
+    // Shadow mode: the allow rule still decides, and the command still ran.
+    expect(driven.rows[0].decision).toBe("allow-by-rule");
+    expect(driven.launches).toHaveLength(1);
+    expect(driven.askUser).not.toHaveBeenCalled();
+
+    // ...and enforce mode would have asked instead, which is the queue the
+    // phase-1 review reads.
+    expect(evidence).toHaveBeenCalledTimes(1);
+    expect(evidence.mock.calls[0][1]).toMatchObject({ toolCallId: "call_0", source: "policy" });
+    expect(String(evidence.mock.calls[0][1].reason)).toContain("shadow: engine allow, classifier confirm");
+  });
+
+  it("writes no evidence row when the classifier agrees with the engine", async () => {
+    const evidence = vi.fn(async (_sessionId: string, _record: Record<string, unknown>) => {});
+    // The engine already asks; the classifier confirms. Nothing disagreed.
+    await drive(["cat .env"], { store: { appendClassifierEvidence: evidence } });
+    expect(evidence).not.toHaveBeenCalled();
+  });
+
+  it("does not run at all under classifier.mode: off", async () => {
+    const evidence = vi.fn(async (_sessionId: string, _record: Record<string, unknown>) => {});
+    const driven = await drive(["npm publish"], {
+      permissions: allowPublish(),
+      classifierMode: "off",
+      store: { appendClassifierEvidence: evidence },
+    });
+    expect(driven.rows[0].risk).toBeUndefined();
+    expect(evidence).not.toHaveBeenCalled();
+  });
+
+  it("still labels a denied call, so the shadow log covers hard blocks too", async () => {
+    const driven = await drive(["rm -rf ~"]);
+    expect(driven.rows[0].decision).toBe("deny-by-rule");
+    expect(driven.rows[0].risk).toMatchObject({ tier: "block", nativeAction: "deny", reasons: ["rm.critical-path"] });
+    expect(driven.launches).toHaveLength(0);
+  });
+
+  it("counts what this session's own write tools produced, so a delete is not called pre-session", async () => {
+    // The classifier's `fs.delete-pre-session` rule turns on whether the path
+    // existed before the session. `write_to_file` in the same run makes it not
+    // pre-session; without that bookkeeping every delete looks pre-session and
+    // the shadow log fills with false positives.
+    const created = `${ROOT}/tmp-risk-created.txt`;
+    const { provider } = makeProvider([
+      callTurn("call_0", "write_to_file", { path: created, content: "x" }),
+      callTurn("call_1", "run_bash", { command: `rm -rf ${created}` }),
+      textTurn("done"),
+    ]);
+    const appendPermission = vi.fn(async (_sessionId: string, _record: Record<string, unknown>) => {});
+    await runAgent("work", {
+      provider,
+      tools: [],
+      executeTool: async () => ({ content: "ok" }),
+      permissions: new PermissionEngine(
+        {
+          rules: [{ tool: "write_to_file", kind: "any" as const, pattern: "", action: "allow" as const, origin: "config" as const }],
+          defaultMode: "askAll",
+        },
+        ROOT,
+      ),
+      sessionStore: { appendPermission, appendToken: vi.fn(async () => {}) } as never,
+      sessionId: SESSION,
+    });
+
+    const risk = appendPermission.mock.calls[1][1].risk as { tier: string; reasons: string[] };
+    expect(risk.reasons).not.toContain("fs.delete-pre-session");
+  });
+
+  /**
+   * §10.2's "no tool-result leakage", at the one place it can be tested before
+   * stage 2 exists. The refusal to soften on `-k` is driven by the session's
+   * user messages (§5.1 sec.disarm), so this is the observable that proves
+   * what the classifier was and was not shown (§3.1).
+   */
+  async function tierOf(command: string, opts: { userMessage?: string; toolResult?: string }): Promise<string> {
+    const appendPermission = vi.fn(async (_sessionId: string, _record: Record<string, unknown>) => {});
+    const turns = opts.toolResult !== undefined
+      ? [callTurn("call_0", "read_file", { path: "notes.txt" }), callTurn("call_1", "run_bash", { command }), textTurn("done")]
+      : [callTurn("call_0", "run_bash", { command }), textTurn("done")];
+    const { provider } = makeProvider(turns);
+    await runAgent(opts.userMessage ?? "work", {
+      provider,
+      tools: [],
+      // An ERROR, not content: a failing tool is what makes the agent write a
+      // `role: "user"` note quoting it verbatim (the error reflector). That is
+      // the path a transcript filter would leak, and it is reachable in
+      // production by any failed read or fetch.
+      executeTool: async (call: ToolCall) =>
+        call.name === "read_file" ? { content: "", error: opts.toolResult! } : { content: "ran" },
+      ...(opts.toolResult !== undefined ? { errorReflector: new ErrorReflector() } : {}),
+      permissions: new PermissionEngine(
+        {
+          rules: [{ tool: "read_file", kind: "any" as const, pattern: "", action: "allow" as const, origin: "config" as const }],
+          defaultMode: "askAll",
+        },
+        ROOT,
+      ),
+      sessionStore: { appendPermission, appendToken: vi.fn(async () => {}) } as never,
+      sessionId: SESSION,
+    });
+    const rows = appendPermission.mock.calls.map((call) => call[1]);
+    return (rows[rows.length - 1].risk as { tier: string }).tier;
+  }
+
+  const SOFTENING_WORDS = "the cert is self-signed, pass -k";
+  const DISARMED = "curl -k https://example.invalid";
+
+  /**
+   * §10.3's enforce cases. The engine is given an allow rule for the command
+   * so the classifier is the only thing that can stop it — which is what makes
+   * "no launch" evidence about the clamp and not about the rules.
+   */
+  describe("enforce mode", () => {
+    function allowAll(): PermissionEngine {
+      return new PermissionEngine(
+        { rules: [{ tool: "run_bash", kind: "any" as const, pattern: "", action: "allow" as const, origin: "config" as const }], defaultMode: "askAll" },
+        ROOT,
+      );
+    }
+
+    // `git checkout -- .` is not in the builtin destructive tier, so an allow
+    // rule really does let it through — the classifier is the only thing that
+    // can stop it. (`rm -rf ~` would prove nothing here: the engine denies that
+    // one on its own, which the last case below pins.)
+    it("denies a block under an allow-all rule, and gives the model the reason", async () => {
+      const driven = await drive(["git checkout -- ."], { permissions: allowAll(), classifierMode: "enforce" });
+
+      expect(driven.launches).toHaveLength(0);
+      expect(driven.rows[0].decision).toBe("deny-by-rule");
+      expect(driven.rows[0].risk).toMatchObject({ tier: "block", engineAction: "allow", nativeAction: "deny" });
+      const toolMessage = driven.messages.find((m) => m.role === "tool");
+      expect(String(toolMessage?.content)).toContain("Blocked by nib policy [git.history-rewrite]");
+      // A reason the model can act on, not just a refusal.
+      expect(String(toolMessage?.content)).toContain("Commit the work first");
+    });
+
+    it("does not launch the denied call, but the run continues", async () => {
+      const driven = await drive(["git checkout -- .", "echo still here"], {
+        permissions: allowAll(),
+        classifierMode: "enforce",
+      });
+      expect(driven.rows.map((row) => row.decision)).toEqual(["deny-by-rule", "allow-by-rule"]);
+      expect(driven.launches).toHaveLength(1);
+    });
+
+    it("leaves a call the engine already denies to the engine's own reason", async () => {
+      // `rm -rf ~` is a builtin destructive deny: nothing narrowed, so the
+      // classifier must not overwrite the reason the engine gave.
+      const driven = await drive(["rm -rf ~"], { permissions: allowAll(), classifierMode: "enforce" });
+      expect(driven.rows[0].risk).toMatchObject({ tier: "block", engineAction: "deny" });
+      const toolMessage = driven.messages.find((m) => m.role === "tool");
+      expect(String(toolMessage?.content)).toBe("Permission denied for run_bash");
+    });
+
+    it("turns an allow into a prompt for a confirm, and shows the reason on it", async () => {
+      // `cat .env` reaches the classifier's fs.secret-ref without the engine
+      // asking, because the allow rule covers every run_bash call.
+      const askUser = vi.fn<Prompter>(async () => false);
+      const driven = await drive(["cat .env"], {
+        permissions: allowAll(),
+        classifierMode: "enforce",
+        askUser: askUser as never,
+      });
+
+      expect(driven.askUser).toHaveBeenCalledTimes(1);
+      const tip = driven.askUser.mock.calls[0][4];
+      expect(tip?.tier).toBe("confirm");
+      expect(tip?.message).toContain("[fs.secret-ref]");
+      // Answered no, so it did not run.
+      expect(driven.launches).toHaveLength(0);
+      expect(driven.rows[0].decision).toBe("ask-denied");
+    });
+
+    /**
+     * An MCP call under `defaultMode: allowAll` with no rules: the engine
+     * allows it with no `winningRule`, which is the one shape §6.1 lets the
+     * judge act on. For a shell call an engine allow can only come from a user
+     * allow rule, and §6.1 skips those — see the test below, which pins that
+     * asymmetry rather than leaving it to be rediscovered.
+     */
+    it("the model stage runs through the gate and turns an allow into a prompt", async () => {
+      const judge = vi.fn(async (request: { user: string }) =>
+        request.user.includes("You answered FLAG") ? "[mcp.mutating-verb] it rewrites a remote repository" : "FLAG",
+      );
+      const askUser = vi.fn<Prompter>(async () => false);
+      const driven = await drive(["ignored"], {
+        tool: "mcp__github__list_pull_requests",
+        permissions: new PermissionEngine({ defaultMode: "allowAll" }, ROOT, true),
+        classifierMode: "enforce",
+        classifierModel: { judge },
+        askUser,
+      });
+
+      expect(askUser).toHaveBeenCalledTimes(1);
+      const tip = askUser.mock.calls[0][4];
+      expect(tip?.tier).toBe("confirm");
+      expect(tip?.message).toContain("rewrites a remote repository");
+      expect(driven.rows[0].risk).toMatchObject({
+        tier: "confirm",
+        engineAction: "allow",
+        nativeAction: "ask",
+        stage: "rules+model",
+      });
+      expect((driven.rows[0].risk as { model: { outcome: string } }).model.outcome).toBe("flag");
+      // Answered no, so it did not run.
+      expect(driven.launches).toHaveLength(0);
+    });
+
+    it("a judge that fails open leaves the call alone and still records the attempt", async () => {
+      const judge = vi.fn(async () => {
+        throw new Error("provider down");
+      });
+      const driven = await drive(["ignored"], {
+        tool: "mcp__github__list_pull_requests",
+        permissions: new PermissionEngine({ defaultMode: "allowAll" }, ROOT, true),
+        classifierMode: "enforce",
+        classifierModel: { judge },
+      });
+
+      expect(driven.rows[0].decision).toBe("allow-by-rule");
+      const risk = driven.rows[0].risk as { tier: string; model: { outcome: string } };
+      expect(risk.tier).toBe("benign");
+      expect(risk.model.outcome).toBe("error");
+      // The attempt is recorded (the counters read it) and the verdict is the
+      // rules'.
+      expect(risk.tier).not.toBe("confirm");
+    });
+
+    it("shows what it read in shadow mode, and never says it acted", async () => {
+      // The case that makes this distinction load-bearing: the classifier
+      // *would* block `git checkout -- .`, but under shadow the engine asked —
+      // and a sentence saying "Blocked by nib policy" on a prompt the engine
+      // created would be a lie about who is asking.
+      const askUser = vi.fn<Prompter>(async () => false);
+      const driven = await drive(["git checkout -- ."], { askUser, classifierMode: "shadow" });
+
+      // Exact, not `toMatchObject`: the point is that there is no fourth field
+      // carrying a sentence about an action that never happened.
+      expect(askUser.mock.calls[0][4]).toEqual({ tier: "block", reasons: ["git.history-rewrite"] });
+      // The read is still recorded on the row, which is shadow mode's product.
+      expect(driven.rows[0].decision).toBe("ask-denied");
+    });
+
+    it("skips a shell call an explicit user allow rule produced", async () => {
+      // §6.1's exclusion, and its consequence: for `run_bash` an engine allow
+      // can only come from a user rule, so under `enforce` the model stage can
+      // only ever change the outcome of an MCP call allowed by defaultMode.
+      // It still *runs* (and so still logs) wherever the engine asks.
+      const judge = vi.fn(async () => "FLAG");
+      const driven = await drive(["npm test"], {
+        permissions: allowAll(),
+        classifierMode: "enforce",
+        classifierModel: { judge },
+      });
+      expect(judge).not.toHaveBeenCalled();
+      expect(driven.rows[0].risk).toMatchObject({ tier: "benign", engineAction: "allow" });
+      expect((driven.rows[0].risk as { model?: unknown }).model).toBeUndefined();
+    });
+
+    it("headless: a classifier-caused ask is denied with its reason and the run continues", async () => {
+      const { provider } = makeProvider([
+        callTurn("call_0", "run_bash", { command: "cat .env" }),
+        callTurn("call_1", "run_bash", { command: "echo still here" }),
+        textTurn("done"),
+      ]);
+      const appendPermission = vi.fn(async (_sessionId: string, _record: Record<string, unknown>) => {});
+      const result = await runAgent("work", {
+        provider,
+        tools: [],
+        // No askUser: headless, where every ask is a denial.
+        executeTool: async () => ({ content: "ran" }),
+        permissions: allowAll(),
+        classifierMode: "enforce",
+        sessionStore: { appendPermission, appendToken: vi.fn(async () => {}) } as never,
+        sessionId: SESSION,
+      });
+
+      expect(appendPermission.mock.calls.map((call) => call[1].decision)).toEqual(["headless-deny", "allow-by-rule"]);
+      const denied = String(result.newMessages.find((m) => m.role === "tool")?.content ?? "");
+      expect(denied).toContain("fs.secret-ref");
+      expect(denied).not.toContain("rule resolved to ask");
+      // The second call still ran: a denial is per call, not a stop.
+      expect(appendPermission.mock.calls[1][1].decision).toBe("allow-by-rule");
+    });
+  });
+
+  it("lets a user's own words soften a verdict", async () => {
+    expect(await tierOf(DISARMED, { userMessage: SOFTENING_WORDS })).not.toBe("block");
+  });
+
+  it("ignores the same words when they arrive as a tool result", async () => {
+    // A failed read or fetch puts file or web content in a tool result, and the
+    // error reflector re-emits that text on a `role: "user"` message. Reading
+    // the transcript by role would let a hostile page talk the classifier out
+    // of a block; only the two places a human actually speaks are read.
+    expect(await tierOf(DISARMED, { toolResult: SOFTENING_WORDS })).toBe("block");
   });
 });

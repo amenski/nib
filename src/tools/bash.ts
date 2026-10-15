@@ -14,7 +14,7 @@ import {
 import { containmentFailureError, spawnContained, type ReadinessOutcome, type SandboxFailureReason } from "../sandbox/launcher.js";
 import { envelopeChangedError } from "../permissions/session-grant.js";
 import { wrapUntrusted, sanitizeControlChars } from "./untrusted-content.js";
-import { SANDBOX_TOOL_NOTE, sandboxBlockedHint } from "./sandbox-hint.js";
+import { SANDBOX_TOOL_NOTE, UNSANDBOXED_PARAM, sandboxBlockedHint } from "./sandbox-hint.js";
 
 const RUN_BASH_TIMEOUT_MS = 120_000;
 // run_bash keeps the most recent 512KB of output (the old exec maxBuffer
@@ -192,23 +192,25 @@ export function runBashTimed(
       if (closeCode !== undefined) {
         settled = true;
         clearTimeout(timer);
+        let out: ToolOutput;
         if (closeCode === 0) {
-          resolve({ content: wrapUntrusted(`${stdout || "(no output)"}${truncationNote()}`) });
+          out = { content: wrapUntrusted(`${stdout || "(no output)"}${truncationNote()}`) };
         } else if (stderr.trim() !== "") {
           // F5 delta: real failure (non-zero + stderr) — set `error` so the
           // bounded auto-fix loop engages, and prepend the grepped
           // <error_analysis> block inside the untrusted delimiters (the matched
           // lines are still command output). The full stdout/stderr body is kept.
           const analysis = buildErrorAnalysis(stderr, closeCode);
-          resolve({
+          out = {
             content: wrapUntrusted(`${analysis}Exit code: ${closeCode}\n${stdout}\n${stderr}${truncationNote()}`),
             error: `Exit code: ${closeCode}`,
-          });
+          };
         } else {
           // Silent non-zero exit (empty stderr) — grep -q / diff / test idioms:
           // content only, no error, no analysis block.
-          resolve({ content: wrapUntrusted(`Exit code: ${closeCode}\n${stdout}\n${stderr}${truncationNote()}`) });
+          out = { content: wrapUntrusted(`Exit code: ${closeCode}\n${stdout}\n${stderr}${truncationNote()}`) };
         }
+        resolve(out);
         return;
       }
       if (timedOut) {
@@ -311,11 +313,14 @@ const runBashHandler: ToolHandler = async (args, ctx, exec) => {
       return { content: wrapUntrusted(envelopeChangedError()), error: "SANDBOX_ENVELOPE_CHANGED" };
     }
   }
-  const out = await runBashTimed(command, cwd, root, RUN_BASH_TIMEOUT_MS, resolveTimeoutToBackground(ctx.timeoutToBackground), ctx.sandboxLevel, ctx.writeRoots, ctx.sessionTempDir, exec?.approvedGitConfigWrite, exec?.onSandboxFailure);
-  // A refusal the child hit reads as a plain EPERM in its own output; say what
-  // it means and which tools can reach the path. Appended after the wrapper —
-  // the delimited region must stay command output only.
-  const hint = sandboxBlockedHint(`${out.content}\n${out.error ?? ""}`, isSandboxedLevel(ctx.sandboxLevel));
+  // An approved unsandboxed call spawns with no profile and the user's own temp dir.
+  const unsandboxed = exec?.unsandboxed === true;
+  const out = await runBashTimed(command, cwd, root, RUN_BASH_TIMEOUT_MS, resolveTimeoutToBackground(ctx.timeoutToBackground), unsandboxed ? undefined : ctx.sandboxLevel, ctx.writeRoots, unsandboxed ? undefined : ctx.sessionTempDir, exec?.approvedGitConfigWrite, exec?.onSandboxFailure);
+  // The note is nib's own words, appended after the wrapper — the delimited
+  // region must stay command output only. A refusal the child hit reads as a
+  // plain EPERM in its own output, so the hint names what that means. An
+  // unsandboxed run was not the sandbox's doing, so it gets none.
+  const hint = sandboxBlockedHint(`${out.content}\n${out.error ?? ""}`, !unsandboxed && isSandboxedLevel(ctx.sandboxLevel));
   return hint ? { ...out, content: `${out.content}\n${hint}` } : out;
 };
 
@@ -327,6 +332,7 @@ const runBashDef: ToolDef = {
     properties: {
       command: { type: "string", description: "The command to execute" },
       cwd: { type: "string", description: "Working directory (optional)" },
+      unsandboxed: UNSANDBOXED_PARAM,
     },
     required: ["command"],
   },

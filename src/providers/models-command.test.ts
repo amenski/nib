@@ -6,6 +6,7 @@ import { runModels } from "./models-command.js";
 import { CATALOG_CACHE_FILENAME } from "./catalog-update.js";
 
 const fixture = JSON.parse(readFileSync(resolve("scripts/fixtures/models.dev.json"), "utf8"));
+const bundled = JSON.parse(readFileSync(resolve("src/providers/models.json"), "utf8"));
 
 function fetchImplFor(body: unknown, opts: { ok?: boolean; status?: number; statusText?: string } = {}): { fetchImpl: typeof fetch; requestedUrl: () => string | undefined } {
   let requestedUrl: string | undefined;
@@ -57,7 +58,7 @@ describe("runModels", () => {
       expect(code).toBe(0);
       const output = logSpy.mock.calls.map((c: unknown[]) => c[0]).join("\n");
       expect(output).toContain("snapshot: bundled");
-      expect(output).toContain("providers: 5");
+      expect(output).toContain(`providers: ${Object.keys(bundled.providers).length}`);
     });
 
     it("reports an updated (cached) snapshot once one exists", async () => {
@@ -189,6 +190,36 @@ describe("runModels", () => {
       const written = JSON.parse(readFileSync(cacheFile(), "utf-8"));
       expect(written.source.revision).toBe("models.dev:2026-01-02");
       expect(written.providers.deepseek.models["deepseek-v4-pro"].pricing.inputPerM).toBe(0.99);
+    });
+
+    it("prints one summary line per changed provider by default, and each model with --verbose", async () => {
+      const mutated = JSON.parse(JSON.stringify(fixture));
+      mutated.providers.deepseek.models["deepseek-v4-pro"].cost.input = 0.99;
+      const { fetchImpl } = fetchImplFor(mutated);
+      await runModels(["update", "--yes"], { homeDir: join(dir, "a"), fetchImpl });
+      const summary = logSpy.mock.calls.map((c: unknown[]) => c[0]).join("\n");
+      expect(summary).toContain("Changes in 1 provider");
+      expect(summary).toContain("  deepseek: 1 changed");
+      expect(summary).not.toContain("~ deepseek/deepseek-v4-pro");
+
+      logSpy.mockClear();
+      await runModels(["update", "--yes", "--verbose"], { homeDir: join(dir, "b"), fetchImpl });
+      const verbose = logSpy.mock.calls.map((c: unknown[]) => c[0]).join("\n");
+      expect(verbose).toContain("~ deepseek/deepseek-v4-pro pricing.inputPerM:");
+    });
+
+    it("refreshes models only: never adds a provider or takes a base URL from the feed", async () => {
+      const mutated = JSON.parse(JSON.stringify(fixture));
+      mutated.providers.deepseek.models["deepseek-v4-pro"].cost.input = 0.99;
+      mutated.providers.zai.api = "https://attacker.example/v1";
+      mutated.providers["brand-new"] = { ...mutated.providers.zai, name: "Brand New" };
+      const { fetchImpl } = fetchImplFor(mutated);
+      const code = await runModels(["update", "--yes"], { homeDir: dir, fetchImpl });
+      expect(code).toBe(0);
+      const written = JSON.parse(readFileSync(cacheFile(), "utf-8"));
+      expect(written.providers["brand-new"]).toBeUndefined();
+      expect(written.providers.zai).toEqual({ defaultModel: bundled.providers.zai.defaultModel, models: expect.any(Object) });
+      expect(JSON.stringify(written)).not.toContain("attacker.example");
     });
 
     it("on a TTY, prompts and writes when the injected confirm resolves true", async () => {

@@ -28,11 +28,20 @@ const DECISION_COLOR: Record<string, string> = {
   always: "#f59e0b",
   "unresolved-ask": "#f59e0b",
   "allow-by-envelope-grant": "#f59e0b",
+  "grant-renewed": "#f59e0b",
   // Posture — cyan (distinct from rule-based)
   "allow-by-posture": "#22d3ee",
   // Containment failures and revocations — red, they take authority away
   "sandbox-failure": "#ef4444",
   "grant-revoked": "#ef4444",
+};
+
+/** Tier colours: block reads as a denial, confirm as a prompt, the rest as neutral. */
+const TIER_COLOR: Record<string, string> = {
+  block: "#ef4444",
+  confirm: "#f59e0b",
+  benign: "#22c55e",
+  safe: "#22c55e",
 };
 
 const DECISION_LABEL: Record<string, string> = {
@@ -50,6 +59,7 @@ const DECISION_LABEL: Record<string, string> = {
   "allow-by-envelope-grant": "session grant",
   "grant-invalidated": "grant invalidated",
   "grant-revoked": "grant revoked",
+  "grant-renewed": "grant renewed",
   "sandbox-failure": "sandbox failure",
 };
 
@@ -183,6 +193,19 @@ export default function PermissionHistoryList({ sessionStore, sessionId, onClose
         </Text>
       )}
 
+      {metrics && (
+        <Text color={ansi256(theme.theme.textDim)}>
+          {"Risk (docs/command-risk-classifier.md): "}
+          {`safe ${metrics.riskTierCounts.safe} · benign ${metrics.riskTierCounts.benign} · confirm ${metrics.riskTierCounts.confirm} · block ${metrics.riskTierCounts.block}`}
+          {" · classifier-caused asks "}{metrics.classifierCausedAsks}
+          {"/"}{metrics.classifierCausedAsksApproved}{" approved"}
+          {" · blocks "}{metrics.blocks}
+          {metrics.stage2Calls > 0
+            ? ` · model judge ${metrics.stage2Calls} calls, ${metrics.stage2Flags} flagged, p95 ${metrics.stage2P95Ms}ms`
+            : ""}
+        </Text>
+      )}
+
       {grant && (
         <Box flexDirection="column" marginBottom={1}>
           <Text color="#f59e0b">
@@ -216,6 +239,15 @@ export default function PermissionHistoryList({ sessionStore, sessionId, onClose
                   {time} · {entry.primary.tool}
                 </Text>
                 <Text color={color}> [{DECISION_LABEL[decision] ?? decision}]</Text>
+                {entry.primary.risk && (
+                  <Text color={ansi256(theme.theme.textDim)}>
+                    {" risk:"}
+                    <Text color={TIER_COLOR[entry.primary.risk.tier] ?? undefined}>
+                      {entry.primary.risk.tier}
+                    </Text>
+                    {entry.primary.risk.reasons.length > 0 ? ` (${entry.primary.risk.reasons[0]})` : ""}
+                  </Text>
+                )}
               </Box>
             );
           })}

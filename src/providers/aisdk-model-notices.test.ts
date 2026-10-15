@@ -50,15 +50,14 @@ const PRESET = {
   api: "openai-compatible",
   baseUrl: "https://api.deepseek.com",
   keyEnv: "TEST_KEY",
-  defaultModel: "deepseek-v4-flash",
+  defaultModel: "deepseek-flash",
   models: {
-    "deepseek-v4-flash": { supportsTools: true, contextWindow: 1 },
     "deepseek-flash": { supportsTools: true, contextWindow: 1 },
     "deepseek-v4-pro": { supportsTools: true, contextWindow: 1 },
   },
 };
 
-const MODEL = "deepseek-v4-flash";
+const MODEL = "deepseek-flash";
 
 /** Fresh module (and therefore a fresh alias-dedup Set) for one test. */
 async function loadFactory(): Promise<typeof import("./aisdk.js")["createAISDKProvider"]> {
@@ -98,10 +97,10 @@ describe("model_alias notice", () => {
   it("emits exactly one notice when the provider serves a different, catalog-known model, and none on a later turn", async () => {
     const make = await loadFactory();
     const first = make(PRESET as never, MODEL, "sk", "deepseek");
-    const a = await drain(first, finishEvents("deepseek-flash"));
+    const a = await drain(first, finishEvents("deepseek-v4-pro"));
 
     expect(aliasOf(a.yielded)).toEqual([
-      { type: "model_alias", provider: "deepseek", requested: MODEL, served: "deepseek-flash" },
+      { type: "model_alias", provider: "deepseek", requested: MODEL, served: "deepseek-v4-pro" },
     ]);
     // The existing usage yield still happens alongside the notice.
     expect(a.yielded.some((e) => e.type === "usage")).toBe(true);
@@ -109,7 +108,7 @@ describe("model_alias notice", () => {
     // A second turn in the same process — a fresh provider instance and a fresh
     // stream — must not reprint the same provider|requested|served triple.
     const second = make(PRESET as never, MODEL, "sk", "deepseek");
-    const b = await drain(second, finishEvents("deepseek-flash"));
+    const b = await drain(second, finishEvents("deepseek-v4-pro"));
     expect(aliasOf(b.yielded)).toEqual([]);
   });
 
@@ -123,7 +122,7 @@ describe("model_alias notice", () => {
   it("stays silent when the served modelId is not in the provider's catalog (a dated/versioned id)", async () => {
     const make = await loadFactory();
     const provider = make(PRESET as never, MODEL, "sk", "deepseek");
-    const { yielded } = await drain(provider, finishEvents("deepseek-v4-flash-0731"));
+    const { yielded } = await drain(provider, finishEvents("deepseek-flash-0731"));
     expect(aliasOf(yielded)).toEqual([]);
   });
 

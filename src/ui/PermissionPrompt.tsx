@@ -5,6 +5,7 @@ import type { PermissionRule } from "../permissions/index.js";
 import type { Capability, CapabilityPlan } from "../permissions/capabilities.js";
 import type { BashEnvelope } from "../permissions/session-grant.js";
 import { extractToolSubject } from "../permissions/rules.js";
+import { sandboxAllowsBrowser } from "../sandbox/seatbelt.js";
 import { useTheme } from "./contexts.js";
 import { ansi256, type ThemeContextValue } from "./theme.js";
 import { toolDisplayName } from "./ToolCallFormatter.js";
@@ -39,6 +40,17 @@ export interface PermissionRequest {
   origin?: { subagent: string };
   /** AI explanation (Ctrl+E) — informational only, never gates the decision. */
   explain?: { status: "loading" | "done" | "error"; text: string };
+  /**
+   * The command risk classifier's verdict (docs/command-risk-classifier.md
+   * §3.4). Present whenever the classifier ran, so the user can see its read
+   * even when it changed nothing — `shadow` mode included. `message` is set only
+   * when the classifier is *why* this call is stricter than the engine's own
+   * answer, and it is the one part that must not appear otherwise: a verdict
+   * that decided nothing must not read as though it had.
+   *
+   * Distinct from {@link RiskInfo}, which is the capability-derived level.
+   */
+  policyRisk?: { tier: string; reasons: string[]; message?: string };
 }
 
 export type PermissionDecision = "once" | "session" | "always" | "deny" | "envelope-grant";
@@ -130,6 +142,28 @@ export function riskLevel(request: PermissionRequest): RiskInfo {
 }
 
 /** Resolve a semantic theme slot to an Ink color string, honoring the color gate. */
+/**
+ * Which semantic slot a risk tier reads as: a block is an error, a confirm a
+ * warning, and the ordinary tiers are neutral rather than celebratory — the
+ * line is there to be read, not to reassure.
+ */
+/**
+ * The one-line risk summary, pure and exported for the same reason as
+ * {@link permissionHeader}: what the prompt says about the classifier is worth
+ * asserting without rendering it.
+ */
+export function riskLine(request: PermissionRequest): string | undefined {
+  if (!request.policyRisk) return undefined;
+  const { tier, reasons } = request.policyRisk;
+  return `risk: ${tier}${reasons.length > 0 ? ` · ${reasons.join(", ")}` : ""}`;
+}
+
+function riskTierSlot(tier: string): keyof ThemeContextValue["theme"] {
+  if (tier === "block") return "error";
+  if (tier === "confirm") return "warning";
+  return "textDim";
+}
+
 function slotColor(theme: ThemeContextValue, key: keyof ThemeContextValue["theme"]): string | undefined {
   if (!theme.colorEnabled) return undefined;
   return ansi256(theme.theme[key] as number);
@@ -266,6 +300,9 @@ export function grantConsentLines(envelope: BashEnvelope): string[] {
     "Those children have outbound network: they can connect to any host and send any file they can read. Services on this Mac (localhost) are reachable unless sandbox.allowLocalNetwork is off; Unix sockets such as Docker's are not.",
     "Reads are only partly contained: files outside your home directory can still be readable, toolchain folders in it (SDKMAN, Gradle, Maven, Cargo, pub, CocoaPods) are readable — including Gradle/Maven credentials files — and files inside the project, including .env, can be read by a script even though the file tools guard them.",
   ];
+  if (sandboxAllowsBrowser()) {
+    lines.push("sandbox.allowBrowser is on: children can launch Chrome and reach the window server and the system services it needs (not Apple Events, the clipboard or the Keychain).");
+  }
 
   // Decision 8: the outside-$HOME warning is repeated here, because consent is
   // the moment the authority is actually granted.
@@ -315,6 +352,12 @@ export default function PermissionPrompt({ request, cursor, onChoose, onCancel }
       </Box>
       <Text bold>{toolDisplayName(request.toolName)}</Text>
       <Text>{request.command}</Text>
+      {request.policyRisk ? (
+        <Text color={slotColor(theme, riskTierSlot(request.policyRisk.tier))}>{riskLine(request)}</Text>
+      ) : null}
+      {request.policyRisk?.message ? (
+        <Text color={slotColor(theme, "warning")}>{request.policyRisk.message}</Text>
+      ) : null}
       {scopeLine(request) ? <Text color={slotColor(theme, "warning")}>{scopeLine(request)}</Text> : null}
       {request.defaultRule?.kind === "glob" ? <Text color={slotColor(theme, "textDim")}>Pattern: {request.defaultRule.pattern}</Text> : null}
       {request.description ? <Text color={slotColor(theme, "textDim")}>{request.description}</Text> : null}

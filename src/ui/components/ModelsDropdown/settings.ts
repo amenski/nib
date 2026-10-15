@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { updateSettings } from "../ThemeDropdown/index.js";
+import { updateSettings } from "../../../config/settings-writer.js";
 import { resolveHome } from "../../../config/loader.js";
 import { addRecentModel, toggleFavoriteModel, type RecentModel } from "../../core/model-picker.js";
 

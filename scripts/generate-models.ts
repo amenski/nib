@@ -1,12 +1,11 @@
 import { resolve } from "node:path";
 import { readFileSync, writeFileSync } from "node:fs";
 import { generateCatalog } from "../src/providers/catalog-generator.js";
+import { PROVIDER_OVERLAY } from "../src/providers/provider-overlay.js";
 
 const root = resolve(import.meta.dirname, "..");
 const input = process.argv[2] ?? resolve(root, "scripts/fixtures/models.dev.json");
 const output = process.argv[3] ?? resolve(root, "src/providers/models.json");
-const presets = JSON.parse(readFileSync(resolve(root, "src/providers/provider-presets.json"), "utf8"));
-const defaultModels = Object.fromEntries(Object.entries(presets.providers).map(([name, value]) => [name, (value as { defaultModel: string }).defaultModel]));
 const isFixture = input === resolve(root, "scripts/fixtures/models.dev.json");
 
 function isObject(v: unknown): v is Record<string, unknown> {
@@ -41,5 +40,5 @@ const parsed = input.startsWith("http://") || input.startsWith("https://")
     })()
   : JSON.parse(readFileSync(input, "utf8"));
 
-const options = { ...provenanceOptions(parsed), defaultModels };
+const options = { ...provenanceOptions(parsed), overlay: PROVIDER_OVERLAY };
 writeFileSync(output, `${JSON.stringify(generateCatalog(parsed, options), null, 2)}\n`);

@@ -508,3 +508,9 @@ export class ThemeContextValue {
 export function createDefaultTheme(): ThemeContextValue {
   return new ThemeContextValue(DARK_THEME);
 }
+
+/** Resolve a semantic theme slot to an Ink color string, honoring the color gate. */
+export function slotColor(theme: ThemeContextValue, key: keyof ThemeContextValue["theme"]): string | undefined {
+  if (!theme.colorEnabled) return undefined;
+  return ansi256(theme.theme[key] as number);
+}

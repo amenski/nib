@@ -266,8 +266,9 @@ specs and subsystem deep dives.
 
 ## Supported models
 
-Nib ships provider presets for DeepSeek, OpenAI, OpenRouter, Groq, and local
-Ollama. The bundled catalog supplies the selectable models for each provider;
+Nib features DeepSeek, OpenAI, OpenRouter, Groq, and local Ollama, and its
+bundled Models.dev catalog adds ~190 other OpenAI-compatible providers (run
+`nib auth` to connect one). The catalog supplies the selectable models for each provider;
 switch with `/model` or `--model <provider/model>`. DeepSeek V4 Pro is the
 primary tested model, while the default `general` mode uses DeepSeek V4 Flash
 at low reasoning effort.

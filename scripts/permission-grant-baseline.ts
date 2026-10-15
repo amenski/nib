@@ -133,6 +133,29 @@ interface Report {
   childProcesses: 0;
   /** Per-command audit trail, so the prompt count is traceable to its calls. */
   perCommand: Array<{ i: number; tool: string; command: string; decisions: string[] }>;
+  /**
+   * One row per call the risk classifier labelled (docs/command-risk-
+   * classifier.md §9 phase 1): what it saw, the tier it reached, what the
+   * engine would have done on its own, what the classifier would have done,
+   * and what the user actually answered. This is the review queue the
+   * proposal's phase 1 exit criterion is read from.
+   */
+  riskRows: Array<{
+    i: number;
+    tool: string;
+    tier: string;
+    engineAction: string;
+    classifierAction: string;
+    /** True when enforce mode would have made this call stricter than the engine did. */
+    wouldNarrow: boolean;
+    userDecision: string;
+    reasons: string[];
+    parseStatus: string;
+    /** The whole vector, so a verdict is replayable from this output alone. */
+    features: unknown;
+  }>;
+  /** Calls per tier, for the "does this fill the prompt budget" question. */
+  riskTierCounts: Record<string, number>;
 }
 
 async function measure(mode: Mode): Promise<Report> {
@@ -236,6 +259,25 @@ async function measure(mode: Mode): Promise<Report> {
       command: entry.command,
       decisions: rows.filter((row) => row.toolCallId === `call_${i}`).map((row) => row.decision),
     })),
+    riskRows: rows.flatMap((row, i) =>
+      row.risk === undefined
+        ? []
+        : [
+            {
+              i,
+              tool: row.tool,
+              tier: row.risk.tier,
+              engineAction: row.risk.engineAction,
+              classifierAction: row.risk.nativeAction,
+              wouldNarrow: rank(row.risk.nativeAction) > rank(row.risk.engineAction),
+              userDecision: row.decision,
+              reasons: row.risk.reasons,
+              parseStatus: row.risk.parseStatus,
+              features: row.risk.features,
+            },
+          ],
+    ),
+    riskTierCounts: countBy(rows.flatMap((row) => (row.risk ? [row.risk.tier] : []))),
   };
 
   check(report, metrics, ranUnderGrant.map((entry) => entry.envelopeHash), envelope?.profileHash);
@@ -286,6 +328,17 @@ function round(n: number): number {
   return Math.round(n * 10) / 10;
 }
 
+/** allow < ask < deny, the same order the classifier's clamp uses. */
+function rank(action: string): number {
+  return action === "deny" ? 2 : action === "ask" ? 1 : 0;
+}
+
+function countBy(values: string[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const value of values) out[value] = (out[value] ?? 0) + 1;
+  return out;
+}
+
 function delta(before: Report, after: Report): Record<string, number> {
   const keys = [
     "prompts", "promptsBash", "promptsOther", "promptsPer100BashCalls",
@@ -295,6 +348,22 @@ function delta(before: Report, after: Report): Record<string, number> {
   const out: Record<string, number> = {};
   for (const key of keys) out[key] = round(after[key] - before[key]);
   return out;
+}
+
+function riskSummary(report: Report): string {
+  const tiers = Object.entries(report.riskTierCounts)
+    .map(([tier, n]) => `${tier} ${n}`)
+    .join(", ");
+  if (tiers === "") return `${report.mode.padEnd(6)} risk: classifier did not run\n`;
+  const narrowing = report.riskRows.filter((row) => row.wouldNarrow);
+  return (
+    `${report.mode.padEnd(6)} risk: ${tiers}` +
+    ` · enforce would narrow ${narrowing.length}` +
+    (narrowing.length > 0
+      ? ` (${narrowing.map((row) => `${row.tier}:\"${report.perCommand[row.i]?.command ?? "?"}\"`).join(", ")})`
+      : "") +
+    "\n"
+  );
 }
 
 function summarize(report: Report): string {
@@ -322,6 +391,10 @@ async function main(): Promise<void> {
   for (const key of ["before", "after"] as const) {
     const report = out[key] as Report | undefined;
     if (report) process.stderr.write(summarize(report));
+  }
+  for (const key of ["before", "after"] as const) {
+    const report = out[key] as Report | undefined;
+    if (report) process.stderr.write(riskSummary(report));
   }
   const d = out.delta as Record<string, number> | undefined;
   if (d) process.stderr.write(`delta  prompts ${d.prompts} · per 100 Bash calls ${d.promptsPer100BashCalls}\n`);

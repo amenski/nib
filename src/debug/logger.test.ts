@@ -32,7 +32,7 @@ describe("debug logger timing", () => {
     enableDebug("sess-timing");
     logTiming({
       phase: "request",
-      model: "deepseek-v4-flash",
+      model: "deepseek-flash",
       effort: "low",
       promptBytes: 42,
       toolCount: 0,
@@ -45,7 +45,7 @@ describe("debug logger timing", () => {
     const entry = JSON.parse(lines[lines.length - 1]);
     expect(entry.type).toBe("timing");
     expect(entry.phase).toBe("request");
-    expect(entry.model).toBe("deepseek-v4-flash");
+    expect(entry.model).toBe("deepseek-flash");
     expect(entry.durationsMs).toEqual({ total: 120, toFirstEvent: 80, toFirstText: 90 });
   });
 

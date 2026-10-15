@@ -9,6 +9,11 @@ vi.mock("node:os", async (importOriginal) => {
   return { ...original, homedir: () => TEST_HOME };
 });
 
+// The interactive prompts, scripted per test (authWizard only).
+const picks: (string | null)[] = [];
+vi.mock("./pick.js", () => ({ pickFromList: vi.fn(async () => picks.shift() ?? null) }));
+vi.mock("./hidden-input.js", () => ({ readHiddenLine: vi.fn(async () => "sk-test-dummy") }));
+
 function credsPath(): string {
   return join(TEST_HOME, ".nib", "credentials.yaml");
 }
@@ -105,5 +110,72 @@ describe("authSaveKey", () => {
     expect(creds.existing).toBe("sk-keep");
     expect(creds.added).toBe("sk-add");
     expect(statSync(credsPath()).mode & 0o777).toBe(0o600);
+  });
+});
+
+describe("parseModelIds", () => {
+  it("splits on commas and whitespace, dropping blanks and duplicates", async () => {
+    const { parseModelIds } = await import("./wizard.js");
+    expect(parseModelIds(" qwen3-coder-plus, qwen3-max  qwen3-coder-plus,, ")).toEqual(["qwen3-coder-plus", "qwen3-max"]);
+    expect(parseModelIds("   ")).toEqual([]);
+  });
+});
+
+describe("providerPickerItems", () => {
+  it("lists featured providers first, then the rest by id, then a pinned custom row", async () => {
+    const { providerPickerItems } = await import("./wizard.js");
+    const provider = (label: string, baseUrl: string, featured?: boolean) => ({
+      label, baseUrl, featured, api: "openai-compatible", keyEnv: "K", defaultModel: "m", models: {},
+    });
+    const items = providerPickerItems({ providers: {
+      deepseek: provider("DeepSeek", "https://api.deepseek.com", true),
+      zai: provider("Z.AI", "https://api.z.ai/api/paas/v4"),
+      "alibaba-coding-plan": provider("Alibaba Coding Plan", "https://coding-intl.dashscope.aliyuncs.com/v1"),
+    } });
+    expect(items.map((i) => i.id)).toEqual(["deepseek", "alibaba-coding-plan", "zai", ":custom"]);
+    expect(items[0]).toMatchObject({ label: "DeepSeek", detail: "built-in" });
+    expect(items[1]).toMatchObject({ detail: "alibaba-coding-plan · coding-intl.dashscope.aliyuncs.com" });
+    expect(items.at(-1)).toMatchObject({ label: "Custom URL…", pinned: true });
+  });
+});
+
+describe("authWizard", () => {
+  let authWizard: typeof import("./wizard.js").authWizard;
+  const modelsPath = () => join(TEST_HOME, ".nib", "models.json");
+  let wasTTY: boolean | undefined;
+
+  beforeEach(async () => {
+    mkdirSync(TEST_HOME, { recursive: true });
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    wasTTY = process.stdin.isTTY;
+    process.stdin.isTTY = true;
+    picks.length = 0;
+    ({ authWizard } = await import("./wizard.js"));
+  });
+
+  afterEach(() => {
+    process.stdin.isTTY = wasTTY as boolean;
+    rmSync(TEST_HOME, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  it("connects a catalog provider without a network call, recording only a non-default model", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    picks.push("zai", "glm-5.3");
+    await authWizard();
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(parseFlatYaml(readFileSync(credsPath(), "utf-8")).zai).toBe("sk-test-dummy");
+    expect(JSON.parse(readFileSync(modelsPath(), "utf-8")).providers).toEqual({ zai: { defaultModel: "glm-5.3" } });
+  });
+
+  it("clears a stale default override when the bundled default is picked", async () => {
+    mkdirSync(join(TEST_HOME, ".nib"), { recursive: true });
+    writeFileSync(modelsPath(), JSON.stringify({ providers: { zai: { defaultModel: "glm-5.3" } } }));
+    const bundled = JSON.parse(readFileSync("src/providers/models.json", "utf-8"));
+    picks.push("zai", bundled.providers.zai.defaultModel);
+    await authWizard();
+
+    expect(JSON.parse(readFileSync(modelsPath(), "utf-8")).providers).toEqual({});
   });
 });

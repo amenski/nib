@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 // (persist + validate + roll back) is unit-testable. Importing cli.tsx does
 // NOT run the real CLI startup: main() is guarded to only auto-run when this
 // module is the process entrypoint, which is false under vitest.
-import { handleSlashCore, syncModeModel } from "./cli.js";
+import { handleSlashCore, applyModeDefaults } from "./cli.js";
 import { resolveRestoredSelection } from "./modes/model-policy.js";
 
 // The successful-switch case runs recordRecentModel, which writes
@@ -90,7 +90,7 @@ describe("/model command (C2: persist + validate + roll back)", () => {
   });
 });
 
-describe("mode model defaults on resume", () => {
+describe("mode model defaults", () => {
   function shared() {
     return {
       providerName: "deepseek",
@@ -99,31 +99,73 @@ describe("mode model defaults on resume", () => {
       modelExplicit: false,
       effortExplicit: false,
       providerExplicit: false,
-      baselineProviderName: "deepseek",
-      baselineModel: undefined as string | undefined,
-      baselineEffort: undefined as string | undefined,
+      sessionInput: 0,
+      sessionOutput: 0,
     };
   }
 
-  it("recomputes General's Flash/low defaults for a known mode-derived resume", () => {
-    const restored = resolveRestoredSelection("deepseek-v4-flash", false);
-    expect(restored).toEqual({ value: undefined, explicit: false });
+  const general = { slug: "general", name: "General", roleDefinition: "", model: "deepseek/deepseek-flash", reasoningEffort: "low" };
+  const code = { slug: "code", name: "Code", roleDefinition: "" };
 
+  async function runSlash(input: string, state: any, sessionStore: any, modeLoader: any) {
+    await handleSlashCore(
+      input, vi.fn(() => ({}) as any),
+      {}, modeLoader, {} as any, sessionStore,
+      "sess-1", {} as any, {} as any, undefined,
+      () => ({}) as any, {} as any, [], {} as any,
+      state, () => undefined,
+      () => null, false, undefined,
+      vi.fn(),
+    );
+  }
+
+  it("seeds General's Flash/low defaults for a new session", () => {
     const state = shared();
-    syncModeModel(state, { slug: "general", name: "General", roleDefinition: "", model: "deepseek/deepseek-v4-flash", reasoningEffort: "low" });
-    expect(state).toMatchObject({ activeModel: "deepseek-v4-flash", activeEffort: "low" });
+    applyModeDefaults(state, general);
+    expect(state).toMatchObject({ activeModel: "deepseek-flash", activeEffort: "low" });
   });
 
-  it("recomputes a specialist default when Code follows a mode-derived Flash session", () => {
-    const restored = resolveRestoredSelection("deepseek-v4-flash", false);
-    const state = { ...shared(), activeModel: restored.value };
-    syncModeModel(state, { slug: "code", name: "Code", roleDefinition: "" });
-    expect(state.activeModel).toBeUndefined();
-    expect(state.activeEffort).toBe("high");
+  it("does not seed anything for a session starting in Code", () => {
+    const state = { ...shared(), activeEffort: "high" };
+    applyModeDefaults(state, code);
+    expect(state).toMatchObject({ activeModel: undefined, activeEffort: "high" });
   });
 
-  it("preserves explicit and legacy-ambiguous restored choices", () => {
-    expect(resolveRestoredSelection("openai-model", true)).toEqual({ value: "openai-model", explicit: true });
-    expect(resolveRestoredSelection("legacy-model", undefined)).toEqual({ value: "legacy-model", explicit: true });
+  it("keeps the model and effort when /mode switches from General to Code", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const state = shared();
+    applyModeDefaults(state, general);
+    const sessionStore = { appendState: vi.fn().mockResolvedValue(undefined) };
+    const modeLoader = { load: vi.fn().mockResolvedValue(code) };
+
+    await runSlash("/mode code", state, sessionStore, modeLoader);
+
+    expect((state as any).activeMode).toBe(code);
+    expect(state).toMatchObject({ providerName: "deepseek", activeModel: "deepseek-flash", activeEffort: "low" });
+    expect(sessionStore.appendState).toHaveBeenCalledWith("sess-1", { mode: "code" });
+    vi.restoreAllMocks();
+  });
+
+  it("keeps a /model choice when /mode switches back to General", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const state = { ...shared(), activeModel: "deepseek-v4-pro", modelExplicit: true };
+    const sessionStore = { appendState: vi.fn().mockResolvedValue(undefined) };
+    const modeLoader = { load: vi.fn().mockResolvedValue(general) };
+
+    await runSlash("/mode general", state, sessionStore, modeLoader);
+
+    expect(state.activeModel).toBe("deepseek-v4-pro");
+    vi.restoreAllMocks();
+  });
+
+  it("restores a resumed session's selection, mode default included", () => {
+    expect(resolveRestoredSelection("deepseek-flash")).toEqual({ value: "deepseek-flash", explicit: true });
+    expect(resolveRestoredSelection(undefined)).toEqual({ value: undefined, explicit: false });
+
+    // Resumed in General with a model from a /model switch: not re-seeded.
+    const restored = resolveRestoredSelection("deepseek-v4-pro");
+    const state = { ...shared(), activeModel: restored.value, modelExplicit: restored.explicit };
+    applyModeDefaults(state, general);
+    expect(state.activeModel).toBe("deepseek-v4-pro");
   });
 });

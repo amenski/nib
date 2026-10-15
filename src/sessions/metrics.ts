@@ -1,4 +1,5 @@
 import type { PermissionAuditRecord, SessionPermissionMetrics } from "./store.js";
+import type { RiskTier } from "../permissions/risk/rules.js";
 
 /**
  * Decisions a session's metrics count, exactly once each. Membership is
@@ -9,7 +10,7 @@ const CANONICAL_DECISIONS = new Set<PermissionAuditRecord["decision"]>([
   "allow-by-rule", "allow-by-posture", "ask-approved", "ask-denied",
   "deny-by-rule", "deny-by-profile", "headless-deny", "unresolved-ask",
   // Session-grant lifecycle (docs/permission-ux-redesign.md).
-  "allow-by-envelope-grant", "grant-invalidated", "grant-revoked", "sandbox-failure",
+  "allow-by-envelope-grant", "grant-invalidated", "grant-revoked", "grant-renewed", "sandbox-failure",
 ]);
 const LEGACY_DECISIONS = new Set<PermissionAuditRecord["decision"]>([
   "deny", "once", "session", "always",
@@ -91,6 +92,14 @@ export function computeSessionPermissionMetrics(
   let envelopeGrantInvalidations = 0;
   let envelopeGrantRevocations = 0;
   let sandboxFailures = 0;
+  const riskTierCounts: Record<RiskTier, number> = { safe: 0, benign: 0, confirm: 0, block: 0 };
+  let classifierCausedAsks = 0;
+  let classifierCausedAsksApproved = 0;
+  let blocks = 0;
+  let stage2Calls = 0;
+  let stage2Flags = 0;
+  let stage2FailedOpen = 0;
+  const stage2Latencies: number[] = [];
 
   for (const row of selected) {
     if (isPrompt(row)) permissionPrompts++;
@@ -104,6 +113,24 @@ export function computeSessionPermissionMetrics(
     if (row.decision === "grant-invalidated") envelopeGrantInvalidations++;
     if (row.decision === "grant-revoked") envelopeGrantRevocations++;
     if (row.decision === "sandbox-failure") sandboxFailures++;
+
+    // Rows written before the classifier existed carry no verdict; they are
+    // counted nowhere rather than folded into a tier they were never given.
+    const risk = row.risk;
+    if (risk !== undefined) {
+      riskTierCounts[risk.tier]++;
+      if (risk.tier === "block") blocks++;
+      if (risk.nativeAction === "ask" && risk.engineAction === "allow") {
+        classifierCausedAsks++;
+        if (isApproval(row)) classifierCausedAsksApproved++;
+      }
+      if (risk.model !== undefined) {
+        stage2Calls++;
+        if (risk.model.outcome === "flag") stage2Flags++;
+        else if (risk.model.outcome !== "ok") stage2FailedOpen++;
+        stage2Latencies.push(risk.model.latencyMs);
+      }
+    }
   }
 
   return {
@@ -115,5 +142,25 @@ export function computeSessionPermissionMetrics(
     envelopeGrantInvalidations,
     envelopeGrantRevocations,
     sandboxFailures,
+    riskTierCounts,
+    classifierCausedAsks,
+    classifierCausedAsksApproved,
+    blocks,
+    stage2Calls,
+    stage2Flags,
+    stage2FailedOpen,
+    stage2P95Ms: percentile95(stage2Latencies),
   };
+}
+
+/**
+ * Nearest-rank p95 over the stage-2 latencies. `0` for no samples rather than
+ * `NaN`: "the stage never ran" and "the stage ran instantly" are different, and
+ * only the counter above can tell them apart, so this must not invent a number.
+ */
+function percentile95(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const index = Math.ceil(sorted.length * 0.95) - 1;
+  return Math.round(sorted[Math.min(index, sorted.length - 1)]);
 }

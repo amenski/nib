@@ -55,7 +55,12 @@ The grant is unavailable when containment is disabled, unrestricted, or
 unsupported. Actual child launch must use the envelope that was approved.
 If Seatbelt refuses to apply at spawn time, the child must not execute, the
 session grant must be revoked, and the failure must be shown to the user.
-There must be no unsandboxed retry. The existing fail-closed release gate was
+There must be no *automatic* unsandboxed retry: a launch that fails to apply
+its profile never falls back on its own. (Amended 2026-10-15: the user can
+approve a single unsandboxed run, which the model requests with
+`unsandboxed: true` or `sandbox.excludedCommands` selects. That call always
+asks, is one-time only, takes no session grant and no envelope, and never
+follows a containment failure.) The existing fail-closed release gate was
 measured in a managed macOS runner that refuses nested Seatbelt; this grant
 adds the separate requirement to recognize the failure and revoke itself.
 
@@ -111,22 +116,18 @@ set explicitly rather than implying it follows from the level; it is computed
 per launch, and two launches of the same level can produce different sets. In
 the user-facing copy, state the narrower observed network claim: direct child
 connections are denied in the tested profile, while macOS system name
-resolution may still occur outside the child. It must also say that current read containment is `$HOME`-shaped:
-files outside `$HOME` can still be readable. Project secrets such as `.env`
+resolution may still occur outside the child. It must also say that reads are not contained
+(amended 2026-10-15: a child may read everything except credential stores).
+Project secrets such as `.env`
 are inside the approved workspace and can be read by a script, even though
 direct file tools guard them. The user can revoke the grant for future
 launches; revocation does not undo effects or stop a process already running.
 
-For this release, retain the `$HOME`-shaped child read boundary and disclose
-it. Warn when the workspace is outside `$HOME`, where the current home deny
-does not protect sibling files near that workspace. Broader read isolation
-would be a separate compatibility project, not an implied property of this
-grant.
-
-The warning is implemented: `workspaceOutsideHomeWarning`
-(`src/config/loader.ts`) surfaces it in both the interactive scrollback and
-headless stderr, and stays silent whenever there is no active boundary to
-disclose.
+Amended 2026-10-15: the child read boundary is no longer `$HOME`-shaped. A
+sandboxed child may read everything except a list of credential stores (the
+same model as Claude Code), so the "workspace outside `$HOME`" warning
+(`workspaceOutsideHomeWarning`) was removed: there is no longer a home-shaped
+boundary for it to disclose.
 
 This is a deliberate broad session consent. If that scope is unacceptable,
 keep per-command prompts for arbitrary code. A command classifier cannot
@@ -341,3 +342,15 @@ No LLM permission judge, hostname guessing from command names, automatic
 approval of arbitrary scripts, persistent `allow all Bash`, or new network
 exception. The future network broker remains governed by
 `docs/security-network-broker.md`.
+
+> **Amended 2026-10-15 (owner decision).** The "no LLM permission judge" line
+> was scoped to *this redesign*, and the owner has since built one as the
+> command risk classifier's optional second stage
+> (`docs/command-risk-classifier.md` §6, `classifier.model.enabled`, default
+> **off**). What the line was protecting still holds, and is what bounds the
+> stage: it can only move a verdict *toward* a confirmation, never toward an
+> allow, so it cannot approve anything — Decision 5
+> (`security-architecture-plan.md:121`) and the "no automatic approval"
+> commitment above are both intact. The other three items are unchanged.
+> The stage's own implementation notes, including why it is close to inert
+> under `enforce`, are in the proposal's §6.3.

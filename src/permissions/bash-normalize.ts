@@ -28,6 +28,34 @@ export interface UnwrapResult {
   failedUnwrap: boolean;
 }
 
+/**
+ * The quoted body of a `bash -c` / `sh -c` / `eval` wrapper, returned even
+ * when it contains command substitution — exactly the case
+ * {@link extractQuotedArg} refuses, because the outer shell may expand the
+ * body differently than it reads.
+ *
+ * It is therefore NOT usable as an approval subject, and nothing that decides
+ * what to run may use it. It exists so a reader that only needs to *recognize*
+ * the body — the risk classifier
+ * (permissions/risk/features.ts), which treats what it sees as a lower bound
+ * on the risk and reports a parse failure alongside it — can read it instead
+ * of seeing nothing at all.
+ */
+export function extractQuotedArgLoose(command: string): string | null {
+  const trimmed = command.trim();
+  const match = trimmed.match(WRAPPER_RE);
+  if (!match) return null;
+  const rest = trimmed.slice(match[0].length).trim();
+  if (!rest) return null;
+
+  const quote = rest[0];
+  if (quote !== "'" && quote !== '"') return null;
+
+  const closeIdx = rest.lastIndexOf(quote);
+  if (closeIdx <= 0) return null;
+  return rest.slice(1, closeIdx);
+}
+
 export function detectWrapper(command: string): UnwrapResult {
   const trimmed = command.trim();
   if (!WRAPPER_RE.test(trimmed)) {

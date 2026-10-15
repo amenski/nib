@@ -5,9 +5,11 @@ import { buildRepoMap } from "./prompt.js";
 import { executeTool, registry, setSessionId, setSignal, setTimeoutToBackground, setSandboxLevel, setSessionTempDir, setWritePolicyLevel, setWriteRoots, setWebSearchConfig } from "./tools/index.js";
 import { createSessionTempDir } from "./sandbox/session-temp.js";
 import { configureSandbox } from "./sandbox/seatbelt.js";
+import { configureUnsandboxed } from "./sandbox/unsandboxed.js";
 import { filterToolDefs } from "./tools/filter.js";
 import { todoStore } from "./tools/todo.js";
 import { initPresets, createProvider, getPreset } from "./providers/presets.js";
+import { createRiskJudge } from "./providers/risk-judge.js";
 import { imageSupportWarning } from "./providers/registry.js";
 import { PermissionEngine, ProfileEvaluator, authorize } from "./permissions/index.js";
 import { projectSettingsPath } from "./config/paths.js";
@@ -89,7 +91,7 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
   }
 
   try {
-    const { loadConfig, workspaceOutsideHomeWarning } = await import("./config/loader.js");
+    const { loadConfig, hasActiveSandboxContainment } = await import("./config/loader.js");
     const configResult = loadConfig(options.projectRoot);
     // Fail fast on config errors, same message shape as the TUI (cli.tsx) —
     // e.g. an invalid matcher regex is fatal in headless mode too; it must
@@ -148,29 +150,21 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
 
     // sandbox (permission-profile.md §8, phase (e)) — same resolution the
     // TUI uses; Seatbelt enforcement is identical headless.
-    setSandboxLevel(
+    const bashSandboxLevel =
       effectiveConfig.sandbox?.enabled &&
       effectiveConfig.permissionProfile &&
       effectiveConfig.permissionProfile.level !== "unrestricted"
         ? effectiveConfig.permissionProfile.level
-        : undefined,
-    );
+        : undefined;
+    setSandboxLevel(bashSandboxLevel);
     // Merge global sandbox.writeRoots with the startup-resolved --add-dir
     // roots. Project TOFU stripping can narrow only the config contribution;
     // explicit CLI roots remain session-scoped trusted roots.
-    // Global-only sandbox.readRoots / allowLocalNetwork: set before any profile
+    // Global-only sandbox.allowLocalNetwork / allowBrowser: set before any profile
     // is built so every launch and the session-grant hash agree.
-    configureSandbox({ readRoots: configResult.config.sandbox?.readRoots, allowLocalNetwork: configResult.config.sandbox?.allowLocalNetwork });
+    configureSandbox({ allowLocalNetwork: configResult.config.sandbox?.allowLocalNetwork, allowBrowser: configResult.config.sandbox?.allowBrowser });
+    configureUnsandboxed({ sandboxLevel: bashSandboxLevel, allowUnsandboxedCommands: configResult.config.sandbox?.allowUnsandboxedCommands, excludedCommands: configResult.config.sandbox?.excludedCommands });
     setWriteRoots(writeRoots);
-
-    // Read-boundary disclosure (see workspaceOutsideHomeWarning): the TUI
-    // shows this in its scrollback, so headless prints it too — this is the
-    // path where approvals run with nobody watching. Emitted as-is rather than
-    // under this file's `[warn]` prefix, because the copy carries its own
-    // marker like containmentWarning does.
-    const outsideHome = workspaceOutsideHomeWarning(effectiveConfig, options.projectRoot);
-    if (outsideHome) writeErr(outsideHome);
-
     const notifySpawnOptions: NotifySpawnOptions = {
       cwd: options.projectRoot,
       trustedRoot: options.projectRoot,
@@ -371,6 +365,7 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
       askUser,
       getSignal: () => abortController.signal,
       hooks,
+      classifierMode: configResult.config.classifier?.mode,
     });
     orchestrator.register(registry);
 
@@ -437,13 +432,27 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
       const modeTools = activeMode.groups ? registry.getByMode(activeMode.groups) : registry.getAllDefs();
       const filteredTools = filterToolDefs(modeTools, options.allowedTools, options.disallowedTools);
 
-      const agentOptions = {
+      // The classifier's optional model stage (docs/command-risk-classifier.md
+    // §6). Headless is where a flaky judge costs the most — there is no human
+    // to answer a prompt it invents — so it is the same opt-in as the TUI, and
+    // every failure mode still degrades to "no change".
+    const stage2Judge = createRiskJudge({
+      enabled: effectiveConfig.classifier?.model?.enabled ?? false,
+      ...(effectiveConfig.classifier?.model?.id !== undefined
+        ? { id: effectiveConfig.classifier.model.id }
+        : {}),
+      ...(providerName !== undefined ? { preferProvider: providerName } : {}),
+    });
+
+    const agentOptions = {
         provider,
         tools: filteredTools,
         effort: activeEffort,
         executeTool,
         permissions,
         permissionProfile,
+        classifierMode: configResult.config.classifier?.mode,
+        ...(stage2Judge !== undefined ? { classifierModel: stage2Judge } : {}),
         askUser,
         agents,
         repomap: repomapInjection,

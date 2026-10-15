@@ -187,6 +187,16 @@ export class ProfileEvaluator {
    */
   private readonly writeSet: string[];
 
+  /**
+   * The write-set as resolved, for callers that need to reason about the same
+   * boundary rather than about one path in it — today the risk classifier
+   * (permissions/risk), which measures a shell redirect's target against it.
+   * Read-only: nothing outside this class may replace or extend the set.
+   */
+  get writeRoots(): readonly string[] {
+    return this.writeSet;
+  }
+
   constructor(
     config?: PermissionProfileConfig,
     cwd?: string,

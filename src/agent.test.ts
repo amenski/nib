@@ -524,7 +524,16 @@ describe("runAgent", () => {
       // The third argument is the sandbox envelope a session grant could cover.
       // `undefined` here: this run carries no containment, so no grant applies
       // and the prompter is not offered the option (agent.grant.test.ts).
-      expect(askUser).toHaveBeenCalledWith("run_bash", { command: "npm test" }, undefined);
+      // The fourth argument is the sub-agent label (`undefined` on a root run);
+      // the fifth is what the risk classifier read, which is attached to every
+      // prompt it ran on — including one it did not cause, under shadow.
+      expect(askUser).toHaveBeenCalledWith(
+        "run_bash",
+        { command: "npm test" },
+        undefined,
+        undefined,
+        expect.objectContaining({ tier: expect.any(String) }),
+      );
       expect(executeTool).toHaveBeenCalled();
     });
 
@@ -844,7 +853,13 @@ describe("runAgent", () => {
       await runAgent("edit it", { provider, tools: [], executeTool, permissions: new PermissionEngine(undefined, "/workspace"), permissionProfile, askUser });
 
       expect(askUser).toHaveBeenCalledTimes(1);
-      expect(askUser).toHaveBeenCalledWith("edit", expect.objectContaining({ path: "/workspace/src/a.ts" }), undefined);
+      expect(askUser).toHaveBeenCalledWith(
+        "edit",
+        expect.objectContaining({ path: "/workspace/src/a.ts" }),
+        undefined,
+        undefined,
+        expect.objectContaining({ tier: expect.any(String) }),
+      );
       expect(executeTool).toHaveBeenCalled();
     });
 
@@ -1043,7 +1058,13 @@ describe("runAgent", () => {
       // The ask resolved once — no double prompt, and all three calls ran
       // (the reads concurrently, the ask sequentially in between).
       expect(askUser).toHaveBeenCalledTimes(1);
-      expect(askUser).toHaveBeenCalledWith("run_bash", { command: "npm test" }, undefined);
+      expect(askUser).toHaveBeenCalledWith(
+        "run_bash",
+        { command: "npm test" },
+        undefined,
+        undefined,
+        expect.objectContaining({ tier: expect.any(String) }),
+      );
       expect(executeTool).toHaveBeenCalledTimes(3);
       expect(sessionStore.appendPermission).toHaveBeenCalledWith("s1", expect.objectContaining({
         tool: "run_bash",
@@ -1119,9 +1140,9 @@ describe("runAgent", () => {
         tool: "run_bash",
         decision: "allow-by-posture",
       }));
-      // Upgraded by posture, not denied — the call still executed. (The
-      // trailing `undefined` is the second executor argument, which only an
-      // explicit interactive approval ever populates — see the
+      // Upgraded by posture, not denied — the call still executed. (The second
+      // executor argument carries only the call id: any grant on it is
+      // populated by an explicit interactive approval alone — see the
       // approved-operation grant block.)
       expect(askUser).toHaveBeenCalledTimes(1);
       expect(executeTool).toHaveBeenCalledWith(expect.objectContaining({ name: "run_bash" }), undefined);

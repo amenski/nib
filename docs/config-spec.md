@@ -81,6 +81,18 @@ are fatal — `main()` exits 1 (`src/cli.tsx`).
   // startup and runs policy-only. Default false.
   "sandbox": { "enabled": true },
 
+  // Command risk classifier (command-risk-classifier.md §9): labels every
+  // tool call safe/benign/confirm/block and, in "enforce", narrows what the
+  // rules already decided. Global-only. Default "shadow".
+  "classifier": {
+    "mode": "shadow",                      // "off" | "shadow" | "enforce"
+    // The optional second stage (§6): a small model call that can only add a
+    // confirmation, never remove one. Default off. `id` names the judge as
+    // "provider/model"; absent picks a cheap-class model from a provider you
+    // have a key for.
+    "model": { "enabled": false, "id": "anthropic/claude-haiku-5-5" }
+  },
+
   // MCP servers for external tool discovery
   "mcpServers": {
     "filesystem": {
@@ -112,6 +124,11 @@ are fatal — `main()` exits 1 (`src/cli.tsx`).
   // (2026-08-14); token counts always display. The estimate machinery
   // stays intact behind this flag.
   "showCost": false,
+
+  // Once a day at startup (interactive TUI only), ask registry.npmjs.org for
+  // the latest nib and print one dim line when it is newer. Default true;
+  // NIB_NO_UPDATE_CHECK=1 also turns it off.
+  "updateCheck": true,
 
   // Theme (nib extension)
   "theme": {
@@ -237,19 +254,65 @@ whether Bash asks at all. Each needs `enabled` alongside it.
 | Key | Default | Effect |
 |---|---|---|
 | `writeRoots` | `[]` | Extra writable (and readable) directories. |
-| `readRoots` | `[]` | Extra read-only directories under `$HOME`. |
 | `autoAllowBash` | `true` | Run eligible sandboxed Bash without the session prompt (permission-ux-redesign.md). |
 | `allowLocalNetwork` | `true` | Loopback (`localhost`) networking for `workspace-write` children; Java is forced to IPv4 so it matches. Needed by Gradle's daemon. `false` denies loopback only — other hosts stay reachable. |
+| `allowBrowser` | `true` | Lets `workspace-write` children launch headless Chrome (Playwright, Puppeteer): named system services incl. the window server, Chrome's own Mach names, three GPU/power IOKit clients, and its singleton dir in the per-user temp dir. Apple Events, the clipboard and the Keychain stay denied. Chrome's own sandbox cannot nest inside nib's, so launch with `--no-sandbox` (Playwright: `chromiumSandbox: false`, the default). Set `false` to opt out; with the rules off, every launch aborts and macOS shows a crash dialog. |
+| `allowUnsandboxedCommands` | `true` | Lets the model rerun a command outside the sandbox with `unsandboxed: true` (`run_bash`, `run_bash_background`). Every such call asks the user (even under an allow rule), is one-time only, and is never covered by the session grant. `false` refuses the request outright. Always off at `strict-sandbox`. |
+| `excludedCommands` | `[]` | Commands that always run outside the sandbox (and always ask), e.g. `["flutter", "docker *"]`. Matched by command prefix after leading `VAR=value`; a command that chains another (`;`, `&&`, `\|`, `` ` ``, `$(…)`) never matches. |
 
-Built-in toolchain access (`src/sandbox/seatbelt.ts`, added 2026-10-10):
-installs under `$HOME` such as `.sdkman`, `.gradle`, `.m2`, `.rustup`,
-`.cargo`, `.bun`, `.pub-cache`, `.cocoapods`, `Library/Android/sdk` and the
-version managers are readable when present; the build caches
-(`.gradle`, `.m2/repository`, `.cargo/registry|git`, `.pub-cache/hosted|git`,
-`.bun/install/cache`, `Library/Caches/CocoaPods`) are writable. Gradle/Maven
-config (`gradle.properties`, `init.d`, `settings.xml`) stays readable but is
-never writable; cargo/pub registry tokens and `~/.gradle/daemon` (outside daemons' ports and tokens) are neither — contained JVMs get a private daemon registry under `$TMPDIR`. `~/.android` (holds
-`adbkey`) is not included.
+Reads (`src/sandbox/seatbelt.ts`): a sandboxed child may read everything
+except credential stores under `$HOME` (`.ssh`, `.aws`, `.gnupg`, `.azure`,
+`.kube`, `.config/gcloud`, `.config/gh`, `Library/Keychains`, `.netrc`,
+`.git-credentials`, `.npmrc`, `.pypirc`, `.vault-token`, `.gem/credentials`,
+terraform credentials, `.docker/config.json`, `.android/adbkey`, nib's own
+`credentials.yaml`, and browser profiles: `Library/Cookies`, `Library/Safari`,
+Chrome, Firefox, Brave, Edge, Arc). Writes stay limited to the write roots plus built-in
+toolchain build caches under `$HOME` (`.gradle`, `.m2/repository`,
+`.cargo/registry|git`, `.pub-cache/hosted|git`, `.bun/install/cache`,
+`Library/Caches/CocoaPods`). Gradle/Maven config (`gradle.properties`,
+`init.d`, `settings.xml`) is never writable; cargo/pub registry tokens and
+`~/.gradle/daemon` are neither readable nor writable (contained JVMs get a
+private daemon registry under `$TMPDIR`).
+
+### `classifier` (command risk)
+
+`"classifier": { "mode": "shadow" }` (**default `shadow`**) controls the
+command risk classifier (docs/command-risk-classifier.md). Every tool call
+gets a deterministic feature vector and a tier — `safe`, `benign`, `confirm`
+or `block` — recorded on its permission audit row. The tier only ever makes a
+call *more* restrictive than the rules already did (locked Decision 5,
+security-architecture-plan.md): `confirm` can turn an allow into an ask,
+`block` denies, and nothing here can quiet a prompt the rules wanted.
+
+| Mode | Effect |
+|---|---|
+| `off` | The classifier does not run. |
+| `shadow` | Labels and logs only; every decision is unchanged. |
+| `enforce` | The clamped action is applied, and the reason (§3.4) reaches the prompt and the model. |
+
+`mode` is **global-only** (`~/.nib/settings.json`); a project file's value is
+ignored with a warning, because setting `off` there would switch off a safety
+layer. An unrecognized value is an error rather than a silent fallback.
+
+#### `classifier.model` (the second stage)
+
+`"model": { "enabled": false }` (**default `false`**) turns on the optional model
+judge (command-risk-classifier.md §6). It exists to catch the long tail the rule
+lists miss, and it can only move `safe|benign` to `confirm` — never to a denial,
+never away from a confirmation, so it cannot widen access. Read §6.3 of the
+proposal before enabling it: under `enforce`, §6.1's gate leaves it able to
+change the outcome only for an MCP call allowed by `defaultMode`.
+
+| Key | Default | Effect |
+|---|---|---|
+| `enabled` | `false` | Runs the judge. Off means the classifier is rules-only, byte for byte as before. |
+| `id` | absent | The judge as `"provider/model"`. Absent picks a cheap-class model (`haiku`/`flash`/`mini`/`nano`/`small`/`lite`/`tiny`) from a provider you have a key for, preferring the session's own provider. |
+
+Both are **global-only** for the same reason as `mode`. Every failure mode —
+timeout (3 s), provider error, an answer that is not `OK`/`FLAG` — resolves to
+"no change": the rules already bounded the call, and a flaky model must never
+create a prompt. The attempt, its outcome and its latency are recorded on the
+audit row either way, and `/permissions` reports calls, flags and p95.
 
 ## 4. `refresh` (repaint cadence)
 
@@ -532,8 +595,12 @@ codebase and no config key enables one — the former `telemetryEnabled` key
 removed; `telemetryEnabled` now warns as an unknown field. If you set it,
 nothing happens because there is nothing to enable.
 
-Nib makes no automatic network contacts. Network requests occur only when you
-select a model provider or explicitly configure or invoke an integration.
+Nib makes one automatic network contact: at most once a day, the interactive
+TUI asks `registry.npmjs.org` for the latest published nib version, to print a
+one-line update notice. Nothing is sent beyond the HTTP request itself, and
+headless `nib -p` never makes it. Turn it off with `"updateCheck": false` or
+`NIB_NO_UPDATE_CHECK=1`. Every other request occurs only when you select a model
+provider or explicitly configure or invoke an integration.
 
 ## 16. Deprecated keys
 
@@ -553,6 +620,7 @@ select a model provider or explicitly configure or invoke an integration.
 | `NIB_REFRESH` | Repaint cadence: `fast \| balanced \| slow` (lower priority than settings.json `refresh`) |
 | `NIB_PROFILE` | `"1"` enables the event-loop stall watchdog (troubleshooting.md) |
 | `NIB_HIGH_CONTRAST` | `"1"` enables high-contrast rendering |
+| `NIB_NO_UPDATE_CHECK` | Any value disables the daily npm update check (same as `"updateCheck": false`) |
 | `NO_COLOR`, `CI`, `TERM`, `COLORTERM` | Color/terminal capability gating |
 | `DEEPSEEK_API_KEY` | DeepSeek API key |
 | `OPENAI_API_KEY` | OpenAI API key |

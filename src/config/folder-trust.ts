@@ -51,6 +51,9 @@ export interface FolderTrustEntry {
 
 export interface FolderTrustStore {
   folders: Record<string, FolderTrustEntry>;
+  // A legacy `presetDeclines` key from the removed sandbox-preset flow may
+  // still exist in folder-trust.json; it is tolerated (never read) and gone
+  // the next time the store is rewritten.
 }
 
 function folderTrustFilePath(): string {

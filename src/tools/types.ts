@@ -57,6 +57,13 @@ export interface ToolExecOptions {
    * launch must use the envelope that was approved.
    */
   envelopeHash?: string;
+  /**
+   * Run this shell command outside the OS sandbox. Set only by agent.ts, after
+   * the permission flow approved this call — the model's `unsandboxed`
+   * argument alone changes nothing. The call carries no `envelopeHash` and no
+   * `onSandboxFailure`: it has no profile to bind either to.
+   */
+  unsandboxed?: boolean;
 }
 
 export interface AskQuestionOption {

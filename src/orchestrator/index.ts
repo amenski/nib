@@ -9,6 +9,7 @@ import { AgentLoader } from "../agents/index.js";
 import type { PermissionEngine, ProfileEvaluator } from "../permissions/index.js";
 import type { BashEnvelope } from "../permissions/session-grant.js";
 import type { HookRunner } from "../hooks/index.js";
+import { classifyRisk, type RiskMode } from "../permissions/risk/index.js";
 import { subagentAuditStore } from "../sessions/store.js";
 import { TodoStore } from "../tools/todo.js";
 import { TaskRegistry } from "./runner.js";
@@ -83,6 +84,14 @@ export interface OrchestratorOptions {
    * later sub-agent's calls. Left unset in headless runs (no envelope exists).
    */
   getBashEnvelope?: () => BashEnvelope | undefined;
+  /**
+   * How the command risk classifier acts (docs/command-risk-classifier.md §9).
+   * A sub-agent inherits the session's approvals, so a task description that
+   * reads like a command the rules would block is checked at spawn time —
+   * under `enforce` only, since in shadow mode the spawn continues either way
+   * and there is no audit row at this point to record the verdict on.
+   */
+  classifierMode?: RiskMode;
   /** Lifecycle hooks dispatcher (docs/hooks-spec.md) — SubagentStart/Stop
    *  fire around each sub-agent run. */
   hooks?: HookRunner;
@@ -110,6 +119,7 @@ export class Orchestrator {
     getSignal?: () => AbortSignal | undefined;
     getBashEnvelope?: () => BashEnvelope | undefined;
     hooks?: HookRunner;
+    classifierMode?: RiskMode;
   };
   private askUser?: (toolName: string, args: Record<string, unknown>, envelope?: BashEnvelope, origin?: { subagent: string }) => Promise<boolean | "posture" | "envelope-grant">;
   private onSubagentProgress?: (event: SubagentProgress) => void;
@@ -249,6 +259,33 @@ export class Orchestrator {
       const description = args.description as string;
       const agentName = args.agent as string | undefined;
 
+      // Spawn-time text check (§4.3, §7). The child inherits this session's
+      // approvals, so a description naming a destructive command is answered
+      // here rather than after the child has started. Deliberately narrow: it
+      // fires on the block-tier *shapes* (a literal `rm -rf`, a force push, a
+      // dropped database), not on any description that sounds sweeping — §12.3's
+      // consent-scope failure, arrived at from the other side.
+      if (this.options.classifierMode === "enforce" && description) {
+        const verdict = classifyRisk({
+          tool: "new_task",
+          args: { description },
+          workingDir: process.cwd(),
+          writeRoots: this.options.profile?.writeRoots ?? [process.cwd()],
+          sandbox: {
+            level: this.options.profile?.level ?? "unrestricted",
+            contained: this.options.profile !== undefined,
+          },
+          engine: { action: "allow", wasUnresolved: false, isGuarded: false },
+          session: { headless: true, userMessages: [], createdThisSession: new Set<string>() },
+        });
+        if (verdict.tier === "block") {
+          return {
+            content: `Cannot spawn sub-task. ${verdict.message ?? "the description matches a blocked command shape."}`,
+            error: "UNSAFE_TASK",
+          };
+        }
+      }
+
       // The one-line label a permission prompt shows for this sub-agent's asks
       // (AgentOptions.askOrigin): the description's first line, capped so it
       // stays a header rather than a paragraph.
@@ -374,6 +411,10 @@ export class Orchestrator {
               compactor: subCompactor,
               permissions: this.options.permissions,
               permissionProfile: this.options.profile,
+              // A sub-agent runs under the same classifier mode as its parent:
+              // its calls are the parent's calls as far as the policy is
+              // concerned (§12.8, subagent laundering).
+              classifierMode: this.options.classifierMode,
               askUser: this.askUser,
               // The prompt names the task, so a user can tell a background
               // sub-agent's ask from the main conversation's. First line only,

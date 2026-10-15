@@ -387,7 +387,7 @@ export function createAISDKProvider(
               // for — a silent server-side rename. Report it once, but only
               // when the served id is a model THIS catalog lists: that filters
               // out a versioned id echoed for the model we requested (e.g.
-              // `deepseek-v4-flash-0731` for `deepseek-v4-flash`) and keeps a
+              // `deepseek-flash-0731` for `deepseek-flash`) and keeps a
               // config-defined provider, whose preset has no models, silent.
               const served = event.response?.modelId;
               if (typeof served === "string" && served !== "") {

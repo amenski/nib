@@ -48,7 +48,7 @@ describe("registerJobs", () => {
   it("defines JSON parameters matching the plan", () => {
     const bg = registry.getAllDefs().find((d) => d.name === "run_bash_background")!;
     expect(bg.parameters.required).toEqual(["command"]);
-    expect(Object.keys(bg.parameters.properties)).toEqual(["command", "cwd", "timeout"]);
+    expect(Object.keys(bg.parameters.properties)).toEqual(["command", "cwd", "timeout", "unsandboxed"]);
     const check = registry.getAllDefs().find((d) => d.name === "check_job")!;
     expect(check.parameters.required).toEqual(["job_id"]);
   });

@@ -7,7 +7,7 @@
 ```
 nib [flags]                        # interactive TUI (the normal case)
 nib -p "<prompt>" [flags]          # headless: run one task, print, exit
-nib auth                           # interactive provider setup wizard
+nib auth                           # interactive provider setup wizard (built-in, other provider, custom URL)
 nib auth list                      # show configured providers + key sources
 nib auth logout <provider>         # remove a credential
 nib auth <provider>                # set <provider>'s key (masked prompt)
@@ -36,6 +36,26 @@ configured, `doctor` also GETs `{url}/healthz` with a 3 s timeout and no
 retries (diagnostics, not the web_search tool path) and prints
 `SearXNG: ok (N ms)` or `SearXNG: unreachable — searches will fall back to
 Bing.` — `src/cli.tsx` `probeSearXngHealth`.
+
+### Provider setup wizard
+
+`nib auth` with no arguments opens one type-to-filter list (the same picker
+as `/model` and `/skills`: type, ↑↓, Enter, Esc) holding the featured
+providers, every other provider in the bundled Models.dev catalog
+(`src/providers/models.json`, e.g. `zai`, `alibaba-coding-plan`) and a pinned
+**Custom URL…** row. It needs a TTY; scripts use
+`nib auth <provider> --api-key`.
+
+- **A catalog provider** lets you pick the default model from its bundled,
+  tool-capable models (no network). Only a default other than the bundled one
+  is written to `~/.nib/models.json`.
+- **Custom URL…** asks for a name, an OpenAI-compatible base URL and
+  comma-separated model ids (128k context and tool support assumed; edit
+  `models.json` to adjust).
+
+Both then ask for the key. `/model`, its picker and Tab completion list the
+featured providers plus every provider with a key; any catalog provider still
+works when named in full (`/model zai/glm-5.3`).
 
 ### Key entry
 

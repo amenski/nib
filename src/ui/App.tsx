@@ -78,6 +78,7 @@ import { toolResultForHistory } from "../agent.js";
 import type { Message } from "../types.js";
 import type { AskQuestionItem } from "../tools/types.js";
 import { setAskQuestion } from "../tools/index.js";
+import { unsandboxedRun } from "../sandbox/unsandboxed.js";
 import { ModelsDropdown, EffortSelector } from "./components/index.js";
 import ThemeDropdown, { persistThemeChoice } from "./components/ThemeDropdown/index.js";
 import { USER_ECHO_TAG, COMMAND_ECHO_TAG, BULLET_TAG, ANSWER_CONT_TAG, TOOL_HEADER_TAG, TOOL_RESULT_TAG, ANSI_CLEAR_SCREEN } from "./constants.js";
@@ -415,13 +416,13 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
       const lines = ctx.initialNotice.split("\n");
       setOutputLines((prev) => [...prev, ...lines.map((l) => theme.fg(theme.theme.textDim, l))]);
     }
-    // A background startup check (the live model-list probe) must not hold up
-    // this first render, so it runs detached and appends one dim line if it
-    // resolves with something to say — the same dim rendering onDiagnostic uses.
+    // Background startup checks (live model list, npm update) must not hold up
+    // this first render, so they run detached and append a dim line each when
+    // they resolve with something to say.
     if (ctx.startupNotices) {
       ctx.startupNotices()
-        .then((line) => {
-          if (line) pushOutput(theme.fg(theme.theme.textDim, line));
+        .then((text) => {
+          for (const line of text?.split("\n") ?? []) if (line) pushOutput(theme.fg(theme.theme.textDim, line));
         })
         .catch(() => {});
     }
@@ -485,16 +486,15 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
   // as the hook trust ask.
   useEffect(() => {
     const loader = ctx.skillLoader;
-    if (!loader || loader.pendingTrust.length === 0) return;
     let cancelled = false;
     void (async () => {
-      for (const pending of [...loader.pendingTrust]) {
+      for (const pending of [...(loader?.pendingTrust ?? [])]) {
         if (cancelled) return;
         const trusted = await new Promise<boolean>((resolve) => {
           setSkillTrustPrompt({ skill: pending.skill, status: pending.status, resolve });
         });
         if (cancelled) return;
-        loader.acceptTrust(pending.skill, trusted);
+        loader!.acceptTrust(pending.skill, trusted);
       }
     })();
     return () => {
@@ -1307,6 +1307,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           args: Record<string, unknown>,
           envelope?: BashEnvelope,
           origin?: { subagent: string },
+          policyRisk?: { tier: string; reasons: string[]; message?: string },
         ) => {
           if (
             [
@@ -1354,7 +1355,8 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           // never become a persisted rule — offering only once/deny is what
           // makes agent.ts's plain `true` an unambiguous per-call grant.
           const oneTimeOnly = toolName === "run_bash_background" || toolName === "apply_patch"
-            || isGitConfigOperation(toolName, args);
+            || isGitConfigOperation(toolName, args)
+            || unsandboxedRun(toolName, args) === "requested";
 
           // Auto-approve posture bypasses an ordinary rule-derived ask, but
           // never a result the bash normalizer couldn't safely classify, and
@@ -1406,6 +1408,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
               capabilityPlan: extractCapabilityPlan(toolName, args, process.cwd()),
               workingDir: process.cwd(),
               origin,
+              ...(policyRisk !== undefined ? { policyRisk } : {}),
               cursor: 0,
               // Opened over a half-typed draft: the user's next keys were meant
               // for the composer, so `1`–`4`/Enter wait out a short guard —
@@ -1997,6 +2000,9 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
       capabilityPlan: prompt.capabilityPlan,
       workingDir: prompt.workingDir,
       allowPersistentApproval: !prompt.oneTimeOnly,
+      description: unsandboxedRun(prompt.toolName, prompt.args) !== undefined
+        ? "Runs OUTSIDE the OS sandbox: full access to your files and accounts."
+        : undefined,
       envelope: prompt.envelope,
       origin: prompt.origin,
       explain: prompt.explain,

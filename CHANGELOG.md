@@ -7,6 +7,99 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **A command risk classifier labels every tool call, and can make calls
+  stricter.** Each call gets a deterministic verdict — `safe`, `benign`,
+  `confirm` or `block` — from a feature vector built out of nib's existing
+  normalizers, and the verdict lands on the call's permission audit row with
+  the reasons and the vector, so a decision is replayable from the session
+  log. Under the new global-only `classifier.mode: enforce` a `confirm`
+  turns an allow into a prompt and a `block` denies, with a sentence the model
+  can act on ("the target `"$DIR"/*` expands to `/` when DIR is empty. Re-run
+  with the literal path"); it can never quiet a prompt the rules asked for
+  (locked Decision 5). The default, `classifier.mode: shadow`, labels and logs
+  without changing any decision, and `/permissions` shows the tier counts, the
+  asks the classifier caused, and each row's tier with its first reason.
+  Headless runs deny a classifier-caused ask with the reason rather than a bare
+  no, and a sub-agent whose task description names a destructive command is
+  refused at spawn under `enforce`. See docs/command-risk-classifier.md.
+- **An optional model judge behind the classifier, off by default.** With
+  `classifier.model.enabled` the classifier may ask a small, cheap model about a
+  call the rules called `safe` or `benign` — the long tail a rule list misses (a
+  new CLI's destroy verb, a cleverly spelled exfiltration). It sees the user's
+  recent messages, the pending call as JSON and the feature vector, never tool
+  results or file contents, and its answer can only add a confirmation: a
+  `FLAG` is a prompt, never a denial, and a timeout (3 s), a provider error or an
+  unreadable answer all mean "no change", so a flaky model cannot create prompts.
+  `classifier.model.id` names the judge as `"provider/model"`; absent picks a
+  cheap-class model from a provider you have a key for. The attempt, its outcome
+  and its latency are on the audit row, and `/permissions` reports calls, flags
+  and p95. Before enabling it, read §6.3 of the proposal for what the stage's own
+  gate leaves it able to change.
+
+- **`nib auth` → custom registers the provider.** It now also asks for an
+  OpenAI-compatible base URL and model ids and writes them to
+  `~/.nib/models.json`, so `nib --model <name>/<model>` works right away.
+  Before, it only saved a key that nothing used.
+- **Every OpenAI-compatible Models.dev provider is built in.** The bundled
+  catalog now holds ~190 providers (e.g. `zai`, `alibaba-coding-plan`) with
+  their base URL, key variable and models, refreshed together by
+  `nib models update`. `nib auth` lists them in a type-to-filter picker like
+  `/model`; picking one saves the key and your default model, with no
+  network fetch. `/model` and its picker show the featured providers plus
+  every provider you have a key for. The unusable `anthropic` and `together`
+  entries are gone from the wizard.
+- **`sandbox.allowBrowser` (global-only, default off).** Sandboxed commands can
+  launch headless Chrome, so Playwright and Puppeteer tests run inside nib.
+  Without it each launch aborts and macOS shows a "quit unexpectedly" dialog.
+  Launch Chrome with its own sandbox off (`chromiumSandbox: false`); nib's
+  profile still contains it.
+- **A failed browser launch says why.** When a sandboxed Playwright or
+  Puppeteer launch fails, the result tells the model not to rerun it and names
+  the fix (`allowBrowser`, or Chrome's own sandbox off), instead of leaving it to
+  read the failures as flaky tests.
+
+### Changed
+
+- **Sandboxed commands can read everything except credential stores.** The
+  read boundary used to subtract all of `$HOME`; it now denies only `~/.ssh`,
+  `~/.aws`, `~/.gnupg`, `~/.azure`, `~/.kube`, `~/.config/gcloud`,
+  `~/.config/gh`, `Library/Keychains`, browser profiles and a few credential files. Flutter,
+  Dart and SDK installs under `$HOME` work without extra settings.
+  `sandbox.readRoots` and the "workspace outside your home directory" warning
+  are removed.
+- **A blocked command can be rerun outside the sandbox, after you approve it.**
+  `run_bash` and `run_bash_background` take `unsandboxed: true`; the prompt
+  says it runs outside the OS sandbox, offers once/deny only, and the session
+  grant never covers it. New global-only settings: `sandbox.excludedCommands`
+  (commands that always run outside, e.g. `flutter`) and
+  `sandbox.allowUnsandboxedCommands` (default `true`).
+- **The kernel sandbox-denial reporter is removed.** The `sandbox denied: …`
+  lines in the transcript and the `[nib] sandbox denied` block in tool results
+  are gone, along with the `log stream` subprocess behind them. A refused
+  command still gets the `Operation not permitted` hint, which now points at
+  `unsandboxed: true`.
+- **`nib models update` prints one line per changed provider.** With ~190
+  providers a per-model listing ran to thousands of lines; `--verbose` still
+  lists every model. The update cache now holds only models and default
+  models, so base URLs always come from the installed nib.
+
+### Fixed
+
+- **`mktemp`, `xcrun`, Xcode-shim `git` and Flutter work in the sandbox again.**
+  Turning `sandbox.allowBrowser` on by default allowed a Mach service that let
+  macOS report the real per-user temp dir, which the sandbox denies, so tools
+  stopped falling back to the sandbox's `$TMPDIR`. That service is removed from
+  the browser rules.
+
+- **Switching mode no longer changes the model.** Going from General to Code
+  used to move the session from `deepseek-flash` to `deepseek-v4-pro` and its
+  effort from `low` to `high`. A mode's model/effort default now applies only
+  when a new session starts; `/mode`, the `/modes` picker and the
+  `switch_mode` tool keep whatever is active, and a resumed session comes
+  back on the model and effort it last used.
+
 ## [0.6.1] — 2026-10-13
 
 ### Changed
@@ -461,7 +554,7 @@ becomes a guarded ask instead of a hard deny.
 ### Added
 
 - **`general` mode, the new default.** A session with no explicit `--mode` or
-  `/mode` starts in read-only chat on `deepseek/deepseek-v4-flash` with
+  `/mode` starts in read-only chat on `deepseek/deepseek-flash` with
   `reasoningEffort: low`. A resumed session's last mode wins over the default;
   an explicit `--mode` wins over both. Headless (`-x`) runs resolve the same
   default instead of falling back to the every-tool registry.

@@ -6,7 +6,7 @@ import { createElement } from "react";
 import { pkg } from "./version.js";
 import { parseArguments, resolveAdditionalDirs } from "./cli-args.js";
 import { runExecMode } from "./exec-runner.js";
-import { initPresets, createProvider, getPreset, getKnownProviderNames, getProviderModels, getConfiguredProviders, type ProviderOptions } from "./providers/presets.js";
+import { initPresets, createProvider, getPreset, getKnownProviderNames, getListedProviderNames, getProviderModels, getConfiguredProviders, type ProviderOptions } from "./providers/presets.js";
 import { getProviderCapabilities, imageSupportWarning } from "./providers/registry.js";
 import { runAgent } from "./agent.js";
 import { buildRepoMap, captureGitStatus, loadProjectResearch } from "./prompt.js";
@@ -16,7 +16,10 @@ import { HookRunner, fireNotificationHooks } from "./hooks/index.js";
 import { executeTool, TOOL_DEFS, registry, setSessionId, setCheckpointManager, setSignal, setSessionStore, setSetMode, setTimeoutToBackground, setSandboxLevel, setSessionTempDir, setWritePolicyLevel, setWriteRoots, setWebSearchConfig } from "./tools/index.js";
 import { createSessionTempDir } from "./sandbox/session-temp.js";
 import { buildSandboxProfile, configureSandbox, isSandboxedLevel, profileWriteSet, sandboxEnvelopeHash } from "./sandbox/seatbelt.js";
+import { configureUnsandboxed } from "./sandbox/unsandboxed.js";
 import type { BashEnvelope } from "./permissions/session-grant.js";
+import type { RiskMode, Stage2Options } from "./permissions/risk/index.js";
+import { createRiskJudge } from "./providers/risk-judge.js";
 import { filterToolDefs } from "./tools/filter.js";
 import { jobManager } from "./tools/jobs.js";
 import { todoStore } from "./tools/todo.js";
@@ -39,7 +42,8 @@ import { MemoryStore } from "./memory/store.js";
 import { SkillLoader, createLoadSkillTool, type SkillDef } from "./skills/index.js";
 import { AgentLoader, type AgentDef } from "./agents/index.js";
 import { CommandLoader, type CommandDef } from "./commands/index.js";
-import { containmentWarning, hasActiveSandboxContainment, loadConfig, resolveHome, workspaceOutsideHomeWarning } from "./config/loader.js";
+import { checkForUpdate } from "./update-check.js";
+import { containmentWarning, hasActiveSandboxContainment, loadConfig, resolveHome } from "./config/loader.js";
 import { projectSettingsPath } from "./config/paths.js";
 import { checkSettingsTrust, trustSettings, stripExecutionKeys } from "./config/settings-trust.js";
 import { checkFolderTrust, trustFolder, buildFolderContentSummary, hasGatedContent } from "./config/folder-trust.js";
@@ -77,30 +81,30 @@ import { GENERAL_MODEL_ID, GENERAL_REASONING_EFFORT, parseModelId, resolveRestor
 // threading a new field through `shared`'s type.
 let stallWatchdog: ReturnType<typeof startStallWatchdog> | null = null;
 
-export function syncModeModel(shared: any, mode: ModeConfig | undefined): void {
-  if (!mode) return;
+/**
+ * Seed a NEW session's model and effort from its starting mode. Only General
+ * carries defaults (Flash/low). Called at startup only: switching mode
+ * mid-session never changes the model or effort — only /model, /effort,
+ * --model or settings do. A resumed session's selection counts as explicit
+ * (see resolveRestoredSelection), so it is never re-seeded.
+ */
+export function applyModeDefaults(shared: any, mode: ModeConfig | undefined): void {
+  if (!mode || mode.slug !== "general") return;
   if (!shared.modelExplicit) {
-    if (mode.slug === "general") {
-      const configuredModeModel = parseModelId(mode.model || GENERAL_MODEL_ID, shared.baselineProviderName);
-      const modeModel = configuredModeModel &&
-        (!shared.providerExplicit || shared.baselineProviderName === configuredModeModel.provider)
-        ? configuredModeModel
-        : undefined;
-      if (modeModel) {
-        shared.providerName = modeModel.provider;
-        shared.activeModel = modeModel.model;
-      }
-    } else {
-      shared.providerName = shared.baselineProviderName;
-      shared.activeModel = shared.baselineModel;
+    const configuredModeModel = parseModelId(mode.model || GENERAL_MODEL_ID, shared.providerName);
+    const modeModel = configuredModeModel &&
+      (!shared.providerExplicit || shared.providerName === configuredModeModel.provider)
+      ? configuredModeModel
+      : undefined;
+    if (modeModel) {
+      shared.providerName = modeModel.provider;
+      shared.activeModel = modeModel.model;
     }
   }
   if (!shared.effortExplicit) {
     const preset = getPreset(shared.providerName);
     const caps = preset?.models[shared.activeModel ?? preset.defaultModel];
-    shared.activeEffort = mode.slug === "general"
-      ? (caps?.effort ? (mode.reasoningEffort || GENERAL_REASONING_EFFORT) : undefined)
-      : (shared.baselineEffort || caps?.effort?.default);
+    shared.activeEffort = caps?.effort ? (mode.reasoningEffort || GENERAL_REASONING_EFFORT) : undefined;
   }
 }
 
@@ -445,9 +449,13 @@ async function main() {
     getSignal: () => shared.abort.signal,
     // Only an automatic grant is inherited (see OrchestratorOptions.getBashEnvelope):
     // it came from the setting, not from a human answering a prompt for one call.
-    // Read lazily — `bashEnvelope` is built further down this function.
-    getBashEnvelope: () => (bashEnvelope?.autoGrant ? bashEnvelope : undefined),
+    // Read lazily — `currentBashEnvelope` is defined further down this function.
+    getBashEnvelope: () => {
+      const envelope = currentBashEnvelope();
+      return envelope?.autoGrant ? envelope : undefined;
+    },
     hooks,
+    classifierMode: configResult.config.classifier?.mode,
   });
   orchestrator.register(registry);
 
@@ -501,9 +509,7 @@ async function main() {
   let resumedProvider: string | undefined;
   let resumedModel: string | undefined;
   let resumedMode: string | undefined;
-  let resumedModelExplicit: boolean | undefined;
   let resumedEffort: string | undefined;
-  let resumedEffortExplicit: boolean | undefined;
 
   if (typeof resumeSessionId === "string") {
     try {
@@ -514,9 +520,7 @@ async function main() {
       resumedProvider = loaded.meta?.provider;
       resumedModel = loaded.meta?.model;
       resumedMode = loaded.meta?.mode;
-      resumedModelExplicit = loaded.meta?.modelExplicit;
       resumedEffort = loaded.meta?.effort;
-      resumedEffortExplicit = loaded.meta?.effortExplicit;
     } catch {
       process.stderr.write(`Session not found: ${resumeSessionId}\n`);
       process.exit(1);
@@ -532,9 +536,7 @@ async function main() {
         resumedProvider = loaded.meta?.provider;
         resumedModel = loaded.meta?.model;
         resumedMode = loaded.meta?.mode;
-        resumedModelExplicit = loaded.meta?.modelExplicit;
         resumedEffort = loaded.meta?.effort;
-        resumedEffortExplicit = loaded.meta?.effortExplicit;
       } catch (err) {
         process.stderr.write(`Failed to load session ${sessionId}: ${(err as Error).message}\n`);
         process.exit(1);
@@ -557,8 +559,8 @@ async function main() {
     await sessionStore.renameSession(sessionId, parsed.name);
   }
 
-  const resumedModelSelection = resolveRestoredSelection(resumedModel, resumedModelExplicit);
-  const resumedEffortSelection = resolveRestoredSelection(resumedEffort, resumedEffortExplicit);
+  const resumedModelSelection = resolveRestoredSelection(resumedModel);
+  const resumedEffortSelection = resolveRestoredSelection(resumedEffort);
 
   if (parsed.debug) enableDebug(sessionId);
 
@@ -582,7 +584,6 @@ async function main() {
     const mode = await modeLoader.load(slug);
     if (!mode) return null;
     shared.activeMode = { ...mode };
-    syncModeModel(shared, shared.activeMode);
     await sessionStore.appendState(sessionId, { mode: slug });
     return mode.name;
   });
@@ -607,9 +608,10 @@ async function main() {
   // are session-scoped and already resolved from startup cwd. Threaded into
   // ctx so Seatbelt and file-tool containment consult the same set.
   const writeRoots = [...(configResult.config.sandbox?.writeRoots ?? []), ...additionalWriteRoots];
-  // Global-only sandbox.readRoots / allowLocalNetwork: set before any profile
+  // Global-only sandbox.allowLocalNetwork / allowBrowser: set before any profile
   // is built so every launch and the session-grant hash agree.
-  configureSandbox({ readRoots: configResult.config.sandbox?.readRoots, allowLocalNetwork: configResult.config.sandbox?.allowLocalNetwork });
+  configureSandbox({ allowLocalNetwork: configResult.config.sandbox?.allowLocalNetwork, allowBrowser: configResult.config.sandbox?.allowBrowser });
+  configureUnsandboxed({ sandboxLevel: bashSandboxLevel, allowUnsandboxedCommands: configResult.config.sandbox?.allowUnsandboxedCommands, excludedCommands: configResult.config.sandbox?.excludedCommands });
   setWriteRoots(writeRoots);
 
   // The session grant's envelope (docs/permission-ux-redesign.md): the profile
@@ -621,7 +623,9 @@ async function main() {
   // the spawn's profile cannot describe different things. Absent when the
   // session has no OS boundary to bind consent to — non-macOS, no level, or
   // `unrestricted` — and in that case no grant is ever offered or reused.
-  const bashEnvelope: BashEnvelope | undefined =
+  // A getter, read at gate time: a sandbox capability granted mid-session
+  // (sandbox/capabilities.ts) changes the profile, so the hash must be recomputed.
+  const currentBashEnvelope = (): BashEnvelope | undefined =>
     hasActiveSandboxContainment(configResult.config) &&
     isSandboxedLevel(bashSandboxLevel)
       ? {
@@ -736,9 +740,6 @@ async function main() {
     modelExplicit: (rawInitialModel !== undefined || resumedModelSelection.explicit) as boolean,
     effortExplicit: (reasoningEffort !== undefined || resumedEffortSelection.explicit) as boolean,
     providerExplicit: (configResult.config.provider !== undefined || detected !== undefined) as boolean,
-    baselineProviderName: ((configResult.config.provider || rawInitialModel ? providerName : resumedProvider) ?? providerName) as string,
-    baselineModel: (initialModel ?? resumedModelSelection.value) as string | undefined,
-    baselineEffort: (reasoningEffort ?? resumedEffortSelection.value) as string | undefined,
     // Live mode: /mode and the /modes picker mutate this so the running agent
     // (runAgentTurnBridge reads shared.activeMode) picks up the switch mid-
     // session. A plain closure var here would stay stale until restart.
@@ -753,6 +754,18 @@ async function main() {
     allowedTools: parsed.allowedTools as string[],
     disallowedTools: parsed.disallowedTools as string[],
   };
+
+  // The classifier's optional model stage (docs/command-risk-classifier.md §6).
+  // Resolved once per session: the judge is a fixed cheap model, not the
+  // session's active one, and re-resolving per call would re-read the catalog
+  // on every Bash command.
+  const classifierModel = createRiskJudge({
+    enabled: configResult.config.classifier?.model?.enabled ?? false,
+    ...(configResult.config.classifier?.model?.id !== undefined
+      ? { id: configResult.config.classifier.model.id }
+      : {}),
+    preferProvider: shared.providerName,
+  });
   shared.activeEffort = shared.effortExplicit
     ? (reasoningEffort ?? resumedEffortSelection.value)
     : getActiveModelCaps()?.effort?.default;
@@ -765,7 +778,7 @@ async function main() {
     shared.activeMode = (await modeLoader.load(resumedMode || "general")) ?? (await modeLoader.load("general")) ?? undefined;
   }
 
-  syncModeModel(shared, shared.activeMode);
+  applyModeDefaults(shared, shared.activeMode);
 
   // A session resumed at startup (--resume/--continue) must seed the live history so
   // the model actually sees the prior turns on the very first message. Without
@@ -806,7 +819,13 @@ async function main() {
 
   if (parsed.mode) {
     const mode = await modeLoader.load(parsed.mode);
-    if (mode) { shared.activeMode = mode; syncModeModel(shared, shared.activeMode); await sessionStore.appendState(sessionId, { mode: parsed.mode }); }
+    if (mode) { shared.activeMode = mode; applyModeDefaults(shared, shared.activeMode); await sessionStore.appendState(sessionId, { mode: parsed.mode }); }
+  }
+
+  // The session record only stores an explicit effort, so persist a seeded
+  // one too: a resumed session must come back on the effort it was using.
+  if (!sessionLoaded && !shared.effortExplicit && shared.activeEffort !== undefined) {
+    await sessionStore.appendState(sessionId, { effort: shared.activeEffort, effortExplicit: false });
   }
 
   // Shown inside the app's scrollback after mount — printing to stdout here
@@ -814,7 +833,7 @@ async function main() {
   const resumeNotice = sessionLoaded
     ? `Resumed ${sessionId} · ${sessionMessages.length} messages · mode: ${shared.activeMode?.slug || "general"}`
     : undefined;
-  const initialNotice = [...skillLoader.notices, containmentWarning(configResult.config), workspaceOutsideHomeWarning(configResult.config, process.cwd()), resumeNotice].filter(Boolean).join("\n") || undefined;
+  const initialNotice = [...skillLoader.notices, containmentWarning(configResult.config), resumeNotice].filter(Boolean).join("\n") || undefined;
 
   let knownModeSlugs: string[] = [];
   try { knownModeSlugs = (await modeLoader.listAll()).map(m => m.slug); } catch {}
@@ -1055,7 +1074,7 @@ async function main() {
         try { await handleSlashCore(input, getProvider, configResult, modeLoader, permissions, sessionStore, sessionId, checkpoints, memoryStore, memoryInjection, getCompactor, diagnostics, skills, skillLoader, shared, getActiveModelCaps, getCostStr, colorEnabled, reasoningEffort, resetCompactor, getOverheadTokens, agents); } finally { console.log = origLog; }
         return lines;
       },
-      getModelEntries: () => listKnownModels(),
+      getModelEntries: () => listKnownModels(shared.providerName),
       getConfiguredProviders: () => getConfiguredProviders(),
       getProviderLabels: () => getProviderLabels(),
       getKeyEnvByProvider: () => getKeyEnvByProvider(),
@@ -1091,7 +1110,7 @@ async function main() {
           if (event.kind !== "text") cb.onSubagentProgress?.(event);
           appSubagentSink?.(event);
         });
-        return runAgentTurnBridge(input, cb, shared, permissions, permissionProfile, getProvider, getCompactor(), diagnostics, skills, agents, memoryInjection, memoryStore, sessionStore, sessionId, modeLoader, skillLoader, imageUrls, planMode, checkpoints, configResult.config.notify, configResult.config.env, notifySpawnOptions, errorReflector, errorRecovery, repomapInjection, dirtyBaseline, thinkingEnabled, getActiveModelCaps()?.contextWindow, hooks, bashEnvelope);
+        return runAgentTurnBridge(input, cb, shared, permissions, permissionProfile, getProvider, getCompactor(), diagnostics, skills, agents, memoryInjection, memoryStore, sessionStore, sessionId, modeLoader, skillLoader, imageUrls, planMode, checkpoints, configResult.config.notify, configResult.config.env, notifySpawnOptions, errorReflector, errorRecovery, repomapInjection, dirtyBaseline, thinkingEnabled, getActiveModelCaps()?.contextWindow, hooks, currentBashEnvelope, { mode: configResult.config.classifier?.mode ?? "shadow", ...(classifierModel !== undefined ? { model: classifierModel } : {}) });
       },
       // Async sub-agent delivery (async-subagents.md §2): the App registers its
       // session-scoped wake handler here; the orchestrator calls it once per
@@ -1139,17 +1158,24 @@ async function main() {
       },
       showResumeOnStart: showResumeChooserOnStart,
       initialNotice,
-      // Background (non-blocking) live model-list check: when the provider no
-      // longer lists the active model, the App prints one dim line after mount.
-      // Skipped for a provider with no key or a non-openai-compatible API.
+      // Background (non-blocking) startup checks, one dim line each after mount:
+      // the live model-list check (when the provider no longer lists the active
+      // model; skipped for a provider with no key or a non-openai-compatible
+      // API) and the daily npm update check (`updateCheck: false` turns it off).
       startupNotices: async () => {
-        const preset = getPreset(shared.providerName);
-        if (!preset || preset.api !== "openai-compatible") return undefined;
-        const apiKey = resolveLiveModelsKey(shared.providerName);
-        if (!apiKey) return undefined;
-        const model = shared.activeModel ?? preset.defaultModel;
-        const models = await getLiveModels({ provider: shared.providerName, baseUrl: preset.baseUrl, apiKey });
-        return liveModelStartupNotice(shared.providerName, model, models);
+        const liveModels = async (): Promise<string | undefined> => {
+          const preset = getPreset(shared.providerName);
+          if (!preset || preset.api !== "openai-compatible") return undefined;
+          const apiKey = resolveLiveModelsKey(shared.providerName);
+          if (!apiKey) return undefined;
+          const model = shared.activeModel ?? preset.defaultModel;
+          const models = await getLiveModels({ provider: shared.providerName, baseUrl: preset.baseUrl, apiKey });
+          return liveModelStartupNotice(shared.providerName, model, models);
+        };
+        const update = async (): Promise<string | undefined> =>
+          configResult.config.updateCheck === false ? undefined : checkForUpdate();
+        const lines = await Promise.allSettled([liveModels(), update()]);
+        return lines.map((r) => (r.status === "fulfilled" ? r.value : undefined)).filter(Boolean).join("\n") || undefined;
       },
       initialMessages: sessionLoaded ? sessionMessages : undefined,
       compactResumed: async (): Promise<Message[] | null> => {
@@ -1345,9 +1371,10 @@ function recordRecentModel(id: string): void {
   }
 }
 
-function listKnownModels(): ModelEntry[] {
+/** Models of the listed providers (see getListedProviderNames), for the picker, `/model` and completion. */
+function listKnownModels(activeProvider?: string): ModelEntry[] {
   const entries: ModelEntry[] = [];
-  for (const provName of getKnownProviderNames()) {
+  for (const provName of getListedProviderNames(activeProvider)) {
     const preset = getPreset(provName);
     const seen = new Set<string>();
     if (preset) {
@@ -1798,7 +1825,7 @@ export async function handleSlashCore(
         return;
       }
       const mode = await modeLoader.load(slug);
-      if (mode) { shared.activeMode = mode; syncModeModel(shared, shared.activeMode); await sessionStore.appendState(sessionId, { mode: slug }); console.log(`Switched to ${mode.name} mode.`); }
+      if (mode) { shared.activeMode = mode; await sessionStore.appendState(sessionId, { mode: slug }); console.log(`Switched to ${mode.name} mode.`); }
       else console.log(`Unknown mode: ${slug}.`);
       return;
     }
@@ -1807,7 +1834,7 @@ export async function handleSlashCore(
       if (!modelArg) {
         const currentModel = shared.activeModel ?? getPreset(shared.providerName)?.defaultModel ?? "unknown";
         console.log(`Current: ${shared.providerName}/${currentModel}`);
-        for (const entry of listKnownModels()) {
+        for (const entry of listKnownModels(shared.providerName)) {
           console.log(`  ${entry.provider}/${entry.model}`);
         }
         return;
@@ -1829,8 +1856,18 @@ export async function handleSlashCore(
         return;
       }
       shared.modelExplicit = true;
-      syncModeModel(shared, shared.activeMode);
-      await sessionStore.appendState(sessionId, { provider, model, modelExplicit: true });
+      // A non-explicit effort follows the new model: kept when the model
+      // accepts it, otherwise that model's default.
+      if (!shared.effortExplicit) {
+        const caps = getActiveModelCaps();
+        shared.activeEffort = caps?.effort
+          ? (caps.effort.values.includes(shared.activeEffort) ? shared.activeEffort : caps.effort.default)
+          : undefined;
+      }
+      await sessionStore.appendState(sessionId, {
+        provider, model, modelExplicit: true,
+        ...(!shared.effortExplicit && shared.activeEffort !== undefined ? { effort: shared.activeEffort } : {}),
+      });
       resetCompactor();
       recordRecentModel(toModelId(provider, model));
       console.log(`Model changed to ${shared.providerName}/${shared.activeModel}`);
@@ -1856,7 +1893,15 @@ export async function handleSlashCore(
   }
 }
 
-async function runAgentTurnBridge(input: string, cb: any, shared: any, permissions: PermissionEngine, permissionProfile: ProfileEvaluator | undefined, getProvider: any, compactor: Compactor, diagnostics: DiagnosticRunner, skills: SkillDef[], agents: AgentDef[], memoryInjection: string | null | undefined, memoryStore: MemoryStore, sessionStore: SessionStore, sessionId: string, modeLoader: ModeLoader, skillLoader: SkillLoader, imageUrls?: string[], planMode?: boolean, checkpoints?: CheckpointManager, notifyScript?: string, notifyEnv?: Record<string, string | undefined>, notifySpawnOptions?: NotifySpawnOptions, errorReflector?: ErrorReflector, errorRecovery?: ErrorRecovery, repomapInjection?: string, dirtyBaseline?: string, thinkingEnabled?: boolean, contextWindow?: number, hooks?: HookRunner, bashEnvelope?: BashEnvelope): Promise<any> {
+/** Everything the classifier needs from the composition root: the mode, and
+ *  the optional model judge (docs/command-risk-classifier.md §6). Bundled
+ *  because the bridge's parameter list is positional and already long. */
+interface ClassifierWiring {
+  mode: RiskMode;
+  model?: Stage2Options;
+}
+
+async function runAgentTurnBridge(input: string, cb: any, shared: any, permissions: PermissionEngine, permissionProfile: ProfileEvaluator | undefined, getProvider: any, compactor: Compactor, diagnostics: DiagnosticRunner, skills: SkillDef[], agents: AgentDef[], memoryInjection: string | null | undefined, memoryStore: MemoryStore, sessionStore: SessionStore, sessionId: string, modeLoader: ModeLoader, skillLoader: SkillLoader, imageUrls?: string[], planMode?: boolean, checkpoints?: CheckpointManager, notifyScript?: string, notifyEnv?: Record<string, string | undefined>, notifySpawnOptions?: NotifySpawnOptions, errorReflector?: ErrorReflector, errorRecovery?: ErrorRecovery, repomapInjection?: string, dirtyBaseline?: string, thinkingEnabled?: boolean, contextWindow?: number, hooks?: HookRunner, bashEnvelope?: () => BashEnvelope | undefined, classifier?: ClassifierWiring): Promise<any> {
   if (checkpoints) {
     const convLen = shared.conversationHistory.length;
     await checkpoints.save(`[convLen:${convLen}] ${input.slice(0, 80)}`);
@@ -1913,7 +1958,10 @@ async function runAgentTurnBridge(input: string, cb: any, shared: any, permissio
   try {
     result = await runAgent(processed, {
     provider: getProvider(),
-    tools, executeTool, permissions, permissionProfile, mode: shared.activeMode, compactor, diagnostics, skills, agents,
+    tools, executeTool, permissions, permissionProfile,
+    classifierMode: classifier?.mode,
+    ...(classifier?.model !== undefined ? { classifierModel: classifier.model } : {}),
+    mode: shared.activeMode, compactor, diagnostics, skills, agents,
     errorReflector, errorRecovery,
     repomap: repomapInjection,
     dirtyBaseline,

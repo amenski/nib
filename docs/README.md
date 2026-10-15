@@ -140,7 +140,7 @@ then follow the reading paths below.
    product ships; older docs may show retired IDs. `--model` takes
    `provider/model`, split on the first slash.
 3. **Default pairing is deepseek/deepseek-v4-pro**, except the default
-   `general` mode, which pairs deepseek/deepseek-v4-flash at low reasoning
+   `general` mode, which pairs deepseek/deepseek-flash at low reasoning
    effort (mode-spec.md §5); the anthropic API type is supported via the AI
    SDK but has no bundled preset.
 4. **Previously uncovered areas, now documented (2026-08-13):**

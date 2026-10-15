@@ -26,15 +26,74 @@ import {
   type BashEnvelope,
 } from "./permissions/session-grant.js";
 import type { SandboxFailureReason } from "./sandbox/launcher.js";
+import { unsandboxedRequestsAllowed, unsandboxedRun } from "./sandbox/unsandboxed.js";
+import {
+  applyRiskVerdict,
+  classifyRiskWithModel,
+  riskNarrowed,
+  type RiskMode,
+  type Stage2Options,
+} from "./permissions/risk/index.js";
 import type { ToolExecOptions } from "./tools/types.js";
 
 export type ToolExecutor = (call: ToolCall, exec?: ToolExecOptions) => Promise<ToolOutput>;
 
 import { extractToolSubject } from "./permissions/rules.js";
+import { homedir } from "node:os";
+import { isAbsolute, join, resolve } from "node:path";
 
 function permissionSubjectText(toolName: string, args: Record<string, unknown>): string {
   return extractToolSubject(toolName, args);
 }
+
+/** Tools whose success means the workspace gained a file the session owns. */
+const SESSION_WRITE_TOOLS = new Set([
+  "edit", "edit_file", "write_to_file", "apply_patch", "apply_diff", "search_replace",
+]);
+
+/**
+ * Absolute paths a successful write tool call produced, for the risk
+ * classifier's `createdThisSession` set. Resolved the way the classifier
+ * resolves a delete target (lexically — no symlink chase, `~` expanded), so
+ * the two spellings always meet; a realpath here would resolve the same
+ * directory differently and every delete would look pre-session.
+ */
+function writtenPaths(toolName: string, args: Record<string, unknown>): string[] {
+  if (!SESSION_WRITE_TOOLS.has(toolName)) return [];
+  // apply_patch's subject is its list of `+++ b/…` targets, comma-joined.
+  const subject = permissionSubjectText(toolName, args);
+  if (subject === "") return [];
+  return subject.split(", ").flatMap((raw) => {
+    const trimmed = raw.trim();
+    if (trimmed === "") return [];
+    const expanded = trimmed === "~" || trimmed.startsWith("~/") ? join(homedir(), trimmed.slice(1)) : trimmed;
+    return [isAbsolute(expanded) ? expanded : resolve(process.cwd(), expanded)];
+  });
+}
+
+/**
+ * The last few user turns as plain text, for the risk classifier (§3.1: user
+ * messages only — never tool results or assistant prose, so hostile file or
+ * web content cannot address the rules that read this).
+ *
+ * This is a list the run *builds*, not a filter over `messages`, and that is
+ * the point. The transcript carries `role: "user"` messages the agent wrote
+ * itself — the error reflector's note quotes a tool's error text verbatim, and
+ * a failed read or fetch puts file or web content in there. Filtering by role
+ * would hand all of it to the classifier; only the two places the run receives
+ * text from a human (the opening prompt and a steering message) append here.
+ *
+ * Prior-session turns from `options.history` are deliberately not included:
+ * their provenance is not distinguishable after a resume, and omitting them
+ * makes the two rules that read this stricter, never looser.
+ */
+function pushHumanTurn(turns: string[], text: string | undefined): void {
+  if (text === undefined || text.trim() === "") return;
+  turns.push(text);
+  if (turns.length > MAX_HUMAN_TURNS) turns.shift();
+}
+
+const MAX_HUMAN_TURNS = 5;
 
 // Every tool call in an assistant message must be answered by a tool message
 // with the same id — providers reject a request where one is missing (the AI
@@ -133,6 +192,20 @@ export interface AgentOptions {
    * alone decides, today's behavior byte-for-byte.
    */
   permissionProfile?: ProfileEvaluator;
+  /**
+   * How the command risk classifier acts on its verdict
+   * (docs/command-risk-classifier.md §9): `off`, `shadow` (label and log only
+   * — the default when unset), or `enforce` (clamp live). Absent is treated as
+   * `shadow`, so a caller that has not been taught about the classifier still
+   * produces the shadow rows the phase-1 review needs.
+   */
+  classifierMode?: RiskMode;
+  /**
+   * The classifier's optional model stage (docs/command-risk-classifier.md §6).
+   * Absent means rules-only. Built by the composition root
+   * (`providers/risk-judge.ts`), so this module never learns about providers.
+   */
+  classifierModel?: Stage2Options;
   mode?: ModeConfig;
   compactor?: Compactor;
   diagnostics?: DiagnosticRunner;
@@ -199,6 +272,11 @@ export interface AgentOptions {
     args: Record<string, unknown>,
     envelope?: BashEnvelope,
     origin?: { subagent: string },
+    /**
+     * What the risk classifier read (always, when it ran), and — only when it
+     * is why this call is stricter — the sentence saying so.
+     */
+    policyRisk?: { tier: string; reasons: string[]; message?: string },
   ) => Promise<boolean | "posture" | "envelope-grant">;
   /**
    * Set by the orchestrator on a sub-agent's run: the label the permission
@@ -215,7 +293,7 @@ export interface AgentOptions {
    * handed one, and the grant therefore cannot be inherited by delegated or
    * autonomous work.
    */
-  bashEnvelope?: BashEnvelope;
+  bashEnvelope?: BashEnvelope | (() => BashEnvelope | undefined);
   /** Live reader for the update_todo_list store; injected into the volatile
    *  prefix each sub-turn so the model always sees current plan state. */
   getTodos?: () => TodoItem[];
@@ -299,6 +377,21 @@ export async function runAgent(
   options: AgentOptions,
 ): Promise<AgentResult> {
   const { provider, tools, executeTool, permissions, permissionProfile, compactor, diagnostics, errorReflector, errorRecovery, maxTurns = Infinity, effort, thinkingEnabled } = options;
+
+  /**
+   * Paths this session's own write tools produced, for the risk classifier's
+   * "does this delete something that predates the session" question (§4.2
+   * `preSessionTarget`). Session-scoped and lexical — the classifier resolves
+   * a delete target the same way, so the two spellings always meet.
+   */
+  const createdThisSession = new Set<string>();
+
+  /**
+   * The user turns the classifier may read (§3.1). Built here rather than
+   * filtered out of `messages` later — see pushHumanTurn.
+   */
+  const humanTurns: string[] = [];
+  pushHumanTurn(humanTurns, userMessage);
 
   const promptCtx: PromptContext = {
     mode: options.mode,
@@ -471,6 +564,8 @@ export async function runAgent(
       break;
     }
     const seenCalls = new Map<string, number>();
+    const currentEnvelope = (): BashEnvelope | undefined =>
+      typeof options.bashEnvelope === "function" ? options.bashEnvelope() : options.bashEnvelope;
     let failedStreak = 0;
     let warnedRepeat = false;
     let warnedFailures = false;
@@ -503,7 +598,10 @@ export async function runAgent(
     // assistant/tool messages that respond to it — and newMessages/
     // onNewMessages persistence picks it up automatically.
     const steering = options.pollSteeringMessage?.() ?? null;
-    if (steering) messages.push({ role: "user", content: steering });
+    if (steering) {
+      messages.push({ role: "user", content: steering });
+      pushHumanTurn(humanTurns, steering);
+    }
     // The note says the message arrived and asks for one answer — it does not
     // repeat the message. It used to echo the first line, so in the request
     // that carried the question the question appeared twice, and the model
@@ -734,12 +832,79 @@ export async function runAgent(
         // decision L): the profile gate (layer 1) denies terminally before
         // rule resolution — no profile (feature off) passes straight through
         // to the unchanged engine, so today's behavior is byte-for-byte.
-        const { action, winningRule, wasUnresolved, reason, isGuarded } = authorize(
+        const { action: resolvedAction, winningRule, wasUnresolved, reason, isGuarded } = authorize(
           { tool: tc.name, arguments: tc.arguments },
           permissions,
           permissionProfile,
         );
+        // A shell call that leaves the OS sandbox (sandbox/unsandboxed.ts). It
+        // takes no envelope grant — there is no profile to bind consent to —
+        // and is never quieted by an allow rule: whether the model asked for it
+        // or sandbox.excludedCommands matched, it is always asked about.
+        const unsandboxedKind = unsandboxedRun(tc.name, tc.arguments);
+        // What the engine decided on its own: a shell call that leaves the OS
+        // sandbox is always asked about, whatever a rule said.
+        const engineAction = unsandboxedKind !== undefined && resolvedAction === "allow" ? "ask" : resolvedAction;
         const subject = permissionSubjectText(tc.name, tc.arguments);
+
+        // The risk classifier (docs/command-risk-classifier.md §9). Built per
+        // call, not cached: a session grant approved mid-turn changes the
+        // envelope, and the write-set it carries changes with it. In shadow
+        // mode nothing below reads `action` from it — the verdict rides on the
+        // audit row only. An unset mode is shadow, so a caller that has not
+        // been taught about the classifier still produces the shadow rows.
+        const riskMode: RiskMode = options.classifierMode ?? "shadow";
+        const riskVerdict =
+          riskMode === "off"
+            ? undefined
+            : await classifyRiskWithModel({
+                tool: tc.name,
+                args: tc.arguments,
+                workingDir: process.cwd(),
+                writeRoots: permissionProfile?.writeRoots ?? [process.cwd()],
+                sandbox: {
+                  level: currentEnvelope()?.level ?? permissionProfile?.level ?? "unrestricted",
+                  contained: currentEnvelope() !== undefined,
+                },
+                ...(unsandboxedKind !== undefined ? { unsandboxed: unsandboxedKind } : {}),
+                engine: { action: engineAction, winningRule, wasUnresolved, isGuarded },
+                session: {
+                  headless: options.askUser === undefined,
+                  userMessages: humanTurns,
+                  createdThisSession,
+                },
+              }, options.classifierModel);
+
+        // §3.3's clamp, applied after the unsandboxed override and before the
+        // audit row, so the row describes the decision that was actually taken.
+        // Outside enforce mode applyRiskVerdict is the identity.
+        const action = applyRiskVerdict(engineAction, riskVerdict, riskMode);
+
+        /**
+         * Whether the classifier *acted* on this call: it applied a clamp, which
+         * takes enforce mode. Kept separate from what it *read*, because the two
+         * are shown differently and, under `shadow`, only one of them is true —
+         * a shadow verdict never made anything stricter, so a prompt must not
+         * say it did.
+         */
+        const riskActed =
+          riskMode === "enforce" && riskVerdict !== undefined && riskNarrowed(engineAction, riskVerdict);
+
+        /**
+         * What the prompt is shown about the classifier: its tier and reason
+         * tags whenever it ran (advisory — the user can see the read even in
+         * shadow mode), plus the sentence explaining *why this call is stricter*
+         * only when it is what made it stricter.
+         */
+        const policyRisk =
+          riskVerdict === undefined
+            ? undefined
+            : {
+                tier: riskVerdict.tier,
+                reasons: riskVerdict.reasons,
+                ...(riskActed && riskVerdict.message !== undefined ? { message: riskVerdict.message } : {}),
+              };
+
         const audit = async (
           decision: PermissionDecision,
           reason: string,
@@ -753,8 +918,27 @@ export async function runAgent(
             ...(capabilityPlan.commandClassification
               ? { commandClassification: capabilityPlan.commandClassification }
               : {}),
+            ...(riskVerdict !== undefined ? { risk: riskVerdict } : {}),
           });
         };
+
+        // Shadow mode's whole product: a call the classifier would have made
+        // stricter, recorded as evidence so the phase-1 review (proposal §9)
+        // has a queue to read. Written only on a disagreement, never on
+        // agreement — an agreement is already visible on the audit row.
+        //
+        // Diagnostic-only, and awaited by nobody, on the same principle as
+        // onSandboxFailure above: a store that cannot record evidence must not
+        // become a second failure path in the turn that is running.
+        if (riskMode === "shadow" && riskVerdict !== undefined && riskNarrowed(resolvedAction, riskVerdict)) {
+          void options.sessionStore
+            ?.appendClassifierEvidence?.(options.sessionId!, {
+              toolCallId: tc.id,
+              source: "policy",
+              reason: `shadow: engine ${resolvedAction}, classifier ${riskVerdict.tier} (${riskVerdict.reasons.join(", ")})`,
+            })
+            .catch(() => {});
+        }
 
         /**
          * A sandboxed launch whose containment promise did not hold: the child
@@ -788,18 +972,38 @@ export async function runAgent(
         // approval path, so the channel is open for every sandboxed Bash call —
         // including one a rule allowed without a prompt. Grant coverage is
         // decided separately, below.
-        if (tc.name === "run_bash" && options.bashEnvelope !== undefined) {
+        if (tc.name === "run_bash" && currentEnvelope() !== undefined && unsandboxedKind === undefined) {
           exec = { onSandboxFailure };
         }
 
+        // The model asked to leave the sandbox where that is switched off.
+        if (unsandboxedKind === "requested" && !unsandboxedRequestsAllowed()) {
+          const msg = "UNSANDBOXED_NOT_ALLOWED: running outside the sandbox is turned off here (sandbox.allowUnsandboxedCommands is false, or the level is strict-sandbox). Work within the sandbox or ask the user to run the command themselves.";
+          options.onDiagnostic?.("denied");
+          await audit("deny-by-rule", "unsandboxed run refused: not allowed at this level or by sandbox.allowUnsandboxedCommands");
+          appendFreshToolResult(tc.id, tc.name, msg);
+          return { denied: true };
+        }
+
         if (action === "deny") {
-          const msg = `Permission denied for ${tc.name}`;
+          // A classifier block carries its reason to the model (§3.4): the
+          // sentence says which rule fired and how to rewrite the call, which
+          // is what keeps a block from becoming a retry loop. An engine deny
+          // keeps its existing message — there the rule is the whole answer.
+          const msg =
+            riskActed && policyRisk?.message !== undefined
+              ? `Permission denied. ${policyRisk.message}`
+              : `Permission denied for ${tc.name}`;
           options.onDiagnostic?.("denied");
           // Layer 1 (profile) and layer 2 (rule) denies share the same tool
           // message; the audit row names the winning layer so the trail stays
-          // one-directional (permission-spec.md §11).
+          // one-directional (permission-spec.md §11). The row stays
+          // deny-by-rule for a classifier block — it is the rule layer that
+          // acted — and the verdict on the row says which rule and why.
           if (reason === "deny-by-profile") {
             await audit("deny-by-profile", "deny by profile (layer 1)");
+          } else if (riskActed) {
+            await audit("deny-by-rule", `denied by the risk classifier (${riskVerdict?.reasons.join(", ")})`);
           } else {
             await audit("deny-by-rule", `deny rule matched (${winningRule?.origin ?? "rule"})`);
           }
@@ -820,16 +1024,20 @@ export async function runAgent(
             // ineligible ask is asked exactly as it is today and the prompter is
             // not even offered the session option. A run with no session
             // identity can neither reuse nor create a grant.
+            // Read now, not at run start: a capability granted earlier in the
+            // session changed the profile, and the hash must describe it.
+            const liveEnvelope = currentEnvelope();
             const envelope =
               options.sessionId !== undefined &&
+              unsandboxedKind === undefined &&
               isEligibleForGrant({
                 toolName: tc.name,
                 args: tc.arguments,
                 isGuarded,
                 winningRuleOrigin: winningRule?.origin,
-                envelope: options.bashEnvelope,
+                envelope: liveEnvelope,
               })
-                ? options.bashEnvelope
+                ? liveEnvelope
                 : undefined;
             // An envelope already approved for this session needs no prompt at
             // all — that is the point of the grant, and everything above (deny,
@@ -856,18 +1064,17 @@ export async function runAgent(
             // granted without a prompt — it takes the same "envelope-grant"
             // path a user's session choice would.
             //
-            // The sub-agent label is passed only when it exists: a root run's
-            // call keeps the three-argument shape every prompter was written
-            // against.
+            // `askOrigin` (the sub-agent label) and `policyRisk` (the risk
+            // classifier's reason, when it is what caused this ask) are both
+            // undefined on an ordinary root-run prompt, which is the shape
+            // every prompter was originally written against.
             let allowed: boolean | "posture" | "envelope-grant";
             if (reused !== null) {
               allowed = true;
             } else if (envelope?.autoGrant) {
               allowed = "envelope-grant";
-            } else if (options.askOrigin !== undefined) {
-              allowed = await options.askUser(tc.name, tc.arguments, envelope, options.askOrigin);
             } else {
-              allowed = await options.askUser(tc.name, tc.arguments, envelope);
+              allowed = await options.askUser(tc.name, tc.arguments, envelope, options.askOrigin, policyRisk);
             }
             if (allowed === "posture") {
               // Auto-approve posture upgraded the ask to allow without
@@ -956,9 +1163,22 @@ export async function runAgent(
               return { denied: true };
             }
           } else {
-            const msg = "PERMISSION_DENIED: headless — rule resolved to ask";
+            // No prompter: an ask is a denial, as it always was. An ask the
+            // *classifier* caused carries its reason instead of the generic
+            // line — the run is still going, so the model gets the sentence
+            // that says how to rewrite the call rather than one that just says
+            // no (docs/command-risk-classifier.md §7, §12.6).
+            const deniedByClassifier = riskActed && policyRisk?.message !== undefined;
+            const msg = deniedByClassifier
+              ? `PERMISSION_DENIED: ${policyRisk!.message}`
+              : "PERMISSION_DENIED: headless — rule resolved to ask";
             options.onDiagnostic?.("denied");
-            await audit("headless-deny", "resolved to ask with no interactive prompter (headless)");
+            await audit(
+              "headless-deny",
+              deniedByClassifier
+                ? `headless: denied by the risk classifier (${riskVerdict?.reasons.join(", ")})`
+                : "resolved to ask with no interactive prompter (headless)",
+            );
             appendFreshToolResult(tc.id, tc.name, msg);
             return { denied: true };
           }
@@ -972,6 +1192,9 @@ export async function runAgent(
             return { denied: true };
           }
         }
+        // Set after every approval path above, so the launch drops its profile
+        // only for a call the permission flow let through.
+        if (unsandboxedKind !== undefined) exec = { ...exec, unsandboxed: true };
       } else if (await hookBlocks(tc, "PreToolUse")) {
         // No permission engine — the hook is the only gate.
         hookDenied(tc, "PreToolUse");
@@ -1009,6 +1232,10 @@ export async function runAgent(
 
       const result = preResult ?? await executeTool(tc, exec);
       executedAny = true;
+      // A write tool that succeeded produced a file this session owns; the
+      // classifier's delete rules read this to tell "the agent made it" from
+      // "it was here before we were" (§4.2 preSessionTarget).
+      if (!result.error) for (const path of writtenPaths(tc.name, tc.arguments)) createdThisSession.add(path);
       // PostToolUse / PostToolUseFailure: hook stdout appends to the result
       // (hooks-spec.md §2) before it reaches the model or the UI preview.
       if (options.hooks) {

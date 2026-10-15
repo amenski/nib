@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { registerBash, runBashTimed, resolveTimeoutToBackground } from "./bash.js";
 import { jobManager, registerJobs } from "./jobs.js";
 import { SANDBOX_BLOCKED_HINT } from "./sandbox-hint.js";
@@ -7,8 +7,9 @@ import { runAgent } from "../agent.js";
 import type { Provider } from "../providers/types.js";
 import type { ToolContext } from "./types.js";
 import { basename, join } from "node:path";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { enterFakeHome } from "../sandbox/test-fake-home.js";
 import { createSessionTempDir } from "../sandbox/session-temp.js";
 import { parseUntrustedMarker } from "./untrusted-content.js";
 
@@ -274,7 +275,7 @@ describe("sandbox refusal hint (2026-10-10)", () => {
     registerJobs(registry);
     const byName = new Map(registry.getAllDefs().map((d) => [d.name, d]));
     for (const name of ["run_bash", "run_bash_background"]) {
-      expect(byName.get(name)?.description, name).toContain("read_file, list_files or glob");
+      expect(byName.get(name)?.description, name).toContain("unsandboxed: true");
       expect(byName.get(name)?.description, name).toContain("OS sandbox is active");
     }
   });
@@ -284,9 +285,11 @@ describe("sandbox refusal hint (2026-10-10)", () => {
     registerBash(registry);
     const tmp = createSessionTempDir();
     const workspace = mkdtempSync(join(tmpdir(), "nib-hint-ws-"));
-    // A file under $HOME but outside the workspace: the read boundary denies
-    // exactly that, and `cat` reports the refusal as a plain EPERM.
-    const blocked = join(homedir(), `.nib-sandbox-hint-probe-${process.pid}.txt`);
+    // A credential file under $HOME: the read boundary denies exactly that,
+    // and `cat` reports the refusal as a plain EPERM.
+    const home = enterFakeHome("nib-hint-home-");
+    mkdirSync(join(home.root, ".ssh"));
+    const blocked = join(home.root, ".ssh", "probe.txt");
     writeFileSync(blocked, "secret\n");
     try {
       const ctx: ToolContext = {
@@ -321,7 +324,7 @@ describe("sandbox refusal hint (2026-10-10)", () => {
       const ok = await registry.execute({ id: "c2", name: "run_bash", arguments: { command: "echo fine" } }, ctx);
       expect(ok.content).not.toContain(SANDBOX_BLOCKED_HINT);
     } finally {
-      rmSync(blocked, { force: true });
+      home.restore();
       rmSync(workspace, { recursive: true, force: true });
       tmp.cleanup();
     }
@@ -337,7 +340,9 @@ describe("sandbox refusal hint (2026-10-10)", () => {
     registerBash(registry);
     const tmp = createSessionTempDir();
     const workspace = mkdtempSync(join(tmpdir(), "nib-hint-model-"));
-    const blocked = join(homedir(), `.nib-sandbox-hint-model-${process.pid}.txt`);
+    const home = enterFakeHome("nib-hint-model-home-");
+    mkdirSync(join(home.root, ".ssh"));
+    const blocked = join(home.root, ".ssh", "probe.txt");
     writeFileSync(blocked, "secret\n");
     try {
       const sandboxCtx: ToolContext = {
@@ -374,7 +379,7 @@ describe("sandbox refusal hint (2026-10-10)", () => {
       expect(toolMsg?.content).toContain("Operation not permitted");
       expect(toolMsg?.content).toContain(SANDBOX_BLOCKED_HINT);
     } finally {
-      rmSync(blocked, { force: true });
+      home.restore();
       rmSync(workspace, { recursive: true, force: true });
       tmp.cleanup();
     }
@@ -383,7 +388,9 @@ describe("sandbox refusal hint (2026-10-10)", () => {
   itOnDarwin("gives a checked sandboxed background job the same note", async () => {
     const tmp = createSessionTempDir();
     const workspace = mkdtempSync(join(tmpdir(), "nib-hint-job-"));
-    const blocked = join(homedir(), `.nib-sandbox-hint-job-${process.pid}.txt`);
+    const home = enterFakeHome("nib-hint-job-home-");
+    mkdirSync(join(home.root, ".ssh"));
+    const blocked = join(home.root, ".ssh", "probe.txt");
     writeFileSync(blocked, "secret\n");
     try {
       const started = jobManager.start(`cat "${blocked}"`, workspace, 20_000, {
@@ -406,7 +413,7 @@ describe("sandbox refusal hint (2026-10-10)", () => {
       expect(out.content).toContain(SANDBOX_BLOCKED_HINT);
     } finally {
       jobManager.killAll();
-      rmSync(blocked, { force: true });
+      home.restore();
       rmSync(workspace, { recursive: true, force: true });
       tmp.cleanup();
     }

@@ -147,7 +147,7 @@ export async function getLiveModels(options: GetLiveModelsOptions): Promise<stri
 
 /**
  * A model id with any `vendor/` prefix and case stripped, so two forms of the
- * same id compare equal (`deepseek/deepseek-v4-flash` vs `deepseek-v4-flash`).
+ * same id compare equal (`deepseek/deepseek-flash` vs `deepseek-flash`).
  */
 function bareModelId(id: string): string {
   return id.toLowerCase().split("/").pop() ?? id.toLowerCase();

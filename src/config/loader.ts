@@ -3,9 +3,9 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { PermissionConfig, PermissionRule, PatternKind, PermissionAction, PermissionProfileConfig, PermissionProfileFsRule, PermissionProfileNetwork, ProfileLevel, FsAction } from "../permissions/index.js";
 import { compileGlob } from "../permissions/index.js";
+import { RISK_MODES, type RiskMode } from "../permissions/risk/index.js";
 import type { HooksConfig } from "../hooks/types.js";
 import { parseHooksConfig } from "../hooks/config.js";
-import { isPathWithinWriteRoots, realpathNearestAncestor } from "../sandbox/write-roots.js";
 import { STATE_DIR_NAME, projectSettingsPath } from "./paths.js";
 
 // ── Deep Code settings.json schema ──
@@ -115,7 +115,21 @@ export interface DeepCodeSettings {
    *  loadConfig's sandbox block). This is deliberately separate from
    *  `permissionProfile.fs`, whose "explicit rules narrow only" invariant
    *  this must not weaken. */
-  sandbox?: { enabled: boolean; writeRoots?: string[]; readRoots?: string[]; autoAllowBash?: boolean; allowLocalNetwork?: boolean };
+  sandbox?: { enabled: boolean; writeRoots?: string[]; autoAllowBash?: boolean; allowLocalNetwork?: boolean; allowBrowser?: boolean; allowUnsandboxedCommands?: boolean; excludedCommands?: string[] };
+
+  // ── Command risk classifier (docs/command-risk-classifier.md §9) ──
+  /** How the risk classifier acts on its verdict: `off`, `shadow` (label and
+   *  log only, the default), or `enforce` (clamp live). GLOBAL-only, read from
+   *  the user's own `~/.nib/settings.json` — a project setting `off` would
+   *  switch off a safety layer, the same reason `sandbox`'s keys are. */
+  classifier?: {
+    mode: RiskMode;
+    /** The optional second stage (docs/command-risk-classifier.md §6):
+     *  a small model call that can only add a confirmation, never remove one.
+     *  Off by default; `id` names the judge as "provider/model", and absent
+     *  means a cheap-class model from a provider you have a key for. */
+    model?: { enabled: boolean; id?: string };
+  };
 
   // ── MCP Servers ──
   mcpServers?: Record<string, McpServerConfig>;
@@ -154,6 +168,8 @@ export interface DeepCodeSettings {
    *  math the owner has asked to keep hidden (2026-08-14); token counts
    *  always display. The code stays — this only gates the display. */
   showCost?: boolean;
+  /** Daily startup check for a newer nib on npm (default on; NIB_NO_UPDATE_CHECK=1 also disables). */
+  updateCheck?: boolean;
 
   // ── Temperature ──
   temperature?: number;
@@ -334,35 +350,6 @@ export function containmentWarning(
 }
 
 /**
- * Discloses the recorded read-boundary residual: the child read boundary is
- * `$HOME`-shaped (seatbelt.ts denies `file-read*` on the real home and
- * re-allows the workspace plus an allowlist), so when the trusted workspace
- * root sits outside that home nothing denies reads of the files beside it —
- * they stay readable by a contained child, unlike siblings of an in-home
- * workspace. Reports the boundary; it does not narrow it.
- *
- * Gated on `hasActiveSandboxContainment`, so this partitions the space with
- * {@link containmentWarning}: that function answers when there is no boundary,
- * this one only speaks when there is. The two can never both fire, and neither
- * fires off darwin.
- *
- * `home` defaults to the real home the Seatbelt deny actually subtracts
- * (seatbelt.ts's `realpathNearestAncestor(homedir())`) — never `resolveHome()`
- * or `NIB_HOME`, which point at the state directory and are unrelated to the
- * read boundary.
- */
-export function workspaceOutsideHomeWarning(
-  config: Pick<DeepCodeSettings, "permissionProfile" | "sandbox">,
-  trustedRoot: string,
-  platform: NodeJS.Platform = process.platform,
-  home: string = homedir(),
-): string | undefined {
-  if (!hasActiveSandboxContainment(config, platform)) return undefined;
-  if (isPathWithinWriteRoots(trustedRoot, [realpathNearestAncestor(home)])) return undefined;
-  return "⚠ Workspace is outside your home directory — the sandbox's child read boundary is $HOME, so files beside this workspace stay readable.";
-}
-
-/**
  * Object keys that must never be accepted from a parsed settings file.
  * `JSON.parse('{"__proto__": ...}')` creates `__proto__` as a real own
  * enumerable property (unlike an object literal, where it invokes the
@@ -431,6 +418,7 @@ const KNOWN_KEYS = new Set([
   "retention",
   "permissionProfile",
   "sandbox",
+  "classifier",
   "mcpServers",
   "notify",
   "webSearchTool",
@@ -441,6 +429,7 @@ const KNOWN_KEYS = new Set([
   "debugLogEnabled",
   "strictMcpConfig",
   "showCost",
+  "updateCheck",
   "temperature",
   // Nib extensions
   "provider",
@@ -1335,17 +1324,9 @@ export function loadConfig(projectDir?: string): LoadResult {
           errors.push("config.sandbox.autoAllowBash: must be a boolean");
         }
       }
-      // readRoots / allowLocalNetwork: global-only like writeRoots — they widen
-      // what a sandboxed child may read or connect to, so a project file must
-      // not be able to set them. allowLocalNetwork absent = on (seatbelt.ts).
-      if (isObject(globalRaw?.sandbox) && "readRoots" in (globalRaw.sandbox as Record<string, unknown>)) {
-        const raw = (globalRaw.sandbox as Record<string, unknown>).readRoots;
-        if (Array.isArray(raw) && raw.every((p) => typeof p === "string")) {
-          if (config.sandbox && raw.length > 0) config.sandbox.readRoots = raw as string[];
-        } else {
-          errors.push("config.sandbox.readRoots: must be an array of strings");
-        }
-      }
+      // allowLocalNetwork: global-only like writeRoots — it widens what a
+      // sandboxed child may connect to, so a project file must not be able to
+      // set it. Absent = on (seatbelt.ts).
       if (isObject(globalRaw?.sandbox) && "allowLocalNetwork" in (globalRaw.sandbox as Record<string, unknown>)) {
         const raw = (globalRaw.sandbox as Record<string, unknown>).allowLocalNetwork;
         if (typeof raw === "boolean") {
@@ -1353,6 +1334,40 @@ export function loadConfig(projectDir?: string): LoadResult {
         } else {
           errors.push("config.sandbox.allowLocalNetwork: must be a boolean");
         }
+      }
+      // allowBrowser: global-only, absent = on, `false` opts out (seatbelt.ts BROWSER_MACH_SERVICES).
+      if (isObject(globalRaw?.sandbox) && "allowBrowser" in (globalRaw.sandbox as Record<string, unknown>)) {
+        const raw = (globalRaw.sandbox as Record<string, unknown>).allowBrowser;
+        if (typeof raw === "boolean") {
+          if (config.sandbox) config.sandbox.allowBrowser = raw;
+        } else {
+          errors.push("config.sandbox.allowBrowser: must be a boolean");
+        }
+      }
+      // allowUnsandboxedCommands / excludedCommands: global-only — they decide
+      // what may run outside the sandbox, so a project file must not set them
+      // (sandbox/unsandboxed.ts). allowUnsandboxedCommands absent = on.
+      if (isObject(globalRaw?.sandbox) && "allowUnsandboxedCommands" in (globalRaw.sandbox as Record<string, unknown>)) {
+        const raw = (globalRaw.sandbox as Record<string, unknown>).allowUnsandboxedCommands;
+        if (typeof raw === "boolean") {
+          if (config.sandbox) config.sandbox.allowUnsandboxedCommands = raw;
+        } else {
+          errors.push("config.sandbox.allowUnsandboxedCommands: must be a boolean");
+        }
+      }
+      if (isObject(globalRaw?.sandbox) && "excludedCommands" in (globalRaw.sandbox as Record<string, unknown>)) {
+        const raw = (globalRaw.sandbox as Record<string, unknown>).excludedCommands;
+        if (Array.isArray(raw) && raw.every((c) => typeof c === "string")) {
+          if (config.sandbox && raw.length > 0) config.sandbox.excludedCommands = raw as string[];
+        } else {
+          errors.push("config.sandbox.excludedCommands: must be an array of strings");
+        }
+      }
+      // Legacy `sandbox.grants` is migrated to the new schema at startup
+      // (sandbox-migrate.ts) and no longer parsed. A stale key is tolerated
+      // with a warning until the next release.
+      if (isObject(projectRaw?.sandbox) && "grants" in (projectRaw.sandbox as Record<string, unknown>)) {
+        warnings.push("sandbox.grants is no longer used and was ignored in project .nib/settings.json");
       }
       if (isObject(projectRaw?.sandbox) && "writeRoots" in (projectRaw.sandbox as Record<string, unknown>)) {
         warnings.push(
@@ -1366,6 +1381,49 @@ export function loadConfig(projectDir?: string): LoadResult {
     config.sandbox = { enabled: true };
     if (!sandboxSupportedOnPlatform()) {
       warnings.push("sandbox is macOS-only; running policy-only");
+    }
+  }
+
+  // ── classifier (docs/command-risk-classifier.md §9) ──
+  // `mode` decides whether the risk classifier only labels calls (`shadow`,
+  // the default), labels and clamps them (`enforce`), or does not run (`off`).
+  // GLOBAL-only, like sandbox.writeRoots and for the same reason: a project
+  // file that could set `off` would switch off a narrowing safety layer.
+  config.classifier = { mode: "shadow" };
+  if (isObject(globalRaw?.classifier) && "mode" in (globalRaw.classifier as Record<string, unknown>)) {
+    const raw = (globalRaw.classifier as Record<string, unknown>).mode;
+    if (typeof raw === "string" && RISK_MODES.includes(raw as RiskMode)) {
+      config.classifier.mode = raw as RiskMode;
+    } else {
+      errors.push(`config.classifier.mode: must be one of ${RISK_MODES.map((m) => `"${m}"`).join(" | ")}`);
+    }
+  }
+  if (isObject(globalRaw?.classifier) && "model" in (globalRaw.classifier as Record<string, unknown>)) {
+    const raw = (globalRaw.classifier as Record<string, unknown>).model;
+    if (isObject(raw)) {
+      const m = raw as Record<string, unknown>;
+      if (typeof m.enabled === "boolean") {
+        config.classifier.model = { enabled: m.enabled };
+        if ("id" in m) {
+          if (typeof m.id === "string" && m.id.includes("/")) {
+            config.classifier.model.id = m.id;
+          } else {
+            errors.push('config.classifier.model.id: must be "provider/model"');
+          }
+        }
+      } else {
+        errors.push("config.classifier.model.enabled: must be a boolean");
+      }
+    } else {
+      errors.push("config.classifier.model: must be an object");
+    }
+  }
+  if (isObject(projectRaw?.classifier)) {
+    const projectKeys = ["mode", "model"].filter((k) => k in (projectRaw.classifier as Record<string, unknown>));
+    if (projectKeys.length > 0) {
+      warnings.push(
+        `classifier.${projectKeys.join(", classifier.")} is global-only and was ignored in project .nib/settings.json — set it in ~/.nib/settings.json instead`,
+      );
     }
   }
 
@@ -1478,6 +1536,10 @@ export function loadConfig(projectDir?: string): LoadResult {
   }
 
   // ── showCost (display flag, default false — hidden) ──
+  if ("updateCheck" in merged) {
+    if (typeof merged.updateCheck === "boolean") config.updateCheck = merged.updateCheck;
+    else errors.push("config.updateCheck: must be a boolean");
+  }
   if ("showCost" in merged) {
     if (typeof merged.showCost === "boolean") {
       config.showCost = merged.showCost;

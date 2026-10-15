@@ -12,7 +12,7 @@ import {
 } from "../sandbox/seatbelt.js";
 import { containmentFailureError, spawnContained, type ReadinessOutcome } from "../sandbox/launcher.js";
 import { wrapUntrusted, sanitizeControlChars } from "./untrusted-content.js";
-import { SANDBOX_TOOL_NOTE, sandboxBlockedHint } from "./sandbox-hint.js";
+import { SANDBOX_TOOL_NOTE, UNSANDBOXED_PARAM, sandboxBlockedHint } from "./sandbox-hint.js";
 
 // Background jobs can produce unbounded output (dev servers, tail -f); holding
 // it all in memory would leak. Each stream keeps the most recent 1MB and flags
@@ -451,7 +451,7 @@ function clearJobTimeout(job: Job): void {
 
 export const jobManager = new JobManager();
 
-const runBackgroundHandler: ToolHandler = async (args, ctx) => {
+const runBackgroundHandler: ToolHandler = async (args, ctx, exec) => {
   const command = args.command as string;
   if (typeof command !== "string" || command.trim() === "") {
     return { content: "", error: "Missing required argument: command" };
@@ -467,7 +467,9 @@ const runBackgroundHandler: ToolHandler = async (args, ctx) => {
 
   // stream: true — only tool-started jobs emit live-output events (plan §3
   // decision E); timeout-migrated jobs are tracked but never stream.
-  const result = jobManager.start(command, cwd, timeoutMs, { stream: true, sandboxLevel: ctx.sandboxLevel, trustedRoot: root, writeRoots: ctx.writeRoots, sessionTempDir: ctx.sessionTempDir });
+  // An approved unsandboxed job spawns with no profile and the user's own temp dir.
+  const unsandboxed = exec?.unsandboxed === true;
+  const result = jobManager.start(command, cwd, timeoutMs, { stream: true, sandboxLevel: unsandboxed ? undefined : ctx.sandboxLevel, trustedRoot: root, writeRoots: ctx.writeRoots, sessionTempDir: unsandboxed ? undefined : ctx.sessionTempDir });
   if (!result.ok) return { content: "", error: result.error };
   return {
     content: [
@@ -532,6 +534,7 @@ const runBackgroundDef: ToolDef = {
       command: { type: "string", description: "The command to execute" },
       cwd: { type: "string", description: "Working directory (optional, defaults to the project root)" },
       timeout: { type: "number", description: "Max runtime in milliseconds before the job is killed (optional, default 300000)" },
+      unsandboxed: UNSANDBOXED_PARAM,
     },
     required: ["command"],
   },

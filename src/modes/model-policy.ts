@@ -21,15 +21,10 @@ export const GENERAL_MODEL_ID = "deepseek/deepseek-flash";
 export const GENERAL_REASONING_EFFORT = "low";
 
 /**
- * Resolve a persisted choice without collapsing the origin marker. `false`
- * means the value came from a mode default and must be recomputed on resume;
- * `undefined` is a legacy session with ambiguous origin, so preserve it.
+ * Resolve a resumed session's persisted choice. Whatever the session last
+ * used is kept as-is — a mode default included — so it counts as explicit and
+ * startup never re-seeds it from the mode.
  */
-export function resolveRestoredSelection<T>(
-  value: T | undefined,
-  explicit: boolean | undefined,
-): { value: T | undefined; explicit: boolean } {
-  if (explicit === false) return { value: undefined, explicit: false };
-  if (value === undefined) return { value: undefined, explicit: false };
-  return { value, explicit: true };
+export function resolveRestoredSelection<T>(value: T | undefined): { value: T | undefined; explicit: boolean } {
+  return { value, explicit: value !== undefined };
 }

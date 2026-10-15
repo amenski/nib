@@ -21,12 +21,6 @@ const TEST_DIR = join(tmpdir(), `nib-exec-runner-${process.pid}`);
 const HOME_DIR = join(TEST_DIR, "home");
 const PROJECT_DIR = join(TEST_DIR, "project");
 
-// Seatbelt containment — and therefore the outside-$HOME read-boundary
-// disclosure it gates — only exists on darwin (see loader.ts
-// sandboxSupportedOnPlatform). Per-file local const, the convention in
-// src/sandbox/*.test.ts.
-const itOnDarwin = it.skipIf(process.platform !== "darwin");
-
 let scriptedCall: { name: string; args: Record<string, unknown> } | null = null;
 let lastStreamOptions: Record<string, unknown> | undefined;
 /** The message array the provider last received — how mention expansion is observed. */
@@ -67,7 +61,6 @@ vi.mock("./providers/presets.js", () => ({
     defaultModel: "deepseek-v4-pro",
     models: {
       "deepseek-flash": { effort: { values: ["low", "high", "max"], default: "high" } },
-      "deepseek-v4-flash": { effort: { values: ["low", "high", "max"], default: "high" } },
       "deepseek-v4-pro": { effort: { values: ["low", "high", "max"], default: "high" } },
     },
   } : undefined,
@@ -114,6 +107,9 @@ function writeSettings(settings: Record<string, unknown>): void {
 }
 
 async function run(opts?: { mode?: string; model?: string; debug?: boolean; prompt?: string }): Promise<{ code: number; stderr: string }> {
+  // Every run must read the fixture home, never the developer's ~/.nib: a
+  // stale variable name once let a real settings file decide these results.
+  if (process.env.NIB_HOME !== HOME_DIR) throw new Error("exec-runner test ran without NIB_HOME set to the fixture home");
   const { runExecMode } = await import("./exec-runner.js");
   const chunks: string[] = [];
   // console.error routes through process.stderr.write, so spying on write
@@ -236,13 +232,10 @@ describe("runExecMode headless permission enforcement (T11)", () => {
     expect(code).toBe(0);
     expect(executeToolSpy).not.toHaveBeenCalled();
     expect(stderr).not.toContain("permission denied (headless)");
-    // The deny path emits no notice of its own. On darwin the only line is the
-    // outside-$HOME startup notice this fixture's tmpdir project root triggers
-    // (see workspaceOutsideHomeWarning) — unrelated to the deny. Off darwin
-    // there is no containment, so nothing at all: the original exact assertion.
+    // The deny path emits no notice of its own.
     const denyNotices = stderr.split("\n").filter((l) => l.includes("permission denied (headless)"));
     expect(denyNotices).toEqual([]);
-    if (process.platform !== "darwin") expect(stderr).toBe("");
+    expect(stderr).toBe("");
   });
 
   it("(g) a profile that passes keeps the headless ask-deny path untouched", async () => {
@@ -258,22 +251,6 @@ describe("runExecMode headless permission enforcement (T11)", () => {
     // asks, and headless denies with the usual single-line notice.
     expect(executeToolSpy).not.toHaveBeenCalled();
     expect(stderr).toContain("permission denied (headless): run_bash echo hi");
-  });
-
-  itOnDarwin("(h) discloses the read-boundary residual when the project root is outside $HOME", async () => {
-    // No settings file at all: the loader's own defaults (permissionProfile
-    // workspace-write, sandbox enabled) are what give an active boundary here —
-    // and they survive, because only keys the PROJECT declares are eligible for
-    // the untrusted-execution-key strip. PROJECT_DIR lives in tmpdir(), outside
-    // $HOME, so the disclosure applies. No tool call is scripted, so nothing
-    // else writes to stderr on this path.
-    //
-    // The opposite direction (an in-home root staying silent) is covered
-    // hermetically in loader.test.ts — run() pins projectRoot to PROJECT_DIR.
-    const { code, stderr } = await run();
-
-    expect(code).toBe(0);
-    expect(stderr).toContain("outside your home directory");
   });
 });
 
@@ -306,14 +283,10 @@ describe("runExecMode first-run failures are clean (B1)", () => {
     const { code, stderr } = await run();
 
     expect(code).toBe(1);
-    // The failure path's message is the only line it produces. On darwin the
-    // outside-$HOME startup notice also lands on stderr (this fixture's tmpdir
-    // project root — see workspaceOutsideHomeWarning), so that one line is
-    // excluded by name rather than dropping the clean-one-liner assertion.
+    // The failure path's message is the only line it produces.
     const lines = stderr.split("\n").filter(Boolean);
-    const errorLines = lines.filter((l) => !l.includes("outside your home directory"));
-    expect(errorLines).toHaveLength(1);
-    expect(errorLines[0]).toContain("nib auth");
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("nib auth");
     expect(stderr).not.toContain("    at "); // no stack frames
   });
 
@@ -663,14 +636,14 @@ describe("runExecMode wires self-reflection + error-recovery (engagement)", () =
   beforeEach(() => {
     mkdirSync(PROJECT_DIR, { recursive: true });
     mkdirSync(HOME_DIR, { recursive: true });
-    process.env.DEEPCODE_HOME = HOME_DIR;
+    process.env.NIB_HOME = HOME_DIR;
     executeToolSpy.mockClear();
     createProviderSpy.mockClear();
     scriptedCall = null;
   });
 
   afterEach(() => {
-    delete process.env.DEEPCODE_HOME;
+    delete process.env.NIB_HOME;
     rmSync(TEST_DIR, { recursive: true, force: true });
   });
 

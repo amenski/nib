@@ -1,6 +1,8 @@
 // Maintainer-only capture step (tier 1 of 3 — see docs/model-catalog-plan.md
 // §4.D). Fetches the live Models.dev feed (or reads a local capture for
-// offline/testable re-runs), keeps only SUPPORTED_PROVIDERS, drops any model
+// offline/testable re-runs), keeps the providers the generator would emit
+// (featured ones from scripts/provider-overlay.ts plus every openai-compatible
+// provider with a tool-capable model), drops any model
 // the strict generator could not normalize, hand-merges the `ollama` block
 // (Models.dev has no such provider — it catalogs hosted APIs, Ollama is local
 // inference), and writes scripts/fixtures/models.dev.json with sorted keys so
@@ -12,7 +14,8 @@
 // fixture itself. Never run in tests.
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { SUPPORTED_PROVIDERS, generateCatalogReport } from "../src/providers/catalog-generator.js";
+import { generateCatalogReport } from "../src/providers/catalog-generator.js";
+import { PROVIDER_OVERLAY } from "../src/providers/provider-overlay.js";
 
 const DEFAULT_URL = "https://models.dev/api.json";
 
@@ -34,8 +37,10 @@ async function loadFeed(input: string): Promise<unknown> {
 }
 
 // Sort object keys (recursively) so a re-run against unchanged upstream data
-// produces a byte-identical file. Array element order is left untouched —
-// order is meaningful there (e.g. reasoning_options values).
+// produces a byte-identical file. Numbers are trimmed to 10 significant digits
+// to drop float noise in the feed (0.7999999999 -> 0.8). Array element
+// order is left untouched — order is meaningful there (e.g. reasoning_options
+// values).
 function sortKeysDeep(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sortKeysDeep);
   if (isObject(value)) {
@@ -43,7 +48,16 @@ function sortKeysDeep(value: unknown): unknown {
     for (const key of Object.keys(value).sort()) sorted[key] = sortKeysDeep(value[key]);
     return sorted;
   }
-  return value;
+  return typeof value === "number" ? Number(value.toPrecision(10)) : value;
+}
+
+// The fields catalog-generator.ts reads; everything else in the feed is
+// dropped so the checked-in fixture stays reviewable.
+const PROVIDER_FIELDS = ["api", "env", "name", "npm"];
+const MODEL_FIELDS = ["cost", "limit", "modalities", "name", "reasoning_options", "release_date", "tool_call"];
+
+function pick(value: Record<string, unknown>, fields: string[]): Record<string, unknown> {
+  return Object.fromEntries(fields.filter((f) => value[f] !== undefined).map((f) => [f, value[f]]));
 }
 
 const feed = await loadFeed(source);
@@ -56,14 +70,14 @@ const existingFixture = JSON.parse(readFileSync(outputPath, "utf8"));
 const ollamaBlock = isObject(existingFixture.providers) ? existingFixture.providers.ollama : undefined;
 if (!isObject(ollamaBlock)) throw new Error(`expected an existing ollama block in ${outputPath} to preserve`);
 
-// Reuse the real generator (lenient mode) purely to learn which models it
-// could not normalize — no positive limit.context, or a half-specified cost
-// pair — so the fixture is clean by construction and `models:generate` never
-// has to reject anything from it. This only inspects SUPPORTED_PROVIDERS
-// (generateCatalogCore iterates that list), which is exactly what capture
-// needs; `ollama` will report as a skipped provider ("absent") since
-// Models.dev never lists it, which capture handles separately below.
-const report = generateCatalogReport(feed, { sourceRevision: "capture-check", generatedAt: "capture-check", lenient: true });
+// Reuse the real generator (lenient mode) to learn which models it could not
+// normalize — no positive limit.context, or a half-specified cost pair — so
+// the fixture is clean by construction and `models:generate` never has to
+// reject anything from it, and which providers it would emit at all (a
+// provider with no tool-capable model is reported as skipped). `ollama`
+// reports as skipped ("absent") since Models.dev never lists it, which
+// capture handles separately below.
+const report = generateCatalogReport(feed, { sourceRevision: "capture-check", generatedAt: "capture-check", lenient: true, overlay: PROVIDER_OVERLAY });
 const skippedModelIds = new Set(report.skippedModels); // "provider/id"
 
 // Stamp provenance into the fixture itself, alongside `providers` — a sibling
@@ -78,8 +92,9 @@ const capture = {
   capturedAt: new Date().toISOString().slice(0, 10),
 };
 
+const kept = new Set(Object.keys(report.catalog.providers as Record<string, unknown>));
 const providers: Record<string, unknown> = {};
-for (const provider of SUPPORTED_PROVIDERS) {
+for (const provider of ["ollama", ...kept]) {
   if (provider === "ollama") {
     providers.ollama = ollamaBlock;
     console.log("ollama: 1 model kept (hand-maintained — Models.dev has no ollama provider)");
@@ -87,19 +102,20 @@ for (const provider of SUPPORTED_PROVIDERS) {
   }
   const providerSource = feedProviders[provider];
   if (!isObject(providerSource) || !isObject(providerSource.models)) {
-    throw new Error(`captured feed from ${source} is missing supported provider: ${provider}`);
+    throw new Error(`captured feed from ${source} is missing provider: ${provider}`);
   }
   const models = providerSource.models as Record<string, unknown>;
-  const kept: Record<string, unknown> = {};
+  const keptModels: Record<string, unknown> = {};
   const dropped: string[] = [];
   for (const id of Object.keys(models)) {
     if (skippedModelIds.has(`${provider}/${id}`)) { dropped.push(id); continue; }
-    kept[id] = models[id];
+    keptModels[id] = isObject(models[id]) ? pick(models[id] as Record<string, unknown>, MODEL_FIELDS) : models[id];
   }
-  providers[provider] = { ...providerSource, models: kept };
-  const droppedNote = dropped.length ? ` — dropped (no usable context limit or half-specified cost): ${dropped.join(", ")}` : "";
-  console.log(`${provider}: kept ${Object.keys(kept).length}, dropped ${dropped.length}${droppedNote}`);
+  providers[provider] = { ...pick(providerSource, PROVIDER_FIELDS), models: keptModels };
+  if (dropped.length) console.log(`${provider}: kept ${Object.keys(keptModels).length}, dropped (no usable context limit or half-specified cost): ${dropped.join(", ")}`);
 }
 
+const skipped = report.skippedProviders.filter((p) => p.provider !== "ollama").map((p) => p.provider);
+if (skipped.length) console.log(`skipped (no tool-capable model): ${skipped.join(", ")}`);
 writeFileSync(outputPath, `${JSON.stringify(sortKeysDeep({ capture, providers }), null, 2)}\n`);
-console.log(`wrote ${outputPath} (source: ${capture.source}, capturedAt: ${capture.capturedAt})`);
+console.log(`wrote ${outputPath}: ${Object.keys(providers).length} providers (source: ${capture.source}, capturedAt: ${capture.capturedAt})`);

@@ -1,7 +1,7 @@
 import { readFile, readdir, rename, unlink } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import type { Message } from "../types.js";
-import { redactSecrets } from "./redact.js";
+import { redactDeep, redactSecrets } from "./redact.js";
 import { resolveHome, type RetentionConfig } from "../config/loader.js";
 import {
   appendPrivateFile,
@@ -9,6 +9,9 @@ import {
   writePrivateFile,
 } from "../config/state-permissions.js";
 import type { CommandClassificationResult } from "../permissions/command-classifier.js";
+import type { RiskFeatures } from "../permissions/risk/features.js";
+import type { RiskTier } from "../permissions/risk/rules.js";
+import type { PermissionAction } from "../permissions/rules.js";
 import { computeSessionPermissionMetrics } from "./metrics.js";
 
 const KNOWN_VERSION = 1;
@@ -60,6 +63,9 @@ export interface CompactionSummary {
  *   grant-invalidated — the envelope a grant was approved against changed, so
  *                      the grant was dropped and the call was asked again
  *   grant-revoked    — the user revoked the session grant
+ *   grant-renewed    — the user granted a sandbox capability, which changed
+ *                      the profile; the session grant moved to the new
+ *                      envelope instead of asking again
  *   sandbox-failure  — a sandboxed launch could not confirm its Seatbelt
  *                      profile, so the command did not run and any grant was
  *                      revoked; the specific error is in the tool result
@@ -79,6 +85,7 @@ export type PermissionDecision =
   | "deny-by-profile"
   | "grant-invalidated"
   | "grant-revoked"
+  | "grant-renewed"
   | "headless-deny"
   | "sandbox-failure"
   | "unresolved-ask"
@@ -116,6 +123,13 @@ export interface PermissionAuditRecord {
   envelopeGrant?: "reuse" | "granted";
   /** Advisory command classification, persisted on canonical agent rows only. */
   commandClassification?: CommandClassificationResult;
+  /**
+   * The risk classifier's verdict (§8). Present whenever the classifier ran —
+   * i.e. whenever `classifier.mode` is not `off`. In shadow mode the decision
+   * is unchanged and this is the only trace of it, which is what the phase-1
+   * review reads.
+   */
+  risk?: PermissionRiskRecord;
 }
 
 export interface ClassifierEvidenceRecord {
@@ -123,6 +137,39 @@ export interface ClassifierEvidenceRecord {
   source: "policy" | "handler";
   /** Short, non-secret explanation of the contradictory evidence. */
   reason: string;
+}
+
+/**
+ * The risk classifier's verdict as persisted (docs/command-risk-classifier.md
+ * §8). The feature vector rides along so a verdict is replayable from the
+ * session log alone — which is also why every string in it goes through
+ * `redactSecrets` on the way in: the vector is mostly the command's own text.
+ */
+export interface PermissionRiskRecord {
+  tier: RiskTier;
+  /** What the rule engine resolved to on its own, before the clamp. */
+  engineAction: PermissionAction;
+  /** The action the tier applies under `enforce`, and the clamped action. */
+  nativeAction: PermissionAction;
+  action: PermissionAction;
+  score: number;
+  reasons: string[];
+  features: RiskFeatures;
+  /** `rules+model` once the optional judge ran (proposal §6). */
+  stage: "rules" | "rules+model";
+  /**
+   * The model stage's attempt, present whenever it ran — including when it
+   * timed out or answered with something unparseable, which is the point: the
+   * attempt is what the stage-2 counters and the review queue are made of.
+   */
+  model?: {
+    outcome: "ok" | "flag" | "timeout" | "error" | "unparseable";
+    latencyMs: number;
+    reason?: string;
+    tag?: string;
+  };
+  version: string;
+  parseStatus: string;
 }
 
 export interface SessionPermissionMetrics {
@@ -138,6 +185,29 @@ export interface SessionPermissionMetrics {
   envelopeGrantRevocations: number;
   /** Launches that could not confirm their Seatbelt profile; the command did not run. */
   sandboxFailures: number;
+  /** How many classified calls reached each tier (docs/command-risk-classifier.md §8). */
+  riskTierCounts: Record<RiskTier, number>;
+  /**
+   * Calls the classifier is what made ask: the engine resolved to allow and
+   * the verdict is `confirm`. These are the prompts the classifier adds, and
+   * the denominator of its false-positive rate (§11).
+   */
+  classifierCausedAsks: number;
+  /**
+   * Of those, the ones a user approved. Zero in shadow mode by construction —
+   * nothing was actually asked — so this reads as a rate only under `enforce`.
+   */
+  classifierCausedAsksApproved: number;
+  /** Calls whose verdict was `block`. */
+  blocks: number;
+  /** Times the optional model stage was attempted (proposal §6, §8). */
+  stage2Calls: number;
+  /** Of those, the ones that came back `flag` — the escalations it produced. */
+  stage2Flags: number;
+  /** Of those, the ones that failed open: timeout, error, or unparseable. */
+  stage2FailedOpen: number;
+  /** p95 of the stage-2 latency over its successful calls, in ms. */
+  stage2P95Ms: number;
 }
 
 export interface TokenUsageRecord {
@@ -377,6 +447,12 @@ export class SessionStore {
       ...record,
       subject: redactSecrets(record.subject),
       ...(record.reason !== undefined ? { reason: redactSecrets(record.reason) } : {}),
+      // The feature vector is mostly the command's own text (segment texts,
+      // delete targets, secret references), so it is redacted as a whole
+      // rather than field by field — a new feature cannot forget to opt in.
+      ...(record.risk !== undefined
+        ? { risk: redactDeep(record.risk) as PermissionRiskRecord }
+        : {}),
     });
   }
 

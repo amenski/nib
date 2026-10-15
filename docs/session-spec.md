@@ -92,7 +92,11 @@ transcript stays on disk for rewind and audit.
  "subject":"rm -rf /","decision":"deny-by-rule",
  "reason":"deny rule matched (builtin-destructive)",
  "winningRule":{...},
- "source":"subagent"}
+ "source":"subagent",
+ "risk":{"tier":"block","engineAction":"deny","nativeAction":"deny","action":"deny",
+         "score":1,"reasons":["rm.critical-path"],"stage":"rules","version":"risk-1",
+         "parseStatus":"parsed","features":{...},
+         "model":{"outcome":"ok","latencyMs":412}}}
 ```
 
 One row per permission decision. The canonical agent-emitted `decision`
@@ -108,8 +112,27 @@ vocabulary (one value per resolution path in `agent.ts`):
 | `headless-deny` | Resolved to ask but no interactive prompter was available (headless / sub-agent). |
 | `unresolved-ask` | A bash segment couldn't be safely classified; fail-closed to ask, then approved. |
 
-`subject` and `reason` are both secret-redacted. `winningRule` is the rule
-that produced the outcome, absent on `defaultMode` fallthrough.
+`subject` and `reason` are both secret-redacted, and so is `risk` as a whole —
+its feature vector is mostly the command's own text (segment texts, delete
+targets, secret references). `winningRule` is the rule that produced the
+outcome, absent on `defaultMode` fallthrough.
+
+**`risk` — the command risk classifier's verdict**
+(docs/command-risk-classifier.md §8). Present on every row the classifier
+labelled, i.e. whenever `classifier.mode` is not `off`; absent on rows written
+before it existed, which must be read as "no verdict", not as a tier.
+`engineAction` is what the rule engine resolved to on its own, `nativeAction`
+what the tier applies under `enforce`, and `action` their clamped combination —
+so a row says both what happened and what `enforce` would have done.
+
+`stage` is `"rules+model"` once the optional second stage ran, and `model` then
+carries the attempt: `outcome` is one of `ok`, `flag`, `timeout`, `error`,
+`unparseable`, with `latencyMs` and, on a flag, the model's `reason` and the
+`tag` it chose. The field is present for the *failures* too, which is the point —
+every outcome but `flag` leaves the verdict unchanged, so without recording them
+a judge that silently times out would look identical to one that never ran.
+Rows written before the stage existed carry no `model`, which means the stage was
+inactive, not that it succeeded.
 
 **`source` — writer identity (decision H, subsystems.md §7).** Rows written
 by sub-agents spawned via `new_task` carry `"source":"subagent"`; top-level

@@ -17,3 +17,6 @@ dev-todo.md
 
 # keep private registry config/auth out of the repo
 .npmrc
+
+# Throwaway tree the eval harness builds and removes (scripts/eval.ts)
+.eval-tmp/

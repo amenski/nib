@@ -3,10 +3,14 @@ import { join } from "node:path";
 import type { ModelCapabilities } from "./types.js";
 import { resolveHome } from "../config/loader.js";
 import { CATALOG_CACHE_FILENAME } from "./catalog-update.js";
+import { ensurePrivateDirectoryAsync, writePrivateFile } from "../config/state-permissions.js";
+import { defaultKeyEnv } from "./catalog-generator.js";
+
+export { defaultKeyEnv };
 
 /**
- * The on-disk shape of models.json (generated bundle and user override).
- * Provider integration settings are kept separately in provider-presets.json.
+ * The on-disk shape of models.json (generated bundle, `models update` cache
+ * and user override): each provider's connection settings plus its models.
  */
 export interface CatalogModel extends ModelCapabilities {
   free?: boolean;
@@ -14,6 +18,8 @@ export interface CatalogModel extends ModelCapabilities {
 
 export interface CatalogProvider {
   label?: string;
+  /** Listed first in `nib auth` and always shown in the model picker. */
+  featured?: boolean;
   api: string;
   baseUrl: string;
   keyEnv: string;
@@ -26,7 +32,6 @@ export interface ModelCatalog {
 }
 
 const BUNDLED_PATH = new URL("./models.json", import.meta.url);
-const PRESETS_PATH = new URL("./provider-presets.json", import.meta.url);
 
 function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -61,6 +66,7 @@ function mergeProvider(
   }
   return {
     label: override.label ?? base?.label,
+    ...((override.featured ?? base?.featured) ? { featured: true } : {}),
     api: override.api ?? base?.api ?? "openai-compatible",
     baseUrl: override.baseUrl ?? base?.baseUrl ?? "",
     keyEnv: override.keyEnv ?? base?.keyEnv ?? "",
@@ -78,16 +84,11 @@ function mergeProvider(
  */
 export function loadModelCatalog(homeDir?: string): ModelCatalog {
   const bundledRaw = loadJsonFile(BUNDLED_PATH);
-  const presetsRaw = loadJsonFile(PRESETS_PATH);
   const bundledProviders = isObject(bundledRaw?.providers) ? (bundledRaw!.providers as Record<string, unknown>) : {};
-  const presetProviders = isObject(presetsRaw?.providers) ? (presetsRaw!.providers as Record<string, unknown>) : {};
 
   const providers: Record<string, CatalogProvider> = {};
-  const providerNames = new Set([...Object.keys(presetProviders), ...Object.keys(bundledProviders)]);
-  for (const name of providerNames) {
-    const preset = isObject(presetProviders[name]) ? presetProviders[name] : {};
-    const models = isObject(bundledProviders[name]) ? bundledProviders[name] : {};
-    providers[name] = mergeProvider(undefined, { ...(preset as Partial<CatalogProvider>), ...(models as Partial<CatalogProvider>) });
+  for (const [name, entry] of Object.entries(bundledProviders)) {
+    if (isObject(entry)) providers[name] = mergeProvider(undefined, entry as Partial<CatalogProvider>);
   }
 
   const home = homeDir ?? resolveHome();
@@ -101,9 +102,13 @@ export function loadModelCatalog(homeDir?: string): ModelCatalog {
   // to the bundled catalog, same as a missing user override.
   const cachedRaw = loadJsonFile(join(home, CATALOG_CACHE_FILENAME));
   const cachedProviders = isObject(cachedRaw?.providers) ? (cachedRaw!.providers as Record<string, unknown>) : {};
+  // Only models and the default model come from the cache: connection fields
+  // (the host a key is sent to) always come from the bundle, so a cache left
+  // by an older nib can never pin an outdated base URL.
   for (const [name, entry] of Object.entries(cachedProviders)) {
-    if (!isObject(entry)) continue;
-    providers[name] = mergeProvider(providers[name], entry as Partial<CatalogProvider>);
+    if (!isObject(entry) || !providers[name]) continue;
+    const { models, defaultModel } = entry as Partial<CatalogProvider>;
+    providers[name] = mergeProvider(providers[name], { models, ...(typeof defaultModel === "string" ? { defaultModel } : {}) });
   }
 
   const userPath = join(home, "models.json");
@@ -119,16 +124,9 @@ export function loadModelCatalog(homeDir?: string): ModelCatalog {
   return { providers };
 }
 
-/**
- * Read provider-presets.json directly (integration facts: base URL, API
- * shape, key env var, default model — plan §2 decision 4). Exported so
- * `models update` can build its `defaultModels` generator input from the
- * exact same file scripts/generate-models.ts uses, without reimplementing
- * PRESETS_PATH's import.meta.url resolution (the reason this works both from
- * src/ and from a built dist/).
- */
-export function loadProviderPresets(): Record<string, unknown> {
-  return loadJsonFile(PRESETS_PATH) ?? { providers: {} };
+/** Featured provider names (deepseek, openai, …), in catalog order. */
+export function featuredProviderNames(catalog: ModelCatalog = loadModelCatalog()): string[] {
+  return Object.keys(catalog.providers).filter((name) => catalog.providers[name].featured);
 }
 
 /**
@@ -154,4 +152,92 @@ function readUserCatalog(path: string): Record<string, unknown> | null {
     console.warn(`warning: failed to parse ${path} (${(err as Error).message}) — using the bundled model catalog`);
     return null;
   }
+}
+
+/** The provider entry `nib auth` writes to `~/.nib/models.json`. */
+export interface UserProviderEntry {
+  label: string;
+  baseUrl: string;
+  keyEnv: string;
+  defaultModel: string;
+  models: Record<string, CatalogModel>;
+}
+
+/** Capabilities for a model nib has no metadata for (registry.ts's fallback). */
+export const UNKNOWN_MODEL_CAPS: CatalogModel = { supportsTools: true, contextWindow: 128000 };
+
+/**
+ * Read `~/.nib/models.json`, let `mutate` change its providers map, write it
+ * back. A missing file starts empty; a present-but-malformed one throws
+ * instead of being overwritten: it is the user's hand-edited file. Returns
+ * the file path.
+ */
+async function updateUserCatalog(
+  homeDir: string | undefined,
+  mutate: (providers: Record<string, unknown>) => void,
+): Promise<string> {
+  const home = homeDir ?? resolveHome();
+  const path = join(home, "models.json");
+
+  let root: Record<string, unknown> = { providers: {} };
+  let content: string | null = null;
+  try {
+    content = readFileSync(path, "utf-8");
+  } catch {
+    // Missing file: start from an empty catalog.
+  }
+  if (content !== null) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(content);
+    } catch (err) {
+      throw new Error(`${path} is not valid JSON (${(err as Error).message}) — fix or remove it first`);
+    }
+    if (!isObject(parsed)) throw new Error(`${path} must be a JSON object — fix or remove it first`);
+    root = parsed;
+  }
+
+  const providers = isObject(root.providers) ? root.providers : {};
+  mutate(providers);
+  root.providers = providers;
+
+  await ensurePrivateDirectoryAsync(home);
+  await writePrivateFile(path, JSON.stringify(root, null, 2) + "\n");
+  return path;
+}
+
+/**
+ * Add (or update) an OpenAI-compatible provider in `~/.nib/models.json` —
+ * the `nib auth` "Custom URL" path. Other providers, and models already
+ * listed for this one (possibly hand-tuned), are kept. Returns the file path.
+ */
+export async function saveUserProvider(name: string, entry: UserProviderEntry, homeDir?: string): Promise<string> {
+  return updateUserCatalog(homeDir, (providers) => {
+    const existing = isObject(providers[name]) ? providers[name] : {};
+    const existingModels = isObject(existing.models) ? existing.models : {};
+    providers[name] = {
+      ...existing,
+      label: entry.label,
+      api: "openai-compatible",
+      baseUrl: entry.baseUrl,
+      keyEnv: entry.keyEnv,
+      defaultModel: entry.defaultModel,
+      models: { ...entry.models, ...existingModels },
+    };
+  });
+}
+
+/**
+ * Set (or with `undefined`, clear) only a catalog provider's `defaultModel`
+ * in `~/.nib/models.json` — the `nib auth` path for a bundled provider, whose
+ * connection and models stay in the bundled catalog. Any other override for
+ * it is kept; a provider block left empty is removed. Returns the file path.
+ */
+export async function saveUserDefaultModel(name: string, defaultModel: string | undefined, homeDir?: string): Promise<string> {
+  return updateUserCatalog(homeDir, (providers) => {
+    const { defaultModel: _previous, ...rest } = isObject(providers[name]) ? providers[name] : {};
+    const next = defaultModel === undefined ? rest : { ...rest, defaultModel };
+    if (Object.keys(next).length === 0) delete providers[name];
+    else providers[name] = next;
+  });
 }

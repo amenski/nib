@@ -27,7 +27,13 @@ import {
 } from "./permissions/session-grant.js";
 import type { SandboxFailureReason } from "./sandbox/launcher.js";
 import { unsandboxedRequestsAllowed, unsandboxedRun } from "./sandbox/unsandboxed.js";
-import { applyRiskVerdict, classifyRisk, riskNarrowed, type RiskMode } from "./permissions/risk/index.js";
+import {
+  applyRiskVerdict,
+  classifyRiskWithModel,
+  riskNarrowed,
+  type RiskMode,
+  type Stage2Options,
+} from "./permissions/risk/index.js";
 import type { ToolExecOptions } from "./tools/types.js";
 
 export type ToolExecutor = (call: ToolCall, exec?: ToolExecOptions) => Promise<ToolOutput>;
@@ -194,6 +200,12 @@ export interface AgentOptions {
    * produces the shadow rows the phase-1 review needs.
    */
   classifierMode?: RiskMode;
+  /**
+   * The classifier's optional model stage (docs/command-risk-classifier.md §6).
+   * Absent means rules-only. Built by the composition root
+   * (`providers/risk-judge.ts`), so this module never learns about providers.
+   */
+  classifierModel?: Stage2Options;
   mode?: ModeConfig;
   compactor?: Compactor;
   diagnostics?: DiagnosticRunner;
@@ -842,7 +854,7 @@ export async function runAgent(
         const riskVerdict =
           riskMode === "off"
             ? undefined
-            : classifyRisk({
+            : await classifyRiskWithModel({
                 tool: tc.name,
                 args: tc.arguments,
                 workingDir: process.cwd(),
@@ -858,7 +870,7 @@ export async function runAgent(
                   userMessages: humanTurns,
                   createdThisSession,
                 },
-              });
+              }, options.classifierModel);
 
         // §3.3's clamp, applied after the unsandboxed override and before the
         // audit row, so the row describes the decision that was actually taken.

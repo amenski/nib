@@ -52,6 +52,10 @@ const RISK_METRICS = {
   classifierCausedAsks: 2,
   classifierCausedAsksApproved: 1,
   blocks: 1,
+  stage2Calls: 14,
+  stage2Flags: 3,
+  stage2FailedOpen: 1,
+  stage2P95Ms: 480,
 };
 
 /** A classified row, as the audit trail stores one. */
@@ -93,6 +97,21 @@ describe("PermissionHistoryList: the risk verdict", () => {
     expect(frame).toContain("safe 4 · benign 9 · confirm 2 · block 1");
     expect(frame).toContain("classifier-caused asks 2/1 approved");
     expect(frame).toContain("blocks 1");
+    expect(frame).toContain("model judge 14 calls, 3 flagged, p95 480ms");
+  });
+
+  it("leaves the model judge out of the line when the stage never ran", async () => {
+    const store = {
+      ...fakeStore(),
+      queryPermissionMetrics: vi.fn(async () => ({ ...RISK_METRICS, stage2Calls: 0 })),
+    };
+    const inst = render(
+      <PermissionHistoryList sessionStore={store as never} sessionId={SESSION} onClose={vi.fn()} width={140} />,
+    );
+    mounted.push(inst);
+    await flush();
+
+    expect(flatten(inst.lastFrame() ?? "")).not.toContain("model judge");
   });
 
   it("shows the tier and the first reason tag on the row", async () => {

@@ -155,7 +155,19 @@ export interface PermissionRiskRecord {
   score: number;
   reasons: string[];
   features: RiskFeatures;
-  stage: "rules";
+  /** `rules+model` once the optional judge ran (proposal §6). */
+  stage: "rules" | "rules+model";
+  /**
+   * The model stage's attempt, present whenever it ran — including when it
+   * timed out or answered with something unparseable, which is the point: the
+   * attempt is what the stage-2 counters and the review queue are made of.
+   */
+  model?: {
+    outcome: "ok" | "flag" | "timeout" | "error" | "unparseable";
+    latencyMs: number;
+    reason?: string;
+    tag?: string;
+  };
   version: string;
   parseStatus: string;
 }
@@ -188,6 +200,14 @@ export interface SessionPermissionMetrics {
   classifierCausedAsksApproved: number;
   /** Calls whose verdict was `block`. */
   blocks: number;
+  /** Times the optional model stage was attempted (proposal §6, §8). */
+  stage2Calls: number;
+  /** Of those, the ones that came back `flag` — the escalations it produced. */
+  stage2Flags: number;
+  /** Of those, the ones that failed open: timeout, error, or unparseable. */
+  stage2FailedOpen: number;
+  /** p95 of the stage-2 latency over its successful calls, in ms. */
+  stage2P95Ms: number;
 }
 
 export interface TokenUsageRecord {

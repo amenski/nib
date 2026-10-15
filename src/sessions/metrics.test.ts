@@ -33,6 +33,10 @@ describe("session permission metrics", () => {
       classifierCausedAsks: 0,
       classifierCausedAsksApproved: 0,
       blocks: 0,
+      stage2Calls: 0,
+      stage2Flags: 0,
+      stage2FailedOpen: 0,
+      stage2P95Ms: 0,
     });
   });
 
@@ -57,6 +61,41 @@ describe("session permission metrics", () => {
     expect(metrics.classifierCausedAsks).toBe(2);
     expect(metrics.classifierCausedAsksApproved).toBe(1);
     expect(metrics.blocks).toBe(1);
+  });
+
+  it("counts the model stage: attempts, flags, failure modes, and a latency p95", () => {
+    const withModel = (outcome: string, latencyMs: number) => ({
+      tier: "benign", engineAction: "allow", nativeAction: "allow", action: "allow",
+      score: 0.2, reasons: [], stage: "rules+model", version: "risk-1", parseStatus: "parsed",
+      features: {}, model: { outcome, latencyMs },
+    });
+    const metrics = computeSessionPermissionMetrics([
+      // Five ok calls and one flag, with latencies chosen so the nearest-rank
+      // p95 is unambiguous (index ceil(6*0.95)-1 = 5, the last one).
+      { tool: "run_bash", subject: "npm test", decision: "allow-by-rule", risk: withModel("ok", 100) } as never,
+      { tool: "run_bash", subject: "npm test", decision: "allow-by-rule", risk: withModel("ok", 200) } as never,
+      { tool: "run_bash", subject: "npm test", decision: "allow-by-rule", risk: withModel("ok", 300) } as never,
+      { tool: "run_bash", subject: "npm test", decision: "allow-by-rule", risk: withModel("ok", 400) } as never,
+      { tool: "run_bash", subject: "npm test", decision: "allow-by-rule", risk: withModel("timeout", 3000) } as never,
+      { tool: "run_bash", subject: "npm test", decision: "allow-by-rule", risk: withModel("flag", 500) } as never,
+      // A row with a rules-only verdict has no model record and is not a call.
+      { tool: "run_bash", subject: "ls", decision: "allow-by-rule" } as never,
+    ]);
+
+    expect(metrics.stage2Calls).toBe(6);
+    expect(metrics.stage2Flags).toBe(1);
+    // A timeout fails open: no change made, and worth counting separately from
+    // a flag, because a judge that keeps timing out is a different problem.
+    expect(metrics.stage2FailedOpen).toBe(1);
+    expect(metrics.stage2P95Ms).toBe(3000);
+  });
+
+  it("reports a zero p95 rather than NaN when the stage never ran", () => {
+    const metrics = computeSessionPermissionMetrics([
+      { tool: "run_bash", subject: "ls", decision: "allow-by-rule" },
+    ]);
+    expect(metrics.stage2P95Ms).toBe(0);
+    expect(metrics.stage2Calls).toBe(0);
   });
 
   it("counts rows written before the classifier existed nowhere, not as a tier", () => {

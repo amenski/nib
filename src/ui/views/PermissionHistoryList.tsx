@@ -200,6 +200,9 @@ export default function PermissionHistoryList({ sessionStore, sessionId, onClose
           {" · classifier-caused asks "}{metrics.classifierCausedAsks}
           {"/"}{metrics.classifierCausedAsksApproved}{" approved"}
           {" · blocks "}{metrics.blocks}
+          {metrics.stage2Calls > 0
+            ? ` · model judge ${metrics.stage2Calls} calls, ${metrics.stage2Flags} flagged, p95 ${metrics.stage2P95Ms}ms`
+            : ""}
         </Text>
       )}
 

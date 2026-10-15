@@ -1,7 +1,14 @@
 import { describe, it, expect } from "vitest";
 import type { PermissionAction } from "../rules.js";
 import type { RiskInput } from "./features.js";
-import { applyRiskVerdict, classifyRisk, riskNarrowed, type RiskMode } from "./index.js";
+import {
+  applyRiskVerdict,
+  classifyRisk,
+  classifyRiskWithModel,
+  riskNarrowed,
+  shouldRunStage2,
+  type RiskMode,
+} from "./index.js";
 import type { RiskTier } from "./rules.js";
 
 /**
@@ -122,5 +129,97 @@ describe("reasons and messages", () => {
 
   it("stamps the ruleset version on every verdict", () => {
     expect(classifyRisk(input("ls -la src", "allow")).version).toBe("risk-1");
+  });
+});
+
+describe("§6.1 the model stage runs only where it can add something", () => {
+  const features = (command: string) => classifyRisk(input(command, "allow")).features;
+  const flag = { judge: async () => "FLAG" };
+  const configAllow = {
+    action: "allow" as const,
+    wasUnresolved: false,
+    isGuarded: false,
+    winningRule: {
+      tool: "run_bash" as const,
+      kind: "exact" as const,
+      pattern: "npm test",
+      action: "allow" as const,
+      origin: "config" as const,
+    },
+  };
+
+  it("runs for a benign or safe shell call", async () => {
+    const withModel = await classifyRiskWithModel(input("npm test", "allow"), flag);
+    expect(withModel.stage).toBe("rules+model");
+    expect(withModel.model?.outcome).toBe("flag");
+  });
+
+  it("does not run for a call the rules already questioned", async () => {
+    // `cat .env` is a confirm and `rm -rf ~` a block: a judge has nothing to
+    // add, and a block must stay unreachable from this stage.
+    for (const command of ["cat .env", "rm -rf ~"]) {
+      const verdict = await classifyRiskWithModel(input(command, "allow"), flag);
+      expect(verdict.stage, command).toBe("rules");
+      expect(verdict.model, command).toBeUndefined();
+    }
+  });
+
+  it("does not run for a non-shell, non-MCP call", async () => {
+    const read = await classifyRiskWithModel(
+      { ...input("", "allow"), tool: "read_file", args: { path: "src/a.ts" } },
+      flag,
+    );
+    expect(read.stage).toBe("rules");
+  });
+
+  it("does not second-guess an explicit user allow rule", async () => {
+    const value = { ...input("npm test", "allow"), engine: configAllow };
+    expect(shouldRunStage2(value, classifyRisk(value))).toBe(false);
+    expect((await classifyRiskWithModel(value, flag)).model).toBeUndefined();
+  });
+
+  it("is the identity when no judge is configured", async () => {
+    const withoutModel = await classifyRiskWithModel(input("npm test", "allow"), undefined);
+    expect(withoutModel).toEqual(classifyRisk(input("npm test", "allow")));
+  });
+
+  it("can only escalate: a flag is a confirm, and the reason is the model's", async () => {
+    const verdict = await classifyRiskWithModel(input("npm test", "allow"), flag);
+    expect(verdict.tier).toBe("confirm");
+    expect(verdict.nativeAction).toBe("ask");
+    expect(verdict.action).toBe("ask");
+    expect(verdict.message).toContain("A review of this call flagged it");
+  });
+
+  it("cannot reach block, whatever the judge says", async () => {
+    // The stage has no path to a denial: the worst a flag produces is an ask.
+    const verdict = await classifyRiskWithModel(input("npm test", "allow"), flag);
+    expect(verdict.nativeAction).not.toBe("deny");
+    expect(applyRiskVerdict("allow", verdict, "enforce")).toBe("ask");
+  });
+
+  it("leaves the rules' verdict alone on every non-flag outcome", async () => {
+    const judges = {
+      ok: async () => "OK",
+      unparseable: async () => "not an answer",
+      error: async () => {
+        throw new Error("down");
+      },
+    };
+    for (const [name, judge] of Object.entries(judges)) {
+      const rules = classifyRisk(input("npm test", "allow"));
+      const verdict = await classifyRiskWithModel(input("npm test", "allow"), { judge });
+      expect(verdict.tier, name).toBe(rules.tier);
+      expect(verdict.action, name).toBe(rules.action);
+      expect(verdict.message, name).toBeUndefined();
+      // ...but the attempt is recorded, which is what the counters read.
+      expect(verdict.model?.outcome, name).toBe(name === "unparseable" ? "unparseable" : name);
+      expect(verdict.stage, name).toBe("rules+model");
+    }
+  });
+
+  it("keeps the rules' own reasons when it does not flag", async () => {
+    const verdict = await classifyRiskWithModel(input("echo hi > /etc/hosts", "allow"), { judge: async () => "OK" });
+    expect(verdict.reasons).toEqual(classifyRisk(input("echo hi > /etc/hosts", "allow")).reasons);
   });
 });

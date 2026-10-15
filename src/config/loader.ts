@@ -122,7 +122,14 @@ export interface DeepCodeSettings {
    *  log only, the default), or `enforce` (clamp live). GLOBAL-only, read from
    *  the user's own `~/.nib/settings.json` — a project setting `off` would
    *  switch off a safety layer, the same reason `sandbox`'s keys are. */
-  classifier?: { mode: RiskMode };
+  classifier?: {
+    mode: RiskMode;
+    /** The optional second stage (docs/command-risk-classifier.md §6):
+     *  a small model call that can only add a confirmation, never remove one.
+     *  Off by default; `id` names the judge as "provider/model", and absent
+     *  means a cheap-class model from a provider you have a key for. */
+    model?: { enabled: boolean; id?: string };
+  };
 
   // ── MCP Servers ──
   mcpServers?: Record<string, McpServerConfig>;
@@ -1391,10 +1398,33 @@ export function loadConfig(projectDir?: string): LoadResult {
       errors.push(`config.classifier.mode: must be one of ${RISK_MODES.map((m) => `"${m}"`).join(" | ")}`);
     }
   }
-  if (isObject(projectRaw?.classifier) && "mode" in (projectRaw.classifier as Record<string, unknown>)) {
-    warnings.push(
-      "classifier.mode is global-only and was ignored in project .nib/settings.json — set it in ~/.nib/settings.json instead",
-    );
+  if (isObject(globalRaw?.classifier) && "model" in (globalRaw.classifier as Record<string, unknown>)) {
+    const raw = (globalRaw.classifier as Record<string, unknown>).model;
+    if (isObject(raw)) {
+      const m = raw as Record<string, unknown>;
+      if (typeof m.enabled === "boolean") {
+        config.classifier.model = { enabled: m.enabled };
+        if ("id" in m) {
+          if (typeof m.id === "string" && m.id.includes("/")) {
+            config.classifier.model.id = m.id;
+          } else {
+            errors.push('config.classifier.model.id: must be "provider/model"');
+          }
+        }
+      } else {
+        errors.push("config.classifier.model.enabled: must be a boolean");
+      }
+    } else {
+      errors.push("config.classifier.model: must be an object");
+    }
+  }
+  if (isObject(projectRaw?.classifier)) {
+    const projectKeys = ["mode", "model"].filter((k) => k in (projectRaw.classifier as Record<string, unknown>));
+    if (projectKeys.length > 0) {
+      warnings.push(
+        `classifier.${projectKeys.join(", classifier.")} is global-only and was ignored in project .nib/settings.json — set it in ~/.nib/settings.json instead`,
+      );
+    }
   }
 
   // ── mcpServers ──

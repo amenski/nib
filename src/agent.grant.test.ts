@@ -19,7 +19,7 @@ import { runAgent, type AgentOptions } from "./agent.js";
 import type { ToolCall } from "./types.js";
 import { ErrorReflector } from "./selfreflection/index.js";
 import { PermissionEngine } from "./permissions/index.js";
-import type { RiskMode } from "./permissions/risk/index.js";
+import type { RiskMode, Stage2Options } from "./permissions/risk/index.js";
 import { bashEnvelopeGrants, isEligibleForGrant, type BashEnvelope } from "./permissions/session-grant.js";
 import { configureUnsandboxed } from "./sandbox/unsandboxed.js";
 import { buildSandboxProfile, isSandboxedLevel, sandboxEnvelopeHash, type SandboxLevel } from "./sandbox/seatbelt.js";
@@ -160,6 +160,8 @@ async function drive(
     tool?: string;
     extraArgs?: Record<string, unknown>;
     classifierMode?: RiskMode;
+    /** The classifier's optional model stage (docs/command-risk-classifier.md §6). */
+    classifierModel?: Stage2Options;
     /** Extra session-store methods (e.g. appendClassifierEvidence). */
     store?: Record<string, unknown>;
   } = {},
@@ -186,6 +188,7 @@ async function drive(
     sessionId: SESSION,
     ...(overrides.envelope !== undefined ? { bashEnvelope: overrides.envelope } : {}),
     ...(overrides.classifierMode !== undefined ? { classifierMode: overrides.classifierMode } : {}),
+    ...(overrides.classifierModel !== undefined ? { classifierModel: overrides.classifierModel } : {}),
   };
   const result = await runAgent("work", options);
   return {
@@ -927,6 +930,77 @@ describe("command risk classifier: shadow logging (docs/command-risk-classifier.
       // Answered no, so it did not run.
       expect(driven.launches).toHaveLength(0);
       expect(driven.rows[0].decision).toBe("ask-denied");
+    });
+
+    /**
+     * An MCP call under `defaultMode: allowAll` with no rules: the engine
+     * allows it with no `winningRule`, which is the one shape §6.1 lets the
+     * judge act on. For a shell call an engine allow can only come from a user
+     * allow rule, and §6.1 skips those — see the test below, which pins that
+     * asymmetry rather than leaving it to be rediscovered.
+     */
+    it("the model stage runs through the gate and turns an allow into a prompt", async () => {
+      const judge = vi.fn(async (request: { user: string }) =>
+        request.user.includes("You answered FLAG") ? "[mcp.mutating-verb] it rewrites a remote repository" : "FLAG",
+      );
+      const askUser = vi.fn<Prompter>(async () => false);
+      const driven = await drive(["ignored"], {
+        tool: "mcp__github__list_pull_requests",
+        permissions: new PermissionEngine({ defaultMode: "allowAll" }, ROOT, true),
+        classifierMode: "enforce",
+        classifierModel: { judge },
+        askUser,
+      });
+
+      expect(askUser).toHaveBeenCalledTimes(1);
+      const tip = askUser.mock.calls[0][4];
+      expect(tip?.tier).toBe("confirm");
+      expect(tip?.reason).toContain("rewrites a remote repository");
+      expect(driven.rows[0].risk).toMatchObject({
+        tier: "confirm",
+        engineAction: "allow",
+        nativeAction: "ask",
+        stage: "rules+model",
+      });
+      expect((driven.rows[0].risk as { model: { outcome: string } }).model.outcome).toBe("flag");
+      // Answered no, so it did not run.
+      expect(driven.launches).toHaveLength(0);
+    });
+
+    it("a judge that fails open leaves the call alone and still records the attempt", async () => {
+      const judge = vi.fn(async () => {
+        throw new Error("provider down");
+      });
+      const driven = await drive(["ignored"], {
+        tool: "mcp__github__list_pull_requests",
+        permissions: new PermissionEngine({ defaultMode: "allowAll" }, ROOT, true),
+        classifierMode: "enforce",
+        classifierModel: { judge },
+      });
+
+      expect(driven.rows[0].decision).toBe("allow-by-rule");
+      const risk = driven.rows[0].risk as { tier: string; model: { outcome: string } };
+      expect(risk.tier).toBe("benign");
+      expect(risk.model.outcome).toBe("error");
+      // The attempt is recorded (the counters read it) and the verdict is the
+      // rules'.
+      expect(risk.tier).not.toBe("confirm");
+    });
+
+    it("skips a shell call an explicit user allow rule produced", async () => {
+      // §6.1's exclusion, and its consequence: for `run_bash` an engine allow
+      // can only come from a user rule, so under `enforce` the model stage can
+      // only ever change the outcome of an MCP call allowed by defaultMode.
+      // It still *runs* (and so still logs) wherever the engine asks.
+      const judge = vi.fn(async () => "FLAG");
+      const driven = await drive(["npm test"], {
+        permissions: allowAll(),
+        classifierMode: "enforce",
+        classifierModel: { judge },
+      });
+      expect(judge).not.toHaveBeenCalled();
+      expect(driven.rows[0].risk).toMatchObject({ tier: "benign", engineAction: "allow" });
+      expect((driven.rows[0].risk as { model?: unknown }).model).toBeUndefined();
     });
 
     it("headless: a classifier-caused ask is denied with its reason and the run continues", async () => {

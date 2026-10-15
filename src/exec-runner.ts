@@ -9,6 +9,7 @@ import { configureUnsandboxed } from "./sandbox/unsandboxed.js";
 import { filterToolDefs } from "./tools/filter.js";
 import { todoStore } from "./tools/todo.js";
 import { initPresets, createProvider, getPreset } from "./providers/presets.js";
+import { createRiskJudge } from "./providers/risk-judge.js";
 import { imageSupportWarning } from "./providers/registry.js";
 import { PermissionEngine, ProfileEvaluator, authorize } from "./permissions/index.js";
 import { projectSettingsPath } from "./config/paths.js";
@@ -431,7 +432,19 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
       const modeTools = activeMode.groups ? registry.getByMode(activeMode.groups) : registry.getAllDefs();
       const filteredTools = filterToolDefs(modeTools, options.allowedTools, options.disallowedTools);
 
-      const agentOptions = {
+      // The classifier's optional model stage (docs/command-risk-classifier.md
+    // §6). Headless is where a flaky judge costs the most — there is no human
+    // to answer a prompt it invents — so it is the same opt-in as the TUI, and
+    // every failure mode still degrades to "no change".
+    const stage2Judge = createRiskJudge({
+      enabled: effectiveConfig.classifier?.model?.enabled ?? false,
+      ...(effectiveConfig.classifier?.model?.id !== undefined
+        ? { id: effectiveConfig.classifier.model.id }
+        : {}),
+      ...(providerName !== undefined ? { preferProvider: providerName } : {}),
+    });
+
+    const agentOptions = {
         provider,
         tools: filteredTools,
         effort: activeEffort,
@@ -439,6 +452,7 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
         permissions,
         permissionProfile,
         classifierMode: configResult.config.classifier?.mode,
+        ...(stage2Judge !== undefined ? { classifierModel: stage2Judge } : {}),
         askUser,
         agents,
         repomap: repomapInjection,

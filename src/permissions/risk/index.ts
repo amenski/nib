@@ -2,10 +2,23 @@ import type { PermissionAction } from "../rules.js";
 import { extractRiskFeatures, type RiskFeatures, type RiskInput } from "./features.js";
 import { evaluateRiskRules, RISK_RULESET_VERSION, type RiskTier } from "./rules.js";
 import { formatRiskReason } from "./reasons.js";
+import { runStage2, type Stage2Options, type Stage2Outcome } from "./model.js";
 
 export type { RiskFeatures, RiskInput } from "./features.js";
 export type { RiskTier } from "./rules.js";
 export { RISK_RULESET_VERSION } from "./rules.js";
+export {
+  runStage2,
+  buildStage2Prompt,
+  buildStage2SystemPrompt,
+  parseStage2Answer,
+  parseStage2Reason,
+  STAGE2_TIMEOUT_MS,
+  type RiskJudge,
+  type Stage2Options,
+  type Stage2Outcome,
+  type Stage2Result,
+} from "./model.js";
 
 /**
  * The classifier's public surface (docs/command-risk-classifier.md §3):
@@ -45,7 +58,20 @@ export interface RiskVerdict {
   /** Persisted for replay. §8 routes `features.targets` through the redactor. */
   features: RiskFeatures;
   /** Rules-only for now; phase 3 (§6) would add "rules+model". */
-  stage: "rules";
+  stage: "rules" | "rules+model";
+  /**
+   * Present whenever the model stage ran, including when it failed. Absent
+   * means the stage was off, skipped, or not configured — which is why the
+   * outcome is spelled out rather than the field being named after its verdict
+   * (proposal §3.2 calls it `modelVerdict`; a timeout has no verdict, and the
+   * metrics need the attempt recorded either way).
+   */
+  model?: {
+    outcome: Stage2Outcome;
+    latencyMs: number;
+    reason?: string;
+    tag?: string;
+  };
   version: string;
   parseStatus: RiskFeatures["parse"];
   /**
@@ -116,6 +142,92 @@ export function classifyRisk(input: RiskInput): RiskVerdict {
     parseStatus: features.parse,
     ...(narrowed && reasons.length > 0
       ? { message: formatRiskReason(tier === "block" ? "block" : "confirm", reasons) }
+      : {}),
+  };
+}
+
+/**
+ * §6.1's gate for the model stage. It runs only where it can add something and
+ * cannot waste a call:
+ *
+ *   - the rules reached `safe` or `benign`, so there is nothing a judge could
+ *     sharpen — a rules `confirm` or `block` already asks or denies;
+ *   - the call is shell or MCP, which is where the opaque long tail lives (and
+ *     the only place whose arguments carry no file contents, §3.1);
+ *   - no explicit user allow rule produced it. A user's own rule answers the
+ *     question; a judge does not get to second-guess it.
+ *
+ * On that last point: for shell and MCP calls, an allow whose `origin` is
+ * `config` or `session` can only be user-authored. The engine's builtin allows
+ * (`builtin-allow.ts`) and its dynamic write-boundary allow carry the same
+ * `origin: "config"`, but both apply to read and write tools respectively —
+ * neither can reach here. A `defaultMode: allowAll` fallthrough has no
+ * `winningRule` at all, so it is judged like any other call.
+ */
+export function shouldRunStage2(input: RiskInput, verdict: RiskVerdict): boolean {
+  if (verdict.tier !== "safe" && verdict.tier !== "benign") return false;
+  const shellOrMcp =
+    input.tool === "run_bash" || input.tool === "run_bash_background" || input.tool.startsWith("mcp__");
+  if (!shellOrMcp) return false;
+
+  const rule = input.engine.winningRule;
+  if (
+    input.engine.action === "allow" &&
+    rule?.action === "allow" &&
+    (rule.origin === "config" || rule.origin === "session")
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Rules first, then the optional model stage (§6.1). Async because the judge is
+ * a network call; `classifyRisk` above stays synchronous and deterministic so
+ * the spawn-time check and every existing caller are unaffected.
+ *
+ * The judge is *additive*: it can move `safe|benign` to `confirm` and nothing
+ * else. `block` is unreachable from here, so a flagged call is a prompt, never
+ * a denial.
+ */
+export async function classifyRiskWithModel(
+  input: RiskInput,
+  options: Stage2Options | undefined,
+): Promise<RiskVerdict> {
+  const verdict = classifyRisk(input);
+  if (options === undefined || !shouldRunStage2(input, verdict)) return verdict;
+
+  const result = await runStage2(input, verdict.features, options);
+  const model: NonNullable<RiskVerdict["model"]> = {
+    outcome: result.outcome,
+    latencyMs: result.latencyMs,
+    ...(result.reason !== undefined ? { reason: result.reason } : {}),
+    ...(result.tag !== undefined ? { tag: result.tag } : {}),
+  };
+
+  // §7: every outcome but `flag` leaves the rules' verdict standing. A flaky or
+  // unparseable model must never create a prompt.
+  if (result.outcome !== "flag") return { ...verdict, stage: "rules+model", model };
+
+  const tier: RiskTier = "confirm";
+  const nativeAction = NATIVE_ACTION[tier];
+  const action = mostRestrictive(input.engine.action, nativeAction);
+  const reasons = result.tag !== undefined ? [result.tag] : [];
+  const reason = result.reason ?? "a review of this call flagged it";
+
+  return {
+    ...verdict,
+    tier,
+    nativeAction,
+    action,
+    score: 0.7,
+    reasons,
+    stage: "rules+model",
+    model,
+    ...(ACTION_RANK[nativeAction] > ACTION_RANK[input.engine.action]
+      ? // The model's own sentence is what a human should read: it says what it
+        // saw, and the tag it chose is already on the row (proposal §7).
+        { message: `A review of this call flagged it: ${reason}` }
       : {}),
   };
 }

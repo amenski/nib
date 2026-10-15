@@ -96,6 +96,10 @@ export function computeSessionPermissionMetrics(
   let classifierCausedAsks = 0;
   let classifierCausedAsksApproved = 0;
   let blocks = 0;
+  let stage2Calls = 0;
+  let stage2Flags = 0;
+  let stage2FailedOpen = 0;
+  const stage2Latencies: number[] = [];
 
   for (const row of selected) {
     if (isPrompt(row)) permissionPrompts++;
@@ -120,6 +124,12 @@ export function computeSessionPermissionMetrics(
         classifierCausedAsks++;
         if (isApproval(row)) classifierCausedAsksApproved++;
       }
+      if (risk.model !== undefined) {
+        stage2Calls++;
+        if (risk.model.outcome === "flag") stage2Flags++;
+        else if (risk.model.outcome !== "ok") stage2FailedOpen++;
+        stage2Latencies.push(risk.model.latencyMs);
+      }
     }
   }
 
@@ -136,5 +146,21 @@ export function computeSessionPermissionMetrics(
     classifierCausedAsks,
     classifierCausedAsksApproved,
     blocks,
+    stage2Calls,
+    stage2Flags,
+    stage2FailedOpen,
+    stage2P95Ms: percentile95(stage2Latencies),
   };
+}
+
+/**
+ * Nearest-rank p95 over the stage-2 latencies. `0` for no samples rather than
+ * `NaN`: "the stage never ran" and "the stage ran instantly" are different, and
+ * only the counter above can tell them apart, so this must not invent a number.
+ */
+function percentile95(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const index = Math.ceil(sorted.length * 0.95) - 1;
+  return Math.round(sorted[Math.min(index, sorted.length - 1)]);
 }

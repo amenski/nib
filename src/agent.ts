@@ -27,7 +27,7 @@ import {
 } from "./permissions/session-grant.js";
 import type { SandboxFailureReason } from "./sandbox/launcher.js";
 import { unsandboxedRequestsAllowed, unsandboxedRun } from "./sandbox/unsandboxed.js";
-import { classifyRisk, riskNarrowed, type RiskMode } from "./permissions/risk/index.js";
+import { applyRiskVerdict, classifyRisk, riskNarrowed, type RiskMode } from "./permissions/risk/index.js";
 import type { ToolExecOptions } from "./tools/types.js";
 
 export type ToolExecutor = (call: ToolCall, exec?: ToolExecOptions) => Promise<ToolOutput>;
@@ -260,6 +260,8 @@ export interface AgentOptions {
     args: Record<string, unknown>,
     envelope?: BashEnvelope,
     origin?: { subagent: string },
+    /** Present only when the risk classifier is why this call is being asked. */
+    policyRisk?: { tier: string; reason: string },
   ) => Promise<boolean | "posture" | "envelope-grant">;
   /**
    * Set by the orchestrator on a sub-agent's run: the label the permission
@@ -825,7 +827,9 @@ export async function runAgent(
         // and is never quieted by an allow rule: whether the model asked for it
         // or sandbox.excludedCommands matched, it is always asked about.
         const unsandboxedKind = unsandboxedRun(tc.name, tc.arguments);
-        const action = unsandboxedKind !== undefined && resolvedAction === "allow" ? "ask" : resolvedAction;
+        // What the engine decided on its own: a shell call that leaves the OS
+        // sandbox is always asked about, whatever a rule said.
+        const engineAction = unsandboxedKind !== undefined && resolvedAction === "allow" ? "ask" : resolvedAction;
         const subject = permissionSubjectText(tc.name, tc.arguments);
 
         // The risk classifier (docs/command-risk-classifier.md §9). Built per
@@ -848,13 +852,29 @@ export async function runAgent(
                   contained: currentEnvelope() !== undefined,
                 },
                 ...(unsandboxedKind !== undefined ? { unsandboxed: unsandboxedKind } : {}),
-                engine: { action, winningRule, wasUnresolved, isGuarded },
+                engine: { action: engineAction, winningRule, wasUnresolved, isGuarded },
                 session: {
                   headless: options.askUser === undefined,
                   userMessages: humanTurns,
                   createdThisSession,
                 },
               });
+
+        // §3.3's clamp, applied after the unsandboxed override and before the
+        // audit row, so the row describes the decision that was actually taken.
+        // Outside enforce mode applyRiskVerdict is the identity.
+        const action = applyRiskVerdict(engineAction, riskVerdict, riskMode);
+
+        /**
+         * The classifier's own verdict, as the prompt and the tool error need
+         * it: present only when the classifier is what made this call stricter
+         * than the engine's own answer, so an ordinary ask keeps the reason the
+         * engine gave.
+         */
+        const policyRisk =
+          riskVerdict !== undefined && riskNarrowed(engineAction, riskVerdict) && riskVerdict.message !== undefined
+            ? { tier: riskVerdict.tier, reason: riskVerdict.message }
+            : undefined;
 
         const audit = async (
           decision: PermissionDecision,
@@ -873,10 +893,6 @@ export async function runAgent(
           });
         };
 
-        // Shadow mode's whole product: a call the classifier would have made
-        // stricter, recorded as evidence so the phase-1 review (proposal §9)
-        // has a queue to read. Written only on a disagreement, never on
-        // agreement — an agreement is already visible on the audit row.
         // Shadow mode's whole product: a call the classifier would have made
         // stricter, recorded as evidence so the phase-1 review (proposal §9)
         // has a queue to read. Written only on a disagreement, never on
@@ -941,13 +957,21 @@ export async function runAgent(
         }
 
         if (action === "deny") {
-          const msg = `Permission denied for ${tc.name}`;
+          // A classifier block carries its reason to the model (§3.4): the
+          // sentence says which rule fired and how to rewrite the call, which
+          // is what keeps a block from becoming a retry loop. An engine deny
+          // keeps its existing message — there the rule is the whole answer.
+          const msg = policyRisk ? `Permission denied. ${policyRisk.reason}` : `Permission denied for ${tc.name}`;
           options.onDiagnostic?.("denied");
           // Layer 1 (profile) and layer 2 (rule) denies share the same tool
           // message; the audit row names the winning layer so the trail stays
-          // one-directional (permission-spec.md §11).
+          // one-directional (permission-spec.md §11). The row stays
+          // deny-by-rule for a classifier block — it is the rule layer that
+          // acted — and the verdict on the row says which rule and why.
           if (reason === "deny-by-profile") {
             await audit("deny-by-profile", "deny by profile (layer 1)");
+          } else if (policyRisk) {
+            await audit("deny-by-rule", `denied by the risk classifier (${riskVerdict?.reasons.join(", ")})`);
           } else {
             await audit("deny-by-rule", `deny rule matched (${winningRule?.origin ?? "rule"})`);
           }
@@ -1008,18 +1032,17 @@ export async function runAgent(
             // granted without a prompt — it takes the same "envelope-grant"
             // path a user's session choice would.
             //
-            // The sub-agent label is passed only when it exists: a root run's
-            // call keeps the three-argument shape every prompter was written
-            // against.
+            // `askOrigin` (the sub-agent label) and `policyRisk` (the risk
+            // classifier's reason, when it is what caused this ask) are both
+            // undefined on an ordinary root-run prompt, which is the shape
+            // every prompter was originally written against.
             let allowed: boolean | "posture" | "envelope-grant";
             if (reused !== null) {
               allowed = true;
             } else if (envelope?.autoGrant) {
               allowed = "envelope-grant";
-            } else if (options.askOrigin !== undefined) {
-              allowed = await options.askUser(tc.name, tc.arguments, envelope, options.askOrigin);
             } else {
-              allowed = await options.askUser(tc.name, tc.arguments, envelope);
+              allowed = await options.askUser(tc.name, tc.arguments, envelope, options.askOrigin, policyRisk);
             }
             if (allowed === "posture") {
               // Auto-approve posture upgraded the ask to allow without
@@ -1108,9 +1131,21 @@ export async function runAgent(
               return { denied: true };
             }
           } else {
-            const msg = "PERMISSION_DENIED: headless — rule resolved to ask";
+            // No prompter: an ask is a denial, as it always was. An ask the
+            // *classifier* caused carries its reason instead of the generic
+            // line — the run is still going, so the model gets the sentence
+            // that says how to rewrite the call rather than one that just says
+            // no (docs/command-risk-classifier.md §7, §12.6).
+            const msg = policyRisk
+              ? `PERMISSION_DENIED: ${policyRisk.reason}`
+              : "PERMISSION_DENIED: headless — rule resolved to ask";
             options.onDiagnostic?.("denied");
-            await audit("headless-deny", "resolved to ask with no interactive prompter (headless)");
+            await audit(
+              "headless-deny",
+              policyRisk
+                ? `headless: denied by the risk classifier (${riskVerdict?.reasons.join(", ")})`
+                : "resolved to ask with no interactive prompter (headless)",
+            );
             appendFreshToolResult(tc.id, tc.name, msg);
             return { denied: true };
           }

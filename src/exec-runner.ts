@@ -364,6 +364,7 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
       askUser,
       getSignal: () => abortController.signal,
       hooks,
+      classifierMode: configResult.config.classifier?.mode,
     });
     orchestrator.register(registry);
 
@@ -437,6 +438,7 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
         executeTool,
         permissions,
         permissionProfile,
+        classifierMode: configResult.config.classifier?.mode,
         askUser,
         agents,
         repomap: repomapInjection,

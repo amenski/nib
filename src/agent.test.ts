@@ -524,7 +524,9 @@ describe("runAgent", () => {
       // The third argument is the sandbox envelope a session grant could cover.
       // `undefined` here: this run carries no containment, so no grant applies
       // and the prompter is not offered the option (agent.grant.test.ts).
-      expect(askUser).toHaveBeenCalledWith("run_bash", { command: "npm test" }, undefined);
+      // The fourth and fifth arguments are the sub-agent label and the risk
+      // classifier's reason; both are `undefined` on an ordinary root-run ask.
+      expect(askUser).toHaveBeenCalledWith("run_bash", { command: "npm test" }, undefined, undefined, undefined);
       expect(executeTool).toHaveBeenCalled();
     });
 
@@ -844,7 +846,7 @@ describe("runAgent", () => {
       await runAgent("edit it", { provider, tools: [], executeTool, permissions: new PermissionEngine(undefined, "/workspace"), permissionProfile, askUser });
 
       expect(askUser).toHaveBeenCalledTimes(1);
-      expect(askUser).toHaveBeenCalledWith("edit", expect.objectContaining({ path: "/workspace/src/a.ts" }), undefined);
+      expect(askUser).toHaveBeenCalledWith("edit", expect.objectContaining({ path: "/workspace/src/a.ts" }), undefined, undefined, undefined);
       expect(executeTool).toHaveBeenCalled();
     });
 
@@ -1043,7 +1045,7 @@ describe("runAgent", () => {
       // The ask resolved once — no double prompt, and all three calls ran
       // (the reads concurrently, the ask sequentially in between).
       expect(askUser).toHaveBeenCalledTimes(1);
-      expect(askUser).toHaveBeenCalledWith("run_bash", { command: "npm test" }, undefined);
+      expect(askUser).toHaveBeenCalledWith("run_bash", { command: "npm test" }, undefined, undefined, undefined);
       expect(executeTool).toHaveBeenCalledTimes(3);
       expect(sessionStore.appendPermission).toHaveBeenCalledWith("s1", expect.objectContaining({
         tool: "run_bash",

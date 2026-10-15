@@ -1307,6 +1307,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           args: Record<string, unknown>,
           envelope?: BashEnvelope,
           origin?: { subagent: string },
+          policyRisk?: { tier: string; reason: string },
         ) => {
           if (
             [
@@ -1407,6 +1408,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
               capabilityPlan: extractCapabilityPlan(toolName, args, process.cwd()),
               workingDir: process.cwd(),
               origin,
+              ...(policyRisk !== undefined ? { policyRisk } : {}),
               cursor: 0,
               // Opened over a half-typed draft: the user's next keys were meant
               // for the composer, so `1`–`4`/Enter wait out a short guard —

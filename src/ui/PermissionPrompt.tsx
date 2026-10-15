@@ -40,6 +40,13 @@ export interface PermissionRequest {
   origin?: { subagent: string };
   /** AI explanation (Ctrl+E) — informational only, never gates the decision. */
   explain?: { status: "loading" | "done" | "error"; text: string };
+  /**
+   * The command risk classifier's verdict, present only when the classifier is
+   * the reason this call is being asked about (docs/command-risk-classifier.md
+   * §3.4). Distinct from {@link RiskInfo}, which is the capability-derived
+   * level: this one names a policy rule and says what to do about it.
+   */
+  policyRisk?: { tier: string; reason: string };
 }
 
 export type PermissionDecision = "once" | "session" | "always" | "deny" | "envelope-grant";
@@ -319,6 +326,11 @@ export default function PermissionPrompt({ request, cursor, onChoose, onCancel }
       </Box>
       <Text bold>{toolDisplayName(request.toolName)}</Text>
       <Text>{request.command}</Text>
+      {request.policyRisk ? (
+        <Text color={slotColor(theme, "warning")}>
+          {request.policyRisk.reason}
+        </Text>
+      ) : null}
       {scopeLine(request) ? <Text color={slotColor(theme, "warning")}>{scopeLine(request)}</Text> : null}
       {request.defaultRule?.kind === "glob" ? <Text color={slotColor(theme, "textDim")}>Pattern: {request.defaultRule.pattern}</Text> : null}
       {request.description ? <Text color={slotColor(theme, "textDim")}>{request.description}</Text> : null}

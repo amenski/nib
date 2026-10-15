@@ -83,7 +83,12 @@ const READ_ONLY_CORE = [
  */
 const HOME_READ_DENIES = [
   ".netrc", ".git-credentials", ".npmrc", `${STATE_DIR_NAME}/credentials.yaml`, ".docker/config.json", ".android/adbkey",
+  ".pypirc", ".vault-token", ".gem/credentials", ".terraform.d/credentials.tfrc.json",
   ".ssh/", ".aws/", ".gnupg/", ".azure/", ".kube/", ".config/gcloud/", ".config/gh/", "Library/Keychains/",
+  // Browser profiles: cookies, saved passwords and session tokens.
+  "Library/Cookies/", "Library/Safari/", "Library/Application Support/Google/Chrome/",
+  "Library/Application Support/Firefox/", "Library/Application Support/BraveSoftware/",
+  "Library/Application Support/Microsoft Edge/", "Library/Application Support/Arc/",
 ] as const;
 
 /**

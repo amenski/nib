@@ -251,8 +251,10 @@ whether Bash asks at all. Each needs `enabled` alongside it.
 Reads (`src/sandbox/seatbelt.ts`): a sandboxed child may read everything
 except credential stores under `$HOME` (`.ssh`, `.aws`, `.gnupg`, `.azure`,
 `.kube`, `.config/gcloud`, `.config/gh`, `Library/Keychains`, `.netrc`,
-`.git-credentials`, `.npmrc`, `.docker/config.json`, `.android/adbkey`, nib's
-own `credentials.yaml`). Writes stay limited to the write roots plus built-in
+`.git-credentials`, `.npmrc`, `.pypirc`, `.vault-token`, `.gem/credentials`,
+terraform credentials, `.docker/config.json`, `.android/adbkey`, nib's own
+`credentials.yaml`, and browser profiles: `Library/Cookies`, `Library/Safari`,
+Chrome, Firefox, Brave, Edge, Arc). Writes stay limited to the write roots plus built-in
 toolchain build caches under `$HOME` (`.gradle`, `.m2/repository`,
 `.cargo/registry|git`, `.pub-cache/hosted|git`, `.bun/install/cache`,
 `Library/Caches/CocoaPods`). Gradle/Maven config (`gradle.properties`,

@@ -36,7 +36,7 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Sandboxed commands can read everything except credential stores.** The
   read boundary used to subtract all of `$HOME`; it now denies only `~/.ssh`,
   `~/.aws`, `~/.gnupg`, `~/.azure`, `~/.kube`, `~/.config/gcloud`,
-  `~/.config/gh`, `Library/Keychains` and a few credential files. Flutter,
+  `~/.config/gh`, `Library/Keychains`, browser profiles and a few credential files. Flutter,
   Dart and SDK installs under `$HOME` work without extra settings.
   `sandbox.readRoots` and the "workspace outside your home directory" warning
   are removed.

@@ -9,6 +9,22 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **A command risk classifier labels every tool call, and can make calls
+  stricter.** Each call gets a deterministic verdict — `safe`, `benign`,
+  `confirm` or `block` — from a feature vector built out of nib's existing
+  normalizers, and the verdict lands on the call's permission audit row with
+  the reasons and the vector, so a decision is replayable from the session
+  log. Under the new global-only `classifier.mode: enforce` a `confirm`
+  turns an allow into a prompt and a `block` denies, with a sentence the model
+  can act on ("the target `"$DIR"/*` expands to `/` when DIR is empty. Re-run
+  with the literal path"); it can never quiet a prompt the rules asked for
+  (locked Decision 5). The default, `classifier.mode: shadow`, labels and logs
+  without changing any decision, and `/permissions` shows the tier counts, the
+  asks the classifier caused, and each row's tier with its first reason.
+  Headless runs deny a classifier-caused ask with the reason rather than a bare
+  no, and a sub-agent whose task description names a destructive command is
+  refused at spawn under `enforce`. See docs/command-risk-classifier.md.
+
 - **`nib auth` → custom registers the provider.** It now also asks for an
   OpenAI-compatible base URL and model ids and writes them to
   `~/.nib/models.json`, so `nib --model <name>/<model>` works right away.

@@ -127,7 +127,18 @@ claim testable:
    `classifierUnknown`, `falseAllowCount`, `falseAllowRate`; the label survives
    as advisory audit metadata). The prompt reduction this release ships comes
    from containment plus an explicit, envelope-bound consent — not from the
-   classifier guessing that a command is safe. Decision 5 stands unchanged: no
+   classifier guessing that a command is safe.
+   *Status 2026-10-15.* A second, independent classifier now does consume its
+   result, and Decision 5 is what bounds it. `permissions/risk/` labels each
+   call `safe | benign | confirm | block` and, under `classifier.mode: enforce`,
+   clamps the engine's action with `max(engine, tier)` — allow → ask for
+   `confirm`, deny for `block`, and nothing else (`risk/index.ts`). `safe` and
+   `benign` resolve to the engine's own action, so the tier can never quiet a
+   prompt; a false positive costs a prompt and a false negative costs nothing
+   the rules had not already allowed. The default is `shadow`, which labels
+   every call on its audit row and changes no decision, and the proposal keeps
+   widening (auto-running `safe` commands without a grant) out of scope as a
+   separate owner decision. Decision 5 stands unchanged: no
    classifier output can widen machine authority.
 
 ### Explicit non-goals for the first security release

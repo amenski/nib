@@ -166,6 +166,12 @@ it from the raw command text.
    (§7).
 4. Ties (identical specificity, same tier) break by rule order (global
    config → project config → session, in append order within each).
+5. **The risk classifier's clamp** (docs/command-risk-classifier.md), applied
+   after the unsandboxed override and before the call is executed. It can only
+   make the result *more* restrictive: `confirm` turns an `allow` into an
+   `ask`, `block` denies. It can never quiet a prompt the rules asked for.
+   Inactive under `classifier.mode: shadow` (the default), where the verdict is
+   recorded on the audit row and the engine's action stands unchanged.
 
 ```
 resolve(tool, args)
@@ -184,6 +190,9 @@ resolve(tool, args)
          │ else allow tier (specificity; narrow allow escapes broad ask)
        ▼
   { action, winningRule, wasUnresolved, isGuarded }
+         │
+         └─ classifier clamp (enforce only; narrowing-only)
+              allow ──confirm──► ask     ask ──block──► deny
 ```
 
 ### Specificity

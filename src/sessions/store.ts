@@ -1,7 +1,7 @@
 import { readFile, readdir, rename, unlink } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import type { Message } from "../types.js";
-import { redactSecrets } from "./redact.js";
+import { redactDeep, redactSecrets } from "./redact.js";
 import { resolveHome, type RetentionConfig } from "../config/loader.js";
 import {
   appendPrivateFile,
@@ -9,6 +9,9 @@ import {
   writePrivateFile,
 } from "../config/state-permissions.js";
 import type { CommandClassificationResult } from "../permissions/command-classifier.js";
+import type { RiskFeatures } from "../permissions/risk/features.js";
+import type { RiskTier } from "../permissions/risk/rules.js";
+import type { PermissionAction } from "../permissions/rules.js";
 import { computeSessionPermissionMetrics } from "./metrics.js";
 
 const KNOWN_VERSION = 1;
@@ -120,6 +123,13 @@ export interface PermissionAuditRecord {
   envelopeGrant?: "reuse" | "granted";
   /** Advisory command classification, persisted on canonical agent rows only. */
   commandClassification?: CommandClassificationResult;
+  /**
+   * The risk classifier's verdict (§8). Present whenever the classifier ran —
+   * i.e. whenever `classifier.mode` is not `off`. In shadow mode the decision
+   * is unchanged and this is the only trace of it, which is what the phase-1
+   * review reads.
+   */
+  risk?: PermissionRiskRecord;
 }
 
 export interface ClassifierEvidenceRecord {
@@ -127,6 +137,25 @@ export interface ClassifierEvidenceRecord {
   source: "policy" | "handler";
   /** Short, non-secret explanation of the contradictory evidence. */
   reason: string;
+}
+
+/**
+ * The risk classifier's verdict as persisted (docs/command-risk-classifier.md
+ * §8). The feature vector rides along so a verdict is replayable from the
+ * session log alone — which is also why every string in it goes through
+ * `redactSecrets` on the way in: the vector is mostly the command's own text.
+ */
+export interface PermissionRiskRecord {
+  tier: RiskTier;
+  /** The action the tier applies under `enforce`, and the clamped action. */
+  nativeAction: PermissionAction;
+  action: PermissionAction;
+  score: number;
+  reasons: string[];
+  features: RiskFeatures;
+  stage: "rules";
+  version: string;
+  parseStatus: string;
 }
 
 export interface SessionPermissionMetrics {
@@ -381,6 +410,12 @@ export class SessionStore {
       ...record,
       subject: redactSecrets(record.subject),
       ...(record.reason !== undefined ? { reason: redactSecrets(record.reason) } : {}),
+      // The feature vector is mostly the command's own text (segment texts,
+      // delete targets, secret references), so it is redacted as a whole
+      // rather than field by field — a new feature cannot forget to opt in.
+      ...(record.risk !== undefined
+        ? { risk: redactDeep(record.risk) as PermissionRiskRecord }
+        : {}),
     });
   }
 

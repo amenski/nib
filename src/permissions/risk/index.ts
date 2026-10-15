@@ -3,6 +3,10 @@ import { extractRiskFeatures, type RiskFeatures, type RiskInput } from "./featur
 import { evaluateRiskRules, RISK_RULESET_VERSION, type RiskTier } from "./rules.js";
 import { formatRiskReason } from "./reasons.js";
 
+export type { RiskFeatures, RiskInput } from "./features.js";
+export type { RiskTier } from "./rules.js";
+export { RISK_RULESET_VERSION } from "./rules.js";
+
 /**
  * The classifier's public surface (docs/command-risk-classifier.md §3):
  * `classifyRisk` labels a call, `applyRiskVerdict` turns that label into an

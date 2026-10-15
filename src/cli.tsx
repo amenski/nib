@@ -18,6 +18,7 @@ import { createSessionTempDir } from "./sandbox/session-temp.js";
 import { buildSandboxProfile, configureSandbox, isSandboxedLevel, profileWriteSet, sandboxEnvelopeHash } from "./sandbox/seatbelt.js";
 import { configureUnsandboxed } from "./sandbox/unsandboxed.js";
 import type { BashEnvelope } from "./permissions/session-grant.js";
+import type { RiskMode } from "./permissions/risk/index.js";
 import { filterToolDefs } from "./tools/filter.js";
 import { jobManager } from "./tools/jobs.js";
 import { todoStore } from "./tools/todo.js";
@@ -1095,7 +1096,7 @@ async function main() {
           if (event.kind !== "text") cb.onSubagentProgress?.(event);
           appSubagentSink?.(event);
         });
-        return runAgentTurnBridge(input, cb, shared, permissions, permissionProfile, getProvider, getCompactor(), diagnostics, skills, agents, memoryInjection, memoryStore, sessionStore, sessionId, modeLoader, skillLoader, imageUrls, planMode, checkpoints, configResult.config.notify, configResult.config.env, notifySpawnOptions, errorReflector, errorRecovery, repomapInjection, dirtyBaseline, thinkingEnabled, getActiveModelCaps()?.contextWindow, hooks, currentBashEnvelope);
+        return runAgentTurnBridge(input, cb, shared, permissions, permissionProfile, getProvider, getCompactor(), diagnostics, skills, agents, memoryInjection, memoryStore, sessionStore, sessionId, modeLoader, skillLoader, imageUrls, planMode, checkpoints, configResult.config.notify, configResult.config.env, notifySpawnOptions, errorReflector, errorRecovery, repomapInjection, dirtyBaseline, thinkingEnabled, getActiveModelCaps()?.contextWindow, hooks, currentBashEnvelope, configResult.config.classifier?.mode);
       },
       // Async sub-agent delivery (async-subagents.md §2): the App registers its
       // session-scoped wake handler here; the orchestrator calls it once per
@@ -1878,7 +1879,7 @@ export async function handleSlashCore(
   }
 }
 
-async function runAgentTurnBridge(input: string, cb: any, shared: any, permissions: PermissionEngine, permissionProfile: ProfileEvaluator | undefined, getProvider: any, compactor: Compactor, diagnostics: DiagnosticRunner, skills: SkillDef[], agents: AgentDef[], memoryInjection: string | null | undefined, memoryStore: MemoryStore, sessionStore: SessionStore, sessionId: string, modeLoader: ModeLoader, skillLoader: SkillLoader, imageUrls?: string[], planMode?: boolean, checkpoints?: CheckpointManager, notifyScript?: string, notifyEnv?: Record<string, string | undefined>, notifySpawnOptions?: NotifySpawnOptions, errorReflector?: ErrorReflector, errorRecovery?: ErrorRecovery, repomapInjection?: string, dirtyBaseline?: string, thinkingEnabled?: boolean, contextWindow?: number, hooks?: HookRunner, bashEnvelope?: () => BashEnvelope | undefined): Promise<any> {
+async function runAgentTurnBridge(input: string, cb: any, shared: any, permissions: PermissionEngine, permissionProfile: ProfileEvaluator | undefined, getProvider: any, compactor: Compactor, diagnostics: DiagnosticRunner, skills: SkillDef[], agents: AgentDef[], memoryInjection: string | null | undefined, memoryStore: MemoryStore, sessionStore: SessionStore, sessionId: string, modeLoader: ModeLoader, skillLoader: SkillLoader, imageUrls?: string[], planMode?: boolean, checkpoints?: CheckpointManager, notifyScript?: string, notifyEnv?: Record<string, string | undefined>, notifySpawnOptions?: NotifySpawnOptions, errorReflector?: ErrorReflector, errorRecovery?: ErrorRecovery, repomapInjection?: string, dirtyBaseline?: string, thinkingEnabled?: boolean, contextWindow?: number, hooks?: HookRunner, bashEnvelope?: () => BashEnvelope | undefined, classifierMode?: RiskMode): Promise<any> {
   if (checkpoints) {
     const convLen = shared.conversationHistory.length;
     await checkpoints.save(`[convLen:${convLen}] ${input.slice(0, 80)}`);
@@ -1935,7 +1936,7 @@ async function runAgentTurnBridge(input: string, cb: any, shared: any, permissio
   try {
     result = await runAgent(processed, {
     provider: getProvider(),
-    tools, executeTool, permissions, permissionProfile, mode: shared.activeMode, compactor, diagnostics, skills, agents,
+    tools, executeTool, permissions, permissionProfile, classifierMode, mode: shared.activeMode, compactor, diagnostics, skills, agents,
     errorReflector, errorRecovery,
     repomap: repomapInjection,
     dirtyBaseline,

@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { homedir } from "node:os";
 import { extractRiskFeatures, type RiskFeatures, type RiskInput } from "./features.js";
 
 /**
@@ -23,7 +24,6 @@ function bash(command: string, overrides: Partial<RiskInput> = {}): RiskFeatures
       headless: false,
       userMessages: [],
       createdThisSession: new Set<string>(),
-      gitRemotesAtStart: ["origin"],
     },
     ...overrides,
   });
@@ -167,6 +167,46 @@ describe("§10.1 rows 16-20: find, pipes and network", () => {
     expect(f.segments[0].netEgress).toBe(true);
     expect(f.pipeToShell).toBe(false);
     expect(f.secretEgress).toBe(false);
+  });
+});
+
+describe("features: the workspace is asked about before $HOME", () => {
+  // A real project lives under the home directory, so a containment test in
+  // the wrong order calls every file in the checkout "home" — which turns an
+  // ordinary in-workspace redirect into fs.write-outside-roots and every
+  // delete into fs.delete-pre-session. The rest of this suite uses a
+  // synthetic cwd outside $HOME, so only this test can catch that.
+  const HOME_CWD = `${homedir()}/code/project`;
+
+  function inHomeCwd(command: string) {
+    return extractRiskFeatures({
+      tool: "run_bash",
+      args: { command },
+      workingDir: HOME_CWD,
+      writeRoots: [HOME_CWD, "/tmp"],
+      sandbox: { level: "workspace-write", contained: true },
+      engine: { action: "ask", wasUnresolved: false, isGuarded: false },
+      session: { headless: false, userMessages: [], createdThisSession: new Set<string>() },
+    });
+  }
+
+  it("calls a build directory in the checkout build-dir, not home", () => {
+    const f = inHomeCwd("rm -rf node_modules dist");
+    expect(f.segments[0].targets.map((t) => t.class)).toEqual(["build-dir", "build-dir"]);
+    expect(f.preSessionTarget).toBe(false);
+  });
+
+  it("does not treat a redirect inside the checkout as leaving it", () => {
+    const f = inHomeCwd("ls > out.txt");
+    expect(f.redirects[0].class).toBe("inside-cwd");
+  });
+
+  it("still calls the workspace itself critical for a recursive delete", () => {
+    expect(inHomeCwd("rm -rf .").segments[0].targets[0].class).toBe("critical");
+  });
+
+  it("still calls another project under $HOME home", () => {
+    expect(inHomeCwd("rm -rf ~/other-project/src").segments[0].targets[0].class).toBe("home");
   });
 });
 

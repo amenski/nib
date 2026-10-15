@@ -16,7 +16,10 @@ vi.mock("./prompt.js", () => ({
 }));
 
 import { runAgent, type AgentOptions } from "./agent.js";
+import type { ToolCall } from "./types.js";
+import { ErrorReflector } from "./selfreflection/index.js";
 import { PermissionEngine } from "./permissions/index.js";
+import type { RiskMode } from "./permissions/risk/index.js";
 import { bashEnvelopeGrants, isEligibleForGrant, type BashEnvelope } from "./permissions/session-grant.js";
 import { configureUnsandboxed } from "./sandbox/unsandboxed.js";
 import { buildSandboxProfile, isSandboxedLevel, sandboxEnvelopeHash, type SandboxLevel } from "./sandbox/seatbelt.js";
@@ -147,6 +150,9 @@ async function drive(
     permissions?: PermissionEngine;
     tool?: string;
     extraArgs?: Record<string, unknown>;
+    classifierMode?: RiskMode;
+    /** Extra session-store methods (e.g. appendClassifierEvidence). */
+    store?: Record<string, unknown>;
   } = {},
 ): Promise<Driven> {
   launches = [];
@@ -162,9 +168,15 @@ async function drive(
     executeTool,
     permissions: overrides.permissions ?? new PermissionEngine(undefined, ROOT),
     askUser,
-    sessionStore: { appendPermission, appendToken: vi.fn(async () => {}) } as never,
+    sessionStore: {
+      appendPermission,
+      appendToken: vi.fn(async () => {}),
+      appendClassifierEvidence: vi.fn(async () => {}),
+      ...overrides.store,
+    } as never,
     sessionId: SESSION,
     ...(overrides.envelope !== undefined ? { bashEnvelope: overrides.envelope } : {}),
+    ...(overrides.classifierMode !== undefined ? { classifierMode: overrides.classifierMode } : {}),
   };
   const result = await runAgent("work", options);
   return {
@@ -674,5 +686,183 @@ describe("containment capability", () => {
     // decision (docs/permission-ux-redesign.md: "unsupported"), which is what
     // these skipped rows record rather than a gap in coverage.
     expect(isSandboxedLevel("workspace-write")).toBe(process.platform === "darwin");
+  });
+});
+
+describe("command risk classifier: shadow logging (docs/command-risk-classifier.md §9)", () => {
+  beforeEach(() => {
+    writeRoots = [];
+    clearGrants();
+    spawnSpy.mockReset();
+    onLaunch = (child) => {
+      setImmediate(() => child.close(0, "ok"));
+    };
+    spawnSpy.mockImplementation((file: string, args: string[]) => {
+      const child = new FakeChild();
+      launches.push({ file, args, child });
+      onLaunch(child);
+      return child;
+    });
+    setSessionId(SESSION);
+    setSandboxLevel(undefined);
+  });
+
+  afterEach(() => {
+    setSandboxLevel(undefined);
+  });
+
+  /** An allow rule for `npm publish`, so the engine allows what the classifier questions. */
+  function allowPublish(): PermissionEngine {
+    return new PermissionEngine(
+      {
+        rules: [{ tool: "run_bash", kind: "prefix", pattern: "npm publish", action: "allow", origin: "config" }],
+        defaultMode: "askAll",
+      },
+      ROOT,
+    );
+  }
+
+  it("records the tier, reasons and feature vector on the audit row", async () => {
+    const driven = await drive(["npm publish"], { permissions: allowPublish() });
+
+    expect(driven.rows[0].decision).toBe("allow-by-rule");
+    expect(driven.rows[0].risk).toMatchObject({
+      tier: "confirm",
+      nativeAction: "ask",
+      action: "ask",
+      reasons: ["pkg.publish"],
+      stage: "rules",
+      version: "risk-1",
+      parseStatus: "parsed",
+    });
+    // The vector is what makes a verdict replayable, so the delete targets and
+    // the program are on it — not just the tier.
+    expect((driven.rows[0].risk as { features: { segments: { program: string }[] } }).features.segments[0].program).toBe("npm");
+  });
+
+  it("changes nothing about what runs, and logs the disagreement as evidence", async () => {
+    const evidence = vi.fn(async (_sessionId: string, _record: Record<string, unknown>) => {});
+    const driven = await drive(["npm publish"], {
+      permissions: allowPublish(),
+      store: { appendClassifierEvidence: evidence },
+    });
+
+    // Shadow mode: the allow rule still decides, and the command still ran.
+    expect(driven.rows[0].decision).toBe("allow-by-rule");
+    expect(driven.launches).toHaveLength(1);
+    expect(driven.askUser).not.toHaveBeenCalled();
+
+    // ...and enforce mode would have asked instead, which is the queue the
+    // phase-1 review reads.
+    expect(evidence).toHaveBeenCalledTimes(1);
+    expect(evidence.mock.calls[0][1]).toMatchObject({ toolCallId: "call_0", source: "policy" });
+    expect(String(evidence.mock.calls[0][1].reason)).toContain("shadow: engine allow, classifier confirm");
+  });
+
+  it("writes no evidence row when the classifier agrees with the engine", async () => {
+    const evidence = vi.fn(async (_sessionId: string, _record: Record<string, unknown>) => {});
+    // The engine already asks; the classifier confirms. Nothing disagreed.
+    await drive(["cat .env"], { store: { appendClassifierEvidence: evidence } });
+    expect(evidence).not.toHaveBeenCalled();
+  });
+
+  it("does not run at all under classifier.mode: off", async () => {
+    const evidence = vi.fn(async (_sessionId: string, _record: Record<string, unknown>) => {});
+    const driven = await drive(["npm publish"], {
+      permissions: allowPublish(),
+      classifierMode: "off",
+      store: { appendClassifierEvidence: evidence },
+    });
+    expect(driven.rows[0].risk).toBeUndefined();
+    expect(evidence).not.toHaveBeenCalled();
+  });
+
+  it("still labels a denied call, so the shadow log covers hard blocks too", async () => {
+    const driven = await drive(["rm -rf ~"]);
+    expect(driven.rows[0].decision).toBe("deny-by-rule");
+    expect(driven.rows[0].risk).toMatchObject({ tier: "block", nativeAction: "deny", reasons: ["rm.critical-path"] });
+    expect(driven.launches).toHaveLength(0);
+  });
+
+  it("counts what this session's own write tools produced, so a delete is not called pre-session", async () => {
+    // The classifier's `fs.delete-pre-session` rule turns on whether the path
+    // existed before the session. `write_to_file` in the same run makes it not
+    // pre-session; without that bookkeeping every delete looks pre-session and
+    // the shadow log fills with false positives.
+    const created = `${ROOT}/tmp-risk-created.txt`;
+    const { provider } = makeProvider([
+      callTurn("call_0", "write_to_file", { path: created, content: "x" }),
+      callTurn("call_1", "run_bash", { command: `rm -rf ${created}` }),
+      textTurn("done"),
+    ]);
+    const appendPermission = vi.fn(async (_sessionId: string, _record: Record<string, unknown>) => {});
+    await runAgent("work", {
+      provider,
+      tools: [],
+      executeTool: async () => ({ content: "ok" }),
+      permissions: new PermissionEngine(
+        {
+          rules: [{ tool: "write_to_file", kind: "any" as const, pattern: "", action: "allow" as const, origin: "config" as const }],
+          defaultMode: "askAll",
+        },
+        ROOT,
+      ),
+      sessionStore: { appendPermission, appendToken: vi.fn(async () => {}) } as never,
+      sessionId: SESSION,
+    });
+
+    const risk = appendPermission.mock.calls[1][1].risk as { tier: string; reasons: string[] };
+    expect(risk.reasons).not.toContain("fs.delete-pre-session");
+  });
+
+  /**
+   * §10.2's "no tool-result leakage", at the one place it can be tested before
+   * stage 2 exists. The refusal to soften on `-k` is driven by the session's
+   * user messages (§5.1 sec.disarm), so this is the observable that proves
+   * what the classifier was and was not shown (§3.1).
+   */
+  async function tierOf(command: string, opts: { userMessage?: string; toolResult?: string }): Promise<string> {
+    const appendPermission = vi.fn(async (_sessionId: string, _record: Record<string, unknown>) => {});
+    const turns = opts.toolResult !== undefined
+      ? [callTurn("call_0", "read_file", { path: "notes.txt" }), callTurn("call_1", "run_bash", { command }), textTurn("done")]
+      : [callTurn("call_0", "run_bash", { command }), textTurn("done")];
+    const { provider } = makeProvider(turns);
+    await runAgent(opts.userMessage ?? "work", {
+      provider,
+      tools: [],
+      // An ERROR, not content: a failing tool is what makes the agent write a
+      // `role: "user"` note quoting it verbatim (the error reflector). That is
+      // the path a transcript filter would leak, and it is reachable in
+      // production by any failed read or fetch.
+      executeTool: async (call: ToolCall) =>
+        call.name === "read_file" ? { content: "", error: opts.toolResult! } : { content: "ran" },
+      ...(opts.toolResult !== undefined ? { errorReflector: new ErrorReflector() } : {}),
+      permissions: new PermissionEngine(
+        {
+          rules: [{ tool: "read_file", kind: "any" as const, pattern: "", action: "allow" as const, origin: "config" as const }],
+          defaultMode: "askAll",
+        },
+        ROOT,
+      ),
+      sessionStore: { appendPermission, appendToken: vi.fn(async () => {}) } as never,
+      sessionId: SESSION,
+    });
+    const rows = appendPermission.mock.calls.map((call) => call[1]);
+    return (rows[rows.length - 1].risk as { tier: string }).tier;
+  }
+
+  const SOFTENING_WORDS = "the cert is self-signed, pass -k";
+  const DISARMED = "curl -k https://example.invalid";
+
+  it("lets a user's own words soften a verdict", async () => {
+    expect(await tierOf(DISARMED, { userMessage: SOFTENING_WORDS })).not.toBe("block");
+  });
+
+  it("ignores the same words when they arrive as a tool result", async () => {
+    // A failed read or fetch puts file or web content in a tool result, and the
+    // error reflector re-emits that text on a `role: "user"` message. Reading
+    // the transcript by role would let a hostile page talk the classifier out
+    // of a block; only the two places a human actually speaks are read.
+    expect(await tierOf(DISARMED, { toolResult: SOFTENING_WORDS })).toBe("block");
   });
 });

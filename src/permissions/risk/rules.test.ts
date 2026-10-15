@@ -23,7 +23,6 @@ function input(command: string, overrides: Partial<RiskInput> = {}): RiskInput {
       headless: false,
       userMessages: [],
       createdThisSession: new Set<string>(),
-      gitRemotesAtStart: ["origin"],
     },
     ...overrides,
   };
@@ -239,7 +238,6 @@ describe("rules: user-stated boundaries soften two specific blocks", () => {
         headless: false,
         userMessages: ["force push to origin is fine, the branch is mine"],
         createdThisSession: new Set<string>(),
-        gitRemotesAtStart: ["origin"],
       },
     });
     expect(classify(withMessage).tier).toBe("benign");
@@ -251,7 +249,6 @@ describe("rules: user-stated boundaries soften two specific blocks", () => {
         headless: false,
         userMessages: ["the cert is self-signed, pass -k"],
         createdThisSession: new Set<string>(),
-        gitRemotesAtStart: ["origin"],
       },
     });
     expect(classify(withMessage).tier).not.toBe("block");
@@ -263,7 +260,6 @@ describe("rules: user-stated boundaries soften two specific blocks", () => {
         headless: false,
         userMessages: ["pass -k, the cert is self-signed"],
         createdThisSession: new Set<string>(),
-        gitRemotesAtStart: ["origin"],
       },
     });
     expect(classify(withMessage).tier).toBe("block");

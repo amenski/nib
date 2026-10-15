@@ -28,7 +28,6 @@ function input(command: string, action: PermissionAction): RiskInput {
       headless: false,
       userMessages: [],
       createdThisSession: new Set<string>(),
-      gitRemotesAtStart: ["origin"],
     },
   };
 }

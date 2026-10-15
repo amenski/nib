@@ -168,10 +168,14 @@ export interface RiskInput {
   };
   session: {
     headless: boolean;
-    /** Last N user turns, text only. Stage 2 only; never tool results (§3.1). */
+    /**
+     * User turns, text only — never tool results (§3.1). The proposal scopes
+     * this to stage 2; the rules stage uses it too, for the two places a
+     * user-stated boundary is the difference between a block and an ordinary
+     * call (§5.1's git.force-push and sec.disarm).
+     */
     userMessages: string[];
     createdThisSession: Set<string>;
-    gitRemotesAtStart: string[];
   };
 }
 
@@ -479,12 +483,17 @@ function classifyLiteral(abs: string, ctx: TargetContext, hadTrailingGlob: boole
   // that would actually do it (see ClassifyOpts.cwdCritical).
   if (abs === ctx.workingDir) return opts.cwdCritical ? "critical" : "inside-cwd";
   if (pathWithin(abs, ctx.workingDir)) return "critical";
-  if (pathWithin(homedir(), abs)) return hadTrailingGlob && abs === homedir() ? "critical" : "home";
+  // The workspace is asked about before $HOME, and must be: a project almost
+  // always lives under the home directory, so a containment test in the other
+  // order would call every file in the checkout "home" — turning an ordinary
+  // in-workspace redirect into fs.write-outside-roots and every delete into
+  // fs.delete-pre-session.
   if (pathWithin(ctx.workingDir, abs)) {
     const first = relative(ctx.workingDir, abs).split("/")[0];
     return BUILD_DIRS.has(first) ? "build-dir" : "inside-cwd";
   }
   if (ctx.writeRoots.some((root) => pathWithin(root, abs))) return "write-root";
+  if (pathWithin(homedir(), abs)) return hadTrailingGlob && abs === homedir() ? "critical" : "home";
   return isAbsolute(abs) ? "system" : "inside-cwd";
 }
 

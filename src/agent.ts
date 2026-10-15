@@ -27,15 +27,67 @@ import {
 } from "./permissions/session-grant.js";
 import type { SandboxFailureReason } from "./sandbox/launcher.js";
 import { unsandboxedRequestsAllowed, unsandboxedRun } from "./sandbox/unsandboxed.js";
+import { classifyRisk, riskNarrowed, type RiskMode } from "./permissions/risk/index.js";
 import type { ToolExecOptions } from "./tools/types.js";
 
 export type ToolExecutor = (call: ToolCall, exec?: ToolExecOptions) => Promise<ToolOutput>;
 
 import { extractToolSubject } from "./permissions/rules.js";
+import { homedir } from "node:os";
+import { isAbsolute, join, resolve } from "node:path";
 
 function permissionSubjectText(toolName: string, args: Record<string, unknown>): string {
   return extractToolSubject(toolName, args);
 }
+
+/** Tools whose success means the workspace gained a file the session owns. */
+const SESSION_WRITE_TOOLS = new Set([
+  "edit", "edit_file", "write_to_file", "apply_patch", "apply_diff", "search_replace",
+]);
+
+/**
+ * Absolute paths a successful write tool call produced, for the risk
+ * classifier's `createdThisSession` set. Resolved the way the classifier
+ * resolves a delete target (lexically — no symlink chase, `~` expanded), so
+ * the two spellings always meet; a realpath here would resolve the same
+ * directory differently and every delete would look pre-session.
+ */
+function writtenPaths(toolName: string, args: Record<string, unknown>): string[] {
+  if (!SESSION_WRITE_TOOLS.has(toolName)) return [];
+  // apply_patch's subject is its list of `+++ b/…` targets, comma-joined.
+  const subject = permissionSubjectText(toolName, args);
+  if (subject === "") return [];
+  return subject.split(", ").flatMap((raw) => {
+    const trimmed = raw.trim();
+    if (trimmed === "") return [];
+    const expanded = trimmed === "~" || trimmed.startsWith("~/") ? join(homedir(), trimmed.slice(1)) : trimmed;
+    return [isAbsolute(expanded) ? expanded : resolve(process.cwd(), expanded)];
+  });
+}
+
+/**
+ * The last few user turns as plain text, for the risk classifier (§3.1: user
+ * messages only — never tool results or assistant prose, so hostile file or
+ * web content cannot address the rules that read this).
+ *
+ * This is a list the run *builds*, not a filter over `messages`, and that is
+ * the point. The transcript carries `role: "user"` messages the agent wrote
+ * itself — the error reflector's note quotes a tool's error text verbatim, and
+ * a failed read or fetch puts file or web content in there. Filtering by role
+ * would hand all of it to the classifier; only the two places the run receives
+ * text from a human (the opening prompt and a steering message) append here.
+ *
+ * Prior-session turns from `options.history` are deliberately not included:
+ * their provenance is not distinguishable after a resume, and omitting them
+ * makes the two rules that read this stricter, never looser.
+ */
+function pushHumanTurn(turns: string[], text: string | undefined): void {
+  if (text === undefined || text.trim() === "") return;
+  turns.push(text);
+  if (turns.length > MAX_HUMAN_TURNS) turns.shift();
+}
+
+const MAX_HUMAN_TURNS = 5;
 
 // Every tool call in an assistant message must be answered by a tool message
 // with the same id — providers reject a request where one is missing (the AI
@@ -134,6 +186,14 @@ export interface AgentOptions {
    * alone decides, today's behavior byte-for-byte.
    */
   permissionProfile?: ProfileEvaluator;
+  /**
+   * How the command risk classifier acts on its verdict
+   * (docs/command-risk-classifier.md §9): `off`, `shadow` (label and log only
+   * — the default when unset), or `enforce` (clamp live). Absent is treated as
+   * `shadow`, so a caller that has not been taught about the classifier still
+   * produces the shadow rows the phase-1 review needs.
+   */
+  classifierMode?: RiskMode;
   mode?: ModeConfig;
   compactor?: Compactor;
   diagnostics?: DiagnosticRunner;
@@ -300,6 +360,21 @@ export async function runAgent(
   options: AgentOptions,
 ): Promise<AgentResult> {
   const { provider, tools, executeTool, permissions, permissionProfile, compactor, diagnostics, errorReflector, errorRecovery, maxTurns = Infinity, effort, thinkingEnabled } = options;
+
+  /**
+   * Paths this session's own write tools produced, for the risk classifier's
+   * "does this delete something that predates the session" question (§4.2
+   * `preSessionTarget`). Session-scoped and lexical — the classifier resolves
+   * a delete target the same way, so the two spellings always meet.
+   */
+  const createdThisSession = new Set<string>();
+
+  /**
+   * The user turns the classifier may read (§3.1). Built here rather than
+   * filtered out of `messages` later — see pushHumanTurn.
+   */
+  const humanTurns: string[] = [];
+  pushHumanTurn(humanTurns, userMessage);
 
   const promptCtx: PromptContext = {
     mode: options.mode,
@@ -506,7 +581,10 @@ export async function runAgent(
     // assistant/tool messages that respond to it — and newMessages/
     // onNewMessages persistence picks it up automatically.
     const steering = options.pollSteeringMessage?.() ?? null;
-    if (steering) messages.push({ role: "user", content: steering });
+    if (steering) {
+      messages.push({ role: "user", content: steering });
+      pushHumanTurn(humanTurns, steering);
+    }
     // The note says the message arrived and asks for one answer — it does not
     // repeat the message. It used to echo the first line, so in the request
     // that carried the question the question appeared twice, and the model
@@ -749,6 +827,35 @@ export async function runAgent(
         const unsandboxedKind = unsandboxedRun(tc.name, tc.arguments);
         const action = unsandboxedKind !== undefined && resolvedAction === "allow" ? "ask" : resolvedAction;
         const subject = permissionSubjectText(tc.name, tc.arguments);
+
+        // The risk classifier (docs/command-risk-classifier.md §9). Built per
+        // call, not cached: a session grant approved mid-turn changes the
+        // envelope, and the write-set it carries changes with it. In shadow
+        // mode nothing below reads `action` from it — the verdict rides on the
+        // audit row only. An unset mode is shadow, so a caller that has not
+        // been taught about the classifier still produces the shadow rows.
+        const riskMode: RiskMode = options.classifierMode ?? "shadow";
+        const riskVerdict =
+          riskMode === "off"
+            ? undefined
+            : classifyRisk({
+                tool: tc.name,
+                args: tc.arguments,
+                workingDir: process.cwd(),
+                writeRoots: permissionProfile?.writeRoots ?? [process.cwd()],
+                sandbox: {
+                  level: currentEnvelope()?.level ?? permissionProfile?.level ?? "unrestricted",
+                  contained: currentEnvelope() !== undefined,
+                },
+                ...(unsandboxedKind !== undefined ? { unsandboxed: unsandboxedKind } : {}),
+                engine: { action, winningRule, wasUnresolved, isGuarded },
+                session: {
+                  headless: options.askUser === undefined,
+                  userMessages: humanTurns,
+                  createdThisSession,
+                },
+              });
+
         const audit = async (
           decision: PermissionDecision,
           reason: string,
@@ -762,8 +869,31 @@ export async function runAgent(
             ...(capabilityPlan.commandClassification
               ? { commandClassification: capabilityPlan.commandClassification }
               : {}),
+            ...(riskVerdict !== undefined ? { risk: riskVerdict } : {}),
           });
         };
+
+        // Shadow mode's whole product: a call the classifier would have made
+        // stricter, recorded as evidence so the phase-1 review (proposal §9)
+        // has a queue to read. Written only on a disagreement, never on
+        // agreement — an agreement is already visible on the audit row.
+        // Shadow mode's whole product: a call the classifier would have made
+        // stricter, recorded as evidence so the phase-1 review (proposal §9)
+        // has a queue to read. Written only on a disagreement, never on
+        // agreement — an agreement is already visible on the audit row.
+        //
+        // Diagnostic-only, and awaited by nobody, on the same principle as
+        // onSandboxFailure above: a store that cannot record evidence must not
+        // become a second failure path in the turn that is running.
+        if (riskMode === "shadow" && riskVerdict !== undefined && riskNarrowed(resolvedAction, riskVerdict)) {
+          void options.sessionStore
+            ?.appendClassifierEvidence?.(options.sessionId!, {
+              toolCallId: tc.id,
+              source: "policy",
+              reason: `shadow: engine ${resolvedAction}, classifier ${riskVerdict.tier} (${riskVerdict.reasons.join(", ")})`,
+            })
+            .catch(() => {});
+        }
 
         /**
          * A sandboxed launch whose containment promise did not hold: the child
@@ -1034,6 +1164,10 @@ export async function runAgent(
 
       const result = preResult ?? await executeTool(tc, exec);
       executedAny = true;
+      // A write tool that succeeded produced a file this session owns; the
+      // classifier's delete rules read this to tell "the agent made it" from
+      // "it was here before we were" (§4.2 preSessionTarget).
+      if (!result.error) for (const path of writtenPaths(tc.name, tc.arguments)) createdThisSession.add(path);
       // PostToolUse / PostToolUseFailure: hook stdout appends to the result
       // (hooks-spec.md §2) before it reaches the model or the UI preview.
       if (options.hooks) {

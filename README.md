@@ -254,7 +254,7 @@ TUI / headless CLI → prompt assembly → agent loop ↔ model provider
 | [**Agent loop**](./docs/subsystems/react-loop.md) | Streams replies, batches tool calls, reflects on failures, guards loops, and stops deterministically. |
 | [**Prompt assembly**](./docs/system-prompt.md) | Combines a stable cacheable preamble with live project state, rules, research, skills, and todo context. |
 | [**Personas**](./docs/mode-spec.md) | Change identity and remove unavailable tool groups before a request reaches the model. |
-| [**Permission engine**](./docs/permission-spec.md) | Resolves allow/ask/deny rules before execution and records every decision. |
+| [**Permission engine**](./docs/permission-spec.md) | Resolves allow/ask/deny rules before execution and records every decision. [Diagram](./docs/diagrams/nib-permission-gate.png) |
 | [**Tool registry**](./docs/tool-spec.md) | Keeps tool schemas, mode groups, and handlers behind one dispatch boundary. |
 | [**Sessions and context**](./docs/subsystems/context-management.md) | Preserve the complete append-only transcript while compacting or editing only provider-bound context. |
 | [**Checkpoints**](./docs/session-spec.md) | Snapshot edits in per-session shadow Git repositories so code and conversation can rewind together. |

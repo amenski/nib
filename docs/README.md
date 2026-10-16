@@ -69,6 +69,7 @@ then follow the reading paths below.
 | [session-spec.md](./session-spec.md) | Session JSONL format, index, resume |
 | [provider-spec.md](./provider-spec.md) | Provider contract, catalog, key resolution |
 | [permission-spec.md](./permission-spec.md) | Rules, normalization, resolution, posture, audit trail |
+| [diagrams/nib-permission-gate.png](./diagrams/nib-permission-gate.png) | One-page diagram: the gate, the model judge, where a FLAG changes the outcome |
 | [security-spec.md](./security-spec.md) | Threat model T1–T16, verified-fixed items |
 | [security-architecture-plan.md](./security-architecture-plan.md) | Implemented security phases, measured release gates, and recorded residuals |
 | [permission-ux-redesign.md](./permission-ux-redesign.md) | Proposed replacement for advisory Bash classification and repeated prompts |

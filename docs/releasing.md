@@ -1,43 +1,30 @@
 # Releasing Nib
 
-**Status:** current · verified 2026-09-15 · covers npm and Homebrew distribution
+**Status:** current · verified 2026-10-16 · covers npm and Homebrew distribution
 
 ## npm
 
 Releases are tagged as `vX.Y.Z`; the published GitHub Release must point at
 that tag and its `package.json` must contain matching `X.Y.Z`. The
-`publish-npm.yml` workflow then installs, typechecks, tests, builds, packs,
-installs that exact tarball in an isolated prefix, runs `nib doctor`, and
-publishes the same tarball with npm Trusted Publishing. It uses GitHub-hosted
-Node 24 with the bundled modern npm CLI and disabled package-manager caching.
+`verify-release.yml` workflow then installs, typechecks, tests, builds, packs,
+installs that exact tarball in an isolated prefix and runs `nib doctor`. It
+does not publish: npm publication is manual, with npm 2FA.
 
-**Release candidates.** A version with a prerelease suffix (`X.Y.Z-rc.N`) is
-published under the `next` dist-tag, so `npm i -g @amenski/nib` keeps
-installing the latest stable release and testers opt in with
-`npm i -g @amenski/nib@next`. Publish it as a GitHub *prerelease*; the workflow
-fails if the prerelease flag and the version suffix disagree, so an rc can
-never land on `latest` and a stable version never on `next`. Do not update the
-Homebrew tap for a release candidate.
-
-The first publication of `@amenski/nib` is a manual npm/2FA bootstrap:
+From a clean checkout of the release tag:
 
 ```bash
 tarball="$(npm pack --json | node -e "let data=''; process.stdin.on('data', c => data += c); process.stdin.on('end', () => console.log(JSON.parse(data)[0].filename))")"
 prefix="$(mktemp -d)"
 npm install --prefix "$prefix" "$tarball"
 "$prefix/node_modules/.bin/nib" doctor
-npm publish "$tarball" --access public
+npm publish "$tarball" --access public --tag latest
 ```
 
-Configure npm Trusted Publishing for `amenski/nib` and the
-`publish-npm.yml` workflow (allow direct `npm publish`) after the package
-exists. Do not add an npm token to this repository or to GitHub Actions. When
-the corresponding GitHub Release is published, the workflow verifies the
-registry tarball against npm's `dist.integrity` and compares its extracted
-contents to the smoke-tested local tarball; it skips only on a match. This
-content comparison accommodates tarball metadata differences between macOS
-bootstrap and Linux CI. Later releases publish the smoke-tested tarball by OIDC
-from the workflow.
+**Release candidates.** A version with a prerelease suffix (`X.Y.Z-rc.N`) is
+published with `--tag next` instead of `--tag latest`, so
+`npm i -g @amenski/nib` keeps installing the latest stable release and testers
+opt in with `npm i -g @amenski/nib@next`. Publish it as a GitHub *prerelease*.
+Do not update the Homebrew tap for a release candidate.
 
 ## Homebrew tap
 

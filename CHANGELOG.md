@@ -7,7 +7,19 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.0-rc.1] — 2026-10-16
+
 ### Added
+
+- **Background shells and sub-agents get a live row and one panel.** A row
+  under the status bar shows what is running (`⏵ 2 shells · 1 agent · npm run
+  dev 3m · ↓ to view`) or what just finished. `/jobs` (or `/tasks`, or ↓ on an
+  empty prompt) opens one panel for both: status, exit code, age, and the last
+  15 output lines of the selected shell; `x` stops the selected item (it was
+  Enter in `/tasks`). Job output no longer streams into the transcript as
+  `[job abcd]` rows; a finished job leaves one line (`● npm test · exited 0 ·
+  1m`, red when it failed or was killed). The `● N jobs done` and
+  `⧗ N background tasks` status segments are gone.
 
 - **A command risk classifier labels every tool call, and can make calls
   stricter.** Each call gets a deterministic verdict — `safe`, `benign`,
@@ -86,6 +98,24 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   models, so base URLs always come from the installed nib.
 
 ### Fixed
+
+- **Background jobs stop prompting once the session grant is given.**
+  `run_bash_background` runs under the same sandbox profile as `run_bash` but
+  never used the session grant, so every dev server or build prompted (172 of
+  319 prompted Bash calls in real sessions). Background jobs now share the
+  grant, and re-check at launch that the sandbox still matches the one you
+  approved, as foreground Bash does.
+- **`search` no longer floods the context.** It walked `.nib/debug`, where one
+  log line holds a whole earlier conversation, and returned up to 524k
+  characters (~300k tokens) from a single match. `.nib` is now skipped and each
+  matched line is cut to 500 characters.
+- **Compaction triggers on real token counts.** The trigger compared a
+  characters ÷ 4 estimate that reads 1.2× low typically and 1.6× low on
+  JSON-heavy output, so a session could fill a 1M window without compacting.
+  nib now corrects the estimate by the provider's reported input tokens after
+  every request (never later than before), and the status meter uses the same
+  number. `compaction.maxTokens` below the 70% default now takes effect as
+  expected.
 
 - **`mktemp`, `xcrun`, Xcode-shim `git` and Flutter work in the sandbox again.**
   Turning `sandbox.allowBrowser` on by default allowed a Mach service that let
@@ -716,7 +746,8 @@ further injection sinks.
 Earlier releases predate this changelog. See the git history for
 `v0.1.0..v0.2.1`.
 
-[Unreleased]: https://github.com/amenski/nib/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/amenski/nib/compare/v0.7.0-rc.1...HEAD
+[0.7.0-rc.1]: https://github.com/amenski/nib/compare/v0.6.1...v0.7.0-rc.1
 [0.6.1]: https://github.com/amenski/nib/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/amenski/nib/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/amenski/nib/compare/v0.5.0...v0.5.1

@@ -452,7 +452,8 @@ action.
 
 ### The sandboxed-Bash session grant
 
-An **eligible** ask — foreground `run_bash`, under an active sandbox level on a
+An **eligible** ask — `run_bash` or `run_bash_background` (one shared grant;
+both run under the same envelope), under an active sandbox level on a
 platform where the profile is applied, not guarded, not a config-authored rule,
 not the widened `.git/config` variant (docs/permission-ux-redesign.md) — replaces
 `s/Yes, for this session/Yes, sandboxed Bash in this workspace for this session/`

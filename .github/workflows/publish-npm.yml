@@ -15,7 +15,6 @@ permissions:
 
 jobs:
   publish:
-    if: ${{ !github.event.release.prerelease }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -27,8 +26,22 @@ jobs:
       - name: Verify release tag matches package version
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+          RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
         run: |
-          test "$RELEASE_TAG" = "v$(node -p "require('./package.json').version")"
+          version="$(node -p "require('./package.json').version")"
+          test "$RELEASE_TAG" = "v$version"
+          # A prerelease version (0.7.0-rc.1) publishes under `next`, never
+          # `latest`, so the GitHub prerelease flag must agree with it. Absent on
+          # workflow_dispatch, where the version alone decides.
+          case "$version" in *-*) is_pre=true ;; *) is_pre=false ;; esac
+          if [ -n "$RELEASE_PRERELEASE" ]; then
+            test "$RELEASE_PRERELEASE" = "$is_pre"
+          fi
+          if [ "$is_pre" = true ]; then
+            echo "NPM_DIST_TAG=next" >> "$GITHUB_ENV"
+          else
+            echo "NPM_DIST_TAG=latest" >> "$GITHUB_ENV"
+          fi
       - name: Install dependencies
         run: npm ci
       - name: Typecheck
@@ -61,5 +74,5 @@ jobs:
             diff -qr "$local_files" "$registry_files"
             echo "@amenski/nib@$version matches the manual bootstrap package contents; not republishing."
           else
-            npm publish "$TARBALL" --provenance
+            npm publish "$TARBALL" --provenance --tag "$NPM_DIST_TAG"
           fi

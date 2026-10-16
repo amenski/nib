@@ -88,7 +88,7 @@ then follow the reading paths below.
 | Doc | Covers |
 |-----|--------|
 | [input-stall-diagnosis.md](./input-stall-diagnosis.md) | Freeze taxonomy (resolved; reference) |
-| [releasing.md](./releasing.md) | npm Trusted Publishing and Homebrew tap release procedure |
+| [releasing.md](./releasing.md) | Release verification, manual npm publish, Homebrew tap |
 
 ### Roadmaps & research
 

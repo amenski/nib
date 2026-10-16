@@ -626,6 +626,10 @@ export async function runAgent(
     const requestMessages = options.contextEditing
       ? editToolResultsForRequest(assembledMessages, estimateOverheadTokens(tools), freshToolResults)
       : assembledMessages;
+    // What nib thinks this request costs; the provider's usage report for it
+    // calibrates the compaction trigger. requestMessages already carries the
+    // volatile tail, so only the tool schemas are added on top.
+    const requestEstimate = estimateTokens(requestMessages) + estimateOverheadTokens(tools);
     for await (const event of provider.streamChat(requestMessages, tools, { signal: options.signal, effort, thinkingEnabled })) {
       switch (event.type) {
         case "text_delta":
@@ -646,6 +650,7 @@ export async function runAgent(
         }
         case "usage":
           turnTokens += event.inputTokens + event.outputTokens;
+          compactor?.observeUsage(requestEstimate, event.inputTokens);
           options.onUsage?.(event.inputTokens, event.outputTokens, event.cachedInputTokens);
           break;
         case "model_alias":
@@ -692,14 +697,14 @@ export async function runAgent(
 
     // One token-usage row per turn: turnTokens is the provider-reported
     // input+output for this turn; totalUsed mirrors what compaction measures
-    // (estimateTokens of the live message set) so remaining = budgetMax -
+    // (estimateTokens of the live message set, calibrated) so remaining = budgetMax -
     // totalUsed agrees with the compaction headroom; budgetMax is the context
     // window. remaining is derived on read, never stored.
     const recordTokens = async (): Promise<void> => {
       if (!options.sessionStore || !options.sessionId) return;
       await options.sessionStore.appendToken(options.sessionId, {
         turnTokens,
-        totalUsed: estimateTokens(messages),
+        totalUsed: Math.round(estimateTokens(messages) * (compactor?.tokenCalibration ?? 1)),
         budgetMax: options.contextWindow ?? 128000,
       });
     };

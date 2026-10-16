@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { compactionCutoffTokens, estimateTokens, estimateTokensDetailed, shouldCompact, estimateOverheadTokens, IMAGE_TOKEN_ESTIMATE } from "./budget.js";
+import { calibrationRatio, compactionCutoffTokens, estimateTokens, estimateTokensDetailed, shouldCompact, estimateOverheadTokens, IMAGE_TOKEN_ESTIMATE } from "./budget.js";
 import type { Message } from "../types.js";
 
 describe("estimateTokens", () => {
@@ -175,5 +175,25 @@ describe("compaction.maxTokens cap (opt-in, 2026-10-10)", () => {
     const big: Message[] = [{ role: "user", content: "x".repeat(1_200_000) }];
     expect(shouldCompact(big, 1_000_000, 0.7)).toBe(false);
     expect(shouldCompact(big, 1_000_000, 0.7, 0, 200_000)).toBe(true);
+  });
+});
+
+describe("calibration against the provider's token count (2026-10-15)", () => {
+  it("clamps the ratio to [1, 4] and falls back to 1 without data", () => {
+    expect(calibrationRatio(1_048_576, 643_382)).toBeCloseTo(1.63, 2);
+    expect(calibrationRatio(500, 1_000)).toBe(1);
+    expect(calibrationRatio(10_000, 1_000)).toBe(4);
+    expect(calibrationRatio(0, 1_000)).toBe(1);
+    expect(calibrationRatio(1_000, 0)).toBe(1);
+    expect(calibrationRatio(undefined, undefined)).toBe(1);
+  });
+
+  it("triggers on the calibrated count when the raw estimate is under the cutoff", () => {
+    // The onramp session: chars/4 said ~643K against a 700K trigger while the
+    // provider was already counting the full 1M window.
+    const messages = [{ role: "user" as const, content: "x".repeat(643_000 * 4) }];
+
+    expect(shouldCompact(messages, 1_000_000)).toBe(false);
+    expect(shouldCompact(messages, 1_000_000, undefined, 0, undefined, 1.63)).toBe(true);
   });
 });

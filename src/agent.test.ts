@@ -451,6 +451,38 @@ describe("runAgent", () => {
     ]);
   });
 
+  it("compacts when the provider reports more tokens than nib's estimate", async () => {
+    // ~2,400 estimated tokens against a 7,000 cutoff: the raw estimate never
+    // triggers. The provider reporting 8,000 for that request must.
+    const run = async (reportedInput?: number) => {
+      const history: Message[] = Array.from({ length: 6 }, (_, i) => ({
+        role: i % 2 === 0 ? "user" as const : "assistant" as const,
+        content: "x".repeat(1_600),
+      }));
+      const { provider: summaryProvider, receivedMessages: summaryRequests } = makeProvider([textTurn("summary")]);
+      const { provider } = makeProvider([
+        [
+          { type: "tool_call_start", id: "call_1", name: "read" },
+          { type: "tool_call_delta", id: "call_1", arguments: '{"path":"a.txt"}' },
+          ...(reportedInput !== undefined ? [{ type: "usage", inputTokens: reportedInput, outputTokens: 10 } as StreamEvent] : []),
+          { type: "done", finishReason: "tool_calls" },
+        ],
+        textTurn("final reply"),
+      ]);
+      await runAgent("continue", {
+        provider,
+        tools: [],
+        executeTool: async () => ({ content: "ok" }),
+        history,
+        compactor: new Compactor(summaryProvider, 10_000, 0.7),
+      });
+      return summaryRequests.length;
+    };
+
+    expect(await run()).toBe(0);
+    expect(await run(8_000)).toBe(1);
+  });
+
   it("re-emits a tool's image attachments as a user message carrying imageUrls", async () => {
     const dataUrl = "data:image/png;base64,AAAB";
     const { provider, receivedMessages } = makeProvider([

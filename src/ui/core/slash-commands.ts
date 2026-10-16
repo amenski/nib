@@ -18,7 +18,7 @@ export const BUILTIN_SLASH_COMMANDS: SlashCommandItem[] = [
   { kind: "continue", name: "continue", label: "/continue", description: "Continue the active session" },
   { kind: "undo", name: "undo", label: "/undo", description: "Restore to a previous point" },
   { kind: "mcp", name: "mcp", label: "/mcp", description: "Show MCP server status" },
-  { kind: "tasks", name: "tasks", label: "/tasks", description: "Show running sub-agent tasks" },
+  { kind: "tasks", name: "jobs", label: "/jobs", description: "Show background shells and sub-agents (also /tasks)" },
   { kind: "permissions", name: "permissions", label: "/permissions", description: "Show this session's permission decision history" },
   { kind: "usage", name: "usage", label: "/usage", description: "Show account balance and token usage" },
   { kind: "plan", name: "plan", label: "/plan", description: "Toggle plan mode (propose before implementing)" },

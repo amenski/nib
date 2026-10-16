@@ -60,7 +60,6 @@ import type { Message } from "./types.js";
 import type { ModelCapabilities, ProviderBalance } from "./providers/types.js";
 import { resolveTheme, ThemeContextValue, ANSI, ansiFg, ANSI_RESET } from "./ui/theme.js";
 import { meter } from "./ui/core/chips.js";
-import { buildTaskSegments } from "./ui/core/task-status.js";
 import { ANSI_CLEAR_SCREEN } from "./ui/constants.js";
 import { resolveRefreshProfile, REFRESH_PROFILE_NAMES, describeRefreshSource } from "./ui/core/refresh-rates.js";
 import { installResizeRepaintFix } from "./ui/core/resize-repaint.js";
@@ -918,13 +917,6 @@ async function main() {
     if (costStr !== null) {
       segments.push(dim(nextId(), `$${costStr}`));
     }
-
-    // Async sub-runs (async-subagents.md §4): while any task runs, the bar
-    // reports it (`● task <id> running`, or `N tasks` when several) — the
-    // parent turn has ended, so this is the row's only live "still working"
-    // signal. Derived from the live registry snapshot, so the segment appears
-    // and clears with registry state.
-    segments.push(...buildTaskSegments(orchestrator.tasks.list()));
 
     return segments;
   }

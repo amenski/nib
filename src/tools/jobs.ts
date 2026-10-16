@@ -5,12 +5,15 @@ import type { ToolDef, ToolOutput } from "../types.js";
 import type { ToolHandler } from "./types.js";
 import { ToolRegistry } from "./registry.js";
 import {
+  buildSandboxProfile,
   isSandboxedLevel,
+  sandboxEnvelopeHash,
   sandboxPrefix,
   validateCwdWithinTrustedRoot,
   type SandboxLevel,
 } from "../sandbox/seatbelt.js";
 import { containmentFailureError, spawnContained, type ReadinessOutcome } from "../sandbox/launcher.js";
+import { envelopeChangedError } from "../permissions/session-grant.js";
 import { wrapUntrusted, sanitizeControlChars } from "./untrusted-content.js";
 import { SANDBOX_TOOL_NOTE, UNSANDBOXED_PARAM, sandboxBlockedHint } from "./sandbox-hint.js";
 
@@ -464,6 +467,18 @@ const runBackgroundHandler: ToolHandler = async (args, ctx, exec) => {
   const timeoutMs = typeof args.timeout === "number" && args.timeout > 0
     ? Math.floor(args.timeout)
     : DEFAULT_TIMEOUT_MS;
+
+  // Same check as the run_bash handler: a job covered by the session grant
+  // launches only under the profile the user approved.
+  if (exec?.envelopeHash !== undefined) {
+    const live = isSandboxedLevel(ctx.sandboxLevel)
+      ? sandboxEnvelopeHash(buildSandboxProfile(ctx.sandboxLevel, root, ctx.writeRoots, ctx.sessionTempDir))
+      : null;
+    if (live !== exec.envelopeHash) {
+      exec.onSandboxFailure?.("envelope-changed");
+      return { content: wrapUntrusted(envelopeChangedError()), error: "SANDBOX_ENVELOPE_CHANGED" };
+    }
+  }
 
   // stream: true — only tool-started jobs emit live-output events (plan §3
   // decision E); timeout-migrated jobs are tracked but never stream.

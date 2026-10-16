@@ -972,7 +972,7 @@ export async function runAgent(
         // approval path, so the channel is open for every sandboxed Bash call —
         // including one a rule allowed without a prompt. Grant coverage is
         // decided separately, below.
-        if (tc.name === "run_bash" && currentEnvelope() !== undefined && unsandboxedKind === undefined) {
+        if ((tc.name === "run_bash" || tc.name === "run_bash_background") && currentEnvelope() !== undefined && unsandboxedKind === undefined) {
           exec = { onSandboxFailure };
         }
 

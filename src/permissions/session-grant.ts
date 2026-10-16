@@ -3,10 +3,10 @@ import { isGitConfigOperation } from "./git-config-operations.js";
 import type { RuleOrigin } from "./rules.js";
 
 /**
- * Foreground Bash session grants (docs/permission-ux-redesign.md).
+ * Bash session grants (docs/permission-ux-redesign.md).
  *
  * A grant says: "for this session, in this workspace, stop asking me about
- * eligible foreground `run_bash` calls — they are contained by the macOS
+ * eligible `run_bash` and `run_bash_background` calls — they are contained by the macOS
  * profile whose exact bytes are hashed here." It is the consent record for an
  * OS-enforced envelope, not a claim that a command is safe, and it is the only
  * thing that lets a Bash ask be skipped without the user seeing it again.
@@ -28,7 +28,10 @@ import type { RuleOrigin } from "./rules.js";
  *   not even one the user then declines to renew.
  */
 
-/** The only tool a grant currently covers — foreground `run_bash`. */
+/**
+ * The key a grant is stored under. One grant covers both `run_bash` and
+ * `run_bash_background` — they run under the same envelope.
+ */
 export type GrantableTool = "run_bash";
 
 /**
@@ -54,8 +57,8 @@ export interface BashEnvelope {
   /**
    * `sandbox.autoAllowBash` (global-only, default on): grant this envelope on
    * the first eligible ask without prompting, as Claude Code and Codex do for
-   * sandboxed commands. Eligibility is unchanged — guarded, denied, background
-   * and config-authored asks still prompt — and the grant is still recorded,
+   * sandboxed commands. Eligibility is unchanged — guarded, denied and
+   * config-authored asks still prompt — and the grant is still recorded,
    * so reuse, invalidation and revoke-on-containment-failure all apply.
    */
   autoGrant?: boolean;
@@ -147,11 +150,13 @@ export function isEligibleForGrant(input: {
   const { envelope } = input;
   // No OS boundary to bind the consent to (non-macOS, no level, `unrestricted`).
   if (envelope === undefined || !isSandboxedLevel(envelope.level)) return false;
-  // Foreground Bash only: background jobs never consume a grant, and no other
-  // tool has a containment story. A sub-agent run is handed an envelope only
-  // when it is an automatic one (`OrchestratorOptions.getBashEnvelope`), so
-  // `envelope` here is always the containment the launch really runs under.
-  if (input.toolName !== "run_bash") return false;
+  // Bash only, foreground or background: a background job spawns under the
+  // same Seatbelt profile and re-checks its hash at launch, so both share the
+  // one `run_bash` grant. No other tool has a containment story. A sub-agent
+  // run is handed an envelope only when it is an automatic one
+  // (`OrchestratorOptions.getBashEnvelope`), so `envelope` here is always the
+  // containment the launch really runs under.
+  if (input.toolName !== "run_bash" && input.toolName !== "run_bash_background") return false;
   if (input.isGuarded) return false;
   // A rule the user wrote — in config, or accepted from an earlier prompt — is a
   // deliberate standing statement about that command; the grant does not

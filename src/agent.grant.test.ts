@@ -314,7 +314,7 @@ describe("sandboxed Bash session grant", () => {
     expect(decisions(driven)).toEqual([]);
   });
 
-  itOnDarwin("never consults the grant for background Bash", async () => {
+  itOnDarwin("reuses the foreground grant for background Bash", async () => {
     await drive([OPAQUE], { envelope: makeEnvelope(), askUser: grantOnOffer() });
 
     const driven = await drive(["npm run dev"], {
@@ -323,9 +323,36 @@ describe("sandboxed Bash session grant", () => {
       tool: "run_bash_background",
     });
 
-    expect(driven.askUser).toHaveBeenCalledTimes(1);
-    expect((driven.askUser.mock.calls[0] as unknown[])[2]).toBeUndefined();
-    expect(decisions(driven)).toEqual([]);
+    expect(driven.askUser).not.toHaveBeenCalled();
+    expect(decisions(driven)).toEqual(["reuse"]);
+    expect(driven.launches).toHaveLength(1);
+  });
+
+  itOnDarwin("refuses a background launch that would not run under the approved envelope", async () => {
+    const drifted = makeEnvelope({ writeRoots: ["/tmp/nib-grant-other-root"] });
+    bashEnvelopeGrants.grant({
+      sessionId: SESSION,
+      tool: "run_bash",
+      profileHash: drifted.profileHash,
+      level: drifted.level,
+      trustedRoot: drifted.trustedRoot,
+      writeRoots: drifted.writeRoots,
+      sessionTempDir: SCRATCH,
+    });
+
+    const driven = await drive(["npm run dev"], {
+      envelope: drifted,
+      askUser: grantOnOffer(),
+      tool: "run_bash_background",
+    });
+
+    expect(driven.askUser).not.toHaveBeenCalled();
+    expect(driven.launches).toEqual([]);
+    expect(driven.rows.some((row) => row.decision === "grant-invalidated")).toBe(true);
+    expect(bashEnvelopeGrants.active(SESSION, "run_bash")).toBeNull();
+    expect(String(driven.messages.find((m) => m.role === "tool")?.content)).toContain(
+      "SANDBOX_ENVELOPE_CHANGED",
+    );
   });
 
   itOnDarwin("never prompts for a denied command, grant or no grant", async () => {
@@ -665,9 +692,13 @@ describe("isEligibleForGrant", () => {
     expect(isEligibleForGrant({ ...eligible, envelope: undefined })).toBe(false);
   });
 
-  it("is ineligible for background Bash, guarded asks, and a user-authored rule", () => {
+  it("is eligible for background Bash", () => {
+    expect(isEligibleForGrant({ ...eligible, envelope: makeEnvelope(), toolName: "run_bash_background" })).toBe(true);
+  });
+
+  it("is ineligible for other tools, guarded asks, and a user-authored rule", () => {
     const envelope = makeEnvelope();
-    expect(isEligibleForGrant({ ...eligible, envelope, toolName: "run_bash_background" })).toBe(false);
+    expect(isEligibleForGrant({ ...eligible, envelope, toolName: "read_file" })).toBe(false);
     expect(isEligibleForGrant({ ...eligible, envelope, isGuarded: true })).toBe(false);
     expect(isEligibleForGrant({ ...eligible, envelope, winningRuleOrigin: "config" })).toBe(false);
     expect(isEligibleForGrant({ ...eligible, envelope, winningRuleOrigin: "session" })).toBe(false);

@@ -11,6 +11,14 @@ installs that exact tarball in an isolated prefix, runs `nib doctor`, and
 publishes the same tarball with npm Trusted Publishing. It uses GitHub-hosted
 Node 24 with the bundled modern npm CLI and disabled package-manager caching.
 
+**Release candidates.** A version with a prerelease suffix (`X.Y.Z-rc.N`) is
+published under the `next` dist-tag, so `npm i -g @amenski/nib` keeps
+installing the latest stable release and testers opt in with
+`npm i -g @amenski/nib@next`. Publish it as a GitHub *prerelease*; the workflow
+fails if the prerelease flag and the version suffix disagree, so an rc can
+never land on `latest` and a stable version never on `next`. Do not update the
+Homebrew tap for a release candidate.
+
 The first publication of `@amenski/nib` is a manual npm/2FA bootstrap:
 
 ```bash

@@ -169,6 +169,17 @@ describe("runExecMode headless permission enforcement (T11)", () => {
     expect(stderr).not.toContain("permission denied (headless)");
   });
 
+  it("stops background shells when the headless run ends", async () => {
+    const { jobManager } = await import("./tools/jobs.js");
+    const started = jobManager.start("sleep 30", PROJECT_DIR, 60_000);
+    expect(started.ok).toBe(true);
+    const id = started.ok ? started.id : "";
+
+    await run();
+
+    expect(jobManager.check(id)?.status).toBe("killed");
+  });
+
   it("(b) denies an ask-resolving call (defaultMode askAll) without executing it", async () => {
     writeSettings({ permissions: { defaultMode: "askAll", rules: [] } });
     scriptedCall = { name: "run_bash", args: { command: "echo hi" } };

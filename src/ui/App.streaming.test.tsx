@@ -925,6 +925,60 @@ describe("background jobs (plan §3)", () => {
   }, 20_000);
 });
 
+describe("exit with running background shells", () => {
+  afterEach(() => {
+    jobManager.killAll();
+  });
+
+  async function submit(inst: { stdin: { write: (s: string) => void } }, text: string) {
+    inst.stdin.write(text);
+    await flush();
+    inst.stdin.write("\r");
+    await flush();
+    await flush();
+  }
+
+  it("warns on the first /exit and stops the shell on the second", async () => {
+    const ctx = makeCtx(async () => ({ stopReason: "done", messages: [], newMessages: [] }));
+    const onExit = vi.fn();
+    ctx.onExit = onExit;
+    const inst = render(<App ctx={ctx} />);
+    mounted.push(inst);
+    await flush();
+
+    const started = jobManager.start("sleep 30", process.cwd(), 60_000, { stream: true });
+    expect(started.ok).toBe(true);
+    const id = started.ok ? started.id : "";
+
+    await submit(inst, "/exit");
+    // The test terminal is 80 columns, so the warning wraps.
+    const frame = stripAnsi(inst.lastFrame() ?? "").replace(/\s+/g, " ");
+    expect(frame).toContain("⚠ 1 background shell still running: sleep 30");
+    expect(frame).toContain("exit again within 10s to stop it and quit");
+    // The prompt is cleared for the second attempt.
+    expect(frame).not.toContain("❯ /exit");
+    expect(onExit).not.toHaveBeenCalled();
+    expect(jobManager.check(id)?.status).toBe("running");
+
+    await submit(inst, "/exit");
+    expect(jobManager.check(id)?.status).toBe("killed");
+    expect(onExit).toHaveBeenCalledTimes(1);
+  });
+
+  it("exits on the first /exit when no shell runs", async () => {
+    jobManager.killAll();
+    const ctx = makeCtx(async () => ({ stopReason: "done", messages: [], newMessages: [] }));
+    const onExit = vi.fn();
+    ctx.onExit = onExit;
+    const inst = render(<App ctx={ctx} />);
+    mounted.push(inst);
+    await flush();
+
+    await submit(inst, "/exit");
+    expect(onExit).toHaveBeenCalledTimes(1);
+  });
+});
+
 // A turn that produces no answer must never be silent. Reported symptom: the
 // echoed prompt, then nothing but the "✳ Worked for Ns" footer. Two paths led
 // there — see the turn-start renewAbortController() and the onDiagnostic

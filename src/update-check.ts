@@ -30,7 +30,8 @@ export function isNewerVersion(latest: string, current: string): boolean {
   for (let i = 0; i < 3; i++) {
     if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) > (b[i] ?? 0);
   }
-  return false;
+  // Same X.Y.Z: the release is newer than its own candidate (0.7.0 > 0.7.0-rc.1).
+  return current.includes("-");
 }
 
 export function updateNotice(latest: string, current: string): string {

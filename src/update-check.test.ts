@@ -16,6 +16,11 @@ describe("isNewerVersion", () => {
     expect(isNewerVersion("0.6.0", "0.6.1")).toBe(false);
   });
 
+  it("counts the final release as newer than its own release candidate", () => {
+    expect(isNewerVersion("0.7.0", "0.7.0-rc.1")).toBe(true);
+    expect(isNewerVersion("0.6.1", "0.7.0-rc.1")).toBe(false);
+  });
+
   it("never counts a prerelease or a malformed version", () => {
     expect(isNewerVersion("0.7.0-beta.1", "0.6.1")).toBe(false);
     expect(isNewerVersion("latest", "0.6.1")).toBe(false);

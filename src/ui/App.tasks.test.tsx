@@ -9,7 +9,6 @@ import { todoStore } from "../tools/todo.js";
 import { jobManager } from "../tools/jobs.js";
 import { TaskRegistry, type TaskOutcome } from "../orchestrator/runner.js";
 import type { SubagentProgress } from "../orchestrator/index.js";
-import { buildTaskSegments } from "./core/task-status.js";
 
 // Same doubles as App.streaming.test.tsx: point history-store at a throwaway
 // dir and stub stdout for stray /raw writes.
@@ -82,7 +81,7 @@ function makeHarness(): TasksHarness {
     completer: () => [[], ""],
     // A live status bar: the task segment derives from the registry snapshot,
     // exactly how cli.tsx's buildStatusBar feeds it.
-    buildStatusBar: () => buildTaskSegments(registry.list()),
+    buildStatusBar: () => [],
     getPromptStr: () => "❯",
     getColorEnabled: () => false,
     logSessionEnd: async () => null,
@@ -116,6 +115,17 @@ const pendingRun = () => new Promise<TaskOutcome>(() => {});
 
 const flush = () => new Promise((r) => setTimeout(r, 60));
 
+/** The live row polls once a second, so wait for the frame instead of a fixed flush. */
+async function waitForFrame(inst: { lastFrame: () => string | undefined }, check: (frame: string) => boolean): Promise<string> {
+  const deadline = Date.now() + 3000;
+  let frame = stripAnsi(inst.lastFrame() ?? "");
+  while (!check(frame) && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 50));
+    frame = stripAnsi(inst.lastFrame() ?? "");
+  }
+  return frame;
+}
+
 const mounted: Array<{ unmount: () => void }> = [];
 afterEach(() => {
   while (mounted.length) mounted.pop()!.unmount();
@@ -124,8 +134,8 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("async sub-run status segment (async-subagents.md §4)", () => {
-  it("shows the background-task count while the run works and clears once its result arrives", async () => {
+describe("async sub-run live row (async-subagents.md §4)", () => {
+  it("shows the running agent under the status bar and clears once its result arrives", async () => {
     const h = makeHarness();
     let release!: (v: TaskOutcome) => void;
     let turns = 0;
@@ -155,23 +165,24 @@ describe("async sub-run status segment (async-subagents.md §4)", () => {
     await flush();
     await flush();
 
-    // The spawning turn ended; the sub-run still works — the bar reports it.
-    let frame = stripAnsi(inst.lastFrame() ?? "");
-    expect(frame).toContain("⧗ 1 background task · /tasks");
+    // The spawning turn ended; the sub-run still works — the live row reports it.
+    let frame = await waitForFrame(inst, (f) => f.includes("⏵ 1 agent"));
+    expect(frame).toContain("⏵ 1 agent · sub: long task");
+    expect(frame).toContain("↓ to view");
 
     // The run completes; its result wakes a turn and the segment clears.
     release({ status: "done", summary: "finished" });
     await flush();
     await flush();
     await flush();
-    frame = stripAnsi(inst.lastFrame() ?? "");
+    frame = await waitForFrame(inst, (f) => !f.includes("⏵ 1 agent"));
     expect(frame).toContain("Sub-agent result (task task-1)");
-    expect(frame).not.toContain("task-1 running");
+    expect(frame).not.toContain("⏵ 1 agent");
   });
 });
 
 describe("/tasks view (async-subagents.md §4, Q4)", () => {
-  it("lists tasks, Enter stops the selected running one (siblings survive), Esc closes", async () => {
+  it("lists tasks, x stops the selected running one (siblings survive), Esc closes", async () => {
     const h = makeHarness();
     // Two sub-runs held open so the stop action is observable mid-flight.
     const a = h.registry.spawn({ description: "task A", depth: 0, run: pendingRun, deliver: () => {} });
@@ -190,30 +201,37 @@ describe("/tasks view (async-subagents.md §4, Q4)", () => {
     await flush();
 
     let frame = stripAnsi(inst.lastFrame() ?? "");
-    expect(frame).toContain("Tasks");
-    expect(frame).toContain("task-1");
-    expect(frame).toContain("task-2");
+    expect(frame).toContain("Background");
+    expect(frame).toContain("sub: task A");
+    expect(frame).toContain("sub: task B");
     expect(frame).toContain("running");
 
-    // Enter stops the selected (first) running task — that sub-run aborts,
-    // the sibling keeps running.
+    // Enter no longer stops anything — stopping is x.
     inst.stdin.write("\r");
+    await flush();
+    expect(h.ctx.abortTask).not.toHaveBeenCalled();
+
+    // x stops the selected (first) running task — that sub-run aborts, the
+    // sibling keeps running. Both spawned in the same tick, so either can sort
+    // first; the assertion follows whichever was selected.
+    inst.stdin.write("x");
     await flush();
     await flush();
 
-    expect(h.ctx.abortTask).toHaveBeenCalledWith("task-1");
-    expect(h.registry.get("task-1")?.status).toBe("aborted");
-    expect(h.registry.get("task-2")?.status).toBe("running");
+    expect(h.ctx.abortTask).toHaveBeenCalledTimes(1);
+    const stopped = (h.ctx.abortTask as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+    const sibling = stopped === "task-1" ? "task-2" : "task-1";
+    expect(h.registry.get(stopped)?.status).toBe("aborted");
+    expect(h.registry.get(sibling)?.status).toBe("running");
     frame = stripAnsi(inst.lastFrame() ?? "");
     expect(frame).toContain("aborted");
-    expect(frame).not.toContain("press Enter to stop");
 
     // Esc closes the view; the transcript echo stays, the modal goes away.
     inst.stdin.write("\x1b");
     await flush();
     await flush();
     frame = stripAnsi(inst.lastFrame() ?? "");
-    expect(frame).not.toContain("Tasks");
+    expect(frame).not.toContain("Background —");
   });
 });
 

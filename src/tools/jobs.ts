@@ -52,6 +52,16 @@ export interface Job {
   sandboxed: boolean;
 }
 
+export interface JobListEntry {
+  id: string;
+  command: string;
+  status: JobStatus;
+  exitCode: number | null;
+  runningMs: number;
+  startTime: number;
+  endTime: number | null;
+}
+
 export interface JobStatusReport {
   id: string;
   command: string;
@@ -401,13 +411,15 @@ export class JobManager {
     for (const id of this.jobs.keys()) this.kill(id);
   }
 
-  list(): Array<{ id: string; command: string; status: JobStatus; exitCode: number | null; runningMs: number }> {
+  list(): JobListEntry[] {
     return [...this.jobs.values()].map((j) => ({
       id: j.id,
       command: j.command,
       status: j.status,
       exitCode: j.exitCode,
       runningMs: Date.now() - j.startTime,
+      startTime: j.startTime,
+      endTime: j.endTime,
     }));
   }
 

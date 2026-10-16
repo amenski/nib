@@ -75,11 +75,11 @@ patch.
   visible even though the parent turn ended.
 - Results render as normal messages when delivered.
 
-UI shipped 2026-08-16: status-line segments (`● task <id> running`, `N tasks`
-when several — `src/ui/core/task-status.ts`, built into cli.tsx's
-`buildStatusBar`); the `/tasks` modal (`src/ui/views/TaskList.tsx` — id,
-agent/depth, status, age; ↑↓ navigates, Enter stops the selected running
-task, Esc closes) via `Orchestrator.abortTask` (that task's own signal +
+UI shipped 2026-08-16, reworked 2026-10-16: a live row under the status line
+(`⏵ 1 agent · <name>: <description> 12s · ↓ to view` —
+`src/ui/core/background-items.ts`); the background panel shared with shell
+jobs (`/jobs`, `/tasks` or ↓ on an empty prompt — `src/ui/views/BackgroundList.tsx`;
+↑↓ selects, `x` stops the selected running task, Esc closes) via `Orchestrator.abortTask` (that task's own signal +
 registry record, siblings untouched); and live sub-run text (`{kind:"text"}`
 progress events from the sub-run's `onText`, coalesced at ~200 ms into dim
 `[agent <name>]` transcript rows by the App's mount-time sink — registered

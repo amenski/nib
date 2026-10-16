@@ -137,3 +137,48 @@ describe("PromptInput ↑/↓ prompt history", () => {
     expect(stripAnsi(lastFrame() ?? "")).toContain("first message");
   });
 });
+
+describe("PromptInput ↓ opens the background panel", () => {
+  function setupWithBackground(promptHistory: string[]) {
+    const onOpenBackground = vi.fn();
+    const inst = render(
+      <PromptInput
+        onSubmit={vi.fn()}
+        screenWidth={80}
+        promptHistory={promptHistory}
+        busy={false}
+        onOpenBackground={onOpenBackground}
+      />,
+    );
+    mounted.push(inst);
+    return { ...inst, onOpenBackground };
+  }
+
+  it("calls onOpenBackground on an empty prompt", async () => {
+    const { stdin, onOpenBackground } = setupWithBackground(["older prompt"]);
+    stdin.write(DOWN);
+    await flush();
+    expect(onOpenBackground).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves a typed draft alone", async () => {
+    const { stdin, onOpenBackground } = setupWithBackground([]);
+    stdin.write("draft");
+    await flush();
+    stdin.write(DOWN);
+    await flush();
+    expect(onOpenBackground).not.toHaveBeenCalled();
+  });
+
+  it("still walks forward through history while browsing it", async () => {
+    const { stdin, lastFrame, onOpenBackground } = setupWithBackground(["older prompt", "newest prompt"]);
+    stdin.write(UP);
+    await flush();
+    stdin.write(UP);
+    await flush();
+    stdin.write(DOWN);
+    await flush();
+    expect(onOpenBackground).not.toHaveBeenCalled();
+    expect(stripAnsi(lastFrame() ?? "")).toContain("newest prompt");
+  });
+});

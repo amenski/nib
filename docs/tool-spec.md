@@ -219,12 +219,15 @@ For commands that outlive 120 s (dev servers, builds, test runs):
 - `kill_job(job_id)` — kills the whole process tree; no-op if the job
   already finished.
 
-Jobs started via `run_bash_background` stream their output live into the TUI
-transcript as dim `[job <id>]` rows (per-job ~200 ms coalescing, plan §3).
-When a job finishes, the TUI status line shows `● job <id> done (exit N)` and
-the notify hook fires with a `job_done` payload (notify-spec.md §3). Commands
-migrated from a `run_bash` timeout are tracked the same way but never stream
-live output — only tool-started jobs do (plan §3 decision E).
+Job output does not go into the TUI transcript (changed 2026-10-16). Running
+and recently finished jobs show on a live row under the status line
+(`⏵ 2 shells · npm run dev 3m · ↓ to view`), and the background panel
+(`/jobs`, `/tasks`, or ↓ on an empty prompt — `src/ui/views/BackgroundList.tsx`)
+shows the selected job's last 15 output lines and stops it with `x`. A finished
+job leaves one transcript row (`● <command> · exited N · <age>`, red when it
+failed or was killed), and the notify hook fires with a `job_done` payload
+(notify-spec.md §3). Commands migrated from a `run_bash` timeout are tracked
+and shown the same way.
 
 ## 6. Meta tools
 

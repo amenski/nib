@@ -138,7 +138,7 @@ Typed at the prompt inside the TUI. Three surfaces:
 1. **Autocomplete menu** — `BUILTIN_SLASH_COMMANDS`
    (`src/ui/core/slash-commands.ts`): `/skills`, `/model`, `/mode`,
    `/effort`, `/new`, `/resume`, `/continue`, `/undo`, `/mcp`,
-   `/tasks`, `/permissions`, `/usage`, `/plan`, `/raw`, `/clear`, `/compact`,
+   `/jobs`, `/permissions`, `/usage`, `/plan`, `/raw`, `/clear`, `/compact`,
    `/context`, `/doctor`, `/help`, `/exit`.
 2. **Text dispatcher** — `handleSlashCore` (`src/cli.tsx:987`): `/help`,
    `/cost`, `/context`, `/usage`, `/doctor`, `/skills`, `/skill <name> [text]`
@@ -147,7 +147,7 @@ Typed at the prompt inside the TUI. Three surfaces:
    `/mode [slug]`, `/model [provider/model]`, `/effort [value]`, `/sessions`.
 3. **TUI handlers** (`src/ui/App.tsx` `handleSlashCommand`):
    `/new`, `/resume`, `/continue`, `/sessions` (alias for the session
-   list), `/undo`, `/mcp`, `/tasks`, `/permissions`, `/usage`, `/plan`,
+   list), `/undo`, `/mcp`, `/jobs`, `/permissions`, `/usage`, `/plan`,
    `/raw`, `/exit`.
 
 **Routed but not in the autocomplete menu:** `/cost`, `/modes`,
@@ -186,16 +186,18 @@ nothing is cached (decision I). Which providers support a balance query, and
 the exact response parsing, are documented in provider-spec.md §2.1; the
 provider name printed when unsupported is the active provider, not the model.
 
-**`/tasks`** (async-subagents.md §4, Q4). In the TUI it opens a bordered view
-(`src/ui/views/TaskList.tsx`, Esc closes — the `/mcp` pattern) listing the
-session's async sub-agent tasks: task id, agent name/depth, status
-(running/done/failed/aborted), age, and a truncated description. ↑↓
-navigates; **Enter stops the selected running task** — that sub-run aborts
-(its own signal fires, the record flips, its late result is suppressed) while
-siblings keep running. While any task runs, the status line shows
-`● task <id> running` (or `N tasks` when several), cleared when none run
-(`src/ui/core/task-status.ts`). Tasks are in-memory only and die on exit
-(async-subagents.md §3, Q3); headless runs have no interactive /tasks surface.
+**`/jobs`** (alias `/tasks`; async-subagents.md §4, Q4). In the TUI it opens
+the background panel (`src/ui/views/BackgroundList.tsx`, Esc closes — the
+`/mcp` pattern): background shell jobs and the session's async sub-agent tasks
+in one list, with kind, status (exit code for a finished shell), age and label.
+The selected shell shows its last 15 output lines. ↑↓ selects; **`x` stops the
+selected running item** — a shell via `kill_job`'s process-tree kill, a
+sub-run via its own abort signal (the record flips, its late result is
+suppressed) while siblings keep running. ↓ on an empty prompt opens the same
+panel. While anything runs, a live row under the status line summarizes it
+(`⏵ 2 shells · 1 agent · npm run dev 3m · ↓ to view`;
+`src/ui/core/background-items.ts`). Tasks and jobs are in-memory only and die
+on exit (async-subagents.md §3, Q3); headless runs have no interactive panel.
 
 **Completion (Tab).** A bare Tab completes contextually. At the start of the
 line (or after whitespace) it completes a slash command. After `@` the file

@@ -75,12 +75,12 @@ sub-runs via the parent signal; `SubagentStart`/`SubagentStop` fire at
 spawn/completion; permission/profile inheritance, the audit-only store
 view, and isolated todo stores are untouched.
 
-**UI surface (async-subagents.md §4, shipped 2026-08-16).** While any task
-runs, the status line shows `● task <id> running` (or `N tasks` when
-several) — `buildTaskSegments` (`src/ui/core/task-status.ts`), fed the live
-registry snapshot by cli.tsx's `buildStatusBar` and refreshed on delivery
-and turn end. `/tasks` opens a bordered view (`src/ui/views/TaskList.tsx`)
-listing id/agent/depth/status/age with a per-task stop (Enter): the
+**UI surface (async-subagents.md §4, shipped 2026-08-16, reworked
+2026-10-16).** While any task runs, a live row under the status line counts
+it alongside background shells (`⏵ 1 agent · …` — `collectBackgroundItems` /
+`backgroundRowText` in `src/ui/core/background-items.ts`, polled once a
+second by App). `/jobs` (alias `/tasks`) opens the shared background panel
+(`src/ui/views/BackgroundList.tsx`) with a per-item stop (`x`): the
 orchestrator's `abortTask()` fires that task's own abort signal — each run's
 signal is linked to the parent's at spawn, so Esc/Ctrl+C still aborts every
 sub-run — and marks the record aborted, suppressing its late delivery while

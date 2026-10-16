@@ -16,7 +16,7 @@ const items = getSlashCommands();
 // because App's handleSlashCommand routes them and opensModal must agree.
 const MODAL = [
   "model", "mode", "effort", "resume", "continue", "sessions",
-  "skills", "modes", "undo", "mcp", "tasks", "permissions", "usage", "help", "doctor", "context",
+  "skills", "modes", "undo", "mcp", "tasks", "jobs", "permissions", "usage", "help", "doctor", "context",
 ];
 
 // Commands that mutate state / start or end the session — must stay queueable
@@ -32,7 +32,7 @@ describe("slash-command layer (integration)", () => {
     expect(items.map((i) => i.name).sort()).toEqual(
       [
         "clear", "compact", "context", "continue", "doctor", "effort", "exit", "help", "mcp", "mode", "model",
-        "new", "permissions", "plan", "raw", "resume", "skills", "tasks", "undo", "usage",
+        "new", "permissions", "plan", "raw", "resume", "skills", "jobs", "undo", "usage",
       ].sort(),
     );
   });

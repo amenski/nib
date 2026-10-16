@@ -863,48 +863,66 @@ describe("background jobs (plan §3)", () => {
     jobManager.killAll();
   });
 
-  it("streams a model-started job's output as dim transcript rows and shows a completion segment", async () => {
+  /** Background state is polled once a second, so wait for the frame. */
+  async function waitForFrame(inst: { lastFrame: () => string | undefined }, check: (frame: string) => boolean): Promise<string> {
+    const deadline = Date.now() + 8000;
+    let frame = stripAnsi(inst.lastFrame() ?? "");
+    while (!check(frame) && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 50));
+      frame = stripAnsi(inst.lastFrame() ?? "");
+    }
+    return frame;
+  }
+
+  it("keeps job output out of the transcript and leaves one completion row", async () => {
     const ctx = makeCtx(async () => ({ stopReason: "done", messages: [], newMessages: [] }));
     const inst = render(<App ctx={ctx} />);
     mounted.push(inst);
     await flush();
 
-    const result = jobManager.start("echo job-stream-row", process.cwd(), 5000, { stream: true });
+    const result = jobManager.start("printf 'out-%s\\n' marker", process.cwd(), 5000, { stream: true });
     expect(result.ok).toBe(true);
-    const shortId = result.ok ? result.id.slice(0, 4) : "";
 
-    // Wait for the job to finish and the 200ms coalesce flush to land.
-    const deadline = Date.now() + 5000;
-    let frame = stripAnsi(inst.lastFrame() ?? "");
-    while (!frame.includes(`[job ${shortId}] job-stream-row`) && Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 50));
-      frame = stripAnsi(inst.lastFrame() ?? "");
-    }
-    expect(frame).toContain(`[job ${shortId}] job-stream-row`);
-    // Per-job ids stay out of the bar; a single completed job collapses to
-    // the aggregate summary segment.
-    expect(frame).toContain("● 1 job done · 1 line");
+    const frame = await waitForFrame(inst, (f) => f.includes("· exited 0 ·"));
+    expect(frame).toContain("● printf 'out-%s\\n' marker · exited 0 ·");
+    expect(frame).not.toContain("out-marker");
+    expect(frame).not.toContain("[job ");
+    // The finished job also shows on the live row until it ages out.
+    expect(frame).toContain("● 1 shell finished · ↓ to view");
   });
 
-  it("stays silent in the transcript for a non-streamable (timeout-migrated) job", async () => {
+  it("opens the background panel with ↓ on an empty prompt, shows the job's output, and x stops it", async () => {
     const ctx = makeCtx(async () => ({ stopReason: "done", messages: [], newMessages: [] }));
     const inst = render(<App ctx={ctx} />);
     mounted.push(inst);
     await flush();
 
-    const result = jobManager.start("echo not-streamed-row", process.cwd(), 5000);
+    const result = jobManager.start("printf 'panel-line\\n'; sleep 30", process.cwd(), 60_000, { stream: true });
     expect(result.ok).toBe(true);
-    const deadline = Date.now() + 5000;
-    let frame = stripAnsi(inst.lastFrame() ?? "");
-    while (!frame.includes("● 1 job done · 1 line") && Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 50));
-      frame = stripAnsi(inst.lastFrame() ?? "");
-    }
-    // The completion segment appeared, but no live output rows (decision E).
-    expect(frame).toContain("● 1 job done · 1 line");
-    expect(frame).not.toContain("[not-streamed-row]");
-    expect(frame).not.toContain("not-streamed-row");
-  });
+
+    let frame = await waitForFrame(inst, (f) => f.includes("⏵ 1 shell"));
+    expect(frame).toContain("⏵ 1 shell · printf 'panel-line\\n'; sleep 30");
+    expect(frame).not.toContain("panel-line\n");
+
+    inst.stdin.write("\u001B[B");
+    frame = await waitForFrame(inst, (f) => f.includes("Background —") && f.includes("panel-line"));
+    // Earlier tests' finished jobs stay listed (the manager is a singleton),
+    // so only the running count is exact.
+    expect(frame).toMatch(/Background — \d+ total, 1 running/);
+    // The output tail row, not the command label that also contains the text.
+    expect(frame).toMatch(/^[│\s]*panel-line[│\s]*$/m);
+
+    // The panel can paint before its key handler attaches (useEffect runs
+    // after paint); under full-suite load a key sent in that gap is lost.
+    await new Promise((r) => setTimeout(r, 300));
+    inst.stdin.write("x");
+    frame = await waitForFrame(inst, (f) => f.includes("· killed ·"));
+    expect(frame).toContain("· killed ·");
+
+    inst.stdin.write("\u001B");
+    frame = await waitForFrame(inst, (f) => !f.includes("Background —"));
+    expect(frame).not.toContain("Background —");
+  }, 20_000);
 });
 
 // A turn that produces no answer must never be silent. Reported symptom: the

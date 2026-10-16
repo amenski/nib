@@ -66,7 +66,8 @@ import SkillList from "./views/SkillList.js";
 import ModeList from "./views/ModeList.js";
 import UndoSelector from "./views/UndoSelector.js";
 import McpStatusList from "./views/McpStatusList.js";
-import TaskList from "./views/TaskList.js";
+import BackgroundList from "./views/BackgroundList.js";
+import { backgroundRowText, collectBackgroundItems, completionLine, type BackgroundItem } from "./core/background-items.js";
 import PermissionHistoryList from "./views/PermissionHistoryList.js";
 import UsageView from "./views/UsageView.js";
 import ResumeChooser from "./views/ResumeChooser.js";
@@ -124,42 +125,6 @@ function formatQueueTime(at: number): string {
   const hh = String(d.getHours()).padStart(2, "0");
   const mm = String(d.getMinutes()).padStart(2, "0");
   return `[${hh}:${mm}]`;
-}
-
-// Session tally of finished background jobs, folded into ONE status segment.
-// Per-job detail (id, exit code, per-job line count) already streams into the
-// transcript as `[job e63e]` rows and check_job results, so the status bar
-// only carries the aggregate — one segment regardless of how many jobs ran.
-interface JobSummary {
-  total: number;
-  done: number;
-  failed: number;
-  killed: number;
-  lines: number;
-}
-
-// Collapse a JobSummary into its status segment. All-clean reads as a plain
-// count (`● 5 jobs done · 247 lines`); any failed/killed job switches the
-// segment to red and spells out the outcomes (`● 4 done · 1 killed · 247
-// lines`) so the failure is scannable without reading the transcript.
-function jobSummaryToSegment(s: JobSummary): StatusSegment {
-  const bad = s.failed + s.killed;
-  let countText: string;
-  if (bad === 0) {
-    countText = s.total === 1 ? "1 job done" : `${s.total} jobs done`;
-  } else {
-    const parts: string[] = [];
-    if (s.done > 0) parts.push(`${s.done} done`);
-    if (s.failed > 0) parts.push(`${s.failed} failed`);
-    if (s.killed > 0) parts.push(`${s.killed} killed`);
-    countText = parts.join(" · ");
-  }
-  const lineText = s.lines === 1 ? "1 line" : `${s.lines} lines`;
-  return {
-    text: `● ${countText} · ${lineText}`,
-    dimColor: bad === 0,
-    color: bad > 0 ? "red" : undefined,
-  };
 }
 
 /** How long a permission prompt opened over a half-typed draft ignores `1`–`4`/Enter. */
@@ -246,17 +211,10 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
   const [statusLineProviderSegments, setStatusLineProviderSegments] = useState<
     StatusSegment[]
   >(() => ctx.statusLineManager?.segments ?? []);
-  // Aggregate tally of finished background jobs (plan §3). Separate state
-  // because buildStatusBar rewrites statusLine wholesale; combined at render
-  // like the provider segments. The tally never grows the row — it collapses
-  // to one segment however many jobs completed (see jobSummaryToSegment).
-  const [jobSummary, setJobSummary] = useState<JobSummary>({
-    total: 0,
-    done: 0,
-    failed: 0,
-    killed: 0,
-    lines: 0,
-  });
+  // Background shells and sub-agents for the live row under the status bar.
+  // Polled (jobs and tasks finish on their own); see the effect below.
+  const [backgroundItems, setBackgroundItems] = useState<BackgroundItem[]>([]);
+  const [backgroundNow, setBackgroundNow] = useState(() => Date.now());
   // Todo checklist state, mirrored from the shared store so the panel
   // re-renders on every update_todo_list call. Initialized from the store
   // (empty at mount).
@@ -351,6 +309,8 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
   }, [showUndoSelector]);
   const [showMcpStatus, setShowMcpStatus] = useState(false);
   const [showTasks, setShowTasks] = useState(false);
+  // Stable identity: PromptInput is memoized.
+  const openBackground = useCallback(() => setShowTasks(true), []);
   const [showPermissionHistory, setShowPermissionHistory] = useState(false);
   const [showUsage, setShowUsage] = useState(false);
   // Startup resume chooser: null until a resumed session offers the load/compact
@@ -513,74 +473,40 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
     return () => mgr.stop();
   }, []);
 
-  // Background-job completion (plan §3): a finished job folds into the
-  // aggregate jobSummary — one status segment no matter how many jobs ran.
-  // Subscribed once at mount; cleanup unsubscribes.
+  // Background jobs: output no longer streams into the transcript — it lives
+  // in the background panel. A finished job leaves one row, red when it
+  // failed or was killed.
   useEffect(() => {
-    const offCompleted = jobManager.onCompleted((report) => {
-      setJobSummary((prev) => {
-        const lineCount = (report.stdout + report.stderr)
-          .split("\n")
-          .filter((l) => l.trim() !== "").length;
-        return {
-          total: prev.total + 1,
-          done: prev.done + (report.status === "done" ? 1 : 0),
-          failed: prev.failed + (report.status === "failed" ? 1 : 0),
-          killed: prev.killed + (report.status === "killed" ? 1 : 0),
-          lines: prev.lines + lineCount,
-        };
-      });
-    });
-    return offCompleted;
-  }, []);
-
-  // Background-job live output (plan §3, decision E): JobManager emits output
-  // events only for jobs started via the run_bash_background tool, so this
-  // streams exactly those — no global job telemetry. Chunks are coalesced per
-  // job at ~200ms and committed as dim transcript rows; <Static> renders each
-  // row once, so the cadence costs a single row per flush, never a repaint
-  // storm. A completing job flushes its buffered tail immediately.
-  useEffect(() => {
-    const coalescers = new Map<string, JobOutputCoalescer>();
-    const timers = new Map<string, ReturnType<typeof setTimeout>>();
-    const flushJob = (jobId: string) => {
-      const timer = timers.get(jobId);
-      if (timer) clearTimeout(timer);
-      timers.delete(jobId);
-      const coalescer = coalescers.get(jobId);
-      if (!coalescer) return;
-      coalescer.flush();
-      if (!coalescer.hasPending) coalescers.delete(jobId);
-    };
-    const appendJobRows = (jobId: string, text: string) => {
-      const body = text.replace(/\n$/, "");
-      if (!body) return;
-      const shortId = jobId.slice(0, 4);
-      const rows = body.split("\n").map((l) => `[job ${shortId}] ${l}`);
+    return jobManager.onCompleted((report) => {
+      const line = completionLine(report);
       setOutputLines((prev) => [
         ...prev,
-        ...rows.map((l) => theme.fg(theme.theme.textDim, l)),
+        theme.fg(line.failed ? theme.theme.error : theme.theme.textDim, line.text),
       ]);
-    };
-    const offOutput = jobManager.onOutput((jobId, chunk) => {
-      let coalescer = coalescers.get(jobId);
-      if (!coalescer) {
-        coalescer = new JobOutputCoalescer((text) => appendJobRows(jobId, text));
-        coalescers.set(jobId, coalescer);
-      }
-      coalescer.push(chunk);
-      if (!timers.has(jobId)) {
-        timers.set(jobId, setTimeout(() => {
-          timers.delete(jobId);
-          flushJob(jobId);
-        }, 200));
-      }
     });
-    const offCompleted = jobManager.onCompleted((report) => flushJob(report.id));
+  }, []);
+
+  // Live row under the status bar. Polled once a second; state only changes
+  // when an item starts, ends, or (while something runs) its age ticks, so an
+  // idle session re-renders nothing.
+  useEffect(() => {
+    let lastKey = "";
+    const poll = () => {
+      const items = collectBackgroundItems(jobManager.list(), ctx.getTasks?.() ?? []);
+      const now = Date.now();
+      const running = items.some((i) => i.status === "running");
+      const key = items.map((i) => `${i.kind}:${i.id}:${i.status}`).join("|") + (running ? `@${Math.floor(now / 1000)}` : "");
+      if (key === lastKey) return;
+      lastKey = key;
+      setBackgroundItems(items);
+      setBackgroundNow(now);
+    };
+    poll();
+    const interval = setInterval(poll, 1000);
+    const offCompleted = jobManager.onCompleted(poll);
     return () => {
-      offOutput();
+      clearInterval(interval);
       offCompleted();
-      for (const t of timers.values()) clearTimeout(t);
     };
   }, []);
 
@@ -614,13 +540,6 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
       ]);
     };
     ctx.setSubagentProgress?.((event) => {
-      // The status bar's "N background tasks" segment is derived from the live
-      // registry, but nothing repaints the bar when that registry changes: the
-      // bar is otherwise refreshed by turn events, and a detached sub-run
-      // outlives its turn. Repaint on the two state transitions.
-      if (event.kind === "start" || event.kind === "end") {
-        setStatusLine(ctx.buildStatusBar());
-      }
       if (event.kind === "text") {
         const label = `agent ${event.agent ?? "sub"}`;
         const key = `${label}:${event.depth}`;
@@ -1746,7 +1665,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
       setShowMcpStatus(true);
       return;
     }
-    if (trimmed === "/tasks") {
+    if (trimmed === "/tasks" || trimmed === "/jobs") {
       setShowTasks(true);
       return;
     }
@@ -2289,6 +2208,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
   const colorEnabled = theme.colorEnabled;
   const term = useTerminalInfo();
 
+  const backgroundRow = backgroundRowText(backgroundItems, backgroundNow, term.columns);
   const modalOpen =
     !!askPrompt || !!askQuestionPrompt || !!hookTrustPrompt || !!skillTrustPrompt || !!planPrompt || showSessionList || showSkillList || showModeList ||
     showUndoSelector || showMcpStatus || showTasks || showPermissionHistory || showUsage || showModelDropdown || showThemeDropdown || showEffortSelector || showHelp || showCommandPalette ||
@@ -2518,14 +2438,15 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
       )}
 
       {showTasks && (
-        <TaskList
+        <BackgroundList
+          getJobs={() => jobManager.list()}
           getTasks={ctx.getTasks ?? (() => [])}
-          abortTask={(id) => {
-            ctx.abortTask?.(id);
-            // The status bar's task segment derives from registry state —
-            // refresh it so the stop is visible on the row immediately.
-            setStatusLine(ctx.buildStatusBar());
+          getJobOutput={(id) => {
+            const report = jobManager.check(id);
+            return report ? report.stdout + report.stderr : null;
           }}
+          killJob={(id) => { jobManager.kill(id); }}
+          abortTask={(id) => { ctx.abortTask?.(id); }}
           onClose={() => setShowTasks(false)}
           width={term.columns}
         />
@@ -2669,6 +2590,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
         onModelPickerOpen={() => setShowModelDropdown(true)}
         onCyclePosture={() => cyclePosture()}
         onOpenModePicker={() => setShowModeList(true)}
+        onOpenBackground={backgroundRow !== null ? openBackground : undefined}
         completer={ctx.completer}
         onDraftChange={onPromptDraftChange}
         gapAbove={needsComposerGap({
@@ -2681,20 +2603,21 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
         statusLine={
           <StatusBar
             segments={
-              statusLineProviderSegments.length > 0 || jobSummary.total > 0
-                ? [
-                    ...statusLine,
-                    ...(jobSummary.total > 0
-                      ? [jobSummaryToSegment(jobSummary)]
-                      : []),
-                    ...statusLineProviderSegments,
-                  ]
+              statusLineProviderSegments.length > 0
+                ? [...statusLine, ...statusLineProviderSegments]
                 : statusLine
             }
             gitStatus={gitStatus}
           />
         }
       />
+
+      {/* Background shells and agents, directly under the status bar. It
+          sits above the hint bar (which must stay last) and changes at most
+          once a second, only while something runs. */}
+      {backgroundRow !== null && !modalOpen && (
+        <Text wrap="truncate" color={ansi256(theme.theme.textDim)}>{backgroundRow}</Text>
+      )}
 
       {/* The hint bar is deliberately the LAST row of the frame, and carries the
           only continuously-changing element (the working indicator). Ink

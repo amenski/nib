@@ -52,6 +52,11 @@ interface Props {
   onCyclePosture?: () => void;
   onOpenModePicker?: () => void;
   /**
+   * Open the background panel. Set by the host only while background shells or
+   * agents exist; ↓ on an empty prompt (not browsing history) calls it.
+   */
+  onOpenBackground?: () => void;
+  /**
    * Context completion engine (ctx.completer, cli.tsx): slash commands at the
    * start of the line, path completion for mid-word tokens. Applied on a bare
    * Tab when neither the slash menu nor the @-file picker is open. Returns
@@ -82,7 +87,7 @@ interface Props {
 
 const PromptInput = React.memo(function PromptInput({
   screenWidth, promptHistory, busy, placeholder, statusLine,
-  promptDraft, onSubmit, onInterrupt, onExitShortcut, onModelPickerOpen, onCyclePosture, onOpenModePicker, completer, onDraftChange, gapAbove,
+  promptDraft, onSubmit, onInterrupt, onExitShortcut, onModelPickerOpen, onCyclePosture, onOpenModePicker, onOpenBackground, completer, onDraftChange, gapAbove,
   suspended = false,
 }: Props): React.ReactElement | null {
   const theme = useTheme();
@@ -255,7 +260,7 @@ const PromptInput = React.memo(function PromptInput({
     if (item.kind === "continue") { onSubmit({ text: "/continue", command: "continue" }); resetInput(); return; }
     if (item.kind === "undo") { onSubmit({ text: "/undo", command: "undo" }); resetInput(); return; }
     if (item.kind === "mcp") { onSubmit({ text: "/mcp", command: "mcp" }); resetInput(); return; }
-    if (item.kind === "tasks") { onSubmit({ text: "/tasks" }); resetInput(); return; }
+    if (item.kind === "tasks") { onSubmit({ text: item.label }); resetInput(); return; }
     if (item.kind === "permissions") { onSubmit({ text: "/permissions" }); resetInput(); return; }
     if (item.kind === "usage") { onSubmit({ text: "/usage", command: "usage" }); resetInput(); return; }
     if (item.kind === "plan") { onSubmit({ text: "/plan" }); resetInput(); return; }
@@ -476,6 +481,7 @@ const PromptInput = React.memo(function PromptInput({
       return;
     }
     if (key.downArrow) {
+      if (noMod && onOpenBackground && historyCursor === -1 && curText.text === "") { onOpenBackground(); return; }
       if (noMod && (historyCursor !== -1 || curText.cursor === curText.text.length)) { navigateHistory(1); return; }
       return;
     }

@@ -108,14 +108,28 @@ export function compactionCutoffTokens(
   return maxTokens !== undefined ? Math.min(fraction, maxTokens) : fraction;
 }
 
+/**
+ * How far chars/4 under-reads the provider's own count, from the last request:
+ * `reported / estimated`, clamped to [1, 4]. Measured 2026-10-15 across real
+ * sessions: 1.2× typical, 1.4× p90, 1.6× on escaped-JSON tool output — enough
+ * for a 1M-window session to fill its window while the estimate still sat under
+ * the 700K trigger. The floor keeps the trigger no later than the raw
+ * estimate; the cap stops one bad usage report from forcing a compaction.
+ */
+export function calibrationRatio(reported?: number, estimated?: number): number {
+  if (!reported || !estimated) return 1;
+  return Math.min(4, Math.max(1, reported / estimated));
+}
+
 export function shouldCompact(
   messages: Message[],
   contextWindow: number,
   threshold?: number,
   overheadTokens = 0,
   maxTokens?: number,
+  calibration = 1,
 ): boolean {
   const cutoff = compactionCutoffTokens(contextWindow, threshold, maxTokens);
-  const used = estimateTokens(messages) + overheadTokens;
+  const used = (estimateTokens(messages) + overheadTokens) * calibration;
   return used >= cutoff;
 }

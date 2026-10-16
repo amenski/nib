@@ -78,8 +78,10 @@ error. Verify this new signal in both capable and refusing macOS runners.
 
 Every call still passes explicit deny rules, profile checks, and the built-in
 guards. The grant satisfies only an ordinary or syntactically unresolved Bash
-ask after those checks. It cannot approve an explicit deny, a guarded ask,
-`run_bash_background`, a persistent rule, an MCP call, or the narrow
+ask after those checks, foreground or `run_bash_background` (amended
+2026-10-15: background jobs run under the same profile and re-check its hash at
+launch). It cannot approve an explicit deny, a guarded ask,
+a persistent rule, an MCP call, or the narrow
 `.git/config` trusted profile variant. Those require their existing separate
 decisions. The old `autoApprove` Bash bypass should be consolidated with this
 grant rather than leaving two ways to bypass prompts; no existing setting
@@ -95,8 +97,8 @@ forbids, so `cli.tsx` hands a sub-run the envelope only when it is
 auto-granted (`OrchestratorOptions.getBashEnvelope`), and with the setting off
 a subagent keeps the original behavior: no envelope, no grant, ask per call.
 The grant's own limits are unchanged for subagents (an ordinary or
-syntactically unresolved foreground `run_bash` only — an explicit deny, a
-guarded ask, `run_bash_background`, a persistent rule, an MCP call, or the
+syntactically unresolved `run_bash` or `run_bash_background` only — an explicit deny, a
+guarded ask, a persistent rule, an MCP call, or the
 `.git/config` variant still needs its own decision), and a subagent's ask now
 names its task: `△ Permission required · background task: <description>`.
 
@@ -139,7 +141,7 @@ the per-session prompt was friction on every new session. `sandbox.autoAllowBash
 (default on, **global settings only** — a project file cannot set it) makes
 the gate take the `envelope-grant` path without calling the prompter
 (`BashEnvelope.autoGrant`, set in `cli.tsx`). Everything else above still
-holds: eligibility is unchanged (deny, guarded, background Bash, config-authored
+holds: eligibility is unchanged (deny, guarded, config-authored
 asks, MCP and the `.git/config` variant still prompt), the grant is still
 recorded and audited (reason names `sandbox.autoAllowBash`), envelope changes
 still invalidate it, and a Seatbelt refusal still revokes it with no

@@ -93,3 +93,22 @@ describe("Compactor tool-pair boundary", () => {
     expect((firstNonSummary as { toolCalls?: unknown[] }).toolCalls).toHaveLength(2);
   });
 });
+
+describe("Compactor calibration (observeUsage)", () => {
+  it("compacts once the provider reports more tokens than the estimate", () => {
+    const c = new Compactor(stubProvider, 1_000_000, 0.7);
+    const messages: Message[] = [{ role: "user", content: "x".repeat(643_000 * 4) }];
+
+    expect(c.needsCompaction(messages)).toBe(false);
+    c.observeUsage(643_000, 1_048_576);
+    expect(c.needsCompaction(messages)).toBe(true);
+    expect(c.tokenCalibration).toBeCloseTo(1.63, 2);
+  });
+
+  it("never moves the trigger later when the provider reports fewer tokens", () => {
+    const c = new Compactor(stubProvider, 100, 0.7);
+    c.observeUsage(1_000, 100);
+    expect(c.tokenCalibration).toBe(1);
+    expect(c.needsCompaction(bigMessages())).toBe(true);
+  });
+});

@@ -1,6 +1,6 @@
 import type { Message } from "../types.js";
 import type { Provider } from "../providers/types.js";
-import { shouldCompact } from "./budget.js";
+import { calibrationRatio, shouldCompact } from "./budget.js";
 import { stripToolCallMarkup } from "../sessions/store.js";
 
 const COMPACTION_PROMPT = `Summarize the following conversation between an AI agent and a user.
@@ -49,6 +49,7 @@ export class Compactor {
   private fidelityRegenerationCount = 0;
   private sessionFiles: Set<string> = new Set();
   private lastSummary: string | null = null;
+  private calibration = 1;
 
   constructor(
     private provider: Provider,
@@ -63,7 +64,22 @@ export class Compactor {
     // `auto: false` (config compaction.auto) disables automatic compaction.
     // Explicit paths (summarizeForResume, manual /compact) bypass this gate.
     if (!this.auto) return false;
-    return shouldCompact(messages, this.contextWindow, this.threshold, overheadTokens, this.maxTokens);
+    return shouldCompact(messages, this.contextWindow, this.threshold, overheadTokens, this.maxTokens, this.calibration);
+  }
+
+  /**
+   * Records the provider's input-token count for a request nib estimated at
+   * `estimatedRequestTokens`, so the trigger measures real tokens (budget.ts
+   * `calibrationRatio`). The latest request wins: the ratio follows the
+   * content mix, which shifts as tool output accumulates.
+   */
+  observeUsage(estimatedRequestTokens: number, reportedInputTokens: number): void {
+    this.calibration = calibrationRatio(reportedInputTokens, estimatedRequestTokens);
+  }
+
+  /** The ratio the trigger currently applies to the chars/4 estimate. */
+  get tokenCalibration(): number {
+    return this.calibration;
   }
 
   trackFiles(files: string[]): void {

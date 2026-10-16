@@ -5,7 +5,22 @@ import { ToolRegistry } from "./registry.js";
 import { wrapUntrusted, sanitizeControlChars } from "./untrusted-content.js";
 
 const MAX_MATCH_LINES = 50;
+// A line cap alone does not bound the result: one match in a minified file or
+// a JSONL log can be hundreds of KB on its own.
+const MAX_LINE_CHARS = 500;
 const TIMEOUT_MS = 30_000;
+
+function capLines(stdout: string): string {
+  return stdout
+    .split("\n")
+    .slice(0, MAX_MATCH_LINES)
+    .map((line) =>
+      line.length > MAX_LINE_CHARS
+        ? `${line.slice(0, MAX_LINE_CHARS)}…[line truncated, ${line.length} chars]`
+        : line,
+    )
+    .join("\n");
+}
 // Generated, vendored and cached directories: never what a code search is
 // after, and they dominate the cost of a recursive walk — a single
 // node_modules or target/ can be most of a tree's bytes, and a match inside
@@ -33,6 +48,9 @@ const SKIP_DIR_NAMES = [
   "dist", "build", "out", "obj", "DerivedData",
   // caches, coverage and IDE state
   ".cache", "coverage", ".nyc_output", ".idea", ".terraform",
+  // nib's own per-project state: --debug logs hold whole conversations on one
+  // line, so a match there floods the context with an earlier session
+  ".nib",
 ];
 const SKIP_DIRS = SKIP_DIR_NAMES.map((d) => `--exclude-dir=${d}`);
 
@@ -91,7 +109,7 @@ export function runSearchTimed(
               // content path below.
               : sanitizeControlChars((err as Error).message);
           const partial = stdout
-            ? `${wrapUntrusted(sanitizeControlChars(stdout.split("\n").slice(0, MAX_MATCH_LINES).join("\n")))}\n\nPartial results — ${message}`
+            ? `${wrapUntrusted(sanitizeControlChars(capLines(stdout)))}\n\nPartial results — ${message}`
             : `Error running search: ${message}`;
           resolve({ content: partial, error: message });
           return;
@@ -100,7 +118,7 @@ export function runSearchTimed(
           resolve({ content: "No matches found." });
           return;
         }
-        const capped = stdout.split("\n").slice(0, MAX_MATCH_LINES).join("\n");
+        const capped = capLines(stdout);
         resolve({ content: wrapUntrusted(sanitizeControlChars(capped)) });
       },
     );

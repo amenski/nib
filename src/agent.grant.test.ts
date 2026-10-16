@@ -692,7 +692,8 @@ describe("isEligibleForGrant", () => {
     expect(isEligibleForGrant({ ...eligible, envelope: undefined })).toBe(false);
   });
 
-  it("is eligible for background Bash", () => {
+  // A grant needs a sandboxed level, which exists only on macOS (Seatbelt).
+  itOnDarwin("is eligible for background Bash", () => {
     expect(isEligibleForGrant({ ...eligible, envelope: makeEnvelope(), toolName: "run_bash_background" })).toBe(true);
   });
 

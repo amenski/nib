@@ -8,6 +8,7 @@ import { configureSandbox } from "./sandbox/seatbelt.js";
 import { configureUnsandboxed } from "./sandbox/unsandboxed.js";
 import { filterToolDefs } from "./tools/filter.js";
 import { todoStore } from "./tools/todo.js";
+import { jobManager } from "./tools/jobs.js";
 import { initPresets, createProvider, getPreset } from "./providers/presets.js";
 import { createRiskJudge } from "./providers/risk-judge.js";
 import { imageSupportWarning } from "./providers/registry.js";
@@ -539,6 +540,9 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
     // aborted and never deliver into a dead loop; the process exit is the
     // actual kill.
     orchestrator?.tasks.abortAll();
+    // No one to warn headless: a -p run never leaves a background shell
+    // (and its port) behind.
+    jobManager.killAll();
     console.error = originalConsoleError;
     process.off("SIGINT", handleSigint);
   }

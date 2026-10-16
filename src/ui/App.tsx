@@ -67,7 +67,7 @@ import ModeList from "./views/ModeList.js";
 import UndoSelector from "./views/UndoSelector.js";
 import McpStatusList from "./views/McpStatusList.js";
 import BackgroundList from "./views/BackgroundList.js";
-import { backgroundRowText, collectBackgroundItems, completionLine, type BackgroundItem } from "./core/background-items.js";
+import { backgroundRowText, collectBackgroundItems, completionLine, shellLabel, type BackgroundItem } from "./core/background-items.js";
 import PermissionHistoryList from "./views/PermissionHistoryList.js";
 import UsageView from "./views/UsageView.js";
 import ResumeChooser from "./views/ResumeChooser.js";
@@ -126,6 +126,9 @@ function formatQueueTime(at: number): string {
   const mm = String(d.getMinutes()).padStart(2, "0");
   return `[${hh}:${mm}]`;
 }
+
+/** How long a second exit stops running background shells after the warning. */
+const EXIT_CONFIRM_MS = 10_000;
 
 /** How long a permission prompt opened over a half-typed draft ignores `1`–`4`/Enter. */
 export const PERMISSION_TYPING_GUARD_MS = 500;
@@ -309,6 +312,8 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
   }, [showUndoSelector]);
   const [showMcpStatus, setShowMcpStatus] = useState(false);
   const [showTasks, setShowTasks] = useState(false);
+  // When the last exit attempt warned about running background shells.
+  const exitConfirmAtRef = useRef(0);
   // Stable identity: PromptInput is memoized.
   const openBackground = useCallback(() => setShowTasks(true), []);
   const [showPermissionHistory, setShowPermissionHistory] = useState(false);
@@ -2181,6 +2186,23 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
   });
 
   async function handleExit() {
+    // Background shells run in their own process group, so they outlive nib
+    // and keep their ports. Warn on the first exit; a second exit within
+    // EXIT_CONFIRM_MS stops them and quits.
+    const runningShells = jobManager.list().filter((j) => j.status === "running");
+    if (runningShells.length > 0 && Date.now() - exitConfirmAtRef.current > EXIT_CONFIRM_MS) {
+      exitConfirmAtRef.current = Date.now();
+      const named = runningShells.slice(0, 2).map((j) => shellLabel(j.command)).join(", ");
+      const more = runningShells.length > 2 ? ` +${runningShells.length - 2} more` : "";
+      const count = runningShells.length === 1 ? "1 background shell" : `${runningShells.length} background shells`;
+      const them = runningShells.length === 1 ? "it" : "them";
+      pushOutput(theme.fg(
+        theme.theme.warning,
+        `⚠ ${count} still running: ${named}${more} — exit again within ${EXIT_CONFIRM_MS / 1000}s to stop ${them} and quit, or /jobs to manage ${them}`,
+      ));
+      return;
+    }
+    jobManager.killAll();
     // Collapse the whole frame (header, input, menu, hint bar) to a single
     // resume-hint line, flush it to the terminal, then unmount and hand off to
     // ctx.onExit() — the CLI-side handler that logs session end and calls
@@ -2189,9 +2211,9 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
     // hangs at a blank prompt. The transcript stays in scrollback untouched —
     // only the interactive frame goes away.
     setExitHint(`Resume: nib --resume ${ctx.sessionId}`);
-    // Die on exit (async-subagents.md §3, Q3): kill pending sub-runs where
-    // background jobs get killed. In-memory only — nothing to restore on
-    // resume; the process exit is the actual kill.
+    // Die on exit (async-subagents.md §3, Q3): abort pending sub-runs, as the
+    // background shells were stopped above. In-memory only — nothing to
+    // restore on resume.
     ctx.abortRunningTasks?.();
     // Stop fires on /exit; SessionEnd immediately after, before teardown
     // (hooks-spec.md §2).

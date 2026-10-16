@@ -682,6 +682,16 @@ async function main() {
   // itself, which would bypass the gate.
   setWebSearchConfig(configResult.config.webSearch);
 
+  // Background shells run in their own process group (jobs.ts), so they
+  // outlive nib unless killed. The /exit path warns and stops them; these
+  // cover every other way out — process.exit elsewhere, and the terminal
+  // closing (SIGHUP), which the detached group never receives itself.
+  process.on("exit", () => jobManager.killAll());
+  process.once("SIGHUP", () => {
+    jobManager.killAll();
+    process.exit(129);
+  });
+
   // Background-job completion → notify hook (plan §3): a job finishing is a
   // completion boundary like a turn ending, so the same notify script fires
   // with a job payload (STATUS=job_done — notify-spec.md §3-4). The TUI status

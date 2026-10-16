@@ -264,7 +264,7 @@ const PromptInput = React.memo(function PromptInput({
     if (item.kind === "permissions") { onSubmit({ text: "/permissions" }); resetInput(); return; }
     if (item.kind === "usage") { onSubmit({ text: "/usage", command: "usage" }); resetInput(); return; }
     if (item.kind === "plan") { onSubmit({ text: "/plan" }); resetInput(); return; }
-    if (item.kind === "exit") { onSubmit({ text: "/exit", command: "exit" }); return; }
+    if (item.kind === "exit") { onSubmit({ text: "/exit", command: "exit" }); resetInput(); return; }
     if (item.kind === "clear") { onSubmit({ text: item.label }); resetInput(); return; }
     if (item.kind === "help") { onSubmit({ text: item.label }); resetInput(); return; }
     if (item.kind === "doctor") { onSubmit({ text: item.label }); resetInput(); return; }

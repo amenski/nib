@@ -99,6 +99,12 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Background shells no longer outlive nib.** They run in their own process
+  group, so a dev server kept running, and kept its port, after nib exited.
+  Exiting with a shell still running now warns (`⚠ 1 background shell still
+  running: npm run dev — exit again within 10s to stop it and quit`); exiting
+  again stops it. Shells are also stopped when the terminal closes and at the
+  end of a headless (`-p`) run.
 - **Background jobs stop prompting once the session grant is given.**
   `run_bash_background` runs under the same sandbox profile as `run_bash` but
   never used the session grant, so every dev server or build prompted (172 of

@@ -52,9 +52,8 @@
 - Nothing in `docs/` may require reading `todo.md` to understand.
 - `docs/README.md` is the canonical doc index. Every current doc carries a
   status line in the format defined there; new or moved docs update the
-  index in the same change. Superseded/historical material moves to
-  `docs/archive/` — never delete, and nothing in the live set may link
-  into it.
+  index in the same change. Superseded material is deleted, not
+  archived; git history is the record.
 
 ## Git
 

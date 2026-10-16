@@ -16,9 +16,6 @@ then follow the reading paths below.
 - **`subsystems/*.md` are design deep dives** with stable § numbers
   (`## 1.` … `## 6.`). **Never renumber them** — other specs cite them as
   "subsystems.md §1", "§3", etc.
-- **Historical material lives in [`docs/archive/`](./archive/README.md)**:
-  superseded designs, completed task briefs, release notes. Nothing there
-  is required reading, and no current doc may link into it.
 - Root `todo.md` is the untracked scratch tracker (gitignored). Nothing in
   `docs/` requires it to understand (conventions.md).
 
@@ -72,6 +69,7 @@ then follow the reading paths below.
 | [session-spec.md](./session-spec.md) | Session JSONL format, index, resume |
 | [provider-spec.md](./provider-spec.md) | Provider contract, catalog, key resolution |
 | [permission-spec.md](./permission-spec.md) | Rules, normalization, resolution, posture, audit trail |
+| [diagrams/nib-permission-gate.png](./diagrams/nib-permission-gate.png) | One-page diagram: the gate, the model judge, where a FLAG changes the outcome |
 | [security-spec.md](./security-spec.md) | Threat model T1–T16, verified-fixed items |
 | [security-architecture-plan.md](./security-architecture-plan.md) | Implemented security phases, measured release gates, and recorded residuals |
 | [permission-ux-redesign.md](./permission-ux-redesign.md) | Proposed replacement for advisory Bash classification and repeated prompts |
@@ -111,12 +109,6 @@ then follow the reading paths below.
 |-----|--------|
 | [conventions.md](./conventions.md) | Code + doc conventions |
 | [../CONTRIBUTING.md](../CONTRIBUTING.md) | Setup, PR checklist, code map |
-
-### Historical
-
-| Doc | Covers |
-|-----|--------|
-| [archive/README.md](./archive/README.md) | Superseded designs and completed task briefs |
 
 ## Reading paths
 
@@ -159,6 +151,3 @@ then follow the reading paths below.
 6. **`run_bash` has a fixed 120 s cap and no timeout parameter** — long
    commands belong in `run_bash_background`. Re-verify this spec if a
    timeout param is ever added.
-7. **Archived docs are records, not truth.** `docs/archive/` may contain
-   dead links, retired IDs, and known-false claims (e.g. REDESIGN.md's
-   `credentials.json`); do not treat them as current.

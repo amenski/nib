@@ -269,4 +269,45 @@ describe("search (grep tool)", () => {
     expect(result.content).not.toContain("bin.dat");
   });
 
+  it("truncates a very long matched line", async () => {
+    writeFileSync(join(TEST_DIR, "minified.js"), `needle${"x".repeat(10_000)}\n`);
+
+    const result = await registry.execute(
+      { id: "1", name: "search", arguments: { pattern: "needle", dir: TEST_DIR } },
+      ctx,
+    );
+
+    expect(result.content.length).toBeLessThan(1_000);
+    expect(result.content).toMatch(/…\[line truncated, \d+ chars\]/);
+  });
+
+  it("truncates long lines in a partial result too", async () => {
+    const fakeExecFile = (_cmd: string, _args: readonly string[], _opts: unknown, cb: (...args: unknown[]) => void) => {
+      cb(Object.assign(new Error("stdout maxBuffer length exceeded"), { killed: true, code: null }), `a.jsonl:1:${"y".repeat(10_000)}`);
+    };
+
+    const result = await runSearchTimed(
+      "y", "/fake/dir", 30_000,
+      fakeExecFile as typeof import("node:child_process").execFile,
+    );
+
+    expect(result.content.length).toBeLessThan(1_000);
+    expect(result.content).toContain("…[line truncated");
+    expect(result.content).toContain("Partial results");
+  });
+
+  it("skips nib's own .nib directory (debug logs)", async () => {
+    writeFileSync(join(TEST_DIR, "src.txt"), "needle here\n");
+    mkdirSync(join(TEST_DIR, ".nib", "debug"), { recursive: true });
+    writeFileSync(join(TEST_DIR, ".nib", "debug", "session.jsonl"), "needle here\n");
+
+    const result = await registry.execute(
+      { id: "1", name: "search", arguments: { pattern: "needle", dir: TEST_DIR } },
+      ctx,
+    );
+
+    expect(result.content).toContain("src.txt");
+    expect(result.content).not.toContain("session.jsonl");
+  });
+
 });

@@ -383,8 +383,7 @@ effort control through `/effort`.
 
 **Start at [`docs/README.md`](./docs/README.md)** — the canonical index of
 specs, deep dives, and troubleshooting, with reading paths for new
-contributors, maintainers, and users. [`docs/archive/`](./docs/archive/)
-holds superseded designs and completed task briefs (records, not reference).
+contributors, maintainers, and users.
 
 Having trouble? See [`docs/troubleshooting.md`](./docs/troubleshooting.md).
 

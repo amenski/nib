@@ -16,9 +16,6 @@ then follow the reading paths below.
 - **`subsystems/*.md` are design deep dives** with stable § numbers
   (`## 1.` … `## 6.`). **Never renumber them** — other specs cite them as
   "subsystems.md §1", "§3", etc.
-- **Historical material lives in [`docs/archive/`](./archive/README.md)**:
-  superseded designs, completed task briefs, release notes. Nothing there
-  is required reading, and no current doc may link into it.
 - Root `todo.md` is the untracked scratch tracker (gitignored). Nothing in
   `docs/` requires it to understand (conventions.md).
 
@@ -112,12 +109,6 @@ then follow the reading paths below.
 | [conventions.md](./conventions.md) | Code + doc conventions |
 | [../CONTRIBUTING.md](../CONTRIBUTING.md) | Setup, PR checklist, code map |
 
-### Historical
-
-| Doc | Covers |
-|-----|--------|
-| [archive/README.md](./archive/README.md) | Superseded designs and completed task briefs |
-
 ## Reading paths
 
 - **New contributor:** README → troubleshooting → architecture →
@@ -159,6 +150,3 @@ then follow the reading paths below.
 6. **`run_bash` has a fixed 120 s cap and no timeout parameter** — long
    commands belong in `run_bash_background`. Re-verify this spec if a
    timeout param is ever added.
-7. **Archived docs are records, not truth.** `docs/archive/` may contain
-   dead links, retired IDs, and known-false claims (e.g. REDESIGN.md's
-   `credentials.json`); do not treat them as current.

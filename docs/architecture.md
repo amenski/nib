@@ -54,8 +54,7 @@ and key resolution live in `src/providers/{presets,catalog,registry}.ts`.
 Full contract: provider-spec.md.
 
 The historical adapter files (`deepseek.ts`, `openai-compatible.ts`,
-`anthropic.ts`) were deleted in the 2026-07-29 AI SDK migration
-(docs/archive/migration-aisdk-ink.md).
+`anthropic.ts`) were deleted in the 2026-07-29 AI SDK migration.
 
 ## 4. Layer 2 — Tools
 

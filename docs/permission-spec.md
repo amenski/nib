@@ -13,6 +13,54 @@ Threat model and known permission-engine defects:
 [security-spec.md](./security-spec.md). The builtin destructive and guarded
 tiers take precedence over ordinary rule resolution as specified in §7.
 
+### The gate, end to end (`gateCall` in `src/agent.ts`)
+
+![nib permission gate: the gate, the stage-2 model judge, and where a FLAG changes the outcome](./diagrams/nib-permission-gate.png)
+
+Source: [`diagrams/nib-permission-gate.excalidraw`](./diagrams/nib-permission-gate.excalidraw)
+(open it at excalidraw.com, then re-export the PNG after editing). The Mermaid
+flows below are the text versions and the ones to keep in step with the code.
+
+Every tool call passes these layers in order, and each one can only tighten the
+decision (`allow < ask < deny`). The engine is §6, the ask branch is §10, and
+the classifier is docs/command-risk-classifier.md.
+
+```mermaid
+flowchart TD
+  TC([model emits tool call]) --> AUTH
+  subgraph L1["authorize() · permissions/profile.ts"]
+    AUTH{"profile.decide()"} -- deny --> PD[deny-by-profile]
+    AUTH -- pass --> ENG["engine.resolve() · §6"]
+  end
+  ENG -->|"action, winningRule,<br/>wasUnresolved, isGuarded"| UNS{"unsandboxed<br/>run?"}
+  UNS -- "yes + engine allow" --> FORCEASK["engineAction = ask"]
+  UNS -- no --> CL
+  FORCEASK --> CL
+  CL{"classifier.mode"} -- off --> CLAMP
+  CL -- "shadow / enforce" --> RISK["classifyRiskWithModel()"]
+  RISK -->|RiskVerdict| CLAMP["applyRiskVerdict()<br/>enforce: max(engine, tier)<br/>shadow: identity"]
+  RISK -. "shadow + would be stricter" .-> EVID[(appendClassifierEvidence)]
+  CLAMP --> UNA{"unsandboxed requested<br/>but not allowed?"}
+  UNA -- yes --> DENYU[UNSANDBOXED_NOT_ALLOWED]
+  UNA -- no --> ACT{action}
+  ACT -- deny --> DENY["PERMISSION_DENIED"]
+  ACT -- ask --> ASK["ask branch · §10"]
+  ACT -- allow --> AR["audit allow-by-rule"]
+  AR --> PTU{"PreToolUse hook"}
+  ASK -->|approved| PTU
+  PTU -- blocks --> HD[denied by hook]
+  PTU -- passes --> EXEC([execute])
+  classDef deny fill:#b4231822,stroke:#b42318;
+  classDef ask fill:#b5470822,stroke:#b54708;
+  classDef ok fill:#06764722,stroke:#067647;
+  class PD,DENYU,DENY,HD deny
+  class ASK,FORCEASK ask
+  class EXEC,AR ok
+```
+
+Every branch writes an audit row carrying the full `RiskVerdict`, shadow mode
+included. A hook `allow` never upgrades an ask.
+
 ## 2. Two orthogonal axes
 
 | Axis | Question it answers | Defined by |
@@ -199,6 +247,49 @@ resolve(tool, args)
               allow ──confirm──► ask     ask ──block──► deny
 ```
 
+The same algorithm at the level of `resolveSubject()`, including the escapes the
+sketch above leaves out (builtin read-allow, the `web_search` session escape,
+the dynamic-guard escape):
+
+```mermaid
+flowchart TD
+  R["resolve(tool, args)"] --> K{tool kind}
+  K -- "run_bash / _background" --> B["buildBashSubject()<br/>split into segments"]
+  K -- apply_patch --> P["extractApplyPatchPlan()<br/>one subject per target file"]
+  K -- "web_fetch / remote view_image" --> D["subject = hostname"]
+  K -- "file tools" --> F["subject = normalized path"]
+  B --> RS
+  P --> RS
+  D --> RS
+  F --> RS
+  RS["resolveSubject() per segment/target"] --> M["matching rules:<br/>BUILTIN_DESTRUCTIVE · BUILTIN_GUARDED<br/>config · session<br/>+ dynamic out-of-workspace guard (search/glob)<br/>+ dynamic write-boundary rule (write tools)"]
+  M --> Z{any match?}
+  Z -- no --> BA{"BUILTIN_ALLOW<br/>(reads in ./**)?"}
+  BA -- yes --> AL1[allow]
+  BA -- no --> DM{"defaultMode allowAll<br/>and tool has a user rule<br/>(or MCP server configured)?"}
+  DM -- yes --> AL2[allow]
+  DM -- no --> AS1[ask]
+  Z -- yes --> DN{deny match?}
+  DN -- yes --> T1["resolveTier(deny)"]
+  DN -- no --> WS{"web_search with<br/>session any-allow?"}
+  WS -- yes --> AL3[allow]
+  WS -- no --> AK{ask match?}
+  AK -- no --> AL4["allow<br/>(highest-specificity allow)"]
+  AK -- yes --> DY{"only dynamic guards<br/>+ a path-scoped allow?"}
+  DY -- yes --> AL5[allow]
+  DY -- no --> T2["resolveTier(ask)"]
+  T1 --> TR
+  T2 --> TR
+  TR{"resolveTier:<br/>kind:any in tier → tier wins<br/>guarded + no exact allow → tier wins<br/>allow strictly more specific → allow"}
+  classDef ask fill:#b5470822,stroke:#b54708;
+  classDef ok fill:#06764722,stroke:#067647;
+  class AS1 ask
+  class AL1,AL2,AL3,AL4,AL5 ok
+```
+
+Bash segments combine most-restrictive (any deny → deny, else any ask → ask),
+and an unparseable segment (`wasUnresolved`) can only push the result up.
+
 ### Specificity
 
 ```
@@ -381,6 +472,43 @@ canonical row). The prompt carries the envelope the launch would run under, and
 the consent copy is generated from the profile's own write set, so the prompt and
 the profile cannot disagree. See §11 for the resulting vocabulary and
 `src/ui/PermissionPrompt.tsx` `grantConsentLines` for the disclosure text.
+
+### The ask branch in `gateCall`
+
+```mermaid
+flowchart TD
+  A([action = ask]) --> PR{"PermissionRequest<br/>hook blocks?"}
+  PR -- yes --> X1[ask-denied]
+  PR -- no --> HL{"askUser present?"}
+  HL -- "no (headless)" --> X2["headless-deny<br/>classifier reason if it caused the ask"]
+  HL -- yes --> EL{"isEligibleForGrant()<br/>sandboxed · run_bash(/_background)<br/>not guarded · not a user rule ·<br/>not git-config · not unsandboxed"}
+  EL -- no --> PROMPT
+  EL -- yes --> LK{"grant lookup for<br/>(session, profileHash)"}
+  LK -- hit --> RE["allow-by-envelope-grant<br/>(reuse)"]
+  LK -- miss --> INV["invalidateOther(): drop a grant<br/>approved for a different hash"]
+  INV --> AG{"sandbox.autoAllowBash?"}
+  AG -- yes --> NG["grant() → allow-by-envelope-grant"]
+  AG -- no --> PROMPT["askUser(tool, args, envelope,<br/>askOrigin, policyRisk)"]
+  PROMPT -- false --> X3[ask-denied by user]
+  PROMPT -- posture --> PO["allow-by-posture<br/>(no exec grant)"]
+  PROMPT -- envelope-grant --> NG
+  PROMPT -- true --> AP["ask-approved / unresolved-ask<br/>git config op → approvedGitConfigWrite"]
+  RE --> EH["exec.envelopeHash = profileHash"]
+  NG --> EH
+  EH --> PTU{PreToolUse hook}
+  PO --> PTU
+  AP --> PTU
+  PTU -- passes --> GO([execute])
+  PTU -- blocks --> X4[denied]
+  classDef deny fill:#b4231822,stroke:#b42318;
+  classDef ok fill:#06764722,stroke:#067647;
+  class X1,X2,X3,X4 deny
+  class GO,RE,NG,PO,AP ok
+```
+
+A changed envelope drops the old grant *before* the prompt, so a "No" cannot
+leave it to re-arm later. At launch, Bash refuses to run if the profile no
+longer hashes to `envelopeHash`.
 
 ## 11. Audit trail
 

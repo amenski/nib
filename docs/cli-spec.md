@@ -84,7 +84,7 @@ meant to be shareable). See config-spec.md §Credentials.
 | `-r`, `--resume [id]` | Resume a specific session by its ID; with no ID, open the session picker. |
 | `-c`, `--continue` | Continue the most recent session for the current project directory. |
 | `--model <provider/model>` | Override the configured model (split on the first `/`). |
-| `--mode <slug>` | Start in the given mode. Headless (`-p`): unknown slug rejected with a clean error (`src/exec-runner.ts`). Interactive: unknown slug silently falls back to the default `general` mode. |
+| `--mode <slug>` | Start in the given mode. Headless (`-p`): unknown slug rejected with a clean error (`src/exec-runner.ts`). Interactive: unknown slug silently falls back to the default `code` mode. |
 | `-d`, `--debug` | Write redacted request/response/error JSONL to `<project>/.nib/debug/<session>.jsonl`. Applies to the TUI and to `-p` (a headless run without a resumed session names the file `headless-<timestamp>`). |
 | `--add-dir <path>` | Add an explicitly trusted writable directory; repeat for multiple directories. Relative paths resolve from the startup directory and apply to file edits and sandboxed shell writes. |
 | `-h`, `--help` | Show help and the epilog, exit 0. |
@@ -225,15 +225,17 @@ expansion time). Shipped 2026-08-13 (feature-plans.md §5).
 
 | Key/command | Effect |
 |-------------|--------|
-| Shift+Tab | Cycle approval posture: `normal → autoApprove → plan` (`src/ui/App.tsx` `cyclePosture`) |
+| Shift+Tab | Cycle approval posture: `normal → auto → plan` (`src/ui/App.tsx` `cyclePosture`); the status bar shows `auto` / `auto · paused` / `plan` |
 | `/plan` | Toggle plan mode directly (the same posture Shift+Tab cycles to) |
 | `/raw` | Cycle display mode: `lite → normal → raw-scrollback` |
 | Ctrl+E | Stream an AI explanation of a pending permission prompt |
 
-Posture semantics (permission-spec.md): `normal` asks per policy;
-`autoApprove` bypasses ordinary rule-derived asks only while OS containment is
-active and **never** bypasses unresolved/guarded tiers. If the sandbox is
-disabled or unavailable, ordinary asks continue to prompt. `plan` is read-only and requires a
+Posture semantics (permission-spec.md §9): `normal` asks per policy; `auto`
+lets a model judge allow or block an ask instead of prompting (read-only calls
+and write-set edits run silently; credential paths, git config and calls outside
+the sandbox still prompt), and works with the sandbox off. A session can start
+in `auto` via the global-only `classifier.defaultPosture` setting
+(config-spec.md). `nib -p` never uses `auto`. `plan` is read-only and requires a
 `<proposed_plan>` block before implementing.
 
 **Profile level is NOT on the status line** (decided 2026-08-14): the

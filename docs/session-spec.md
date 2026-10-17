@@ -105,7 +105,9 @@ vocabulary (one value per resolution path in `agent.ts`):
 | `decision` | Meaning |
 |---|---|
 | `allow-by-rule` | An allow rule matched; the call ran with no prompt. |
-| `allow-by-posture` | Auto-approve posture let an ordinary ask through (UI-side only; agent-side surfaces as `ask-approved`). |
+| `allow-by-posture` | The UI allowed an edit inside the profile write set without a prompt (`askUser` → `"posture"`). |
+| `allow-by-classifier` | Auto posture: the read-only tier or the model judge allowed an ask; the row carries `auto`. |
+| `deny-by-classifier` | Auto posture: the judge blocked the call, or a rules `block` was denied in any `classifier.mode`; the row carries `auto`. |
 | `ask-approved` | An interactive prompt was answered yes. |
 | `ask-denied` | An interactive prompt was answered no. |
 | `deny-by-rule` | A deny rule matched (destructive / guarded / config). |
@@ -134,6 +136,16 @@ a judge that silently times out would look identical to one that never ran.
 Rows written before the stage existed carry no `model`, which means the stage was
 inactive, not that it succeeded.
 
+**`auto` — the auto posture's trace** (docs/command-risk-classifier.md §15).
+Present on rows the auto gate handled, and on the `ask-approved` / `ask-denied`
+row of a call that fell back to a prompt: `{ stage, outcome, latencyMs, tag?,
+reason?, judge? }` with `stage` one of `readonly | rules | stage1 | stage2 |
+fallback` and `outcome` one of `allow | block | timeout | error | unparseable |
+suspended | hard-stop`. `judge` is the judge model's id, `tag` the reason tag
+that picked the sentence the agent was shown, and `reason` the judge's one-liner,
+secret-redacted and cut to 200 characters. Absent on rows written before the
+posture existed and on every row written outside it.
+
 **`source` — writer identity (decision H, subsystems.md §7).** Rows written
 by sub-agents spawned via `new_task` carry `"source":"subagent"`; top-level
 (parent) rows omit the field. Readers must tolerate both. Sub-agent rows
@@ -149,8 +161,9 @@ pressed), and older sessions carry them. Readers must tolerate both sets.
 one row for *every* path it resolves. On the interactive approval path
 `App.tsx` *also* writes its own finer-grained row — so an
 interactively-approved call produces two rows. Intentional: the agent
-guarantees a row exists on approval paths the UI never logs (notably
-auto-approve posture, where `App.tsx` writes nothing). Queried via
+guarantees a row exists on approval paths the UI never logs (notably the
+auto posture's `allow-by-classifier` and the UI's write-set `allow-by-posture`,
+where `App.tsx` writes nothing). Queried via
 `SessionStore.queryPermissionHistory(sessionId)`; surfaced via
 `/permissions`.
 

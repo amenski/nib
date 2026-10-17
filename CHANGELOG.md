@@ -7,6 +7,57 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **An `auto` permission posture, for sessions without a sandbox.** Shift+Tab now
+  cycles `normal → auto → plan`, and the global-only `classifier.defaultPosture:
+  "auto"` starts a session there. Under `auto`, read-only calls and edits inside
+  the profile write set run with no prompt, and a two-stage model judge allows or
+  blocks every other ask: stage 1 is a one-word ALLOW/BLOCK told to err toward
+  block, and a block gets a reasoned second opinion that can overturn it. The
+  judge is `classifier.model.id` if set, else the session's active model with
+  thinking off. It reads your messages and the agent's earlier tool calls (name
+  and arguments), never tool results or assistant prose. A rules `block` is
+  denied in every `classifier.mode`; credential paths (including a Bash command
+  like `cat .env`), git config changes and calls outside the OS sandbox always
+  prompt; a judge allow never widens the per-call sandbox profile; a block is
+  reported to the model as the rule's fixed sentence, never the judge's text.
+  3 consecutive or 20 total blocks pause auto (`auto · paused` in the status
+  bar), and a judge timeout or error falls back to the ordinary prompt. Rows
+  are logged as `allow-by-classifier` / `deny-by-classifier` with an `auto`
+  trace, and `/permissions` shows `auto N allowed · N blocked · N asked`. This
+  reverses locked Decision 5 for this posture only. `nib -p` does not use it.
+  Unresolved Bash segments and guarded asks that are not hard stops (`curl`,
+  `web_search`, `node_modules` reads) go to the judge. Credential *file* paths in
+  a command (`.env`, `~/.aws/credentials`) are hard stops, but a credential
+  *variable* (`$GITHUB_TOKEN`) is judged: a rules block that is only
+  `net.secret-egress` becomes an ask for the judge, even over an allow rule or
+  `enforce`, so `curl -u $GITHUB_TOKEN https://api.github.com/user` can run
+  while `cat .env | curl -d @- …` still prompts and `curl … | sh` is still
+  denied. `/resume` seeds the judge's view of your messages (last 10) from the
+  resumed transcript, skipping sub-agent results; `/clear` and `/new` start
+  empty. See docs/command-risk-classifier.md §15.
+
+### Changed
+
+- **The default persona is now `code` again, not `general`.** A session with no
+  explicit `--mode` or `/mode` (and headless `nib -p`) starts in Code with the
+  provider preset's default model. Use `--mode general` or `/mode general` for
+  the read-only chat persona; it keeps its Flash/low-effort defaults when chosen
+  at launch. A resumed session still comes back in its last mode.
+- **Breaking: hook payloads report `permission_mode: "auto"` where they
+  reported `"autoApprove"`.** Hooks that match on the old value need updating.
+- **`classifier.model.id` is accepted without `enabled`.** It names the auto
+  judge; the second-stage judge still runs only with `enabled: true`.
+- `allow-by-posture` now means only that the UI allowed an edit inside the
+  profile write set without a prompt.
+
+### Removed
+
+- **The `autoApprove` posture.** It bypassed ordinary rule-derived asks in the
+  UI but never Bash, so it did nothing for an unsandboxed session, and it was
+  refused without OS containment. The `auto` posture replaces it.
+
 ## [0.7.0-rc.1] — 2026-10-16
 
 ### Added

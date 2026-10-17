@@ -109,7 +109,7 @@ One JSON object on **stdin**, one line:
   "hook_event_name": "PreToolUse",
   "session_id": "2026-08-13T…",
   "cwd": "/path/to/project",
-  "permission_mode": "autoApprove",
+  "permission_mode": "auto",
   "tool_name": "run_bash",        // tool events only
   "tool_input": { … }             // tool events only
 }

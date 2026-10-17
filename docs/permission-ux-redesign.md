@@ -85,7 +85,9 @@ a persistent rule, an MCP call, or the narrow
 `.git/config` trusted profile variant. Those require their existing separate
 decisions. The old `autoApprove` Bash bypass should be consolidated with this
 grant rather than leaving two ways to bypass prompts; no existing setting
-should silently acquire the broader grant.
+should silently acquire the broader grant. (*2026-10-17:* the posture was
+removed outright, and its replacement, the auto posture, grants no envelope
+either: a judge allow never sets `envelopeHash`.)
 
 **Subagent decision (revised 2026-10-10):** an *automatic* grant is inherited
 by subagents; a human's is not. Subagents run under the parent's session id, so
@@ -356,3 +358,14 @@ exception. The future network broker remains governed by
 > commitment above are both intact. The other three items are unchanged.
 > The stage's own implementation notes, including why it is close to inert
 > under `enforce`, are in the proposal's §6.3.
+>
+> **Amended again 2026-10-17 (owner decision).** An LLM judge can now *allow*,
+> not only narrow, but only under the auto posture (Shift+Tab or the global
+> `classifier.defaultPosture: "auto"`), whose judge answers an ask the rules left
+> to a human. That does cross the "automatic approval" and "no LLM judge" lines
+> above for that posture, and Decision 5 is reversed for it alone
+> (`security-architecture-plan.md`); the bounds are listed there and in
+> `docs/command-risk-classifier.md` §15. The default posture is unchanged, and so
+> are the session grant (its consent still names the write set) and the "no
+> persistent `allow all Bash`" line: an auto allow is per call and writes no
+> rule.

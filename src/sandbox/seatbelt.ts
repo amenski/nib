@@ -461,8 +461,8 @@ const GIT_INTEGRITY_DENIES = [
  *
  * Reached only through an explicit one-time user approval of *that specific
  * command*: `ToolExecOptions.approvedGitConfigWrite`, set in agent.ts's ask
- * branch when `askUser` returned a plain `true` (never on auto-approve
- * posture, never on a persisted rule — see the field's doc comment), and
+ * branch when `askUser` returned a plain `true` (never when the UI allowed
+ * the call without a prompt, never on a persisted rule — see the field's doc comment), and
  * only for commands `isGitConfigOperation` accepts.
  *
  * Scope is the workspace root alone, deliberately — not the whole

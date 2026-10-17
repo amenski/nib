@@ -644,13 +644,13 @@ describe("permission profile overlay — consolidation M.1 (§5)", () => {
     expect(askResult).toBe(false);
   });
 
-  it("auto-approve cannot bypass a background command without a safe persistent scope", async () => {
+  it("in auto, a background command still shows the prompt and offers no session grant", async () => {
     let askPromise: Promise<boolean> | null = null;
     const ctx = makeAskCtx(async (_input: string, cb: any) => {
       askPromise = cb.askUser("run_bash_background", { command: "echo hi" });
       return { stopReason: "done", messages: [], newMessages: [] };
     }, "strict-sandbox");
-    ctx.mutable.posture = "autoApprove";
+    ctx.mutable.posture = "auto";
     const inst = render(<App ctx={ctx} />);
     mounted.push(inst);
     inst.stdin.write("run it");
@@ -662,31 +662,6 @@ describe("permission profile overlay — consolidation M.1 (§5)", () => {
     expect(stripAnsi(inst.lastFrame() ?? "")).toContain("Permission required");
     // And the session grant is not on offer for a background job — it is a
     // foreground-Bash consent only.
-    expect(stripAnsi(inst.lastFrame() ?? "")).not.toContain("sandboxed Bash");
-    expect(askPromise).toBeInstanceOf(Promise);
-    inst.stdin.write("1");
-    await flush();
-    expect(await askPromise).toBe(true);
-  });
-
-  it("auto-approve still prompts when OS containment is unavailable", async () => {
-    let askPromise: Promise<boolean> | null = null;
-    const ctx = makeAskCtx(async (_input: string, cb: any) => {
-      askPromise = cb.askUser("run_bash", { command: "echo hi" });
-      return { stopReason: "done", messages: [], newMessages: [] };
-    }, "workspace-write");
-    ctx.mutable.posture = "autoApprove";
-    ctx.autoApproveAllowed = false;
-    const inst = render(<App ctx={ctx} />);
-    mounted.push(inst);
-    inst.stdin.write("run it");
-    await flush();
-    inst.stdin.write("\r");
-    await flush();
-    await flush();
-
-    expect(stripAnsi(inst.lastFrame() ?? "")).toContain("Permission required");
-    // No containment, so no envelope was handed over and no grant is offered.
     expect(stripAnsi(inst.lastFrame() ?? "")).not.toContain("sandboxed Bash");
     expect(askPromise).toBeInstanceOf(Promise);
     inst.stdin.write("1");
@@ -770,18 +745,16 @@ describe("permission profile overlay — consolidation M.1 (§5)", () => {
     }
   });
 
-  // The consolidation (docs/permission-ux-redesign.md): with a real containment
-  // consent available for Bash, auto-approve no longer covers a Bash ask
-  // silently — the prompt is where the session grant comes from, and answering
-  // it is the only way this command stops asking.
-  it("auto-approve no longer bypasses a Bash ask", async () => {
+  // Auto's decision is the agent gate's (a judge model, in agent.ts), never the
+  // UI's: an ask that reaches askUser in auto is one the gate chose to hand to
+  // the user, so the prompt must show.
+  it("in auto, a Bash ask that reaches the UI still shows the prompt", async () => {
     let askResult: unknown = "unresolved";
     const ctx = makeAskCtx(async (_input: string, cb: any) => {
       askResult = await cb.askUser("run_bash", { command: "echo hi" });
       return { stopReason: "done", messages: [], newMessages: [] };
     }, "workspace-write");
-    ctx.mutable.posture = "autoApprove";
-    ctx.autoApproveAllowed = true;
+    ctx.mutable.posture = "auto";
     const inst = render(<App ctx={ctx} />);
     mounted.push(inst);
     inst.stdin.write("run it");
@@ -835,16 +808,13 @@ describe("permission profile overlay — consolidation M.1 (§5)", () => {
     expect(askResult).toBe("envelope-grant");
   });
 
-  // The positive control for the rule above: posture still bypasses an ordinary
-  // ask on every other tool, so the Bash exclusion did not disable the posture.
-  it("auto-approve still bypasses an ordinary non-Bash ask with OS containment", async () => {
-    let askResult: unknown = "unresolved";
+  it("in auto, an ordinary non-Bash ask still shows the prompt (no UI bypass)", async () => {
+    let askPromise: Promise<unknown> | null = null;
     const ctx = makeAskCtx(async (_input: string, cb: any) => {
-      askResult = await cb.askUser("read_file", { path: "/workspace/src/a.ts" });
+      askPromise = cb.askUser("read_file", { path: "/workspace/src/a.ts" });
       return { stopReason: "done", messages: [], newMessages: [] };
     }, "workspace-write");
-    ctx.mutable.posture = "autoApprove";
-    ctx.autoApproveAllowed = true;
+    ctx.mutable.posture = "auto";
     const inst = render(<App ctx={ctx} />);
     mounted.push(inst);
     inst.stdin.write("read it");
@@ -853,8 +823,90 @@ describe("permission profile overlay — consolidation M.1 (§5)", () => {
     await flush();
     await flush();
 
+    expect(stripAnsi(inst.lastFrame() ?? "")).toContain("Permission required");
+    inst.stdin.write("1");
+    await flush();
+    expect(await askPromise).toBe(true);
+  });
+
+  it("in auto, a write-set edit still resolves \"posture\" without a prompt", async () => {
+    let askResult: unknown = "unresolved";
+    const ctx = makeAskCtx(async (_input: string, cb: any) => {
+      askResult = await cb.askUser("edit", { path: "/workspace/src/a.ts", oldString: "x", newString: "y" });
+      return { stopReason: "done", messages: [], newMessages: [] };
+    }, "workspace-write");
+    ctx.mutable.posture = "auto";
+    const inst = render(<App ctx={ctx} />);
+    mounted.push(inst);
+    inst.stdin.write("edit it");
+    await flush();
+    inst.stdin.write("\r");
+    await flush();
+    await flush();
+    await flush();
+
     expect(askResult).toBe("posture");
     expect(stripAnsi(inst.lastFrame() ?? "")).not.toContain("Permission required");
+  });
+});
+
+describe("posture", () => {
+  const SHIFT_TAB = "\x1b[Z";
+
+  function makePostureCtx() {
+    const ctx = makeCtx(async () => ({ stopReason: "done", messages: [], newMessages: [] }));
+    // Mirrors cli.tsx's buildStatusBar: the bar reads the live posture.
+    ctx.buildStatusBar = () => [{ text: `bar:${ctx.mutable.posture ?? "normal"}` } as any];
+    const changes: string[] = [];
+    ctx.onPostureChange = (p) => { changes.push(p); };
+    return { ctx, changes };
+  }
+
+  const hint = (frame: string): string | undefined => /⇧ Tab\]\s+(\w+)/.exec(frame)?.[1];
+
+  it("Shift+Tab cycles normal → auto → plan → normal; the bar and hint follow", async () => {
+    const { ctx, changes } = makePostureCtx();
+    const inst = render(<App ctx={ctx} />);
+    mounted.push(inst);
+    await flush();
+
+    let frame = stripAnsi(inst.lastFrame() ?? "");
+    expect(frame).toContain("bar:normal");
+    expect(hint(frame)).toBe("auto");
+
+    inst.stdin.write(SHIFT_TAB);
+    await flush();
+    frame = stripAnsi(inst.lastFrame() ?? "");
+    expect(frame).toContain("bar:auto");
+    expect(ctx.mutable.posture).toBe("auto");
+    expect(hint(frame)).toBe("plan");
+
+    inst.stdin.write(SHIFT_TAB);
+    await flush();
+    frame = stripAnsi(inst.lastFrame() ?? "");
+    expect(frame).toContain("bar:plan");
+    expect(hint(frame)).toBe("normal");
+
+    inst.stdin.write(SHIFT_TAB);
+    await flush();
+    frame = stripAnsi(inst.lastFrame() ?? "");
+    expect(frame).toContain("bar:normal");
+    expect(ctx.mutable.posture).toBe("normal");
+    expect(changes).toEqual(["auto", "plan", "normal"]);
+  });
+
+  it("starts in auto when ctx.mutable.posture is auto at mount", async () => {
+    const { ctx } = makePostureCtx();
+    ctx.mutable.posture = "auto";
+    const inst = render(<App ctx={ctx} />);
+    mounted.push(inst);
+    await flush();
+
+    const frame = stripAnsi(inst.lastFrame() ?? "");
+    expect(hint(frame)).toBe("plan");
+    inst.stdin.write(SHIFT_TAB);
+    await flush();
+    expect(ctx.mutable.posture).toBe("plan");
   });
 });
 

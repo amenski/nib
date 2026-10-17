@@ -27,7 +27,7 @@ export interface ToolExecOptions {
    * The current call is a config-writing Git command the user explicitly
    * approved at the prompt for this call alone (permission-profile.md §8,
    * release gate 2). Set only by agent.ts in the branch reached when
-   * `askUser` returned a plain `true` — never on auto-approve posture
+   * `askUser` returned a plain `true` — never on a UI-allowed call
    * (`"posture"` is a distinct return), and never on a persisted rule (that
    * path resolves to `action: "allow"` and does not reach the ask branch).
    * The UI additionally marks these calls `oneTimeOnly`, so no

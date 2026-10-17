@@ -47,7 +47,7 @@ export function resolveAdditionalDirs(paths: string[], cwd: string = process.cwd
 const TUI_KEYS = [
   "  Enter            Send the prompt",
   "  Shift+Enter      Insert a newline",
-  "  Shift+Tab        Cycle normal / auto-approve / plan posture",
+  "  Shift+Tab        Cycle normal / auto / plan posture",
   "  Esc              Interrupt the current model turn",
   "  Ctrl+D twice     Quit",
   "  /                Open the commands menu",

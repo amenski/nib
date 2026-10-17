@@ -277,7 +277,7 @@ describe("authorize — composition matrix (§10(c), decision L)", () => {
     expect(r.isGuarded).toBe(false);
   });
 
-  it("profile-deny × posture-autoApprove still denies (a deny is never posture-bypassed)", () => {
+  it("profile-deny × posture still denies (a deny is never posture-bypassed)", () => {
     const engine = new PermissionEngine(undefined, CWD);
     const profile = evaluator("strict-sandbox", { fs: [{ path: "**/*.env", action: "deny" }] });
     const r = authorize({ tool: "read_file", arguments: { path: "/workspace/.env" } }, engine, profile);

@@ -411,6 +411,12 @@ What counts as read-only, beyond the allowlist in `command-classifier.ts`:
   pipeline subshell cannot hide a path) and must stay inside the working
   directory under all of them (`cd src && cat ../x` is not safe, `cd /tmp &&
   cat foo` is not safe). `CDPATH=… cd` is a `shell.special-var` confirm.
+  Git after a `cd` into a subdirectory is not safe either (`cd src && git
+  status` goes to the judge): git discovers and runs the config of whatever
+  repository it finds there (`core.fsmonitor`, `diff.external`), and a nested
+  or bare repository is not under the protected `.git/` path. This is the same
+  reason `git -C <dir>` is not read-only. `cd <working dir> && git log` stays
+  safe.
 - **Path operands are checked with or without a `cd`.** Every non-flag word of
   a read-only segment (and the value of `--flag=value`) is resolved lexically
   and must stay inside the working directory: `cat /etc/hosts`, `ls ..`,

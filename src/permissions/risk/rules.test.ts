@@ -325,6 +325,8 @@ describe("§5.4 safe tier: obviously read-only shell", () => {
     "cd src/* && ls",
     "cd src && cat ../../etc/passwd",
     "cd src && ls /etc",
+    "cd src && git status",
+    "cd src && git --no-pager log --oneline",
     "cd src && ls ../../../elsewhere",
     "cd src || ls ../../x",
     "cd src; cat ../../x",

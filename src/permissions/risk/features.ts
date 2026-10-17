@@ -828,6 +828,11 @@ function segmentFeatures(
  * lexically, as everywhere else in this file; the sandbox, not the label, is
  * what stops a symlink. There is no separate set of read roots in RiskInput,
  * so "inside" means inside the working directory.
+ *
+ * A read-only `git` segment is also flagged `readsOutside` once a `cd` has put
+ * the shell in any directory other than the working directory itself: git
+ * discovers and runs the config of whatever repository it finds there (the same
+ * reason `git -C` is not read-only), and a nested one is not under `.git/`.
  */
 function scopeToWorkingDir(segments: SegmentFeatures[], workingDir: string): SegmentFeatures[] {
   let bases = [workingDir];
@@ -841,6 +846,9 @@ function scopeToWorkingDir(segments: SegmentFeatures[], workingDir: string): Seg
       return { ...segment, neutral: true };
     }
     if (!segment.readOnly || tokens === null) return segment;
+    if (basenameLower(tokens[0]) === "git" && bases.some((base) => base !== workingDir)) {
+      return { ...segment, readsOutside: true };
+    }
     const outside = pathOperands(tokens).some((operand) =>
       bases.some((base) => operandEscapes(operand, base, workingDir)),
     );

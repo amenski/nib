@@ -323,6 +323,14 @@ describe("§5.4 safe tier evidence: cd scoping and discarded output", () => {
     expect(bash("cd src && ls lib ./lib /work/project/docs").segments[1].readsOutside).toBe(false);
   });
 
+  it("flags a read-only git segment after a cd into a subdirectory, since git runs the config of the repo it finds there", () => {
+    for (const command of ["cd src && git status", "cd src && git --no-pager log", "cd src; git diff"]) {
+      const git = bash(command).segments.find((s) => s.program === "git");
+      expect(git?.readsOutside, command).toBe(true);
+    }
+    expect(bash("cd /work/project && git status").segments[1].readsOutside).toBe(false);
+  });
+
   it("does not read a grep pattern, a sed script or echo text as a path", () => {
     const f = bash("cd src && grep -rn '/etc/passwd' lib; sed -n '/a/,/b/p' f.ts; echo /etc");
     expect(f.segments.map((s) => s.readsOutside)).toEqual([false, false, false, false]);

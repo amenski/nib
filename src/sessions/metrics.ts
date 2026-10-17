@@ -1,4 +1,4 @@
-import type { PermissionAuditRecord, SessionPermissionMetrics } from "./store.js";
+import type { AutoAuditRecord, PermissionAuditRecord, SessionPermissionMetrics } from "./store.js";
 import type { RiskTier } from "../permissions/risk/rules.js";
 
 /**
@@ -9,11 +9,16 @@ import type { RiskTier } from "../permissions/risk/rules.js";
 const CANONICAL_DECISIONS = new Set<PermissionAuditRecord["decision"]>([
   "allow-by-rule", "allow-by-posture", "ask-approved", "ask-denied",
   "deny-by-rule", "deny-by-profile", "headless-deny", "unresolved-ask",
+  "allow-by-classifier", "deny-by-classifier",
   // Session-grant lifecycle (docs/permission-ux-redesign.md).
   "allow-by-envelope-grant", "grant-invalidated", "grant-revoked", "grant-renewed", "sandbox-failure",
 ]);
 const LEGACY_DECISIONS = new Set<PermissionAuditRecord["decision"]>([
   "deny", "once", "session", "always",
+]);
+
+const AUTO_FALLBACK_OUTCOMES = new Set<AutoAuditRecord["outcome"]>([
+  "timeout", "error", "unparseable", "suspended", "hard-stop",
 ]);
 
 function isDuplicateLegacyRow(row: PermissionAuditRecord, next?: PermissionAuditRecord): boolean {
@@ -54,13 +59,14 @@ function isApproval(row: PermissionAuditRecord): boolean {
   // work was done either way, which is the whole point of the comparison
   // (docs/permission-ux-redesign.md).
   return row.decision === "ask-approved" || row.decision === "unresolved-ask"
-    || row.decision === "allow-by-envelope-grant"
+    || row.decision === "allow-by-envelope-grant" || row.decision === "allow-by-classifier"
     || row.decision === "once" || row.decision === "session" || row.decision === "always";
 }
 
 function isDenial(row: PermissionAuditRecord): boolean {
   return row.decision === "ask-denied" || row.decision === "deny-by-rule"
-    || row.decision === "deny-by-profile" || row.decision === "headless-deny" || row.decision === "deny";
+    || row.decision === "deny-by-profile" || row.decision === "headless-deny" || row.decision === "deny"
+    || row.decision === "deny-by-classifier";
 }
 
 /**
@@ -100,6 +106,12 @@ export function computeSessionPermissionMetrics(
   let stage2Flags = 0;
   let stage2FailedOpen = 0;
   const stage2Latencies: number[] = [];
+  let autoAllows = 0;
+  let autoBlocks = 0;
+  let autoFallbacks = 0;
+  let autoJudgeCalls = 0;
+  let autoStage2Calls = 0;
+  const autoLatencies: number[] = [];
 
   for (const row of selected) {
     if (isPrompt(row)) permissionPrompts++;
@@ -113,6 +125,18 @@ export function computeSessionPermissionMetrics(
     if (row.decision === "grant-invalidated") envelopeGrantInvalidations++;
     if (row.decision === "grant-revoked") envelopeGrantRevocations++;
     if (row.decision === "sandbox-failure") sandboxFailures++;
+
+    if (row.decision === "allow-by-classifier") autoAllows++;
+    if (row.decision === "deny-by-classifier") autoBlocks++;
+    const auto = row.auto;
+    if (auto !== undefined) {
+      if (auto.stage === "fallback" || AUTO_FALLBACK_OUTCOMES.has(auto.outcome)) autoFallbacks++;
+      if (auto.stage === "stage1" || auto.stage === "stage2") {
+        autoJudgeCalls++;
+        if (auto.stage === "stage2") autoStage2Calls++;
+        autoLatencies.push(auto.latencyMs);
+      }
+    }
 
     // Rows written before the classifier existed carry no verdict; they are
     // counted nowhere rather than folded into a tier they were never given.
@@ -150,6 +174,12 @@ export function computeSessionPermissionMetrics(
     stage2Flags,
     stage2FailedOpen,
     stage2P95Ms: percentile95(stage2Latencies),
+    autoAllows,
+    autoBlocks,
+    autoFallbacks,
+    autoJudgeCalls,
+    autoStage2Calls,
+    autoP95Ms: percentile95(autoLatencies),
   };
 }
 

@@ -323,7 +323,7 @@ describe("SessionStore", () => {
       await store.appendPermission(id, { tool: "run_bash", subject: "rm -rf /", decision: "deny-by-rule", reason: "deny rule matched (builtin-destructive)" });
       await store.appendPermission(id, { tool: "run_bash", subject: "make", decision: "headless-deny", reason: "headless" });
       await store.appendPermission(id, { tool: "run_bash", subject: "a && b | c", decision: "unresolved-ask", reason: "unresolved bash segment" });
-      await store.appendPermission(id, { tool: "edit", subject: "./x.ts", decision: "allow-by-posture", reason: "auto-approve posture" });
+      await store.appendPermission(id, { tool: "edit", subject: "./x.ts", decision: "allow-by-posture", reason: "write-set edit" });
 
       const history = await store.queryPermissionHistory(id);
       expect(history.map((r) => r.decision)).toEqual([
@@ -343,6 +343,36 @@ describe("SessionStore", () => {
       const history = await store.queryPermissionHistory(id);
       expect(history[0].reason).not.toContain("abcdefghijklmnopqrstuvwx12345");
       expect(history[0].reason).toContain("[redacted-token]");
+    });
+  });
+
+  describe("permission audit: auto record", () => {
+    it("persists the auto record, redacting and truncating its reason", async () => {
+      const id = await store.create({ cwd: TEST_CWD, provider: "openai", model: "gpt-4", mode: "code" });
+      await store.appendPermission(id, {
+        tool: "run_bash",
+        subject: "curl example.com",
+        decision: "deny-by-classifier",
+        auto: {
+          stage: "stage1",
+          outcome: "block",
+          latencyMs: 120,
+          tag: "exfil",
+          reason: `sends token=abcdefghijklmnopqrstuvwx12345 out ${"x".repeat(400)}`,
+          judge: "openai/gpt-4o-mini",
+        },
+      });
+      await store.appendPermission(id, {
+        tool: "read_file", subject: "a.ts", decision: "allow-by-classifier",
+        auto: { stage: "readonly", outcome: "allow", latencyMs: 0 },
+      });
+      const history = await store.queryPermissionHistory(id);
+      expect(history[0].decision).toBe("deny-by-classifier");
+      expect(history[0].auto).toMatchObject({ stage: "stage1", outcome: "block", latencyMs: 120, tag: "exfil", judge: "openai/gpt-4o-mini" });
+      expect(history[0].auto?.reason).not.toContain("abcdefghijklmnopqrstuvwx12345");
+      expect(history[0].auto?.reason).toContain("[redacted-token]");
+      expect(history[0].auto?.reason?.length).toBeLessThanOrEqual(200);
+      expect(history[1].auto).toEqual({ stage: "readonly", outcome: "allow", latencyMs: 0 });
     });
   });
 

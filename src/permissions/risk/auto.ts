@@ -163,6 +163,13 @@ export function autoHardStop(
   return undefined;
 }
 
+/** Tools auto runs without a judge call: ask_user_question is interactive (the user answers it anyway), check_job is a read-only status query. */
+export const AUTO_NO_JUDGE_TOOLS: ReadonlySet<string> = new Set(["ask_user_question", "check_job"]);
+
+export function skipsAutoJudge(tool: string): boolean {
+  return AUTO_NO_JUDGE_TOOLS.has(tool);
+}
+
 /**
  * A rules `block` that auto hands to the judge instead of denying: a credential
  * reference in a command that reaches the network (`net.secret-egress`) is

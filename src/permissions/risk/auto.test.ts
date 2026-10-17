@@ -11,6 +11,7 @@ import {
   parseAutoStage2,
   priorToolCalls,
   runAutoJudge,
+  skipsAutoJudge,
   type AutoModeOptions,
 } from "./auto.js";
 import type { RiskJudge } from "./model.js";
@@ -139,6 +140,16 @@ describe("autoHardStop", () => {
     expect(autoHardStop(r.tool, r.args, verdictFor(r))).toBeUndefined();
     const plain = input("npm test");
     expect(autoHardStop(plain.tool, plain.args, verdictFor(plain))).toBeUndefined();
+  });
+});
+
+describe("skipsAutoJudge", () => {
+  it("skips the judge for ask_user_question and check_job only", () => {
+    expect(skipsAutoJudge("ask_user_question")).toBe(true);
+    expect(skipsAutoJudge("check_job")).toBe(true);
+    expect(skipsAutoJudge("kill_job")).toBe(false);
+    expect(skipsAutoJudge("run_bash")).toBe(false);
+    expect(skipsAutoJudge("edit")).toBe(false);
   });
 });
 

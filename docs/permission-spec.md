@@ -448,8 +448,10 @@ no session-wide flag. Three values, cycled with Shift+Tab in this order:
      `node_modules`) is **not** a stop; those are judged.
   3. Once 3 consecutive or 20 total judge blocks have accumulated, auto is
      **paused**: every ask prompts until the user approves a call.
-  4. Rules tier `safe`, or an edit inside the profile write set, runs with no
-     judge call.
+  4. Rules tier `safe`, an edit inside the profile write set, or
+     `ask_user_question` (interactive: the user answers it anyway) or
+     `check_job` (read-only job status; `kill_job` stays judged)
+     (`skipsAutoJudge`) runs with no judge call.
   5. Otherwise the two-stage judge decides. ALLOW runs the call, BLOCK denies it
      with the tag's canonical sentence, and a timeout, error or unparseable
      answer falls back to the ordinary prompt.

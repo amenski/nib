@@ -269,6 +269,30 @@ describe("auto posture gate", () => {
     ]);
   });
 
+  it("runs ask_user_question without the judge, as a readonly allow", async () => {
+    const { judge } = stubJudge({ stage1: "BLOCK" });
+    const d = await drive([{ tool: "ask_user_question", args: { question: "which one?" } }], { judge });
+
+    expect(judge).not.toHaveBeenCalled();
+    expect(d.askUser).not.toHaveBeenCalled();
+    expect(d.executed).toEqual(["ask_user_question"]);
+    expect(d.rows.map((r) => [r.decision, r.auto?.stage, r.auto?.outcome])).toEqual([
+      ["allow-by-classifier", "readonly", "allow"],
+    ]);
+  });
+
+  it("runs check_job without the judge, as a readonly allow", async () => {
+    const { judge } = stubJudge({ stage1: "BLOCK" });
+    const d = await drive([{ tool: "check_job", args: { job_id: "job_1" } }], { judge });
+
+    expect(judge).not.toHaveBeenCalled();
+    expect(d.askUser).not.toHaveBeenCalled();
+    expect(d.executed).toEqual(["check_job"]);
+    expect(d.rows.map((r) => [r.decision, r.auto?.stage, r.auto?.outcome])).toEqual([
+      ["allow-by-classifier", "readonly", "allow"],
+    ]);
+  });
+
   it("runs a judged ALLOW without asking, and records the judge", async () => {
     const { judge } = stubJudge({ stage1: ALLOW });
     const d = await drive(["npm test"], { judge });

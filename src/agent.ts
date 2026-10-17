@@ -41,7 +41,7 @@ import {
   type Stage2Options,
 } from "./permissions/risk/index.js";
 import { formatRiskReason } from "./permissions/risk/reasons.js";
-import { isJudgeableBlock } from "./permissions/risk/auto.js";
+import { isJudgeableBlock, skipsAutoJudge } from "./permissions/risk/auto.js";
 import type { ToolExecOptions } from "./tools/types.js";
 
 /** What the auto gate decided for one ask (see decideAuto in the permission gate). */
@@ -1017,11 +1017,17 @@ export async function runAgent(
               "Auto mode paused after repeated blocks.",
             );
           }
-          if (verdict.tier === "safe" || permissionProfile?.editTargetInWriteSet(tc.name, tc.arguments)) {
+          if (
+            skipsAutoJudge(tc.name) ||
+            verdict.tier === "safe" ||
+            permissionProfile?.editTargetInWriteSet(tc.name, tc.arguments)
+          ) {
             am.state.recordAllow();
             return {
               kind: "allow",
-              reason: "auto mode: read-only call or edit inside the write set",
+              reason: skipsAutoJudge(tc.name)
+                ? "auto mode: interactive or read-only status tool, no judge needed"
+                : "auto mode: read-only call or edit inside the write set",
               auto: { stage: "readonly", outcome: "allow", latencyMs: 0 },
             };
           }

@@ -218,14 +218,14 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
     // Resolve the active mode before touching the provider so a typo fails
     // with a clear "unknown mode" message instead of silently proceeding or
     // crashing later (B1/D7). An explicit --mode wins; otherwise the same
-    // "general" default the TUI starts new sessions with (src/cli.tsx) — so
+    // "code" default the TUI starts new sessions with (src/cli.tsx) — so
     // headless runs get the same tool gating as an unconfigured TUI session
     // instead of registry.getAllDefs()'s every-tool fallback.
     const modeLoader = new ModeLoader();
-    const activeMode = await modeLoader.load(options.mode || "general", options.projectRoot);
+    const activeMode = await modeLoader.load(options.mode || "code", options.projectRoot);
     if (!activeMode) {
       const available = (await modeLoader.listAll(options.projectRoot)).map((m) => m.slug).sort();
-      writeErr(`Error: unknown mode "${options.mode || "general"}", available: ${available.join(", ")}`);
+      writeErr(`Error: unknown mode "${options.mode || "code"}", available: ${available.join(", ")}`);
       return 1;
     }
 

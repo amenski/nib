@@ -575,12 +575,12 @@ async function main() {
   const sessionCreateBase = {
     cwd: process.cwd(),
     provider: providerName,
-    model: initialModel || ((parsed.mode === "general" || !parsed.mode) &&
+    model: initialModel || (parsed.mode === "general" &&
       (!configResult.config.provider || configResult.config.provider === "deepseek") &&
       (!detected || detected === "deepseek")
       ? parseModelId(GENERAL_MODEL_ID, providerName)!.model
       : getPreset(providerName)?.defaultModel || "deepseek-v4-pro"),
-    mode: parsed.mode || "general",
+    mode: parsed.mode || "code",
     modelExplicit: rawInitialModel !== undefined,
     effortExplicit: reasoningEffort !== undefined,
     ...(reasoningEffort !== undefined ? { effort: reasoningEffort } : {}),
@@ -591,7 +591,7 @@ async function main() {
   // Adopt it unless the user overrode the choice explicitly on this launch
   // (CLI flag / settings.json), which must still win. Mode follows the same
   // rule (resumedMode below): a resumed session's last mode wins over the
-  // general default, but an explicit --mode on this launch still wins over both.
+  // code default, but an explicit --mode on this launch still wins over both.
   let resumedProvider: string | undefined;
   let resumedModel: string | undefined;
   let resumedMode: string | undefined;
@@ -868,10 +868,10 @@ async function main() {
 
   // Startup mode resolution: an explicit --mode on this launch wins (handled
   // below, after this block, same as today); otherwise a resumed session's
-  // last mode wins; otherwise general — the same "everything but write access"
-  // persona sessionCreateBase.mode already defaults new sessions to.
+  // last mode wins; otherwise code — the persona
+  // sessionCreateBase.mode defaults new sessions to.
   if (!parsed.mode) {
-    shared.activeMode = (await modeLoader.load(resumedMode || "general")) ?? (await modeLoader.load("general")) ?? undefined;
+    shared.activeMode = (await modeLoader.load(resumedMode || "code")) ?? (await modeLoader.load("code")) ?? undefined;
   }
 
   applyModeDefaults(shared, shared.activeMode);
@@ -927,7 +927,7 @@ async function main() {
   // Shown inside the app's scrollback after mount — printing to stdout here
   // would get garbled by Ink's first render.
   const resumeNotice = sessionLoaded
-    ? `Resumed ${sessionId} · ${sessionMessages.length} messages · mode: ${shared.activeMode?.slug || "general"}`
+    ? `Resumed ${sessionId} · ${sessionMessages.length} messages · mode: ${shared.activeMode?.slug || "code"}`
     : undefined;
   const initialNotice = [...skillLoader.notices, containmentWarning(configResult.config), resumeNotice].filter(Boolean).join("\n") || undefined;
 
@@ -1909,7 +1909,7 @@ export async function handleSlashCore(
     case "/mode": {
       const slug = input.slice(6).trim();
       if (!slug) {
-        console.log(`Current: ${shared.activeMode?.slug ?? "general"}`);
+        console.log(`Current: ${shared.activeMode?.slug ?? "code"}`);
         for (const m of await modeLoader.listAll()) console.log(`  ${m.slug} — ${m.description || m.roleDefinition.slice(0, 60)}`);
         return;
       }

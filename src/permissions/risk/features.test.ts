@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { homedir } from "node:os";
-import { extractRiskFeatures, type RiskFeatures, type RiskInput } from "./features.js";
+import { extractRiskFeatures, isDiscardRedirect, type RiskFeatures, type RiskInput } from "./features.js";
 
 /**
  * Feature-level coverage for rows 1-20 of §10.1 of
@@ -299,5 +299,82 @@ describe("features: structure the rules depend on", () => {
     expect(bash("eval 'rm -rf ~'").segments[0].program).toBe("rm");
     // A substitution inside the wrapper cannot be unwrapped safely.
     expect(bash('bash -c "$(cat x)"').parse).toBe("failed");
+  });
+});
+
+describe("§5.4 safe tier evidence: cd scoping and discarded output", () => {
+  it("marks a cd into the workspace neutral and leaves the later read-only segments inside", () => {
+    const f = bash("cd /work/project/src && cat foo.ts");
+    expect(f.segments.map((s) => [s.program, s.neutral, s.readOnly, s.readsOutside])).toEqual([
+      ["cd", true, false, false],
+      ["cat", false, true, false],
+    ]);
+  });
+
+  it("does not mark a cd neutral when its target is outside, dynamic or missing", () => {
+    for (const command of ["cd /tmp", "cd ..", "cd", "cd -", "cd $HOME", "cd $(pwd)", "cd a b", "cd ~other"]) {
+      expect(bash(command).segments.every((s) => !s.neutral), command).toBe(true);
+    }
+  });
+
+  it("flags a read-only segment whose path leaves the workspace once a cd is in play", () => {
+    expect(bash("cd src && ls /etc").segments[1].readsOutside).toBe(true);
+    expect(bash("cd src && ls ../../x").segments[1].readsOutside).toBe(true);
+    expect(bash("cd src && ls lib ./lib /work/project/docs").segments[1].readsOutside).toBe(false);
+  });
+
+  it("does not read a grep pattern, a sed script or echo text as a path", () => {
+    const f = bash("cd src && grep -rn '/etc/passwd' lib; sed -n '/a/,/b/p' f.ts; echo /etc");
+    expect(f.segments.map((s) => s.readsOutside)).toEqual([false, false, false, false]);
+  });
+
+  it("flags outside paths in a command without a cd", () => {
+    expect(bash("cat ../../x && ls /etc").segments.map((s) => s.readsOutside)).toEqual([true, true]);
+    expect(bash("cat a.txt src/b.txt /work/project/c.txt /dev/null").segments[0].readsOutside).toBe(false);
+  });
+
+  it("judges a glob by its literal prefix and by any climb after it", () => {
+    const outside = (command: string) => bash(command).segments[0].readsOutside;
+    expect(outside("ls *.ts")).toBe(false);
+    expect(outside("ls src/*/lib/*.ts")).toBe(false);
+    expect(outside("ls /work/project/src/*")).toBe(false);
+    expect(outside("ls /*")).toBe(true);
+    expect(outside("ls ../*")).toBe(true);
+    expect(outside("ls /etc/*.conf")).toBe(true);
+    expect(outside("ls src/*/../../..")).toBe(true);
+    expect(outside("ls {src,/etc}")).toBe(true);
+  });
+
+  it("reads a grep --include/--exclude value as a name pattern, not a path", () => {
+    const f = bash("grep -rn foo --include=*.java --exclude=/x/*.min.js --exclude-dir=node_modules src");
+    expect(f.segments[0].readsOutside).toBe(false);
+  });
+
+  it("reads the verb of a git call past its global options", () => {
+    for (const command of [
+      "git --no-pager reset --hard",
+      "git -P reset --hard",
+      "git -C . reset --hard",
+      "git -c core.x=1 reset --hard",
+      "git --git-dir=.git --no-pager reset --hard",
+      "git --git-dir .git reset --hard",
+    ]) {
+      const s = bash(command).segments[0];
+      expect(s.verb, command).toBe("reset");
+      expect(s.gitDiscard, command).toEqual(["reset-hard"]);
+    }
+    expect(bash("git --no-pager push --force origin main").segments[0].gitDiscard).toEqual(["push-force"]);
+    expect(bash("git -C ../x push origin main").segments[0].net).toBe(true);
+  });
+
+  it("treats only output sent to /dev/null as a discard", () => {
+    const redirects = (command: string) => bash(command).redirects;
+    expect(redirects("ls 2>/dev/null").map(isDiscardRedirect)).toEqual([true]);
+    expect(redirects("ls >/dev/null").map(isDiscardRedirect)).toEqual([true]);
+    expect(redirects("ls &>/dev/null").map(isDiscardRedirect)).toEqual([true]);
+    expect(redirects("ls >> /dev/null").map(isDiscardRedirect)).toEqual([true]);
+    expect(redirects("ls > out.txt").map(isDiscardRedirect)).toEqual([false]);
+    expect(redirects("ls < /dev/null").map(isDiscardRedirect)).toEqual([false]);
+    expect(redirects("ls 2>&1")).toEqual([]);
   });
 });

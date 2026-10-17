@@ -265,3 +265,258 @@ describe("rules: user-stated boundaries soften two specific blocks", () => {
     expect(classify(withMessage).tier).toBe("block");
   });
 });
+
+describe("§5.4 safe tier: obviously read-only shell", () => {
+  const tierOf = (command: string) => classify(input(command)).tier;
+
+  it.each([
+    "ls -1 docs/archive 2>/dev/null",
+    "ls -1 /work/project/tools 2>/dev/null; echo ---; ls -1 /work/project/docs",
+    "git --no-pager log --oneline -15",
+    "git -P diff --stat",
+    "git --no-pager status --short 2>&1",
+    "grep -rln \"caption\" frontend/src | head -20; echo ---; grep -rn \"schema\" src/Model.java | head",
+    "cat README.md | sort | uniq | wc -l",
+    "grep -rn foo src | tail -5",
+    "sed -n '10,20p' src/a.ts",
+    "ls >/dev/null",
+    "ls > /dev/null",
+    "ls &>/dev/null",
+    "ls >/dev/null 2>&1",
+    "ls 2>&1",
+    "ls 1>&2",
+    "ls >&2",
+    "echo \"=== heading? ===\"; printf '%s\\n' hello",
+    "echo ---",
+  ])("safe: %s", (command) => {
+    expect(tierOf(command)).toBe("safe");
+  });
+
+  it.each([
+    "cd /work/project && ls -1 docs 2>/dev/null",
+    "cd /work/project && git --no-pager log --oneline -15",
+    "cd /work/project && grep -rln \"caption\" frontend/src | head -20; echo ---; grep -rn \"x\" src | head",
+    "cd /work/project/src && cat foo.ts",
+    "cd src && ls docs ./docs",
+    "cd /work/project && echo \"=== heading\"; sed -n '1,60p' docs/a.md; echo \"=== more\"; wc -l docs/a.md",
+    "cd ./src; ls",
+  ])("safe after a cd inside the workspace: %s", (command) => {
+    expect(tierOf(command)).toBe("safe");
+  });
+
+  it.each([
+    "cd /tmp && cat foo",
+    "cd /tmp && ls",
+    "cd /tmp && echo hi",
+    "cd .. && ls",
+    "cd / && ls",
+    "cd /work/project-other && ls",
+    "cd && ls",
+    "cd - && ls",
+    "cd $HOME && ls",
+    "cd \"$HOME\" && ls",
+    "cd $(pwd) && ls",
+    "cd `pwd` && ls",
+    "cd ~ && ls",
+    "cd ~/project && ls",
+    "cd ~other && ls",
+    "cd src docs && ls",
+    "cd -P src && ls",
+    "cd src/* && ls",
+    "cd src && cat ../../etc/passwd",
+    "cd src && ls /etc",
+    "cd src && ls ../../../elsewhere",
+    "cd src || ls ../../x",
+    "cd src; cat ../../x",
+    "(cd src && ls)",
+    "CDPATH=/etc cd src && ls",
+    "CDPATH=/etc; cd src && ls",
+  ])("not safe around a cd that leaves or hides the workspace: %s", (command) => {
+    expect(tierOf(command)).not.toBe("safe");
+  });
+
+  it("checks a path against every directory the shell might be in, not just the one a cd names", () => {
+    // `cd src` may fail and leave the shell in the workspace root, where
+    // `../x` is outside; the same text read from inside src/ would be fine.
+    expect(tierOf("cd src && cat ../x")).toBe("benign");
+    expect(tierOf("cd src && cd .. && ls")).toBe("benign");
+  });
+
+  it.each([
+    "ls > out.txt",
+    "ls >> out.txt",
+    "ls 2> errors.log",
+    "echo hi > f",
+    "echo hi >> f",
+    "printf hi > f",
+    "cat a.txt > /dev/null.bak",
+    "cd /work/project && ls > out.txt",
+    "cat <<EOF\nhello\nEOF",
+    "cat < in.txt",
+    "ls &> out.txt",
+  ])("not safe with a redirect that keeps output: %s", (command) => {
+    expect(tierOf(command)).not.toBe("safe");
+  });
+
+  it.each([
+    "git -C ../x log",
+    "git --no-pager -C ../x log",
+    "git -P -C . status",
+    "git -c core.pager=cat log",
+    "git --no-pager -c core.fsmonitor=x status",
+    "git --no-pager commit -m wip",
+    "find . -delete",
+    "find . -name x -delete",
+    "find . -exec rm {} +",
+    "find . -name '*.ts'",
+    "sed -i 's/a/b/' f",
+    "sed -n 'w out.txt' f",
+    "sort -o out.txt in.txt",
+    "sort --output=out.txt in.txt",
+    "du *.ts",
+    "cat $(ls)",
+    "cat \"$FILE\"",
+    "rm -rf build 2>/dev/null",
+    "mkdir -p build/x && ls",
+    "npm test 2>&1 | tail -20",
+  ])("stays out of the safe tier: %s", (command) => {
+    expect(tierOf(command)).not.toBe("safe");
+  });
+
+  it.each([
+    "ls *.ts",
+    "ls src/*/*.ts docs/a?.md",
+    "cat src/*.ts | head",
+    "wc -l docs/*.md",
+    "grep -rn foo --include=*.java --exclude=*.min.js --exclude-dir=node_modules src",
+    "grep -rn foo src/main/*.java | head -5",
+    "cd src && ls *.ts",
+    "ls /work/project/src/*.ts",
+  ])("safe with a glob whose literal prefix stays inside: %s", (command) => {
+    expect(tierOf(command)).toBe("safe");
+  });
+
+  it.each([
+    "ls /*",
+    "ls ../*",
+    "ls /etc/*.conf",
+    "cat ~/*.txt",
+    "ls src/*/../../../*",
+    "ls {src,/etc}",
+    "cd src && ls ../*.ts",
+    "rg foo src/*.ts",
+    "find . -name '*.ts'",
+    "sort *.txt",
+    "git log -- src/*.ts",
+  ])("not safe with a glob that can leave the workspace or on a strict command: %s", (command) => {
+    expect(tierOf(command)).not.toBe("safe");
+  });
+
+  it.each([
+    "cat /etc/hosts",
+    "ls /",
+    "ls ..",
+    "cat ../../x",
+    "head -5 ../other/file.txt",
+    "grep -rn foo /usr/lib",
+    "wc -l ~/notes.txt",
+    "ls /work/project-other",
+    "git --no-pager log -- ../x",
+    "find / -name x",
+  ])("not safe when a path operand is outside the workspace: %s", (command) => {
+    expect(tierOf(command)).not.toBe("safe");
+  });
+
+  it.each([
+    "cat /work/project/README.md",
+    "ls /work/project",
+    "head -c 10 /dev/null",
+    "cat ./src/../README.md",
+    "ls /work/project/src/../docs",
+    "grep -rn '/etc/passwd' src",
+    "sed -n '/etc/,/usr/p' notes.md",
+  ])("safe when every path operand is inside the workspace: %s", (command) => {
+    expect(tierOf(command)).toBe("safe");
+  });
+
+  it.each([
+    "rg --pre 'sh evil' foo",
+    "rg --pre=cat foo",
+    "rg --pre-glob '*.pdf' foo",
+    "rg --hostname-bin=sh foo",
+    "uniq in.txt out.txt",
+    "git diff --output=out.patch",
+    "git log --output out.txt",
+    "git --no-pager show --output=f HEAD",
+    "git diff --out=f",
+    "file -C",
+    "file --compile",
+  ])("not safe: a flag or operand that runs a program or writes a file: %s", (command) => {
+    expect(tierOf(command)).not.toBe("safe");
+  });
+
+  it("still safe: the same programs without the dangerous flag", () => {
+    for (const command of ["rg -n foo src", "uniq -c in.txt", "git diff --stat", "file README.md", "git log --output-indicator-new=+"]) {
+      expect(tierOf(command), command).toBe("safe");
+    }
+  });
+
+  it("git global options do not hide a verb from the block and confirm rules", () => {
+    for (const command of [
+      "git --no-pager reset --hard",
+      "git -P reset --hard HEAD~1",
+      "git -C . reset --hard",
+      "git -c user.name=x reset --hard",
+      "git --no-pager checkout -- .",
+      "git --no-pager stash drop",
+      "git -C ../x restore .",
+    ]) {
+      const result = classify(input(command));
+      expect(result.tier, command).toBe("block");
+      expect(result.reason, command).toBe("git.history-rewrite");
+    }
+    for (const command of [
+      "git clean -f",
+      "git clean -fd",
+      "git clean -df",
+      "git clean -fdx",
+      "git clean -xdf",
+      "git clean -f -d",
+      "git clean -ffd",
+      "git clean --force",
+      "git clean -d --force",
+      "git --no-pager clean -fd",
+      "git -C . clean -f",
+    ]) {
+      const result = classify(input(command));
+      expect(result.tier, command).toBe("block");
+      expect(result.reason, command).toBe("git.history-rewrite");
+    }
+    for (const command of ["git clean -n", "git clean -nd", "git clean --dry-run", "git clean -nfd", "git clean -f --dry-run", "git clean -i", "git clean"]) {
+      expect(classify(input(command)).tier, command).not.toBe("block");
+    }
+    for (const command of ["git --no-pager push --force origin main", "git -C . push -f origin main"]) {
+      expect(classify(input(command)).reason, command).toBe("git.force-push");
+    }
+    expect(classify(input("git --no-pager commit --amend")).reasons).toContain("git.amend");
+    expect(classify(input("git -C . push origin release")).reasons).toContain("git.push-other-branch");
+  });
+
+  it("still treats a credential path as a hard stop whatever is done with the output", () => {
+    for (const command of ["cat .env 2>/dev/null", "cd /work/project && cat .env 2>&1", "cat .env | head -1"]) {
+      const result = classify(input(command));
+      expect(result.tier, command).toBe("confirm");
+      expect(result.reasons, command).toContain("fs.secret-ref");
+    }
+  });
+
+  it("still sends a substitution to confirm, redirect or not", () => {
+    expect(classify(input("echo $(whoami) 2>/dev/null")).tier).toBe("confirm");
+    expect(classify(input("cd /work/project && echo `date`")).reasons).toContain("shell.expansion");
+  });
+
+  it("does not let a discarded redirect hide a write elsewhere in the command", () => {
+    expect(tierOf("ls 2>/dev/null; touch x")).toBe("benign");
+    expect(tierOf("ls 2>/dev/null && rm -rf build")).toBe("benign");
+  });
+});

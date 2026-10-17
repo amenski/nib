@@ -306,7 +306,7 @@ boolean or a small enum; the vector is persisted on the audit row.
 | `pkgInstall` | `npm i/ci`, `pip install`, `cargo add`, `brew install`, `apt`, `gem`, `pub get` |
 | `pkgFromLock` | install with no package name argument (`npm ci`, `npm install`, `pip install -r`, `pub get`) |
 | `pkgPublish` | `npm publish`, `cargo publish`, `gem push`, `twine upload`, `docker push` |
-| `gitDiscard` | `reset --hard`, `checkout -- .`, `restore .`, `clean -f*`, `stash drop/clear`, `branch -D`, `push --force*`, `push --delete` |
+| `gitDiscard` | `reset --hard`, `checkout -- .`, `restore .`, `clean -f` (any spelling: `-fd`, `-df`, `-f -d`, `--force`; not with `-n`/`--dry-run`), `stash drop/clear`, `branch -D`, `push --force*`, `push --delete` |
 | `gitRemote` | `remote add/set-url`, `push` to a remote not in `gitRemotesAtStart` |
 | `gitAmendPushed` | `commit --amend` (needs `git status`-style probe; MVP: flag any `--amend`) |
 | `infraDestroy` | `terraform/pulumi/cdk destroy`, `kubectl delete`, `aws … delete-*`, `gcloud … delete`, `--all` with delete |
@@ -391,9 +391,71 @@ counts as benign (Claude Code allows it by default).
 
 ### 5.4 Safe (tier = safe, score 0.0)
 
-`classifyCommand()` = proven-read-only *and* no redirect *and* every path
-target inside cwd / additional read roots. First-party read tools inside the
+`classifyCommand()` = proven-read-only *and* no redirect that keeps output
+*and* every path operand inside the working directory (`RiskInput` carries no
+separate read roots, so cwd is the only one). First-party read tools inside the
 workspace. `git status/diff/log` without `-C`/`-c`.
+
+The tier mirrors Claude Code's read-only set (§1.1–1.2) so that obviously
+read-only shell does not cost a judge call under the auto posture. Outside auto
+the tier is only an audit label, so none of the following changes a decision.
+What counts as read-only, beyond the allowlist in `command-classifier.ts`:
+
+- **`cd <dir>` is neutral**, neither a write nor a read. It is stepped over
+  only when `<dir>` is a literal path that stays inside the working directory;
+  `cd`, `cd -`, `cd $VAR`, `cd $(…)`, a glob, `~user`, two arguments, or a
+  target outside the workspace make the command not safe. A `cd` also changes
+  where later relative paths point, so each later read-only segment's path
+  operands are resolved against every directory the shell might be in (the
+  working directory plus each `cd` target, so a failed `cd`, a `||`, or a
+  pipeline subshell cannot hide a path) and must stay inside the working
+  directory under all of them (`cd src && cat ../x` is not safe, `cd /tmp &&
+  cat foo` is not safe). `CDPATH=… cd` is a `shell.special-var` confirm.
+- **Path operands are checked with or without a `cd`.** Every non-flag word of
+  a read-only segment (and the value of `--flag=value`) is resolved lexically
+  and must stay inside the working directory: `cat /etc/hosts`, `ls ..`,
+  `head ../x` are not safe and go to the judge. `/dev/null` is allowed. A
+  grep pattern, a sed script, `echo`/`printf` text and grep's
+  `--include`/`--exclude`/`--exclude-dir` values are not paths. Any `{…}` brace
+  expansion counts as outside, since it is not modelled.
+- **Redirects that only discard output are ignored**: `2>/dev/null`,
+  `>/dev/null`, `>>/dev/null`, `&>/dev/null`, `2>&1`, `1>&2`, `>&2`. Any other
+  redirect (a file, a heredoc, `< file`) still disqualifies, and a credential
+  path is still `fs.secret-ref` (`cat .env 2>/dev/null` is a hard stop).
+- **`echo` / `printf`** with literal arguments. A glob character inside quotes
+  is a literal and no longer makes a segment dynamic (`echo "=== heading?"`,
+  `grep -rn "a.*b"`); `find`, `git`, `sed` and `sort` keep treating any glob
+  character as dynamic. An unquoted glob is accepted only for `grep`, `ls`,
+  `cat`, `head`, `tail` and `wc` (every flag read-only, none executes or
+  writes), and then only when its literal prefix (the text before the first
+  glob character) resolves inside the working directory and nothing after the
+  first glob character climbs with `..`: `grep -rn x --include=*.java src/*/main`
+  is safe, `ls /*`, `ls ../*`, `ls src/*/../../..` are not. `rg` and every
+  other command keep an unquoted glob dynamic.
+- **`git --no-pager <read-only subcommand>`** and `git -P …` are the bare
+  subcommand. `-C` / `-c` still disqualify.
+- **`sed`** only as a line printer: one address or range (`10,20p`, `$p`,
+  `/start/,/end/p`) followed by `p`, with `-n`/`-E`/`-r` as the only options.
+  Anything else (`-i`, `-e`, `-f`, `w`, `e`, `s`) is unknown.
+- **`sort`** without `-o`/`--output` (or an abbreviation) or `--compress-program`.
+- **Flags that execute or write, excluded from the allowlist**: `rg --pre*`
+  and `--hostname-bin` (run a program); `uniq` with a second positional (the
+  output file); `git` read-only subcommands with any `--out…` option except
+  `--output-indicator-*` (`--output=FILE`, abbreviations included); `file -C`
+  / `--compile` (writes a `.mgc`); `find -exec/-execdir/-ok/-okdir/-delete/
+  -fls/-fprint*`; `head`/`tail -o`; `sort -o/--compress-program`. The rest of
+  the allowlist (`cat cmp cut df diff dirname du id ls pwd readlink realpath
+  stat uname wc which whoami basename test true false`) has no such flag.
+- **Git global options do not hide the verb.** For every rule, not just this
+  tier, `git --no-pager|-P|-C dir|-c k=v|--git-dir=… <verb>` is read as
+  `git <verb>`, so `git --no-pager reset --hard` is still `git.history-rewrite`.
+  For this tier only `--no-pager` and `-P` are skipped; `-C`/`-c` still
+  disqualify.
+- Pipes into read-only filters (`head`, `tail`, `sort`, `uniq`, `wc`, `grep`)
+  stay safe when every segment is.
+
+Not widened: secret references, network, `$(…)` substitution, unparsed
+segments, globs on `find`/`sort`/`sed`/`git`, `find -exec/-delete`, write tools.
 
 ### 5.5 Precedence
 
@@ -897,7 +959,10 @@ at step 5.
 4. Engine `ask`: the PermissionRequest hook, the sandboxed-Bash session-grant
    reuse and `sandbox.autoAllowBash` run first, unchanged.
 5. `decideAuto()`, just before `askUser`: hard stops, then suspension, then the
-   read-only tier, then the judge.
+   read-only tier, then the judge. `ask_user_question` (its whole job is to ask
+   the user) and `check_job` (read-only job status) (`skipsAutoJudge`) join the
+   read-only tier here and skip the judge (audit stage `readonly`); `kill_job`
+   stays judged.
 
 **Hard stops** (`autoHardStop`) go to a real prompt with a note, never to the
 judge: any `unsandboxedKind` (requested or excluded); a git config operation

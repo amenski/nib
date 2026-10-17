@@ -61,6 +61,18 @@ export interface SegmentFeatures {
   /** Subcommand for the multi-verb programs in VERB_PROGRAMS. */
   verb?: string;
   readOnly: boolean;
+  /**
+   * A `cd` to a directory the command text names outright and that stays inside
+   * the working directory: it neither reads nor writes, so the safe tier steps
+   * over it (§5.4). Every other `cd` is neither neutral nor read-only.
+   */
+  neutral: boolean;
+  /**
+   * A read-only segment that follows a `cd` and names a path which, resolved
+   * against any directory the shell might be standing in, leaves the working
+   * directory. Only ever set once the command contains a neutral `cd`.
+   */
+  readsOutside: boolean;
   writesFs: boolean;
   deletes: boolean;
   /** Recursive force: `rm -r -f`, `chmod -R`, or a directory-wide `find -delete`. */
@@ -233,8 +245,8 @@ const RUNNER_PROGRAMS = new Set(["npx", "bunx", "devbox", "direnv", "make"]);
 /** §4.1 `envAssign` safe list: assignments that cannot redirect execution. */
 const SAFE_ENV_VARS = new Set(["NODE_ENV", "CI", "DEBUG", "FORCE_COLOR"]);
 
-/** §4.1 `specialVar`. */
-const SPECIAL_VARS = new Set(["PATH", "IFS", "LD_PRELOAD", "HOME"]);
+/** §4.1 `specialVar`. CDPATH redirects a bare `cd name`, which the safe tier steps over. */
+const SPECIAL_VARS = new Set(["PATH", "IFS", "LD_PRELOAD", "HOME", "CDPATH"]);
 
 /** §5.3: deleting these is ordinary work, not a pre-session file loss. */
 const BUILD_DIRS = new Set(["node_modules", "dist", "build", ".dart_tool", "target", "out", "coverage"]);
@@ -481,6 +493,17 @@ export function isFileWriteRedirect(r: RiskRedirect): boolean {
   return stripQuotes(r.target) !== "/dev/null";
 }
 
+/**
+ * A redirect that only throws output away: `2>/dev/null`, `>/dev/null`,
+ * `&>/dev/null` (folded to `>` by maskShellNoise). Fd duplication such as
+ * `2>&1` never reaches here — maskShellNoise removes it — and a redirect with
+ * no target is likewise nothing to open.
+ */
+export function isDiscardRedirect(r: RiskRedirect): boolean {
+  if (r.heredoc) return false;
+  return /^\d*>>?$/.test(r.op) && stripQuotes(r.target) === "/dev/null";
+}
+
 // ── target classification (§4.2 `targets`) ──
 
 interface TargetContext {
@@ -672,9 +695,7 @@ function gitDiscardTags(tokens: string[]): string[] {
   if (sub === "reset" && has("--hard")) tags.push("reset-hard");
   if (sub === "checkout" && tokens.includes("--")) tags.push("checkout-dot");
   if (sub === "restore" && (tokens.includes("--") || tokens.includes("."))) tags.push("restore-dot");
-  if (sub === "clean" && hasRecursiveForce([tokens[0], ...tokens.slice(1).filter((t) => t !== "-d" && t !== "-x")])) {
-    tags.push("clean-force");
-  }
+  if (sub === "clean" && gitCleanForces(tokens)) tags.push("clean-force");
   if (sub === "stash" && ["drop", "clear"].includes(tokens[2]?.toLowerCase() ?? "")) tags.push("stash-drop");
   if (sub === "branch" && has("-D")) tags.push("branch-delete");
   if (sub === "push") {
@@ -683,6 +704,19 @@ function gitDiscardTags(tokens: string[]): string[] {
     if (has("--delete") || has("-d")) tags.push("push-delete");
   }
   return tags;
+}
+
+/**
+ * `git clean` removes untracked files only with `-f`/`--force`, in any
+ * spelling (`-f`, `-fd`, `-df`, `-fdx`, `-f -d`), unless `-n`/`--dry-run` turns
+ * it into a listing.
+ */
+function gitCleanForces(tokens: string[]): boolean {
+  const flags = tokens.slice(2).filter((t) => t.startsWith("-") && t !== "--");
+  const letters = flags.filter((t) => !t.startsWith("--")).join("");
+  const force = flags.includes("--force") || letters.includes("f");
+  const dryRun = flags.includes("--dry-run") || letters.includes("n");
+  return force && !dryRun;
 }
 
 function disarmFlags(tokens: string[], program: string): string[] {
@@ -719,7 +753,12 @@ function segmentFeatures(
   outerWrappers: readonly string[],
 ): SegmentFeatures {
   const tokens = tokenize(segment) ?? segment.trim().split(/\s+/).filter(Boolean);
-  const { program, tokens: after, wrappers, envAssigns } = stripWrappers(tokens);
+  const { program, tokens: spelled, wrappers, envAssigns } = stripWrappers(tokens);
+  // `git --no-pager reset --hard` and `git -C . push --force` are the same call
+  // as without the global options: every rule below reads the verb, so it is
+  // found once, here. The flags a rule scans for (secret paths, disarm) still
+  // see the tokens as written.
+  const after = program === "git" ? withoutGitGlobalOptions(spelled) : spelled;
   const args = after.slice(1);
   const verb = VERB_PROGRAMS.has(program) && args[0] && !args[0].startsWith("-") ? args[0].toLowerCase() : undefined;
 
@@ -740,6 +779,8 @@ function segmentFeatures(
     program,
     verb,
     readOnly: classifyCommandSegment(segment).classification === "proven-read-only",
+    neutral: false,
+    readsOutside: false,
     writesFs: writesFiles(program, after, redirects),
     deletes: DELETE_PROGRAMS.has(program) || findDelete || (program === "git" && verb === "clean"),
     recursiveForce: hasRecursiveForce(after) || (RECURSIVE_MUTATORS.has(program) && hasRecursiveFlag(args)) || findDelete,
@@ -759,11 +800,145 @@ function segmentFeatures(
       ["su", "doas", "launchctl", "systemctl"].includes(program) ||
       (program === "chmod" && args.some((t) => t === "+s" || t === "u+s" || t === "g+s")) ||
       (program === "crontab" && args.some((t) => /^-[er]$/.test(t))),
-    disarm: disarmFlags(after, program),
-    secretRefs: secretRefsIn(after),
+    disarm: disarmFlags(spelled, program),
+    secretRefs: secretRefsIn(spelled),
     findDelete,
     findMtime,
   };
+}
+
+// ── `cd` scoping (§5.4) ──
+
+/**
+ * Marks the `cd` segments the safe tier may step over, and the read-only
+ * segments that reach outside the working directory (`readsOutside`).
+ *
+ * The shell's directory at any segment is one of the directories collected in
+ * `bases`: it starts as the working directory, and each `cd` adds its target
+ * resolved against every base seen so far. That is a superset of the real
+ * directory whatever the operators between segments do — a `cd` that fails
+ * leaves the shell where it was, one behind `||` or `|` may not run, one in a
+ * pipeline runs in a subshell — and it is why this pass never needs to know
+ * which operator joined two segments. A path is only called inside when it is
+ * inside under every base.
+ *
+ * Fails closed: a `cd` with no argument, `-`, a flag, a `$VAR`, a substitution,
+ * a glob, more than one argument, or a target outside the working directory is
+ * not neutral, so a command containing one is not safe. Paths are compared
+ * lexically, as everywhere else in this file; the sandbox, not the label, is
+ * what stops a symlink. There is no separate set of read roots in RiskInput,
+ * so "inside" means inside the working directory.
+ */
+function scopeToWorkingDir(segments: SegmentFeatures[], workingDir: string): SegmentFeatures[] {
+  let bases = [workingDir];
+
+  return segments.map((segment) => {
+    const tokens = tokenize(segment.text);
+    if (tokens?.[0] === "cd") {
+      const destinations = cdDestinations(tokens, bases, workingDir);
+      if (destinations === null) return segment;
+      bases = unique([...bases, ...destinations]);
+      return { ...segment, neutral: true };
+    }
+    if (!segment.readOnly || tokens === null) return segment;
+    const outside = pathOperands(tokens).some((operand) =>
+      bases.some((base) => operandEscapes(operand, base, workingDir)),
+    );
+    return outside ? { ...segment, readsOutside: true } : segment;
+  });
+}
+
+/**
+ * Whether a path operand, read from `base`, can name something outside the
+ * working directory. A glob is judged by its literal prefix — the part the
+ * shell does not expand — and by whether anything after the first glob
+ * character climbs back out with `..`. A brace expansion is not modelled at
+ * all, so any `{` is treated as outside. `/dev/null` is data, not a file.
+ */
+function operandEscapes(operand: string, base: string, workingDir: string): boolean {
+  if (operand === "/dev/null") return false;
+  if (/[{}]/.test(operand)) return true;
+  const glob = operand.search(/[*?[]/);
+  if (glob !== -1 && operand.slice(glob).split("/").includes("..")) return true;
+  const literal = glob === -1 ? operand : operand.slice(0, glob);
+  return !pathWithin(workingDir, resolve(base, literal));
+}
+
+/** Where `cd <dir>` may land, or null when that is not statically known to stay inside. */
+function cdDestinations(tokens: string[], bases: string[], workingDir: string): string[] | null {
+  if (tokens.length !== 2) return null;
+  const dir = tokens[1];
+  if (dir === "" || dir.startsWith("-") || /[*?[]|\$|`/.test(dir)) return null;
+  if (dir.startsWith("~") && dir !== "~" && !dir.startsWith("~/")) return null;
+  const landings = dir.startsWith("~")
+    ? [resolveTargetPath(dir, { workingDir, writeRoots: [], vars: new Map() })]
+    : bases.map((base) => resolve(base, dir));
+  return landings.every((landing) => pathWithin(workingDir, landing)) ? landings : null;
+}
+
+/**
+ * The tokens of a read-only segment that may name a file: every non-flag word,
+ * and the value of `--flag=value`. `echo`/`printf` take literal text, the first
+ * word of a `grep`/`rg` (or the script of a `sed`) is its pattern, and grep's
+ * `--include`/`--exclude`/`--exclude-dir` values are name patterns matched by
+ * grep itself; none of those is a path. A pattern that is only mistaken for one
+ * resolves inside the directory it is joined to, and one that looks like an
+ * outside path merely keeps the call out of the safe tier.
+ */
+const NAME_PATTERN_FLAGS = /^--(?:include|exclude|exclude-dir|include-dir)=/;
+
+function pathOperands(tokens: string[]): string[] {
+  const program = basenameLower(tokens[0]);
+  if (program === "echo" || program === "printf") return [];
+  const patternGiven = tokens.some((t) => t === "-e" || t === "-f" || t.startsWith("--regexp") || t.startsWith("--file"));
+  let patternPending = program === "sed" || ((program === "grep" || program === "rg") && !patternGiven);
+
+  const operands: string[] = [];
+  for (const token of tokens.slice(1)) {
+    if (program === "grep" && NAME_PATTERN_FLAGS.test(token)) continue;
+    if (token.startsWith("--") && token.includes("=")) {
+      operands.push(token.slice(token.indexOf("=") + 1));
+    } else if (!token.startsWith("-")) {
+      if (patternPending) patternPending = false;
+      else operands.push(token);
+    }
+  }
+  return operands;
+}
+
+/** Git's global options that take no value. */
+const GIT_GLOBAL_FLAGS = new Set([
+  "--no-pager", "-P", "--paginate", "-p", "--no-optional-locks", "--no-replace-objects", "--bare",
+  "--literal-pathspecs", "--glob-pathspecs", "--noglob-pathspecs", "--icase-pathspecs", "--no-lazy-fetch",
+]);
+
+/** Git's global options whose value is the next word (the `--opt=value` spellings are one word). */
+const GIT_GLOBAL_VALUE_FLAGS = new Set([
+  "-C", "-c", "--git-dir", "--work-tree", "--namespace", "--super-prefix", "--config-env", "--exec-path", "--attr-source",
+]);
+
+/**
+ * `git <global options> <verb> …` as `git <verb> …`. Only the options git
+ * documents before the subcommand are removed, and any other leading option is
+ * assumed to take no value, so the first plain word is the verb.
+ */
+function withoutGitGlobalOptions(tokens: string[]): string[] {
+  let i = 1;
+  for (;;) {
+    const token = tokens[i];
+    if (token === undefined) break;
+    if (GIT_GLOBAL_FLAGS.has(token) || /^--(git-dir|work-tree|namespace|super-prefix|config-env|exec-path|attr-source)=/.test(token)) {
+      i++;
+    } else if (GIT_GLOBAL_VALUE_FLAGS.has(token)) {
+      i += 2;
+    } else if (token.startsWith("-")) {
+      // An option this table does not know: assumed to take no value.
+      i++;
+    } else {
+      break;
+    }
+  }
+  return [tokens[0], ...tokens.slice(i)];
 }
 
 function writesFiles(program: string, tokens: string[], redirects: RiskRedirect[]): boolean {
@@ -992,8 +1167,11 @@ function shellFeatures(command: string, input: RiskInput): Partial<RiskFeatures>
     ...targetContext(input),
     vars: new Map([...leading.envAssigns, ...collectVars(cleanedSegments)]),
   };
-  const segments = cleanedSegments.map((segment) =>
-    segmentFeatures(segment, stripped.flatMap((s) => s.redirects), ctx, leading.wrappers),
+  const segments = scopeToWorkingDir(
+    cleanedSegments.map((segment) =>
+      segmentFeatures(segment, stripped.flatMap((s) => s.redirects), ctx, leading.wrappers),
+    ),
+    input.workingDir,
   );
 
   // Redirect targets need the same path classification the command's own

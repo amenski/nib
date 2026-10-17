@@ -31,6 +31,12 @@ import { riskReasonText } from "./reasons.js";
 export type RiskJudge = (
   request: { system: string; user: string },
   signal?: AbortSignal,
+  /**
+   * Per-call knobs. Optional so the cheap stage-2 judge (one word, a line of
+   * reason) and its stubs are untouched; the auto-mode judge (auto.ts) asks for a
+   * small budget on stage 1 and room to reason on stage 2.
+   */
+  opts?: { maxTokens?: number },
 ) => Promise<string>;
 
 export interface Stage2Options {
@@ -137,7 +143,7 @@ export function buildStage2Prompt(
  */
 const MAX_MESSAGE_CHARS = 2000;
 
-function clampMessage(text: string): string {
+export function clampMessage(text: string): string {
   if (text.length <= MAX_MESSAGE_CHARS) return text;
   return `${text.slice(0, MAX_MESSAGE_CHARS)}… [truncated ${text.length - MAX_MESSAGE_CHARS} chars]`;
 }
@@ -146,7 +152,7 @@ function clampMessage(text: string): string {
  * The vector, trimmed to what helps a judge and fits a cheap model's context.
  * The full vector is persisted on the audit row; this is the reading of it.
  */
-function featureSummary(f: RiskFeatures): Record<string, unknown> {
+export function featureSummary(f: RiskFeatures): Record<string, unknown> {
   return {
     kind: f.kind,
     parse: f.parse,
@@ -205,7 +211,7 @@ export function parseStage2Reason(text: string): { reason: string; tag?: string 
  * turn is worse than no judge (§12.9).
  */
 /** Raised by {@link withTimeout} so a timeout is distinguishable from a failure. */
-class Stage2Timeout extends Error {}
+export class Stage2Timeout extends Error {}
 
 /**
  * Races `work` against a wall-clock deadline. The deadline is enforced by this
@@ -214,7 +220,7 @@ class Stage2Timeout extends Error {}
  * would otherwise hang the permission gate for as long as it liked. The timeout
  * still aborts too, so a judge that *does* respond to the signal stops its work.
  */
-function withTimeout<T>(work: Promise<T>, ms: number, abort: () => void): Promise<T> {
+export function withTimeout<T>(work: Promise<T>, ms: number, abort: () => void): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => {
       abort();

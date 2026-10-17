@@ -176,6 +176,16 @@ export interface RiskInput {
      */
     userMessages: string[];
     createdThisSession: Set<string>;
+    /**
+     * Auto mode's judge only (risk/auto.ts); the rules never read these three.
+     * The session-wide human turns (`userMessages` is per-agent-run, so a
+     * sub-agent sees none of them), the agent's earlier calls by name and
+     * arguments — never results or prose — and, for a sub-agent, the task its
+     * parent wrote, which is agent text and is labelled as such.
+     */
+    sessionUserMessages?: readonly string[];
+    priorToolCalls?: readonly { tool: string; args: string }[];
+    delegatedTask?: string;
   };
 }
 

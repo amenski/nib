@@ -11,7 +11,8 @@ describe("the reason table covers the ruleset", () => {
 
   it("has no sentence that no rule can produce", () => {
     const tags = new Set([...BLOCK_RULES, ...CONFIRM_RULES].map((r) => r.tag));
-    const orphans = knownReasonTags().filter((tag) => !tags.has(tag));
+    // `auto.*` tags are chosen by the auto-mode judge (auto.ts), not emitted by a rule.
+    const orphans = knownReasonTags().filter((tag) => !tags.has(tag) && !tag.startsWith("auto."));
     expect(orphans, `reason text for tags no rule emits: ${orphans.join(", ")}`).toEqual([]);
   });
 

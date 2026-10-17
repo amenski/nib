@@ -91,6 +91,22 @@ const RISK_REASONS: Record<string, string> = {
     "this command could not be read as shell, so its real effect is unknown. Rewrite it as a simple command line without dangling operators or nested quoting.",
   "parse.partial":
     "part of this command could not be read as shell. Split the parts the classifier cannot see into their own calls.",
+
+  // ── auto-mode judge (risk/auto.ts): the model's chosen group, not a rule ──
+  "auto.destruction":
+    "the reviewer judged this would destroy work that cannot be recovered from the conversation (files that predate the session, history, or deployed resources). Name only what this session created, or ask the user to approve it.",
+  "auto.exfiltration":
+    "the reviewer judged this would send data off the machine that the task does not call for (credentials, private files, or a download piped into a shell). Keep the data local, or ask the user to approve the destination.",
+  "auto.security-degrade":
+    "the reviewer judged this would weaken a safeguard (skipped verification, a disabled check or sandbox, a relaxed test, or another agent started without permission checks). Fix the underlying problem instead, or ask the user to accept the risk.",
+  "auto.trust-boundary":
+    "the reviewer judged this would cross a trust boundary (a force push, a different remote, registry or API base URL, a third-party repository, or a tunnel). Stay inside this repository's own branches, or ask the user to confirm the target.",
+  "auto.bypass-review":
+    "the reviewer judged this would skip human review or act on others' behalf (merging or approving a change, a production flag, a shared-cluster operation, or a bot command). Leave the final step to the user.",
+  "auto.user-boundary":
+    "the reviewer judged this crosses a limit the user stated earlier in the conversation. Respect that limit, or ask the user whether it still applies.",
+  "auto.out-of-scope":
+    "the reviewer judged this goes beyond what the user asked for, which does not authorise a riskier action than the request named. Do what was asked, or ask the user before going further.",
 };
 
 /** The sentence for one tag, with a safe fallback for a tag that predates this table. */

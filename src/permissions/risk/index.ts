@@ -8,6 +8,21 @@ export type { RiskFeatures, RiskInput } from "./features.js";
 export type { RiskTier } from "./rules.js";
 export { RISK_RULESET_VERSION } from "./rules.js";
 export {
+  AUTO_STAGE1_TIMEOUT_MS,
+  AUTO_STAGE2_TIMEOUT_MS,
+  AUTO_TAGS,
+  AutoModeState,
+  autoBlockMessage,
+  autoHardStop,
+  buildAutoPrompt,
+  parseAutoStage1,
+  parseAutoStage2,
+  priorToolCalls,
+  runAutoJudge,
+  type AutoJudgeResult,
+  type AutoModeOptions,
+} from "./auto.js";
+export {
   runStage2,
   buildStage2Prompt,
   buildStage2SystemPrompt,

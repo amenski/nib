@@ -23,7 +23,8 @@ vi.mock("./presets.js", () => ({
   },
 }));
 
-import { createRiskJudge, findJudgeModel } from "./risk-judge.js";
+import type { Provider } from "./types.js";
+import { createAutoJudge, createRiskJudge, findJudgeModel } from "./risk-judge.js";
 
 beforeEach(() => {
   for (const key of Object.keys(configured)) delete configured[key];
@@ -130,5 +131,71 @@ describe("createRiskJudge", () => {
     };
     const judge = createRiskJudge({ enabled: true, id: "p/m" })!.judge;
     expect(await judge({ system: "S", user: "U" })).toBe("FLAG");
+  });
+});
+
+describe("createAutoJudge", () => {
+  const providerOf = () =>
+    ({
+      name: "p",
+      streamChat: (messages: unknown, tools: unknown, options: unknown) => {
+        sent.push({ messages, tools, options });
+        return stream();
+      },
+    }) as unknown as Provider;
+
+  it("resolves the provider per request, so a model switch applies to the next call", async () => {
+    let resolved = 0;
+    const judge = createAutoJudge(() => {
+      resolved += 1;
+      return { provider: providerOf() };
+    });
+    await judge({ system: "S", user: "U" });
+    await judge({ system: "S", user: "U" });
+    expect(resolved).toBe(2);
+  });
+
+  it("sends system and user only, temperature 0, no tools, the caller's maxTokens and the signal", async () => {
+    const controller = new AbortController();
+    const judge = createAutoJudge(() => ({ provider: providerOf() }));
+    expect(await judge({ system: "S", user: "U" }, controller.signal, { maxTokens: 256 })).toBe("OK");
+    expect(sent[0].messages).toEqual([
+      { role: "system", content: "S" },
+      { role: "user", content: "U" },
+    ]);
+    expect(sent[0].tools).toEqual([]);
+    expect(sent[0].options).toMatchObject({ temperature: 0, maxTokens: 256, signal: controller.signal });
+    expect(sent[0].options).not.toHaveProperty("effort");
+  });
+
+  it.each([
+    [["none", "low"], "none"],
+    [["none", "high"], "none"],
+    [["high", "low", "max"], "low"],
+    [["max", "high"], "high"],
+    [["medium", "minimal"], "minimal"],
+    [["turbo"], undefined],
+    [[], undefined],
+  ] as [string[], string | undefined][])("effort list %j sends %s", async (values, expected) => {
+    const caps = { supportsTools: true, contextWindow: 1, effort: { values, default: values[0] ?? "" } };
+    await createAutoJudge(() => ({ provider: providerOf(), caps }))({ system: "S", user: "U" });
+    if (expected === undefined) expect(sent[0].options).not.toHaveProperty("effort");
+    else expect(sent[0].options).toMatchObject({ effort: expected });
+  });
+
+  it("omits effort when the model has no effort list at all", async () => {
+    await createAutoJudge(() => ({ provider: providerOf(), caps: { supportsTools: true, contextWindow: 1 } }))({ system: "S", user: "U" });
+    expect(sent[0].options).not.toHaveProperty("effort");
+  });
+
+  it("collects text_delta only and stops at done", async () => {
+    stream = async function* () {
+      yield { type: "reasoning_delta", content: "thinking" };
+      yield { type: "text_delta", content: "BLO" };
+      yield { type: "text_delta", content: "CK" };
+      yield { type: "done" };
+      yield { type: "text_delta", content: "never read" };
+    };
+    expect(await createAutoJudge(() => ({ provider: providerOf() }))({ system: "S", user: "U" })).toBe("BLOCK");
   });
 });

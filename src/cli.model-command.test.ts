@@ -105,7 +105,8 @@ describe("mode model defaults", () => {
   }
 
   const general = { slug: "general", name: "General", roleDefinition: "", model: "deepseek/deepseek-flash", reasoningEffort: "low" };
-  const code = { slug: "code", name: "Code", roleDefinition: "" };
+  const code = { slug: "code", name: "Code", roleDefinition: "", model: "deepseek/deepseek-flash" };
+  const plain = { slug: "ask", name: "Ask", roleDefinition: "" };
 
   async function runSlash(input: string, state: any, sessionStore: any, modeLoader: any) {
     await handleSlashCore(
@@ -125,10 +126,34 @@ describe("mode model defaults", () => {
     expect(state).toMatchObject({ activeModel: "deepseek-flash", activeEffort: "low" });
   });
 
-  it("does not seed anything for a session starting in Code", () => {
+  it("seeds Code's Flash model but leaves the model's own effort for a session starting in Code", () => {
     const state = { ...shared(), activeEffort: "high" };
     applyModeDefaults(state, code);
-    expect(state).toMatchObject({ activeModel: undefined, activeEffort: "high" });
+    expect(state).toMatchObject({ providerName: "deepseek", activeModel: "deepseek-flash", activeEffort: "high" });
+  });
+
+  it("changes nothing for a mode with neither a model nor a reasoningEffort", () => {
+    const state = { ...shared(), activeEffort: "high" };
+    applyModeDefaults(state, plain);
+    expect(state).toEqual({ ...shared(), activeEffort: "high" });
+  });
+
+  it("applies a non-general mode's reasoningEffort when the model supports effort", () => {
+    const state = shared();
+    applyModeDefaults(state, { ...code, reasoningEffort: "medium" });
+    expect(state).toMatchObject({ activeModel: "deepseek-flash", activeEffort: "medium" });
+  });
+
+  it("keeps an explicit model over Code's default", () => {
+    const state = { ...shared(), activeModel: "deepseek-v4-pro", modelExplicit: true };
+    applyModeDefaults(state, code);
+    expect(state.activeModel).toBe("deepseek-v4-pro");
+  });
+
+  it("ignores Code's model when an explicit provider differs", () => {
+    const state = { ...shared(), providerName: "openai", activeModel: "gpt-5.6-sol", providerExplicit: true };
+    applyModeDefaults(state, code);
+    expect(state).toMatchObject({ providerName: "openai", activeModel: "gpt-5.6-sol" });
   });
 
   it("keeps the model and effort when /mode switches from General to Code", async () => {

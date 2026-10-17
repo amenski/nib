@@ -41,8 +41,8 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 
 - **The default persona is now `code` again, not `general`.** A session with no
-  explicit `--mode` or `/mode` (and headless `nib -p`) starts in Code with the
-  provider preset's default model. Use `--mode general` or `/mode general` for
+  explicit `--mode` or `/mode` (and headless `nib -p`) starts in Code on
+  deepseek-flash at the model's default effort. Use `--mode general` or `/mode general` for
   the read-only chat persona; it keeps its Flash/low-effort defaults when chosen
   at launch. A resumed session still comes back in its last mode.
 - **Breaking: hook payloads report `permission_mode: "auto"` where they
@@ -51,6 +51,16 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   judge; the second-stage judge still runs only with `enabled: true`.
 - `allow-by-posture` now means only that the UI allowed an edit inside the
   profile write set without a prompt.
+
+### Fixed
+
+- **New sessions start on `deepseek-flash` again in the `code` persona.** Only
+  `general`'s `model:` was ever applied, so after `code` became the default a
+  new session started on the provider preset's `deepseek-v4-pro`. A mode's
+  `model:` now applies for any mode (unless the model was chosen via `--model`,
+  settings.json, `/model` or a resumed session), and the built-in `code`
+  declares Flash without changing the effort default. Headless `nib -p` and the
+  model recorded for a new session follow the same rule.
 
 ### Removed
 

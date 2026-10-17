@@ -229,20 +229,22 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
       return 1;
     }
 
-    // General has a deliberately cheap provider default. An explicit model,
-    // configured provider, or configured effort remains authoritative.
-    if (!rawModel && activeMode.slug === "general") {
-      const modeModel = parseModelId(activeMode.model || GENERAL_MODEL_ID, providerName);
+    // A mode's `model:` (General falls back to its Flash default) seeds the
+    // model. An explicit model, configured provider, or configured effort
+    // remains authoritative.
+    const modeModelId = activeMode.model || (activeMode.slug === "general" ? GENERAL_MODEL_ID : undefined);
+    if (!rawModel && modeModelId) {
+      const modeModel = parseModelId(modeModelId, providerName);
       if (modeModel && (!configResult.config.provider || configResult.config.provider === modeModel.provider)) {
         providerName = modeModel.provider;
         activeModel = modeModel.model;
       }
     }
     const activeCaps = getPreset(providerName)?.models[activeModel ?? getPreset(providerName)?.defaultModel ?? ""];
-    const activeEffort = configResult.config.reasoningEffort
-      ?? (activeMode.slug === "general" && activeCaps?.effort
-        ? (activeMode.reasoningEffort || GENERAL_REASONING_EFFORT)
-        : activeMode.slug === "general" ? undefined : activeCaps?.effort?.default);
+    const modeEffort = activeMode.slug === "general"
+      ? (activeCaps?.effort ? (activeMode.reasoningEffort || GENERAL_REASONING_EFFORT) : undefined)
+      : (activeMode.reasoningEffort && activeCaps?.effort ? activeMode.reasoningEffort : activeCaps?.effort?.default);
+    const activeEffort = configResult.config.reasoningEffort ?? modeEffort;
 
     // createProvider throws for an unknown provider or a missing API key. In
     // headless mode that must be a clean one/two-line message telling the user

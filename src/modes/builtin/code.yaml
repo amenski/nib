@@ -5,3 +5,4 @@ roleDefinition: >
   Prefer small, focused functions. Use existing patterns and libraries in the
   codebase rather than introducing new dependencies.
 groups: [read, edit, command, mcp, workflow]
+model: deepseek/deepseek-flash

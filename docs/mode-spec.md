@@ -106,19 +106,25 @@ reasoningEffort: low
 ```
 The read-only chat persona. It is entered explicitly (`--mode general`,
 `/mode general`) and is not the default. Its Flash/low default seeds a new
-session only when general is chosen at launch (`applyModeDefaults`,
-`src/cli.tsx`); switching to another mode keeps that model and effort.
+session when general is chosen at launch, or when you `/mode general` and the
+model was not chosen explicitly (`applyModeDefaults`, `src/cli.tsx`);
+switching to another mode keeps that model and effort.
 
 #### code (default mode)
 ```yaml
 slug: code
 name: Code
 groups: [read, edit, command, workflow]
+model: deepseek/deepseek-flash
 ```
 A session with no explicit `--mode`/`/mode` starts here — `activeMode` is
 never left `undefined` at startup (`src/cli.tsx`); a resumed session's last
-mode wins over this default, and an explicit `--mode` wins over both. A new
-code session uses the provider preset's `defaultModel` and effort default.
+mode wins over this default, and an explicit `--mode` wins over both. A mode's
+`model:` seeds a new session, and a `/mode` switch, for any mode (not only
+general) unless the model was chosen explicitly: `--model`, settings.json
+`model`, `/model`, or a resumed session. An explicit provider that differs from
+the mode's also wins. Code declares Flash but no `reasoningEffort`, so it keeps
+the model's own effort default (`applyModeDefaults`, `src/cli.tsx`).
 Headless (`nib -p`, `src/exec-runner.ts`) resolves the same default: an
 unrecognized `--mode` still exits 1 with the "unknown mode" message, and a
 valid explicit `--mode` gates tools to its own groups instead.

@@ -131,10 +131,20 @@ export function humanTurnsFromHistory(messages: readonly Message[], max = 10): s
   return turns.slice(-max);
 }
 
+/**
+ * Seed a mode's declared model/effort. A mode's `model:` applies for any mode
+ * (General also falls back to GENERAL_MODEL_ID); an explicit model choice
+ * (--model, settings.json, /model, a resumed session) or an explicit provider
+ * that differs from the mode's always wins. Effort: General always sets it
+ * (or clears it when the model has no effort control); any other mode only
+ * sets it when it declares `reasoningEffort`, and otherwise leaves it alone.
+ */
 export function applyModeDefaults(shared: any, mode: ModeConfig | undefined): void {
-  if (!mode || mode.slug !== "general") return;
-  if (!shared.modelExplicit) {
-    const configuredModeModel = parseModelId(mode.model || GENERAL_MODEL_ID, shared.providerName);
+  if (!mode) return;
+  const isGeneral = mode.slug === "general";
+  const modeModelId = mode.model || (isGeneral ? GENERAL_MODEL_ID : undefined);
+  if (modeModelId && !shared.modelExplicit) {
+    const configuredModeModel = parseModelId(modeModelId, shared.providerName);
     const modeModel = configuredModeModel &&
       (!shared.providerExplicit || shared.providerName === configuredModeModel.provider)
       ? configuredModeModel
@@ -144,10 +154,14 @@ export function applyModeDefaults(shared: any, mode: ModeConfig | undefined): vo
       shared.activeModel = modeModel.model;
     }
   }
-  if (!shared.effortExplicit) {
+  if (!shared.effortExplicit && (isGeneral || mode.reasoningEffort)) {
     const preset = getPreset(shared.providerName);
     const caps = preset?.models[shared.activeModel ?? preset.defaultModel];
-    shared.activeEffort = caps?.effort ? (mode.reasoningEffort || GENERAL_REASONING_EFFORT) : undefined;
+    if (isGeneral) {
+      shared.activeEffort = caps?.effort ? (mode.reasoningEffort || GENERAL_REASONING_EFFORT) : undefined;
+    } else if (caps?.effort) {
+      shared.activeEffort = mode.reasoningEffort;
+    }
   }
 }
 
@@ -572,14 +586,21 @@ async function main() {
   let sessionMessages: Message[] = [];
   let sessionLoaded = false;
 
+  // Record the provider/model the session actually starts on, so a resume
+  // restores it: run the startup mode's defaults over a scratch selection.
+  const startupSeed = {
+    providerName,
+    activeModel: initialModel as string | undefined,
+    modelExplicit: rawInitialModel !== undefined,
+    effortExplicit: true,
+    providerExplicit: configResult.config.provider !== undefined || detected !== undefined,
+  };
+  applyModeDefaults(startupSeed, await modeLoader.load(parsed.mode || "code") ?? undefined);
+
   const sessionCreateBase = {
     cwd: process.cwd(),
-    provider: providerName,
-    model: initialModel || (parsed.mode === "general" &&
-      (!configResult.config.provider || configResult.config.provider === "deepseek") &&
-      (!detected || detected === "deepseek")
-      ? parseModelId(GENERAL_MODEL_ID, providerName)!.model
-      : getPreset(providerName)?.defaultModel || "deepseek-v4-pro"),
+    provider: startupSeed.providerName,
+    model: startupSeed.activeModel || getPreset(startupSeed.providerName)?.defaultModel || "deepseek-v4-pro",
     mode: parsed.mode || "code",
     modelExplicit: rawInitialModel !== undefined,
     effortExplicit: reasoningEffort !== undefined,

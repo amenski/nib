@@ -9,7 +9,7 @@ import { AgentLoader } from "../agents/index.js";
 import type { PermissionEngine, ProfileEvaluator } from "../permissions/index.js";
 import type { BashEnvelope } from "../permissions/session-grant.js";
 import type { HookRunner } from "../hooks/index.js";
-import { classifyRisk, type RiskMode } from "../permissions/risk/index.js";
+import { classifyRisk, type AutoModeOptions, type RiskMode } from "../permissions/risk/index.js";
 import { subagentAuditStore } from "../sessions/store.js";
 import { TodoStore } from "../tools/todo.js";
 import { TaskRegistry } from "./runner.js";
@@ -92,6 +92,13 @@ export interface OrchestratorOptions {
    * and there is no audit row at this point to record the verdict on.
    */
   classifierMode?: RiskMode;
+  /**
+   * The auto posture (docs/command-risk-classifier.md §1.4). Sub-runs get it
+   * with the same shared state, the task description as `delegatedTask`, and no
+   * `recordHumanTurn`: only a human typing is a human turn. Re-pointable via
+   * setAutoMode, like setAskUser.
+   */
+  autoMode?: AutoModeOptions;
   /** Lifecycle hooks dispatcher (docs/hooks-spec.md) — SubagentStart/Stop
    *  fire around each sub-agent run. */
   hooks?: HookRunner;
@@ -122,6 +129,7 @@ export class Orchestrator {
     classifierMode?: RiskMode;
   };
   private askUser?: (toolName: string, args: Record<string, unknown>, envelope?: BashEnvelope, origin?: { subagent: string }) => Promise<boolean | "posture" | "envelope-grant">;
+  private autoMode?: AutoModeOptions;
   private onSubagentProgress?: (event: SubagentProgress) => void;
   private onTaskResult?: (taskId: string, message: string) => void;
 
@@ -141,6 +149,7 @@ export class Orchestrator {
       ...options,
     };
     this.askUser = options.askUser;
+    this.autoMode = options.autoMode;
     this.onSubagentProgress = options.onSubagentProgress;
     this.onTaskResult = options.onTaskResult;
   }
@@ -153,6 +162,11 @@ export class Orchestrator {
    */
   setAskUser(askUser: ((toolName: string, args: Record<string, unknown>, envelope?: BashEnvelope, origin?: { subagent: string }) => Promise<boolean | "posture" | "envelope-grant">) | undefined): void {
     this.askUser = askUser;
+  }
+
+  /** Re-point the auto posture, for the same reason setAskUser exists. */
+  setAutoMode(autoMode: AutoModeOptions | undefined): void {
+    this.autoMode = autoMode;
   }
 
   /**
@@ -416,6 +430,12 @@ export class Orchestrator {
               // concerned (§12.8, subagent laundering).
               classifierMode: this.options.classifierMode,
               askUser: this.askUser,
+              // Same state as the parent, so blocks count together. The judge
+              // sees the parent's task text labelled as agent-written, and a
+              // sub-run never records a human turn.
+              ...(this.autoMode !== undefined
+                ? { autoMode: { ...this.autoMode, delegatedTask: description, recordHumanTurn: undefined } }
+                : {}),
               // The prompt names the task, so a user can tell a background
               // sub-agent's ask from the main conversation's. First line only,
               // capped: a description is a paragraph and the header is one line.

@@ -11,7 +11,7 @@ import type { SkillDef } from "./skills/index.js";
 import type { AgentDef } from "./agents/index.js";
 import type { MemoryStore } from "./memory/store.js";
 import type { HookRunner } from "./hooks/index.js";
-import type { SessionStore, CompactionSummary, PermissionDecision } from "./sessions/store.js";
+import type { SessionStore, CompactionSummary, PermissionDecision, AutoAuditRecord } from "./sessions/store.js";
 import { buildStablePreamble, buildVolatileContext, type PromptContext } from "./prompt.js";
 import { estimateTokens, estimateOverheadTokens } from "./compaction/budget.js";
 import { editToolResultsForRequest } from "./compaction/context-editing.js";
@@ -29,12 +29,26 @@ import type { SandboxFailureReason } from "./sandbox/launcher.js";
 import { unsandboxedRequestsAllowed, unsandboxedRun } from "./sandbox/unsandboxed.js";
 import {
   applyRiskVerdict,
+  autoBlockMessage,
+  autoHardStop,
   classifyRiskWithModel,
+  priorToolCalls,
   riskNarrowed,
+  runAutoJudge,
+  type AutoModeOptions,
+  type RiskInput,
   type RiskMode,
   type Stage2Options,
 } from "./permissions/risk/index.js";
+import { formatRiskReason } from "./permissions/risk/reasons.js";
+import { isJudgeableBlock } from "./permissions/risk/auto.js";
 import type { ToolExecOptions } from "./tools/types.js";
+
+/** What the auto gate decided for one ask (see decideAuto in the permission gate). */
+type AutoDecision =
+  | { kind: "allow"; reason: string; auto: AutoAuditRecord }
+  | { kind: "denied" }
+  | { kind: "prompt"; note: string };
 
 export type ToolExecutor = (call: ToolCall, exec?: ToolExecOptions) => Promise<ToolOutput>;
 
@@ -206,6 +220,15 @@ export interface AgentOptions {
    * (`providers/risk-judge.ts`), so this module never learns about providers.
    */
   classifierModel?: Stage2Options;
+  /**
+   * The auto posture (docs/command-risk-classifier.md §1.4–1.5). While
+   * `isActive()` is true, the gate decides the asks the rules left to a human:
+   * read-only calls and edits inside the write set run, a rules `block` is
+   * denied, and a model judge allows or blocks the rest; anything it cannot
+   * decide falls back to the ordinary prompt. Absent or inactive leaves the
+   * gate exactly as it is without auto. Built by the composition root.
+   */
+  autoMode?: AutoModeOptions;
   mode?: ModeConfig;
   compactor?: Compactor;
   diagnostics?: DiagnosticRunner;
@@ -258,8 +281,8 @@ export interface AgentOptions {
   onUsage?: (input: number, output: number, cached?: number) => void;
   /**
    * Interactive approval bridge for ask-tier calls. Resolves true (approved)
-   * or false (denied); resolves "posture" when an auto-approve posture
-   * upgraded the ask to allow without showing a prompt — recorded as
+   * or false (denied); resolves "posture" when the UI allowed the call without
+   * showing a prompt (an edit inside the profile write set) — recorded as
    * allow-by-posture in the audit trail (permission-spec.md §11); resolves
    * "envelope-grant" when the user chose the session-wide sandboxed-Bash grant
    * that `envelope` describes (docs/permission-ux-redesign.md). `envelope` is
@@ -859,10 +882,14 @@ export async function runAgent(
         // audit row only. An unset mode is shadow, so a caller that has not
         // been taught about the classifier still produces the shadow rows.
         const riskMode: RiskMode = options.classifierMode ?? "shadow";
-        const riskVerdict =
-          riskMode === "off"
+        // Auto needs the rules' verdict whatever the classifier mode says, and
+        // it is the judge: the cheap stage-2 model must not also run on the
+        // same call, so it is not handed over while auto is active.
+        const autoMode = options.autoMode?.isActive() === true ? options.autoMode : undefined;
+        const riskInput: RiskInput | undefined =
+          riskMode === "off" && autoMode === undefined
             ? undefined
-            : await classifyRiskWithModel({
+            : {
                 tool: tc.name,
                 args: tc.arguments,
                 workingDir: process.cwd(),
@@ -877,13 +904,36 @@ export async function runAgent(
                   headless: options.askUser === undefined,
                   userMessages: humanTurns,
                   createdThisSession,
+                  ...(autoMode !== undefined
+                    ? {
+                        sessionUserMessages: autoMode.humanTurns(),
+                        priorToolCalls: priorToolCalls(messages, tc.id),
+                        ...(autoMode.delegatedTask !== undefined ? { delegatedTask: autoMode.delegatedTask } : {}),
+                      }
+                    : {}),
                 },
-              }, options.classifierModel);
+              };
+        const riskVerdict =
+          riskInput === undefined
+            ? undefined
+            : await classifyRiskWithModel(riskInput, autoMode !== undefined ? undefined : options.classifierModel);
 
         // §3.3's clamp, applied after the unsandboxed override and before the
         // audit row, so the row describes the decision that was actually taken.
-        // Outside enforce mode applyRiskVerdict is the identity.
-        const action = applyRiskVerdict(engineAction, riskVerdict, riskMode);
+        // Outside enforce mode applyRiskVerdict is the identity. Auto denies a
+        // rules `block` in every mode (an engine deny keeps its own message).
+        // A credential variable sent over the network is the one block the
+        // judge decides instead (isJudgeableBlock): it is an ask, whatever a
+        // user allow rule or the classifier mode would have said.
+        const autoJudgesBlock =
+          autoMode !== undefined && riskVerdict !== undefined && engineAction !== "deny" && isJudgeableBlock(riskVerdict);
+        const autoRulesBlock =
+          autoMode !== undefined && riskVerdict?.tier === "block" && engineAction !== "deny" && !autoJudgesBlock;
+        const action = autoRulesBlock
+          ? "deny"
+          : autoJudgesBlock
+            ? "ask"
+            : applyRiskVerdict(engineAction, riskVerdict, riskMode);
 
         /**
          * Whether the classifier *acted* on this call: it applied a clamp, which
@@ -910,12 +960,18 @@ export async function runAgent(
                 ...(riskActed && riskVerdict.message !== undefined ? { message: riskVerdict.message } : {}),
               };
 
+        // The auto gate's trace for this call, set when it falls back to a
+        // prompt so the row the prompt eventually writes carries why.
+        let autoTrace: AutoAuditRecord | undefined;
+
         const audit = async (
           decision: PermissionDecision,
           reason: string,
           envelopeGrant?: "reuse" | "granted",
+          auto?: AutoAuditRecord,
         ): Promise<void> => {
           if (!options.sessionStore || !options.sessionId) return;
+          const autoRecord = auto ?? autoTrace;
           const capabilityPlan = extractCapabilityPlan(tc.name, tc.arguments, process.cwd());
           await options.sessionStore.appendPermission(options.sessionId, {
             toolCallId: tc.id, tool: tc.name, subject, decision, winningRule, reason,
@@ -924,7 +980,89 @@ export async function runAgent(
               ? { commandClassification: capabilityPlan.commandClassification }
               : {}),
             ...(riskVerdict !== undefined ? { risk: riskVerdict } : {}),
+            ...(autoRecord !== undefined ? { auto: autoRecord } : {}),
           });
+        };
+
+        /** One block counted; the user hears once, on the block that pauses auto. */
+        const noteAutoBlock = (): void => {
+          if (autoMode?.state.recordBlock().justSuspended) {
+            options.onDiagnostic?.("auto mode paused after repeated blocks: it will ask you from here on");
+          }
+        };
+
+        /**
+         * Auto's decision for an ask the rules left to a human: run it, deny it
+         * (the tool result and audit row are already written), or hand it to the
+         * ordinary prompt with a note saying why auto did not decide. Reached
+         * only after the PermissionRequest hook and the envelope-grant reuse
+         * have had their say.
+         */
+        const decideAuto = async (): Promise<AutoDecision> => {
+          const am = autoMode!;
+          const verdict = riskVerdict!;
+          const judge = am.judgeLabel?.();
+          const fallback = (auto: AutoAuditRecord, note: string): AutoDecision => {
+            autoTrace = auto;
+            return { kind: "prompt", note };
+          };
+
+          const stop = autoHardStop(tc.name, tc.arguments, verdict, unsandboxedKind);
+          if (stop !== undefined) {
+            return fallback({ stage: "fallback", outcome: "hard-stop", latencyMs: 0 }, `Auto mode: ${stop}.`);
+          }
+          if (am.state.suspended) {
+            return fallback(
+              { stage: "fallback", outcome: "suspended", latencyMs: 0 },
+              "Auto mode paused after repeated blocks.",
+            );
+          }
+          if (verdict.tier === "safe" || permissionProfile?.editTargetInWriteSet(tc.name, tc.arguments)) {
+            am.state.recordAllow();
+            return {
+              kind: "allow",
+              reason: "auto mode: read-only call or edit inside the write set",
+              auto: { stage: "readonly", outcome: "allow", latencyMs: 0 },
+            };
+          }
+
+          const result = await runAutoJudge(riskInput!, verdict.features, am, options.signal);
+          if (options.signal?.aborted) {
+            options.onDiagnostic?.("denied");
+            await audit("ask-denied", "interrupted while the auto mode judge was running", undefined, {
+              stage: result.stage,
+              outcome: result.outcome,
+              latencyMs: result.latencyMs,
+            });
+            appendFreshToolResult(tc.id, tc.name, "PERMISSION_DENIED: interrupted");
+            return { kind: "denied" };
+          }
+          const trace: AutoAuditRecord = {
+            stage: result.stage,
+            outcome: result.outcome,
+            latencyMs: result.latencyMs,
+            ...(result.tag !== undefined ? { tag: result.tag } : {}),
+            ...(result.reason !== undefined ? { reason: result.reason } : {}),
+            ...(judge !== undefined ? { judge } : {}),
+          };
+          if (result.outcome === "allow") {
+            am.state.recordAllow();
+            return { kind: "allow", reason: "auto mode judge allowed the call", auto: trace };
+          }
+          if (result.outcome === "block") {
+            // The model is told the tag's own sentence, never the judge's text.
+            await audit(
+              "deny-by-classifier",
+              `auto mode judge blocked the call${result.tag !== undefined ? ` (${result.tag})` : ""}`,
+              undefined,
+              trace,
+            );
+            appendFreshToolResult(tc.id, tc.name, autoBlockMessage(result.tag));
+            noteAutoBlock();
+            options.onDiagnostic?.(`auto mode blocked ${tc.name}: ${result.reason ?? autoBlockMessage(result.tag)}`);
+            return { kind: "denied" };
+          }
+          return fallback(trace, `Auto mode could not decide (${result.outcome}).`);
         };
 
         // Shadow mode's whole product: a call the classifier would have made
@@ -990,6 +1128,25 @@ export async function runAgent(
           return { denied: true };
         }
 
+        // Auto: a rules `block` is a denial whatever the classifier mode is.
+        if (autoRulesBlock && riskVerdict !== undefined) {
+          const msg = `Permission denied. ${riskVerdict.message ?? (riskVerdict.reasons.length > 0 ? formatRiskReason("block", riskVerdict.reasons) : "Blocked by nib policy.")}`;
+          options.onDiagnostic?.("denied");
+          await audit(
+            "deny-by-classifier",
+            `denied by the risk classifier in auto mode (${riskVerdict.reasons.join(", ")})`,
+            undefined,
+            {
+              stage: "rules",
+              outcome: "block",
+              latencyMs: 0,
+              ...(riskVerdict.reasons[0] !== undefined ? { tag: riskVerdict.reasons[0] } : {}),
+            },
+          );
+          appendFreshToolResult(tc.id, tc.name, msg);
+          noteAutoBlock();
+          return { denied: true };
+        }
         if (action === "deny") {
           // A classifier block carries its reason to the model (§3.4): the
           // sentence says which rule fired and how to rewrite the call, which
@@ -1073,21 +1230,43 @@ export async function runAgent(
             // classifier's reason, when it is what caused this ask) are both
             // undefined on an ordinary root-run prompt, which is the shape
             // every prompter was originally written against.
-            let allowed: boolean | "posture" | "envelope-grant";
+            let allowed: boolean | "posture" | "envelope-grant" | "auto";
+            let autoAllow: Extract<AutoDecision, { kind: "allow" }> | undefined;
             if (reused !== null) {
               allowed = true;
             } else if (envelope?.autoGrant) {
               allowed = "envelope-grant";
             } else {
-              allowed = await options.askUser(tc.name, tc.arguments, envelope, options.askOrigin, policyRisk);
+              const decision = autoMode !== undefined ? await decideAuto() : undefined;
+              if (decision?.kind === "denied") return { denied: true };
+              if (decision?.kind === "allow") {
+                allowed = "auto";
+                autoAllow = decision;
+              } else {
+                // Auto did not decide: the user does, told why.
+                const asked =
+                  decision?.kind === "prompt" && policyRisk !== undefined
+                    ? {
+                        ...policyRisk,
+                        message: policyRisk.message !== undefined ? `${decision.note} ${policyRisk.message}` : decision.note,
+                      }
+                    : policyRisk;
+                allowed = await options.askUser(tc.name, tc.arguments, envelope, options.askOrigin, asked);
+                if (decision !== undefined && allowed === true) autoMode!.state.recordUserApproval();
+              }
             }
-            if (allowed === "posture") {
-              // Auto-approve posture upgraded the ask to allow without
-              // showing a prompt — recorded distinctly from an interactive
-              // yes (permission-spec.md §11). No `exec` grant: posture is an
-              // approval of a *class* of calls, never of this command, and
-              // the widened profile requires the latter.
-              await audit("allow-by-posture", "auto-approve posture upgraded an ordinary ask");
+            if (allowed === "auto" && autoAllow !== undefined) {
+              // The judge (or the read-only / write-set shortcut) allowed the
+              // call. Like "posture", no `exec` grant: auto approves a call,
+              // never the widened profile or a git config write.
+              await audit("allow-by-classifier", autoAllow.reason, undefined, autoAllow.auto);
+            } else if (allowed === "posture") {
+              // The UI allowed the call without showing a prompt (an edit
+              // inside the profile write set) — recorded distinctly from an
+              // interactive yes (permission-spec.md §11). No `exec` grant:
+              // posture is an approval of a *class* of calls, never of this
+              // command, and the widened profile requires the latter.
+              await audit("allow-by-posture", "allowed by the UI without a prompt (edit inside the profile write set)");
             } else if (!allowed) {
               const msg = "PERMISSION_DENIED: denied by user";
               options.onDiagnostic?.("denied");
@@ -1135,8 +1314,8 @@ export async function runAgent(
             } else {
               // Approved via askUser. The TUI (App.tsx) writes a finer-grained
               // once/session/always row when it actually shows a prompt, but it
-              // writes nothing when an auto-approve posture short-circuits the
-              // prompt — so the agent records the coarse "approved" outcome here
+              // writes nothing when it short-circuits the prompt (a write-set
+              // edit) — so the agent records the coarse "approved" outcome here
               // to guarantee a row exists on every approval path. On the
               // interactive path this coexists with the UI's fine-grained row
               // (see UI-side approximation note in permission-spec.md).
@@ -1149,7 +1328,7 @@ export async function runAgent(
               // The approved-operation grant (permission-profile.md §8,
               // release gate 2, trusted half). Reached only by a plain
               // `true`, i.e. the user answered the prompt for *this* call:
-              // auto-approve posture returns "posture" above, and a persisted
+              // the UI's "posture" and auto mode's own allow are handled above, and a persisted
               // session/always rule resolves to `action: "allow"` long before
               // this branch — so no grant can outlive the approval. App.tsx
               // marks config-writing Git calls oneTimeOnly, so a persistent
@@ -1159,7 +1338,7 @@ export async function runAgent(
                 exec = { ...exec, approvedGitConfigWrite: true };
               }
             }
-            // User-approved (or posture-upgraded) asks still pass through
+            // User-approved (or posture- or auto-allowed) asks still pass through
             // PreToolUse — a deny here routes through the permission engine
             // as deny-by-rule, indistinguishable from policy in the audit trail.
             if (await hookBlocks(tc, "PreToolUse")) {
@@ -1168,6 +1347,20 @@ export async function runAgent(
               return { denied: true };
             }
           } else {
+            // Auto can still decide with no prompter: an allow runs, a block is
+            // denied, and anything it would hand to a human is a denial below,
+            // as it always was.
+            const decision = autoMode !== undefined ? await decideAuto() : undefined;
+            if (decision?.kind === "denied") return { denied: true };
+            if (decision?.kind === "allow") {
+              await audit("allow-by-classifier", decision.reason, undefined, decision.auto);
+              if (await hookBlocks(tc, "PreToolUse")) {
+                await audit("deny-by-rule", "deny rule matched (PreToolUse hook)");
+                hookDenied(tc, "PreToolUse");
+                return { denied: true };
+              }
+              return { denied: false, exec };
+            }
             // No prompter: an ask is a denial, as it always was. An ask the
             // *classifier* caused carries its reason instead of the generic
             // line — the run is still going, so the model gets the sentence

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { TaskRegistry, type TaskOutcome } from "./runner.js";
+import { TaskRegistry, formatResultMessage, isSubagentResultMessage, type TaskOutcome } from "./runner.js";
 
 /** A run that never settles — the task stays "running" until aborted. */
 const pendingRun = () => () => new Promise<TaskOutcome>(() => {});
@@ -55,5 +55,18 @@ describe("TaskRegistry.abortTask (async-subagents.md §3, Q4 — the /tasks stop
     r.abortTask("task-999"); // never existed
 
     expect(r.get(id)?.status).toBe("aborted");
+  });
+});
+
+describe("isSubagentResultMessage", () => {
+  it("recognises exactly what formatResultMessage produces", () => {
+    expect(isSubagentResultMessage(formatResultMessage("task-3", "done — all green"))).toBe(true);
+    expect(isSubagentResultMessage(formatResultMessage("task-12", ""))).toBe(true);
+  });
+
+  it("does not match a human message that merely mentions it", () => {
+    expect(isSubagentResultMessage("please read the Sub-agent result (task task-1): above")).toBe(false);
+    expect(isSubagentResultMessage("fix the tests")).toBe(false);
+    expect(isSubagentResultMessage("Sub-agent result without a task id")).toBe(false);
   });
 });

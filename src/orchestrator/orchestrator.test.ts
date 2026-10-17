@@ -9,6 +9,7 @@ import { ToolRegistry } from "../tools/registry.js";
 import { ModeLoader } from "../modes/loader.js";
 import { AgentLoader } from "../agents/index.js";
 import { PermissionEngine } from "../permissions/index.js";
+import { AutoModeState } from "../permissions/risk/auto.js";
 import { bashEnvelopeGrants, type BashEnvelope } from "../permissions/session-grant.js";
 import { SessionStore, slugify } from "../sessions/store.js";
 import { executeTool as realExecuteTool, registry as realRegistry } from "../tools/index.js";
@@ -1047,5 +1048,56 @@ describe("sub-agent guarded Bash (2026-10-10)", () => {
     await deliveries.delivered();
 
     expect(askUser).toHaveBeenCalled();
+  });
+});
+
+describe("sub-agent auto posture", () => {
+  it("shares the parent's state, tells the judge the delegated task, and records no human turn", async () => {
+    const { registry, runBash } = makeRegistry();
+    const { provider } = makeProvider([
+      toolCallTurn("c1", "run_bash", JSON.stringify({ command: "npm test" })),
+      toolCallTurn("c2", "run_bash", JSON.stringify({ command: "npm run build" })),
+      textTurn("sub-agent done"),
+    ]);
+    const deliveries = trackDeliveries();
+    const state = new AutoModeState();
+    const requests: string[] = [];
+    // Allow the first call, block the second at both stages.
+    const judge = vi.fn(async (request: { system: string; user: string }) => {
+      requests.push(request.user);
+      const stage1 = request.user.includes("Answer with exactly one word");
+      const pending = request.user.split("The pending call")[1] ?? "";
+      if (pending.includes("npm test")) return stage1 ? "ALLOW" : "DECISION: ALLOW";
+      return stage1 ? "BLOCK" : "DECISION: BLOCK [auto.out-of-scope] nope";
+    });
+    const recordHumanTurn = vi.fn();
+    const askUser = vi.fn(async () => true);
+    const orchestrator = new Orchestrator({
+      provider: () => provider,
+      registry,
+      modeLoader: new ModeLoader(),
+      permissions: new PermissionEngine(undefined, "/workspace"),
+      askUser,
+      autoMode: { isActive: () => true, judge, state, humanTurns: () => ["only the human spoke"], recordHumanTurn },
+      onTaskResult: deliveries.onResult,
+    });
+    orchestrator.register(registry);
+
+    await registry.execute(
+      { id: "t1", name: "new_task", arguments: { description: "verify the build", mode: "code" } },
+      ctx,
+    );
+    await deliveries.delivered();
+
+    // The allowed call ran without a prompt; the blocked one did not run.
+    expect(runBash.mock.calls.map((c) => c[0].command)).toEqual(["npm test"]);
+    expect(askUser).not.toHaveBeenCalled();
+    // One shared state: the sub-agent's block is the parent's block.
+    expect(state.totalBlocks).toBe(1);
+    // The judge saw the task as agent-written, and the human's words as the user's.
+    expect(requests[0]).toContain("verify the build");
+    expect(requests[0]).toContain("carries no user authority");
+    expect(requests[0]).toContain("only the human spoke");
+    expect(recordHumanTurn).not.toHaveBeenCalled();
   });
 });

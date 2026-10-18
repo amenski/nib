@@ -44,11 +44,20 @@ import { formatRiskReason } from "./permissions/risk/reasons.js";
 import { isJudgeableBlock, skipsAutoJudge } from "./permissions/risk/auto.js";
 import type { ToolExecOptions } from "./tools/types.js";
 
+/**
+ * Why auto handed a call to a human, when the human must really be asked: a
+ * hard stop (credential or protected path, git config, outside the sandbox, a
+ * call matched by the user's own `ask` rule) or a session paused after repeated
+ * blocks. A judge failure (timeout, error, unparseable) is not one — it carries
+ * no handoff, so an in-write-set edit may still skip the prompt.
+ */
+export type AutoHandoff = "hard-stop" | "paused";
+
 /** What the auto gate decided for one ask (see decideAuto in the permission gate). */
 type AutoDecision =
   | { kind: "allow"; reason: string; auto: AutoAuditRecord }
   | { kind: "denied" }
-  | { kind: "prompt"; note: string };
+  | { kind: "prompt"; note: string; handoff?: AutoHandoff };
 
 export type ToolExecutor = (call: ToolCall, exec?: ToolExecOptions) => Promise<ToolOutput>;
 
@@ -289,6 +298,11 @@ export interface AgentOptions {
    * passed only on an ask the grant may satisfy — a prompter that never offers
    * the option simply ignores it. `origin` is present when the ask comes from a
    * sub-agent rather than the root run, so the prompt can say whose call it is.
+   * `autoHandoff` is present only under the auto posture, when auto handed the
+   * call to a human because of a hard stop or a paused session: the prompter
+   * must show the real prompt and must NOT resolve "posture" (the write-set
+   * overlay), because "ask me" was the answer. Absent in every other case, and
+   * a prompter that never reads it keeps its old behaviour.
    */
   askUser?: (
     toolName: string,
@@ -300,6 +314,7 @@ export interface AgentOptions {
      * is why this call is stricter — the sentence saying so.
      */
     policyRisk?: { tier: string; reasons: string[]; message?: string },
+    autoHandoff?: AutoHandoff,
   ) => Promise<boolean | "posture" | "envelope-grant">;
   /**
    * Set by the orchestrator on a sub-agent's run: the label the permission
@@ -1002,19 +1017,34 @@ export async function runAgent(
           const am = autoMode!;
           const verdict = riskVerdict!;
           const judge = am.judgeLabel?.();
-          const fallback = (auto: AutoAuditRecord, note: string): AutoDecision => {
+          const fallback = (auto: AutoAuditRecord, note: string, handoff?: AutoHandoff): AutoDecision => {
             autoTrace = auto;
-            return { kind: "prompt", note };
+            return { kind: "prompt", note, ...(handoff !== undefined ? { handoff } : {}) };
           };
 
           const stop = autoHardStop(tc.name, tc.arguments, verdict, unsandboxedKind);
           if (stop !== undefined) {
-            return fallback({ stage: "fallback", outcome: "hard-stop", latencyMs: 0 }, `Auto mode: ${stop}.`);
+            return fallback({ stage: "fallback", outcome: "hard-stop", latencyMs: 0 }, `Auto mode: ${stop}.`, "hard-stop");
+          }
+          // A rule the user (or the session) wrote with action "ask" is an
+          // instruction to be asked, so the judge never overrules it. Keyed on
+          // the action, excluding builtin-guarded: those synthesized asks
+          // (secret globs, out-of-workspace reads) are not the user's words,
+          // and treating them as stops would make auto prompt for ordinary
+          // work. No winning rule at all (the default mode) still goes to the judge.
+          if (winningRule?.action === "ask" && winningRule.origin !== "builtin-guarded") {
+            const what = winningRule.pattern !== "" ? `${winningRule.tool}: ${winningRule.pattern}` : winningRule.tool;
+            return fallback(
+              { stage: "fallback", outcome: "hard-stop", latencyMs: 0 },
+              `Auto mode: your ask rule matched (${what}).`,
+              "hard-stop",
+            );
           }
           if (am.state.suspended) {
             return fallback(
               { stage: "fallback", outcome: "suspended", latencyMs: 0 },
               "Auto mode paused after repeated blocks.",
+              "paused",
             );
           }
           if (
@@ -1257,7 +1287,12 @@ export async function runAgent(
                         message: policyRisk.message !== undefined ? `${decision.note} ${policyRisk.message}` : decision.note,
                       }
                     : policyRisk;
-                allowed = await options.askUser(tc.name, tc.arguments, envelope, options.askOrigin, asked);
+                // The handoff goes as a sixth argument only when there is one,
+                // so every other ask is called exactly as before.
+                const handoff = decision?.kind === "prompt" ? decision.handoff : undefined;
+                allowed = await (handoff !== undefined
+                  ? options.askUser(tc.name, tc.arguments, envelope, options.askOrigin, asked, handoff)
+                  : options.askUser(tc.name, tc.arguments, envelope, options.askOrigin, asked));
                 if (decision !== undefined && allowed === true) autoMode!.state.recordUserApproval();
               }
             }

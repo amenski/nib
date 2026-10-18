@@ -1,5 +1,6 @@
 import type { Provider } from "../providers/types.js";
 import type { Message } from "../types.js";
+import type { AutoHandoff } from "../agent.js";
 import type { CommandDef } from "../commands/index.js";
 import type { ThemeContextValue, ThemeDefinition } from "./theme.js";
 import type { KeybindingMap, KeybindingConfig, KeybindingAction } from "./keybindings.js";
@@ -280,9 +281,11 @@ export interface AgentBridgeCallbacks {
    * (an edit inside the profile's write set; recorded as allow-by-posture), or "envelope-grant" when
    * the user approved the session grant for the sandbox envelope passed as the
    * third argument (docs/permission-ux-redesign.md) — the agent records that
-   * one and stores the grant, so the UI writes no row for it.
+   * one and stores the grant, so the UI writes no row for it. `autoHandoff` is
+   * set when the auto posture handed the call to the user (a hard stop or a
+   * paused session): the UI must prompt for real and never resolve "posture".
    */
-  askUser: (toolName: string, args: Record<string, unknown>, envelope?: BashEnvelope, origin?: { subagent: string }) => Promise<boolean | "posture" | "envelope-grant">;
+  askUser: (toolName: string, args: Record<string, unknown>, envelope?: BashEnvelope, origin?: { subagent: string }, policyRisk?: { tier: string; reasons: string[]; message?: string }, autoHandoff?: AutoHandoff) => Promise<boolean | "posture" | "envelope-grant">;
   /** Mid-turn steering mailbox: polled once per decision point by the agent
    *  loop; returns the next queued message or null (the queue head is consumed). */
   pollSteeringMessage?: () => string | null;

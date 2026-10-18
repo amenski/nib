@@ -75,7 +75,7 @@ import { buildReplayLines } from "./core/replay.js";
 import { opensModal } from "./core/modal-commands.js";
 import { parseSkillLoadCommand, isSkillAlreadyLoaded, buildSkillLoadMessage, SKILL_START_PROMPT } from "./core/skill-load.js";
 import { findCommand, expandCommand } from "../commands/index.js";
-import { toolResultForHistory } from "../agent.js";
+import { toolResultForHistory, type AutoHandoff } from "../agent.js";
 import type { Message } from "../types.js";
 import type { AskQuestionItem } from "../tools/types.js";
 import { setAskQuestion } from "../tools/index.js";
@@ -1233,6 +1233,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           envelope?: BashEnvelope,
           origin?: { subagent: string },
           policyRisk?: { tier: string; reasons: string[]; message?: string },
+          autoHandoff?: AutoHandoff,
         ) => {
           if (
             [
@@ -1266,7 +1267,13 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           // "allowed without showing a prompt" row. Layer 1 already denied any
           // out-of-write-set edit, so an edit that reaches this point is always
           // inside the write-set.
-          if (ctx.permissionProfile?.editTargetInWriteSet(toolName, args)) {
+          //
+          // Not when auto handed the call to the user (autoHandoff: a hard
+          // stop such as .env or .husky/*, the user's own ask rule, or a
+          // paused session) — that call was sent here precisely to be asked
+          // about, so the real prompt is shown. A judge failure carries no
+          // handoff and may still take the overlay.
+          if (autoHandoff === undefined && ctx.permissionProfile?.editTargetInWriteSet(toolName, args)) {
             return "posture";
           }
 

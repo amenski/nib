@@ -829,6 +829,36 @@ describe("permission profile overlay — consolidation M.1 (§5)", () => {
     expect(await askPromise).toBe(true);
   });
 
+  for (const handoff of ["hard-stop", "paused"] as const) {
+    it(`in auto, a write-set edit handed over for a ${handoff} shows the real prompt, not "posture"`, async () => {
+      let askPromise: Promise<unknown> | null = null;
+      const ctx = makeAskCtx(async (_input: string, cb: any) => {
+        askPromise = cb.askUser(
+          "edit",
+          { path: "/workspace/.env", oldString: "x", newString: "y" },
+          undefined,
+          undefined,
+          undefined,
+          handoff,
+        );
+        return { stopReason: "done", messages: [], newMessages: [] };
+      }, "workspace-write");
+      ctx.mutable.posture = "auto";
+      const inst = render(<App ctx={ctx} />);
+      mounted.push(inst);
+      inst.stdin.write("edit it");
+      await flush();
+      inst.stdin.write("\r");
+      await flush();
+      await flush();
+
+      expect(stripAnsi(inst.lastFrame() ?? "")).toContain("Permission required");
+      inst.stdin.write("1");
+      await flush();
+      expect(await askPromise).toBe(true);
+    });
+  }
+
   it("in auto, a write-set edit still resolves \"posture\" without a prompt", async () => {
     let askResult: unknown = "unresolved";
     const ctx = makeAskCtx(async (_input: string, cb: any) => {

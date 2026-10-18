@@ -435,6 +435,76 @@ describe("auto posture gate", () => {
     });
   });
 
+  describe("a human is really asked: the handoff signal", () => {
+    it("signals a hard stop on an in-write-set edit of .env, so the UI cannot take the overlay", async () => {
+      const { judge } = stubJudge({ stage1: ALLOW });
+      const permissionProfile = new ProfileEvaluator({ level: "workspace-write" }, ROOT);
+      const d = await drive([{ tool: "edit", args: { path: `${ROOT}/.env`, content: "x" } }], { judge, permissionProfile });
+
+      expect(judge).not.toHaveBeenCalled();
+      expect(d.askUser).toHaveBeenCalledTimes(1);
+      expect(d.askUser.mock.calls[0]![5]).toBe("hard-stop");
+      expect(d.askUser.mock.calls[0]![4]?.message).toMatch(/credential/);
+      expect(d.rows[0]).toMatchObject({ auto: { stage: "fallback", outcome: "hard-stop" } });
+    });
+
+    it("signals a paused session", async () => {
+      const { judge } = stubJudge({ stage1: ALLOW });
+      const state = new AutoModeState();
+      for (let i = 0; i < 3; i++) state.recordBlock();
+      const d = await drive(["npm test"], { judge, state });
+
+      expect(judge).not.toHaveBeenCalled();
+      expect(d.askUser.mock.calls[0]![5]).toBe("paused");
+    });
+
+    it("sends no signal when the judge itself fails, so that fallback may keep the overlay", async () => {
+      const { judge } = stubJudge({ stage1: new Error("boom") });
+      const d = await drive(["npm test"], { judge });
+
+      expect(d.askUser).toHaveBeenCalledTimes(1);
+      expect(d.askUser.mock.calls[0]![5]).toBeUndefined();
+    });
+
+    it("sends no signal outside auto", async () => {
+      const d = await drive(["npm test"], {});
+      expect(d.askUser.mock.calls[0]![5]).toBeUndefined();
+    });
+  });
+
+  describe("an explicit ask rule", () => {
+    const askRule = { tool: "run_bash", kind: "prefix", pattern: "npm test", action: "ask", origin: "config" } as const;
+
+    it("prompts under auto without the judge, with the hard-stop signal and audit", async () => {
+      const { judge } = stubJudge({ stage1: ALLOW });
+      const permissions = new PermissionEngine({ rules: [askRule] }, ROOT);
+      const d = await drive(["npm test"], { judge, permissions });
+
+      expect(judge).not.toHaveBeenCalled();
+      expect(d.askUser).toHaveBeenCalledTimes(1);
+      expect(d.askUser.mock.calls[0]![5]).toBe("hard-stop");
+      expect(d.askUser.mock.calls[0]![4]?.message).toMatch(/your ask rule matched \(run_bash: npm test\)/);
+      expect(d.rows[0]).toMatchObject({ auto: { stage: "fallback", outcome: "hard-stop" } });
+    });
+
+    it("still goes to the judge when the ask comes from the default mode", async () => {
+      const { judge } = stubJudge({ stage1: ALLOW });
+      const d = await drive(["npm test"], { judge });
+
+      expect(judge).toHaveBeenCalledTimes(1);
+      expect(d.askUser).not.toHaveBeenCalled();
+      expect(d.executed).toEqual(["npm test"]);
+    });
+
+    it("does not treat a builtin-guarded ask as the user's rule: a plain curl is still judged", async () => {
+      const { judge } = stubJudge({ stage1: ALLOW });
+      const d = await drive(["curl https://example.com"], { judge });
+
+      expect(judge).toHaveBeenCalledTimes(1);
+      expect(d.askUser).not.toHaveBeenCalled();
+    });
+  });
+
   it("allows an edit inside the profile write set as a readonly allow, with no judge", async () => {
     const { judge } = stubJudge({ stage1: "BLOCK" });
     const permissionProfile = new ProfileEvaluator({ level: "workspace-write" }, ROOT);

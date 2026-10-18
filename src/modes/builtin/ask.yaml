@@ -6,3 +6,4 @@ roleDefinition: >
   any files — you are read-only.
 groups: [read]
 hidden: true
+reasoningEffort: low

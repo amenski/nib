@@ -116,6 +116,7 @@ slug: code
 name: Code
 groups: [read, edit, command, workflow]
 model: deepseek/deepseek-flash
+reasoningEffort: low
 ```
 A session with no explicit `--mode`/`/mode` starts here — `activeMode` is
 never left `undefined` at startup (`src/cli.tsx`); a resumed session's last
@@ -123,8 +124,14 @@ mode wins over this default, and an explicit `--mode` wins over both. A mode's
 `model:` seeds a new session, and a `/mode` switch, for any mode (not only
 general) unless the model was chosen explicitly: `--model`, settings.json
 `model`, `/model`, or a resumed session. An explicit provider that differs from
-the mode's also wins. Code declares Flash but no `reasoningEffort`, so it keeps
-the model's own effort default (`applyModeDefaults`, `src/cli.tsx`).
+the mode's also wins. Code declares Flash at low effort, so a new session
+starts on `low`; settings.json `reasoningEffort`, `/effort`, or a resumed
+session's recorded effort wins over it, and only when the model lists effort
+values (`applyModeDefaults`, `src/cli.tsx`).
+
+Every built-in mode, current and legacy, declares `reasoningEffort: low`, so a
+new session starts on low effort in any of them; settings.json
+`reasoningEffort`, `/effort`, or a resumed session's recorded effort overrides it.
 Headless (`nib -p`, `src/exec-runner.ts`) resolves the same default: an
 unrecognized `--mode` still exits 1 with the "unknown mode" message, and a
 valid explicit `--mode` gates tools to its own groups instead.
@@ -140,6 +147,7 @@ also handled within Code's normal implementation persona.
 slug: ask
 name: Ask
 groups: [read]
+reasoningEffort: low
 hidden: true
 ```
 
@@ -149,6 +157,7 @@ slug: architect
 name: Architect
 groups: [read, edit]
 fileRegex: "\\.(md|yaml|yml|json|txt)$"
+reasoningEffort: low
 hidden: true
 ```
 
@@ -160,6 +169,7 @@ Architect is a hidden compatibility alias for existing sessions and explicit
 slug: debug
 name: Debug
 groups: [read, edit, command]
+reasoningEffort: low
 hidden: true
 ```
 
@@ -171,6 +181,7 @@ normal implementation behavior.
 slug: orchestrator
 name: Orchestrator
 groups: [workflow]
+reasoningEffort: low
 hidden: true
 ```
 

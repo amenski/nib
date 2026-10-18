@@ -46,9 +46,11 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - **The default persona is now `code` again, not `general`.** A session with no
   explicit `--mode` or `/mode` (and headless `nib -p`) starts in Code on
-  deepseek-flash at the model's default effort. Use `--mode general` or `/mode general` for
-  the read-only chat persona; it keeps its Flash/low-effort defaults when chosen
-  at launch. A resumed session still comes back in its last mode.
+  deepseek-flash at low reasoning effort; every built-in mode defaults to low
+  effort. Use `--mode general` or `/mode general` for
+  the read-only chat persona; it has the same Flash/low-effort defaults when chosen
+  at launch. `/effort`, settings.json `reasoningEffort` or a resumed session's effort
+  still win. A resumed session still comes back in its last mode.
 - **Breaking: hook payloads report `permission_mode: "auto"` where they
   reported `"autoApprove"`.** Hooks that match on the old value need updating.
 - **`classifier.model.id` is accepted without `enabled`.** It names the auto
@@ -84,7 +86,7 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   new session started on the provider preset's `deepseek-v4-pro`. A mode's
   `model:` now applies for any mode (unless the model was chosen via `--model`,
   settings.json, `/model` or a resumed session), and the built-in `code`
-  declares Flash without changing the effort default. Headless `nib -p` and the
+  declares Flash at `reasoningEffort: low`. Headless `nib -p` and the
   model recorded for a new session follow the same rule.
 
 ### Removed

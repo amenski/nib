@@ -36,6 +36,13 @@ describe("ModeLoader", () => {
     expect(slugs).not.toEqual(expect.arrayContaining(["ask", "architect", "debug", "orchestrator"]));
   });
 
+  it("declares reasoningEffort low on every builtin mode", async () => {
+    const loader = new ModeLoader();
+    for (const slug of ["general", "code", "ask", "architect", "debug", "orchestrator"]) {
+      expect((await loader.load(slug))?.reasoningEffort, slug).toBe("low");
+    }
+  });
+
   describe("dist layout (bundle in one dir, builtin/ beside it)", () => {
     let dist: string;
 

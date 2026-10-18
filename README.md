@@ -30,6 +30,24 @@ Already using Claude Code? Hooks, skills, MCP, sub-agents, custom slash
 commands and `-p` headless mode work the way you expect; see the
 [parity table](./docs/claude-code-parity.md) for what is and is not there yet.
 
+## Measured
+
+Nib keeps the prompt prefix byte-stable (system prompt, tools, history only
+appended), so the provider's prefix cache does the work. This is the `/usage`
+panel from the author's own DeepSeek key on 2026-10-18:
+
+![Nib /usage panel: deepseek-flash 504,190,080 cached of 506,372,034 input tokens](./assets/usage-deepseek-flash.png)
+
+- `deepseek-flash`: 504,190,080 cached / 506,372,034 input = **99.57%** cache
+  hit rate (1,207,287 output tokens).
+- `deepseek-v4-pro`: 201,984 / 279,485 = 72.3%, on a small sample.
+- Cached tokens are what the provider reports; providers that do not report
+  them show 0. Check yours with `/usage` inside Nib.
+- Under the auto posture, most Bash calls in an ordinary session are read-only
+  and never reach the judge; a judged call costs one short model round trip
+  (about 1 s on Flash). Measure yours with the `jq` recipes in
+  [`docs/auto-mode.md`](./docs/auto-mode.md#7-checking-that-it-works).
+
 ## Quick start
 
 Requires Node.js 20+ and Git.
@@ -195,6 +213,30 @@ precedence; use `model` and `provider` here, `--model`, or `/model` to choose.
 - Custom modes: drop a YAML file into `~/.nib/modes/`.
 
 Full schema: [`docs/config-spec.md`](./docs/config-spec.md).
+
+## Recommended settings
+
+Default (macOS, sandbox on): sandboxed Bash runs on the session grant, and auto
+judges the rest.
+
+```json
+{ "classifier": { "defaultPosture": "auto" } }
+```
+
+Your own projects (sandbox off): no OS containment, so use it on code you trust.
+
+```json
+{
+  "sandbox": { "enabled": false },
+  "classifier": { "defaultPosture": "auto", "model": { "id": "deepseek/deepseek-flash" } }
+}
+```
+
+Both go in `~/.nib/settings.json` (these keys are global-only). `code` is the
+default persona, on DeepSeek Flash at low effort; `/model` and `/effort` change
+that per session. If context grows, cap it with `compaction.maxTokens`. See
+[auto mode](./docs/auto-mode.md#3-sandbox-on-or-off) and the
+[config spec](./docs/config-spec.md).
 
 ---
 

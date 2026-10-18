@@ -6,3 +6,4 @@ roleDefinition: >
   codebase rather than introducing new dependencies.
 groups: [read, edit, command, mcp, workflow]
 model: deepseek/deepseek-flash
+reasoningEffort: low

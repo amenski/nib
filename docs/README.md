@@ -133,8 +133,8 @@ then follow the reading paths below.
    product ships; older docs may show retired IDs. `--model` takes
    `provider/model`, split on the first slash.
 3. **Default pairing is deepseek/deepseek-flash** (the built-in `code`
-   persona's `model:`; effort stays at the model's default), and `general`
-   pairs the same model at low reasoning effort (mode-spec.md §5). The
+   persona's `model:` and `reasoningEffort: low`), and `general` pairs the
+   same model at the same low reasoning effort (mode-spec.md §5). The
    provider preset's own `defaultModel` (deepseek-v4-pro) applies only when
    the mode declares no model; the anthropic API type is supported via the AI
    SDK but has no bundled preset.

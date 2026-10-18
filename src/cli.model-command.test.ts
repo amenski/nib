@@ -105,7 +105,7 @@ describe("mode model defaults", () => {
   }
 
   const general = { slug: "general", name: "General", roleDefinition: "", model: "deepseek/deepseek-flash", reasoningEffort: "low" };
-  const code = { slug: "code", name: "Code", roleDefinition: "", model: "deepseek/deepseek-flash" };
+  const code = { slug: "code", name: "Code", roleDefinition: "", model: "deepseek/deepseek-flash", reasoningEffort: "low" };
   const plain = { slug: "ask", name: "Ask", roleDefinition: "" };
 
   async function runSlash(input: string, state: any, sessionStore: any, modeLoader: any) {
@@ -126,10 +126,22 @@ describe("mode model defaults", () => {
     expect(state).toMatchObject({ activeModel: "deepseek-flash", activeEffort: "low" });
   });
 
-  it("seeds Code's Flash model but leaves the model's own effort for a session starting in Code", () => {
+  it("seeds Code's Flash model and low effort for a session starting in Code", () => {
     const state = { ...shared(), activeEffort: "high" };
     applyModeDefaults(state, code);
-    expect(state).toMatchObject({ providerName: "deepseek", activeModel: "deepseek-flash", activeEffort: "high" });
+    expect(state).toMatchObject({ providerName: "deepseek", activeModel: "deepseek-flash", activeEffort: "low" });
+  });
+
+  it("keeps the user's effort over Code's low default when the effort is explicit", () => {
+    const state = { ...shared(), activeEffort: "max", effortExplicit: true };
+    applyModeDefaults(state, code);
+    expect(state).toMatchObject({ activeModel: "deepseek-flash", activeEffort: "max" });
+  });
+
+  it("leaves the model's own effort for a code mode that declares no reasoningEffort", () => {
+    const state = { ...shared(), activeEffort: "high" };
+    applyModeDefaults(state, { ...code, reasoningEffort: undefined });
+    expect(state).toMatchObject({ activeModel: "deepseek-flash", activeEffort: "high" });
   });
 
   it("changes nothing for a mode with neither a model nor a reasoningEffort", () => {
@@ -154,6 +166,19 @@ describe("mode model defaults", () => {
     const state = { ...shared(), providerName: "openai", activeModel: "gpt-5.6-sol", providerExplicit: true };
     applyModeDefaults(state, code);
     expect(state).toMatchObject({ providerName: "openai", activeModel: "gpt-5.6-sol" });
+  });
+
+  it("keeps low effort when /mode switches from General to Code and back", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const state = shared();
+    applyModeDefaults(state, general);
+    const sessionStore = { appendState: vi.fn().mockResolvedValue(undefined) };
+
+    await runSlash("/mode code", state, sessionStore, { load: vi.fn().mockResolvedValue(code) });
+    expect(state.activeEffort).toBe("low");
+    await runSlash("/mode general", state, sessionStore, { load: vi.fn().mockResolvedValue(general) });
+    expect(state.activeEffort).toBe("low");
+    vi.restoreAllMocks();
   });
 
   it("keeps the model and effort when /mode switches from General to Code", async () => {

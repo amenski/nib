@@ -328,7 +328,7 @@ describe("runExecMode first-run failures are clean (B1)", () => {
     expect(createProviderSpy).not.toHaveBeenCalled();
   });
 
-  it("defaults to Code's tool set and Code's Flash model when no --mode is given, matching the TUI's startup default", async () => {
+  it("defaults to Code's tool set, Flash model and low effort when no --mode is given, matching the TUI's startup default", async () => {
     getByModeSpy.mockClear();
 
     const { code } = await run();
@@ -336,7 +336,7 @@ describe("runExecMode first-run failures are clean (B1)", () => {
     expect(code).toBe(0);
     expect(getByModeSpy).toHaveBeenCalledWith(["read", "edit", "command", "mcp", "workflow"]);
     expect(createProviderSpy).toHaveBeenCalledWith("deepseek", expect.objectContaining({ modelOverride: "deepseek-flash" }));
-    expect(lastStreamOptions?.effort).not.toBe("low");
+    expect(lastStreamOptions?.effort).toBe("low");
   });
 
   it("applies General's read-only tool set, Flash model and low effort when --mode general is explicit", async () => {

@@ -116,7 +116,7 @@ behave differently.
 | Persona | Capabilities | Best used for |
 |---|---|---|
 | **General** | Read-only; DeepSeek V4 Flash at low effort | Questions, exploration, and everyday conversation |
-| **Code** *(default)* | Read, edit, shell commands, background jobs, and sub-agent delegation | Building, fixing, refactoring, and verification |
+| **Code** *(default)* | Read, edit, shell commands, background jobs, and sub-agent delegation; DeepSeek V4 Flash at low effort | Building, fixing, refactoring, and verification |
 
 Nib deliberately keeps the current built-in surface to General and Code. Code
 handles planning, architecture, debugging, implementation, and delegation

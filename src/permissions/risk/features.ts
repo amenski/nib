@@ -271,6 +271,19 @@ const PROTECTED_PATH_RULES: [RegExp, NonNullable<PathFeatures["protectedPath"]>]
   [/(^|[/\\])\.github[/\\]workflows([/\\]|$)/, "ci"],
 ];
 
+/**
+ * Whether an edit-group target is a credential or protected path (secret
+ * token or any §4.3 protected path). Pass the cwd-relative ("./rel") or
+ * home-relative ("~/rel") canonical form so ancestor directories of the
+ * workspace cannot match; the regexes also match the risk layer's spellings. Such an edit must always show the permission prompt,
+ * so the write-set overlay (profile.editTargetInWriteSet) refuses to treat
+ * it as silently in-set. Tradeoff: SECRET_TOKEN_RE matches `(^|/)credentials`,
+ * so `src/credentials.ts` prompts too.
+ */
+export function isSensitiveEditPath(raw: string): boolean {
+  return SECRET_TOKEN_RE.test(raw) || PROTECTED_PATH_RULES.some(([re]) => re.test(raw));
+}
+
 const MCP_MUTATING_VERB_RE = /(^|_)(delete|remove|destroy|drop|purge|send|post|publish|merge|approve)(_|$)/;
 
 const INTERPRETER_INLINE_FLAGS = new Set(["-c", "-e", "--eval", "-p", "--print"]);

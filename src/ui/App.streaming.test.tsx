@@ -591,6 +591,26 @@ describe("permission profile overlay — consolidation M.1 (§5)", () => {
     expect(frame).not.toContain("Permission required");
   });
 
+  it("in normal posture, an edit of .env shows the prompt", async () => {
+    let askPromise: Promise<unknown> | null = null;
+    const ctx = makeAskCtx(async (_input: string, cb: any) => {
+      askPromise = cb.askUser("edit", { path: "/workspace/.env", oldString: "x", newString: "y" });
+      return { stopReason: "done", messages: [], newMessages: [] };
+    }, "workspace-write");
+    const inst = render(<App ctx={ctx} />);
+    mounted.push(inst);
+    inst.stdin.write("edit it");
+    await flush();
+    inst.stdin.write("\r");
+    await flush();
+    await flush();
+
+    expect(stripAnsi(inst.lastFrame() ?? "")).toContain("Permission required");
+    inst.stdin.write("1");
+    await flush();
+    expect(await askPromise).toBe(true);
+  });
+
   it("with strict-sandbox, no edit is overlay-auto-allowed — the prompt still shows", async () => {
     let askPromise: Promise<boolean> | null = null;
     const ctx = makeAskCtx(async (_input: string, cb: any) => {

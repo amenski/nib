@@ -6,6 +6,7 @@ import { isPathWithinWriteRoots, resolveWriteRoots } from "../sandbox/write-root
 import { realpathNearestAncestor } from "../sandbox/write-roots.js";
 import { PROJECT_DIR_NAME, STATE_DIR_NAME } from "../config/paths.js";
 import { extractApplyPatchPlan } from "./capabilities.js";
+import { isSensitiveEditPath } from "./risk/features.js";
 
 /**
  * PermissionProfile — the capability-boundary layer (docs/permission-profile.md §3).
@@ -317,6 +318,13 @@ export class ProfileEvaluator {
     if (typeof raw !== "string" || raw === "") return false;
     const canonical = canonicalizePath(raw, this.cwd, this.home);
     if (isAlwaysDenied(canonical)) return false;
+    // Credential / protected paths (.env, .husky/*, .vscode/*, workflows, rc
+    // files, ...) are never "silently in the write-set": callers use this to
+    // skip the prompt, and these edits must always be asked about. Matched on
+    // the canonical form ("./rel", "~/rel") so a workspace ancestor such as
+    // /work/credentials-api/ does not make every edit sensitive. Not a
+    // deny — the engine's write boundary does not call this method.
+    if (isSensitiveEditPath(canonical)) return false;
     const rule = this.fsRules.find((r) => r.re.test(canonical));
     if (rule && rule.action === "deny") return false;
     switch (this.level) {

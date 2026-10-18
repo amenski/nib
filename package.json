@@ -1,6 +1,6 @@
 {
   "name": "@amenski/nib",
-  "version": "0.7.0-rc.1",
+  "version": "0.7.0-rc.2",
   "type": "module",
   "bin": {
     "nib": "dist/cli.js"

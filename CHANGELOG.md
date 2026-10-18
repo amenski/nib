@@ -7,6 +7,8 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.0-rc.2] — 2026-10-18
+
 ### Added
 
 - **An `auto` permission posture, for sessions without a sandbox.** Shift+Tab now
@@ -15,8 +17,8 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the profile write set run with no prompt, and a two-stage model judge allows or
   blocks every other ask: stage 1 is a one-word ALLOW/BLOCK told to err toward
   block, and a block gets a reasoned second opinion that can overturn it. The
-  judge is `classifier.model.id` if set, else the session's active model with
-  thinking off. It reads your messages and the agent's earlier tool calls (name
+  judge is `classifier.model.id` if set, else the session's active model, at
+  the lowest reasoning effort the model offers. It reads your messages and the agent's earlier tool calls (name
   and arguments), never tool results or assistant prose. A rules `block` is
   denied in every `classifier.mode`; credential paths (including a Bash command
   like `cat .env`), git config changes and calls outside the OS sandbox always
@@ -847,7 +849,8 @@ further injection sinks.
 Earlier releases predate this changelog. See the git history for
 `v0.1.0..v0.2.1`.
 
-[Unreleased]: https://github.com/amenski/nib/compare/v0.7.0-rc.1...HEAD
+[Unreleased]: https://github.com/amenski/nib/compare/v0.7.0-rc.2...HEAD
+[0.7.0-rc.2]: https://github.com/amenski/nib/compare/v0.7.0-rc.1...v0.7.0-rc.2
 [0.7.0-rc.1]: https://github.com/amenski/nib/compare/v0.6.1...v0.7.0-rc.1
 [0.6.1]: https://github.com/amenski/nib/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/amenski/nib/compare/v0.5.1...v0.6.0

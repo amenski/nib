@@ -50,6 +50,9 @@ function makeProvider(turns: TurnScript[]): Provider {
 const SESSION = "auto-session";
 const ROOT = process.cwd();
 const ALLOW = "ALLOW";
+// configureUnsandboxed runs the level through isSandboxedLevel, which is false
+// off darwin: with no OS sandbox there is nothing to leave, so no hard stop.
+const itOnDarwin = it.skipIf(process.platform !== "darwin");
 const BLOCK_LINE = (tag: string, reason: string) => `Looked at it.\nDECISION: BLOCK [${tag}] ${reason}`;
 
 /** A judge by stage: stage 1 is asked for one word, stage 2 for a decision line. */
@@ -404,6 +407,16 @@ describe("auto posture gate", () => {
       expect(d.rows[0]).toMatchObject({ auto: { stage: "fallback", outcome: "hard-stop" } });
     });
 
+    it("asks about a glob that expands to a credential file", async () => {
+      const { judge } = stubJudge({ stage1: ALLOW });
+      const d = await drive(["cat .env*"], { judge });
+
+      expect(judge).not.toHaveBeenCalled();
+      expect(d.askUser).toHaveBeenCalledTimes(1);
+      expect(d.askUser.mock.calls[0]![4]?.message).toMatch(/credential/);
+      expect(d.rows[0]).toMatchObject({ auto: { stage: "fallback", outcome: "hard-stop" } });
+    });
+
     it("asks about a git config operation", async () => {
       const { judge } = stubJudge({ stage1: ALLOW });
       const d = await drive(["git config user.name nobody"], { judge });
@@ -415,7 +428,7 @@ describe("auto posture gate", () => {
       expect(d.rows[0]).toMatchObject({ auto: { outcome: "hard-stop" } });
     });
 
-    it("asks about a request to leave the sandbox", async () => {
+    itOnDarwin("asks about a request to leave the sandbox", async () => {
       configureUnsandboxed({ sandboxLevel: "workspace-write" });
       const { judge } = stubJudge({ stage1: ALLOW });
       const d = await drive([{ args: { command: "npm test", unsandboxed: true } }], { judge });
@@ -425,7 +438,7 @@ describe("auto posture gate", () => {
       expect(d.askUser.mock.calls[0]![4]?.message).toMatch(/outside the OS sandbox/);
     });
 
-    it("asks about an excluded command", async () => {
+    itOnDarwin("asks about an excluded command", async () => {
       configureUnsandboxed({ sandboxLevel: "workspace-write", excludedCommands: ["flutter"] });
       const { judge } = stubJudge({ stage1: ALLOW });
       const d = await drive(["flutter build apk"], { judge });

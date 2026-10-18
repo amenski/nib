@@ -255,6 +255,69 @@ const BUILD_DIRS = new Set(["node_modules", "dist", "build", ".dart_tool", "targ
 /** §4.2 `secretRef` path-shaped tokens. */
 const SECRET_TOKEN_RE = /(^|[/\\])\.env(\.|$)|(^|[/\\])\.ssh([/\\]|$)|(^|[/\\])\.aws([/\\]|$)|(^|[/\\])id_rsa|\.pem$|(^|[/\\])credentials|(^|[/\\])\.npmrc$|(^|[/\\])\.netrc$|Keychains|169\.254\.169\.254/;
 
+/**
+ * Representative credential names for judging a glob, which SECRET_TOKEN_RE
+ * cannot read as text. It mirrors SECRET_TOKEN_RE's families: the two must change together.
+ */
+const SECRET_NAMES = [
+  ".env", ".env.local", ".ssh", ".aws", "id_rsa", "id_rsa.pub", "credentials", "credentials.json", "key.pem",
+  ".npmrc", ".netrc", "Keychains",
+];
+
+/** The credential directories of SECRET_NAMES: all a glob can name before its last component. */
+const SECRET_DIR_NAMES = [".ssh", ".aws"];
+
+/** Programs that print file contents; `ls` only lists names and is exempt. */
+const CONTENT_READERS = new Set(["cat", "head", "tail", "grep", "rg", "wc"]);
+
+const GLOB_CHAR = /[*?[]/;
+
+/** One glob path component as a RegExp, by POSIX/bash rules: a component not led by a literal `.` cannot match a dot-name. */
+function globComponentRe(component: string): RegExp {
+  let source = component.startsWith(".") ? "" : "(?!\\.)";
+  for (let i = 0; i < component.length; i++) {
+    const ch = component[i];
+    if (ch === "*") source += "[^/]*";
+    else if (ch === "?") source += "[^/]";
+    else if (ch === "[") {
+      const negated = component[i + 1] === "!" || component[i + 1] === "^";
+      const close = component.indexOf("]", i + (negated ? 3 : 2));
+      if (close === -1) {
+        source += "\\[";
+        continue;
+      }
+      source += `[${negated ? "^" : ""}${component.slice(i + 1 + (negated ? 1 : 0), close).replace(/[\\\]^]/g, "\\$&")}]`;
+      i = close;
+    } else source += ch.replace(/[.*+?^${}()|[\]\\\/-]/g, "\\$&");
+  }
+  try {
+    return new RegExp(`^${source}$`);
+  } catch {
+    return /[\s\S]*/;
+  }
+}
+
+/** A glob token that expands to a credential file: a 2+ character literal prefix of a SECRET_NAMES entry that the component also matches (`.env*`, `cred*`, `.ss*`). */
+function globNamesSecret(token: string): boolean {
+  return token.split("/").some((component) => {
+    const glob = component.search(GLOB_CHAR);
+    if (glob < 2) return false;
+    const prefix = component.slice(0, glob);
+    const re = globComponentRe(component);
+    return SECRET_NAMES.some((name) => name.startsWith(prefix) && re.test(name));
+  });
+}
+
+/** A glob operand that could expand to a credential file, wherever its glob starts (`*`, `*.json`, `config/*`). */
+function globCouldReadSecret(operand: string): boolean {
+  const parts = stripQuotes(operand).split("/");
+  return parts.some((component, i) => {
+    if (!GLOB_CHAR.test(component)) return false;
+    const re = globComponentRe(component);
+    return (i === parts.length - 1 ? SECRET_NAMES : SECRET_DIR_NAMES).some((name) => re.test(name));
+  });
+}
+
 /** §4.2 `secretRef` variable-shaped tokens: $GITHUB_TOKEN, ${AWS_SECRET_KEY}, …. */
 const SECRET_VAR_RE = /^"?\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?"?$/;
 
@@ -750,7 +813,7 @@ function secretRefsIn(tokens: string[]): string[] {
   const found: string[] = [];
   for (const token of tokens) {
     const bare = stripQuotes(token);
-    if (SECRET_TOKEN_RE.test(bare)) {
+    if (SECRET_TOKEN_RE.test(bare) || globNamesSecret(bare)) {
       found.push(bare);
       continue;
     }
@@ -825,7 +888,8 @@ function segmentFeatures(
 
 /**
  * Marks the `cd` segments the safe tier may step over, and the read-only
- * segments that reach outside the working directory (`readsOutside`).
+ * segments that reach outside the working directory or glob toward a
+ * credential file (`readsOutside`).
  *
  * The shell's directory at any segment is one of the directories collected in
  * `bases`: it starts as the working directory, and each `cd` adds its target
@@ -863,9 +927,10 @@ function scopeToWorkingDir(segments: SegmentFeatures[], workingDir: string): Seg
     if (basenameLower(tokens[0]) === "git" && bases.some((base) => base !== workingDir)) {
       return { ...segment, readsOutside: true };
     }
-    const outside = pathOperands(tokens).some((operand) =>
-      bases.some((base) => operandEscapes(operand, base, workingDir)),
-    );
+    const operands = pathOperands(tokens);
+    const outside =
+      operands.some((operand) => bases.some((base) => operandEscapes(operand, base, workingDir))) ||
+      (CONTENT_READERS.has(basenameLower(tokens[0])) && operands.some(globCouldReadSecret));
     return outside ? { ...segment, readsOutside: true } : segment;
   });
 }
@@ -881,9 +946,17 @@ function operandEscapes(operand: string, base: string, workingDir: string): bool
   if (operand === "/dev/null") return false;
   if (/[{}]/.test(operand)) return true;
   const glob = operand.search(/[*?[]/);
-  if (glob !== -1 && operand.slice(glob).split("/").includes("..")) return true;
+  // /bin/sh is bash 3.2 on macOS, where `.*` (and `.?`, `.[.]`, `..*`) also match `.` and `..`.
+  if (glob !== -1 && operand.slice(operand.lastIndexOf("/", glob) + 1).split("/").some(climbs)) return true;
   const literal = glob === -1 ? operand : operand.slice(0, glob);
   return !pathWithin(workingDir, resolve(base, literal));
+}
+
+/** A glob-path component that is `..` or can expand to `.`/`..`: its literal prefix before the first glob character is `.` or `..`. */
+function climbs(component: string): boolean {
+  if (component === "..") return true;
+  const glob = component.search(/[*?[]/);
+  return glob !== -1 && (component.slice(0, glob) === "." || component.slice(0, glob) === "..");
 }
 
 /** Where `cd <dir>` may land, or null when that is not statically known to stay inside. */

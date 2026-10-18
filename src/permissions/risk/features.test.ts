@@ -52,6 +52,17 @@ describe("§10.1 rows 1-20: shell structure", () => {
     expect(bash("cat .env").segments[0].secretRefs).toEqual([".env"]);
   });
 
+  it("names a credential file in a glob with a literal prefix of its name", () => {
+    for (const [command, ref] of [
+      ["cat .env*", ".env*"], ["head .e*", ".e*"], ["grep KEY cred*", "cred*"], ["cat .ss*/id_rsa", ".ss*/id_rsa"], ["rm .env*", ".env*"],
+    ]) {
+      expect(bash(command).segments[0].secretRefs, command).toEqual([ref]);
+    }
+    for (const command of ["cat src/*.ts", "cat .eslintrc*", "ls *", "cat e*"]) {
+      expect(bash(command).segments[0].secretRefs, command).toEqual([]);
+    }
+  });
+
   it("row 4 `grep -r TOKEN ~/.aws/` names a credential directory", () => {
     expect(bash("grep -r TOKEN ~/.aws/").segments[0].secretRefs).toEqual(["~/.aws/"]);
   });
@@ -351,6 +362,19 @@ describe("§5.4 safe tier evidence: cd scoping and discarded output", () => {
     expect(outside("ls /etc/*.conf")).toBe(true);
     expect(outside("ls src/*/../../..")).toBe(true);
     expect(outside("ls {src,/etc}")).toBe(true);
+  });
+
+  it("flags a dot-led glob component that bash 3.2 can expand to . or ..", () => {
+    const outside = (command: string) => bash(command).segments[0].readsOutside;
+    for (const command of [
+      "cat .*/x", "cat src/.*/x", "cat src/.*/.*/x", "head .?/x", "ls .[.]/", "cat ./.*/x", "cat .*rc",
+      "wc -l src/*/.*/y", "cat ..*/x",
+    ]) {
+      expect(outside(command), command).toBe(true);
+    }
+    for (const command of ["cat src/*.ts", "ls src/*", "grep -rn foo src/*.ts", "cat .eslintrc*", "ls .github*", "ls src/.hidden/*"]) {
+      expect(outside(command), command).toBe(false);
+    }
   });
 
   it("reads a grep --include/--exclude value as a name pattern, not a path", () => {

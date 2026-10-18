@@ -410,6 +410,13 @@ describe("§5.4 safe tier: obviously read-only shell", () => {
     "grep -rn foo src/main/*.java | head -5",
     "cd src && ls *.ts",
     "ls /work/project/src/*.ts",
+    "grep -rn foo src/*.ts",
+    "ls src/*",
+    "cat .eslintrc*",
+    "ls .github*",
+    "cat src/*.ts",
+    "ls *",
+    "wc -l src/*.ts",
   ])("safe with a glob whose literal prefix stays inside: %s", (command) => {
     expect(tierOf(command)).toBe("safe");
   });
@@ -426,6 +433,23 @@ describe("§5.4 safe tier: obviously read-only shell", () => {
     "find . -name '*.ts'",
     "sort *.txt",
     "git log -- src/*.ts",
+    "cat .*/x",
+    "cat src/.*/.*/x",
+    "cat ./.*/x",
+    "head .?/x",
+    "ls .[.]/",
+    "cat .*rc",
+    "wc -l src/*/.*/y",
+    "cat ..*/x",
+    "cat .env*",
+    "head .e*",
+    "cat config/*.pem",
+    "cat *",
+    "head *",
+    "cat src/*.json",
+    "grep KEY cred*",
+    "cat .s*/id_rsa*",
+    "cat .?sh/x",
   ])("not safe with a glob that can leave the workspace or on a strict command: %s", (command) => {
     expect(tierOf(command)).not.toBe("safe");
   });

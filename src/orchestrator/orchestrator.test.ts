@@ -21,12 +21,12 @@ import type { ToolContext } from "../tools/types.js";
 type TurnScript = StreamEvent[];
 
 function makeProvider(turns: TurnScript[]) {
-  const received: { messages: Message[]; tools: ToolDef[] }[] = [];
+  const received: { messages: Message[]; tools: ToolDef[]; options?: { effort?: string; thinkingEnabled?: boolean } }[] = [];
   let call = 0;
   const provider: Provider = {
     name: "fake",
-    async *streamChat(messages, tools) {
-      received.push({ messages: [...messages], tools: tools ? [...tools] : [] });
+    async *streamChat(messages, tools, options) {
+      received.push({ messages: [...messages], tools: tools ? [...tools] : [], options });
       const events = turns[call] ?? [];
       call++;
       for (const event of events) yield event;
@@ -153,6 +153,49 @@ describe("Orchestrator", () => {
     const subTools = received[0].tools.map((t) => t.name);
     expect(subTools).toEqual(expect.arrayContaining(["read_file", "run_bash", "new_task"]));
     expect(String(received[0].messages[0].content)).toContain("senior software engineer");
+  });
+
+  describe("sub-run reasoning effort", () => {
+    async function spawnAndStream(
+      opts: { resolveEffort?: (sub: { modelId?: string; mode: { slug: string; reasoningEffort?: string } }) => string | undefined; thinkingEnabled?: boolean },
+      mode = "code",
+    ) {
+      const { registry } = makeRegistry();
+      const { provider, received } = makeProvider([textTurn("done")]);
+      const deliveries = trackDeliveries();
+      const orchestrator = new Orchestrator({
+        provider: () => provider,
+        registry,
+        modeLoader: new ModeLoader(),
+        onTaskResult: deliveries.onResult,
+        ...opts,
+      } as ConstructorParameters<typeof Orchestrator>[0]);
+      orchestrator.register(registry);
+      await registry.execute({ id: "t1", name: "new_task", arguments: { description: "do it", mode } }, ctx);
+      await deliveries.delivered();
+      return received[0].options;
+    }
+
+    it("passes the sub-mode to resolveEffort and streams the effort it returns", async () => {
+      const seen: Array<{ modelId?: string; mode: { slug: string; reasoningEffort?: string } }> = [];
+      const options = await spawnAndStream({
+        resolveEffort: (sub) => { seen.push(sub); return sub.mode.reasoningEffort; },
+      });
+      expect(seen).toHaveLength(1);
+      expect(seen[0].modelId).toBeUndefined();
+      expect(seen[0].mode.slug).toBe("code");
+      expect(options?.effort).toBe("low");
+    });
+
+    it("streams a different effort when resolveEffort returns one", async () => {
+      const options = await spawnAndStream({ resolveEffort: () => "high" });
+      expect(options?.effort).toBe("high");
+    });
+
+    it("leaves effort unset without resolveEffort and forwards thinkingEnabled", async () => {
+      expect((await spawnAndStream({}))?.effort).toBeUndefined();
+      expect((await spawnAndStream({ thinkingEnabled: false }))?.thinkingEnabled).toBe(false);
+    });
   });
 
   /** A turn that narrates *and* calls a tool — the shape that pushes an

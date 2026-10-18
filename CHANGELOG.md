@@ -61,6 +61,13 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **`new_task` sub-agents now run at the intended reasoning effort.** They used
+  the provider's default effort, ignoring both their mode's `reasoningEffort`
+  (low in every built-in mode) and your `/effort`, settings.json
+  `reasoningEffort` or resumed-session choice, and did not get the session's
+  `thinkingEnabled`. An explicit choice now wins, else the sub-mode's own value;
+  a value the sub-run's model does not list falls back to that model's default.
+  Headless `nib -p` follows the same rule.
 - **Auto hard stops and your `ask` rules always show the real prompt.** When
   auto handed a call to you (a credential or protected path, a git config
   change, a call outside the sandbox, or a paused session), the terminal UI

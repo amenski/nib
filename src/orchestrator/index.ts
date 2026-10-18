@@ -4,7 +4,7 @@ import type { ToolHandler, ToolContext, ToolExecOptions } from "../tools/types.j
 import { ToolRegistry } from "../tools/registry.js";
 import { runAgent, type AgentResult, type AutoHandoff } from "../agent.js";
 import { Compactor } from "../compaction/compactor.js";
-import { ModeLoader } from "../modes/loader.js";
+import { ModeLoader, type ModeConfig } from "../modes/loader.js";
 import { AgentLoader } from "../agents/index.js";
 import type { PermissionEngine, ProfileEvaluator } from "../permissions/index.js";
 import type { BashEnvelope } from "../permissions/session-grant.js";
@@ -36,6 +36,15 @@ export interface OrchestratorOptions {
    * to that model instead; absent = the parent's current provider.
    */
   provider: (modelId?: string) => Provider;
+  /**
+   * Reasoning effort for a sub-run, resolved at spawn time from the sub-run's
+   * model (`modelId` = a defined agent's override, absent = the parent's
+   * current model) and mode. Absent = the provider's default effort. Nested
+   * sub-runs resolve through the same callback.
+   */
+  resolveEffort?: (sub: { modelId?: string; mode: ModeConfig }) => string | undefined;
+  /** Forwarded to every sub-run's provider stream, as the parent passes it. */
+  thinkingEnabled?: boolean;
   registry: ToolRegistry;
   modeLoader: ModeLoader;
   /**
@@ -118,6 +127,8 @@ export interface OrchestratorOptions {
 export class Orchestrator {
   private options: Required<Pick<OrchestratorOptions, "maxDepth" | "maxSubTurns">> & {
     provider: (modelId?: string) => Provider;
+    resolveEffort?: OrchestratorOptions["resolveEffort"];
+    thinkingEnabled?: boolean;
     registry: ToolRegistry;
     modeLoader: ModeLoader;
     agents?: AgentLoader;
@@ -357,6 +368,7 @@ export class Orchestrator {
         };
       }
       const subCompactor = new Compactor(provider);
+      const subEffort = this.options.resolveEffort?.({ modelId, mode: subMode });
 
       // The sub-agent gets its own todo store: its update_todo_list calls must
       // not clobber the parent's checklist panel, and its own model context
@@ -445,6 +457,8 @@ export class Orchestrator {
               // envelope is never inherited.
               bashEnvelope: this.options.getBashEnvelope?.(),
               maxTurns: this.options.maxSubTurns,
+              effort: subEffort,
+              thinkingEnabled: this.options.thinkingEnabled,
               mode: subMode,
               // The defined agent's instructions prepend the sub-agent's system
               // prompt (prompt.ts prepends agentInstructions to the preamble).

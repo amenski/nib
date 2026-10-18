@@ -26,7 +26,7 @@ import { ModeLoader } from "./modes/loader.js";
 import { AgentLoader } from "./agents/index.js";
 import { join } from "node:path";
 import { checkSettingsTrust, stripExecutionKeys, trustSettings } from "./config/settings-trust.js";
-import { GENERAL_MODEL_ID, GENERAL_REASONING_EFFORT, parseModelId } from "./modes/model-policy.js";
+import { GENERAL_MODEL_ID, GENERAL_REASONING_EFFORT, parseModelId, resolveSubagentEffort } from "./modes/model-policy.js";
 
 export interface ExecRunnerOptions {
   prompt: string;
@@ -359,6 +359,13 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
           baseUrl: provName === providerName ? resolvedBaseUrl : undefined,
           apiKey: provName === providerName ? resolvedApiKey : undefined,
         });
+      },
+      // The run's explicit reasoningEffort (settings.json) wins over each
+      // sub-mode's own; a defined agent's model override supplies its own caps.
+      resolveEffort: ({ modelId, mode }) => {
+        const parsed = parseModelId(modelId, providerName);
+        const caps = parsed ? getPreset(parsed.provider)?.models[parsed.model] : activeCaps;
+        return resolveSubagentEffort(caps, { explicitEffort: configResult.config.reasoningEffort, mode });
       },
       registry,
       modeLoader: new ModeLoader(),

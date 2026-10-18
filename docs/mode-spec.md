@@ -132,6 +132,9 @@ values (`applyModeDefaults`, `src/cli.tsx`).
 Every built-in mode, current and legacy, declares `reasoningEffort: low`, so a
 new session starts on low effort in any of them; settings.json
 `reasoningEffort`, `/effort`, or a resumed session's recorded effort overrides it.
+Sub-agents spawned with `new_task` use their own mode's `reasoningEffort` unless
+you set an effort explicitly (`/effort`, settings.json `reasoningEffort`, a
+resumed session), which then applies to them too.
 Headless (`nib -p`, `src/exec-runner.ts`) resolves the same default: an
 unrecognized `--mode` still exits 1 with the "unknown mode" message, and a
 valid explicit `--mode` gates tools to its own groups instead.

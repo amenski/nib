@@ -73,7 +73,7 @@ import { StatusLineManager } from "./ui/statusline/index.js";
 import { isSkillAlreadyLoaded, buildSkillLoadMessage } from "./ui/core/skill-load.js";
 import { toModelId } from "./ui/core/model-picker.js";
 import { loadFavoriteModels, loadRecentModels, persistRecentModel, persistToggleFavorite } from "./ui/components/ModelsDropdown/settings.js";
-import { GENERAL_MODEL_ID, GENERAL_REASONING_EFFORT, parseModelId, resolveRestoredSelection } from "./modes/model-policy.js";
+import { GENERAL_MODEL_ID, GENERAL_REASONING_EFFORT, parseModelId, resolveRestoredSelection, resolveSubagentEffort } from "./modes/model-policy.js";
 
 // Opt-in stall watchdog (NIB_PROFILE=1|true): started before the Ink
 // render() call, stopped + reported inside logSessionEnd. Module-level so
@@ -538,6 +538,16 @@ async function main() {
 
   const orchestrator = new Orchestrator({
     provider: getProvider,
+    // Read `shared` at spawn time so /model and /effort apply to later sub-runs.
+    resolveEffort: ({ modelId, mode }) => {
+      const parsed = parseModelId(modelId, shared.providerName);
+      const caps = parsed ? getPreset(parsed.provider)?.models[parsed.model] : getActiveModelCaps();
+      return resolveSubagentEffort(caps, {
+        explicitEffort: shared.effortExplicit ? shared.activeEffort : undefined,
+        mode,
+      });
+    },
+    thinkingEnabled,
     registry,
     modeLoader,
     agents: agentLoader,

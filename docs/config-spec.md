@@ -307,8 +307,8 @@ layer. An unrecognized value is an error rather than a silent fallback.
 posture a session starts in. `"auto"` starts it in the auto posture
 (docs/permission-spec.md §9, docs/command-risk-classifier.md §15): read-only
 calls and edits inside the write set run silently, a two-stage model judge allows
-or blocks everything else, and credential paths, git config and calls outside the
-sandbox still prompt. The same posture is reachable mid-session with Shift+Tab
+or blocks everything else, and credential paths, git config, calls outside the
+sandbox and calls matched by your own `ask` rules still prompt. The same posture is reachable mid-session with Shift+Tab
 (`normal → auto → plan`), and `defaultPosture` only changes where the session
 starts. It works with `sandbox.enabled: false`.
 
@@ -335,8 +335,9 @@ change the outcome only for an MCP call allowed by `defaultMode`.
 `id` is usable **without `enabled`**, because in the auto posture it names the
 auto judge (`classifier.defaultPosture`, above): with `id` set the auto judge is
 that model, and without it the auto judge is the session's currently active
-model with thinking off. The second stage is skipped while auto is active (auto's
-judge already decides those calls), and auto does not require `enabled`.
+model at its lowest reasoning effort. The second stage is skipped while auto is
+active (auto's judge already decides those calls), and auto does not require
+`enabled`.
 
 Both keys are **global-only** for the same reason as `mode`. Every failure mode —
 timeout (3 s), provider error, an answer that is not `OK`/`FLAG` — resolves to

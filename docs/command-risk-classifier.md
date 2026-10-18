@@ -393,8 +393,12 @@ counts as benign (Claude Code allows it by default).
 
 `classifyCommand()` = proven-read-only *and* no redirect that keeps output
 *and* every path operand inside the working directory (`RiskInput` carries no
-separate read roots, so cwd is the only one). First-party read tools inside the
-workspace. `git status/diff/log` without `-C`/`-c`.
+separate read roots, so cwd is the only one). First-party read tools
+(`read_file`, `list_files` and the like, `kind: "path-read"`) on a path inside
+the working directory: `isSafe` accepts target class `inside-cwd` or `build-dir`
+and refuses a path with `secretRef` or a `protectedPath`, so reading `.env`
+is never safe. A path outside the working directory, or a `write-root` that is
+not under it, is not. `git status/diff/log` without `-C`/`-c`.
 
 The tier mirrors Claude Code's read-only set (§1.1–1.2) so that obviously
 read-only shell does not cost a judge call under the auto posture. Outside auto
@@ -684,7 +688,7 @@ shadow-mode rows are its dataset.
 | `parseStatus = failed` | confirm | Claude Code rule |
 | Headless (`exec-runner`) | block → deny; classifier-caused confirm → **deny with reason** (same as today's headless ask). Headless does not use the auto posture (§15) | no human to ask |
 | Auto posture, rules `block` | **deny in every `classifier.mode`** (`shadow` and `off` included; auto forces the rules to run). An engine `deny` keeps its own message | the judge cannot overrule a hard block; the one exception is a block that is only `net.secret-egress`, which becomes an ask for the judge (§15) |
-| Auto posture, engine `ask` | hard stops, then read-only tier or judge (§15) | the one place a verdict can widen |
+| Auto posture, engine `ask` | hard stops (incl. the user's own `ask` rule), then read-only tier or judge (§15); a stop or a pause shows the real prompt, never the write-set overlay | the one place a verdict can widen |
 | Auto posture, judge timeout / error / garbage | fall back to the ordinary prompt | an unavailable judge never allows or blocks |
 | Subagent (`new_task`) | same rules; a `block` at spawn time on the task description denies the spawn | Claude Code checks at spawn |
 | Three classifier-caused asks denied by the user in a row | log `classifier.fatigue`, no behaviour change in MVP | signal for tuning, not a switch |
@@ -964,8 +968,8 @@ at step 5.
    `net.secret-egress` case above, which is turned into an ask first).
 4. Engine `ask`: the PermissionRequest hook, the sandboxed-Bash session-grant
    reuse and `sandbox.autoAllowBash` run first, unchanged.
-5. `decideAuto()`, just before `askUser`: hard stops, then suspension, then the
-   read-only tier, then the judge. `ask_user_question` (its whole job is to ask
+5. `decideAuto()`, just before `askUser`: hard stops, then the user's own `ask`
+   rule, then suspension, then the read-only tier, then the judge. `ask_user_question` (its whole job is to ask
    the user) and `check_job` (read-only job status) (`skipsAutoJudge`) join the
    read-only tier here and skip the judge (audit stage `readonly`); `kill_job`
    stays judged.
@@ -983,6 +987,24 @@ Deliberately **not** plain `isGuarded`: that flag also covers `curl`,
 `web_search` and `node_modules` reads, and stopping on it would make auto prompt
 for ordinary work. Those are judged.
 
+**The user's `ask` rule is a stop too** (2026-10-18). When the winning rule has
+`action: "ask"` and `origin` other than `builtin-guarded`, `decideAuto` returns
+the prompt before suspension and before the judge: the rule is an instruction to
+be asked, so the judge never overrules it. Audit `{stage: "fallback", outcome:
+"hard-stop"}`, note "Auto mode: your ask rule matched (`<tool>: <pattern>`)."
+The synthesized `builtin-guarded` asks (secret globs, reads outside the
+workspace) are not the user's words and keep the rules above. No winning rule
+(the `defaultMode` fallthrough) goes on to the judge.
+
+**No overlay on a handoff.** A hard stop (including the `ask` rule) and a paused
+session return `handoff: "hard-stop" | "paused"` (`AutoHandoff`), which `gateCall`
+passes as the sixth argument of `askUser`. The TUI then shows the real prompt and
+never resolves `"posture"` (the write-set overlay), so `.env` or `.husky/*`
+cannot be edited silently under auto. A judge timeout, error or unparseable
+answer carries no handoff. Independently of auto, `editTargetInWriteSet` refuses
+a credential or protected path (`isSensitiveEditPath`) in every posture, so
+those edits prompt in `normal` too.
+
 **Read-only tier.** Rules tier `safe`, or an edit target inside the profile write
 set (`permissionProfile.editTargetInWriteSet`), is allowed with no judge call:
 audit `allow-by-classifier`, stage `readonly`.
@@ -992,8 +1014,8 @@ prompt plus context, built oldest-first and append-only):
 
 | Stage | Question | Output | Limits |
 | :- | :- | :- | :- |
-| 1 | Cheap yes/no, told to err toward block | first token `ALLOW` or `BLOCK` | 256 tokens, 10 s |
-| 2 (only on a stage-1 `BLOCK`) | Reasoning in at most 150 words; is not told stage 1's answer | last non-empty line `DECISION: ALLOW` or `DECISION: BLOCK [tag] reason` | 2048 tokens, 30 s |
+| 1 | Cheap yes/no, told to err toward block | first token `ALLOW` or `BLOCK` | 1024 tokens, 10 s |
+| 2 (only on a stage-1 `BLOCK` or an unparseable stage-1 answer) | Reasoning in at most 150 words; is not told stage 1's answer | last non-empty line `DECISION: ALLOW` or `DECISION: BLOCK [tag] reason` | 2048 tokens, 30 s |
 
 Stage 2 can **overturn** a stage-1 `BLOCK`, so stage 1 is a cheap filter and
 stage 2 the arbiter; a `DECISION:` line anywhere but last is unparseable. A tag
@@ -1003,8 +1025,9 @@ dropped. The deadline is `withTimeout`'s, so it holds for a judge that ignores
 the abort signal, and Esc rejects the in-flight request at once.
 
 **Judge model.** `classifier.model.id` if set, else the session's active model
-with thinking off (`createAutoJudge` resolves the provider per request, so a model
-switch applies; `temperature: 0`).
+at the lowest reasoning effort its catalog entry lists, `none` if offered
+(`createAutoJudge` resolves the provider per request, so a model switch applies;
+`temperature: 0`, which some providers drop when an effort level is set).
 
 **Inputs** (the §1.5 rule, unchanged): the user's own messages (raw input for the
 whole process, last 10, each clamped; `/resume` seeds them from the resumed

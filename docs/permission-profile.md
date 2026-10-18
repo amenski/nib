@@ -132,7 +132,14 @@ is in both lists the more specific entry wins, ties go to deny.
   edit overlay-auto-allowed; unrestricted → any path). An edit inside the
   write-set auto-allows without a prompt, resolved as `"posture"` so the
   agent records `allow-by-posture` (the established "allowed without showing
-  a prompt" row).
+  a prompt" row). A credential or protected path is never in the write-set for
+  this purpose: `editTargetInWriteSet` returns false when `isSensitiveEditPath`
+  (`src/permissions/risk/features.ts`: `SECRET_TOKEN_RE` plus
+  `PROTECTED_PATH_RULES`) matches the canonical cwd-relative path, so `.env`,
+  `.husky/*`, `.vscode/*`, `.github/workflows/*`, shell rc files, `id_rsa`,
+  `*.pem` and `credentials*` get the normal prompt in every posture (and
+  `src/credentials.ts` too, an accepted tradeoff). It is not a deny, and
+  `.git/` and `.nib/settings.json` stay always denied.
 
 **Level presets** set the implicit default the explicit rules carve into:
 
@@ -195,7 +202,11 @@ rules. But two concrete consolidations happen as the profile lands:
    The workspace-write default *is* that check, generalized: profile fs
    rules subsume the realpath-escape logic, and the overlay's "edits
    inside cwd" condition reads the profile's effective write-set instead
-   of re-implementing containment.
+   of re-implementing containment, minus credential and protected paths
+   (`isSensitiveEditPath`, checked in `editTargetInWriteSet` on the canonical
+   path), which always prompt. Under auto the overlay is also skipped for any
+   call auto handed to the user (a hard stop, an `ask` rule of the user's, or
+   a paused session): permission-spec.md §9.
 2. **Edit-tool path rules in the rule engine get flagged for dedup.** If a
    session rule matches only on edit paths, it may be expressible as an fs
    rule; measure after phase (c), don't pre-migrate.

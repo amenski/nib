@@ -37,6 +37,10 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   denied. `/resume` seeds the judge's view of your messages (last 10) from the
   resumed transcript, skipping sub-agent results; `/clear` and `/new` start
   empty. See docs/command-risk-classifier.md §15.
+- **A user guide for auto mode, docs/auto-mode.md.** What it does, how to turn it
+  on, how the sandbox changes it, which calls are always denied, always asked or
+  run silently, how the judge works, how to check it in `/permissions` and the
+  session file, and what it does not protect you from.
 
 ### Changed
 
@@ -50,10 +54,31 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **`classifier.model.id` is accepted without `enabled`.** It names the auto
   judge; the second-stage judge still runs only with `enabled: true`.
 - `allow-by-posture` now means only that the UI allowed an edit inside the
-  profile write set without a prompt.
+  profile write set without a prompt, and never for a credential or protected
+  path.
 
 ### Fixed
 
+- **Auto hard stops and your `ask` rules always show the real prompt.** When
+  auto handed a call to you (a credential or protected path, a git config
+  change, a call outside the sandbox, or a paused session), the terminal UI
+  could still allow an in-workspace edit without asking, so an edit of `.env` or
+  `.husky/*` ran silently. The prompt is now always shown for those. A call
+  matched by an `ask` rule you wrote is a hard stop too (note: "Auto mode: your
+  ask rule matched (tool: pattern)", audit `fallback` / `hard-stop`) instead of
+  being answered by the judge; nib's own guarded asks still go to the judge. A
+  judge timeout or error carries no such handoff.
+- **Credential and protected-path edits prompt in every posture.** The write-set
+  overlay no longer allows an edit of `.env`, `.env.local`, `.husky/*`,
+  `.vscode/*`, `.github/workflows/*`, a shell rc file, `id_rsa`, `*.pem` or
+  `credentials*` without a prompt, in `normal` or `auto`. Ordinary workspace
+  edits stay silent. `src/credentials.ts` prompts too, an accepted tradeoff;
+  `.git/` and `.nib/settings.json` stay always denied.
+- **Reads inside the working directory count as read-only.** `read_file`,
+  `list_files` and the like on a path inside the working directory were never in
+  the classifier's `safe` tier, because the check compared against a target class
+  the classifier never produces. They are now, except credential and protected
+  paths, so auto runs them with no judge call.
 - **New sessions start on `deepseek-flash` again in the `code` persona.** Only
   `general`'s `model:` was ever applied, so after `code` became the default a
   new session started on the provider preset's `deepseek-v4-pro`. A mode's

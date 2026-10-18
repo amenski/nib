@@ -39,8 +39,9 @@
   a row (or 20 in total), and every ask prompts again until you approve one
   (permission-spec.md §9).
 - **"Auto mode still asked me"** — credential paths (including a Bash command
-  that names `.env`), git config writes and anything outside the sandbox always
-  prompt, and so does any call the judge could not decide (timeout, error,
+  that names `.env`), git config writes, anything outside the sandbox and any
+  call matched by an `ask` rule you wrote always prompt (an edit of `.env` or
+  `.husky/*` inside the workspace does too, in every posture), and so does any call the judge could not decide (timeout, error,
   unparseable: the prompt says which). `/permissions` shows `auto N allowed · N
   blocked · N asked`.
 - **"I approved a command but it still asked"** — approvals are rule- and

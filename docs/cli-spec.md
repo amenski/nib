@@ -232,8 +232,8 @@ expansion time). Shipped 2026-08-13 (feature-plans.md §5).
 
 Posture semantics (permission-spec.md §9): `normal` asks per policy; `auto`
 lets a model judge allow or block an ask instead of prompting (read-only calls
-and write-set edits run silently; credential paths, git config and calls outside
-the sandbox still prompt), and works with the sandbox off. A session can start
+and write-set edits run silently; credential paths, git config, calls outside
+the sandbox and calls matched by your own `ask` rules still prompt), and works with the sandbox off. A session can start
 in `auto` via the global-only `classifier.defaultPosture` setting
 (config-spec.md). `nib -p` never uses `auto`. `plan` is read-only and requires a
 `<proposed_plan>` block before implementing.

@@ -214,15 +214,17 @@ Full schema: [`docs/config-spec.md`](./docs/config-spec.md).
   ask.
 - **Auto mode.** Press `Shift+Tab` to `auto`, or start there with
   `"classifier": { "defaultPosture": "auto" }` in `~/.nib/settings.json`
-  (global-only). Read-only calls and edits inside the workspace run silently,
+  (global-only). Read-only calls and ordinary edits inside the workspace run silently,
   and a model judge allows or blocks everything else instead of prompting. It
   works with the sandbox off, which is the case it is for. It still asks you
-  about credential files (including `cat .env`), git config changes and anything
-  that would run outside the sandbox, and falls back to a prompt when the judge
+  about credential files (including `cat .env` and edits of `.env` or `.husky/*`),
+  git config changes, anything that would run outside the sandbox and any call
+  matched by an `ask` rule you wrote, and falls back to a prompt when the judge
   cannot decide or has blocked 3 calls in a row (20 in total). The judge is
   `classifier.model.id` if set, otherwise your current model. It reads your
   messages and the agent's tool calls, never tool output. Not available with
-  `nib -p`. See [`docs/permission-spec.md`](./docs/permission-spec.md) §9.
+  `nib -p`. See [`docs/auto-mode.md`](./docs/auto-mode.md) for the full guide
+  and [`docs/permission-spec.md`](./docs/permission-spec.md) §9 for the spec.
 - **Recoverable edits.** Interactive edits are checkpointed in a shadow Git
   repo; `/undo` can rewind code, conversation, or both.
 - **Durable sessions.** Conversations are append-only JSONL with automatic

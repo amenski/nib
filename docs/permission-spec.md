@@ -426,6 +426,10 @@ no session-wide flag. Three values, cycled with Shift+Tab in this order:
   block counters.
 - **`normal`.** Every ask is answered by the user (§10), except an edit inside the
   profile write set, which the UI allows without a prompt (`"posture"`, below).
+  A credential or protected path is never in that set for this purpose
+  (`isSensitiveEditPath`, `src/permissions/risk/features.ts`): an edit of
+  `.env`, `.husky/*`, `.vscode/*`, `.github/workflows/*`, a shell rc file,
+  `id_rsa`, `*.pem` or `credentials*` shows the normal prompt in every posture.
 - **`plan`.** Read-only; see mode-spec.md.
 - **`auto`.** A model judge, not the user, answers an engine `ask`. The decision
   is made in `gateCall` (`decideAuto`, `src/agent.ts`), never in the UI: the UI
@@ -446,15 +450,27 @@ no session-wide flag. Three values, cycled with Shift+Tab in this order:
      path, a git config operation, and any call outside the OS sandbox
      (requested or excluded). Plain `isGuarded` (curl, `web_search`,
      `node_modules`) is **not** a stop; those are judged.
+     **A call whose winning rule is an `ask` the user wrote** (`action: "ask"`,
+     `origin` anything but `builtin-guarded`) is a stop too, because an `ask`
+     rule is an instruction to be asked and the judge never overrules it. The
+     audit row is `{stage: "fallback", outcome: "hard-stop"}` and the note reads
+     "Auto mode: your ask rule matched (`<tool>: <pattern>`)." No winning rule
+     at all (the `defaultMode` fallthrough) still goes to the judge.
   3. Once 3 consecutive or 20 total judge blocks have accumulated, auto is
      **paused**: every ask prompts until the user approves a call.
+     Steps 2 and 3 pass `AutoHandoff` (`"hard-stop"` | `"paused"`) as the sixth
+     argument of `askUser`; the UI then shows the real prompt and never
+     resolves `"posture"` (the write-set overlay), so an edit of `.env` or
+     `.husky/*` is asked about rather than allowed silently. A judge failure
+     (timeout, error, unparseable) carries no handoff.
   4. Rules tier `safe`, an edit inside the profile write set, or
      `ask_user_question` (interactive: the user answers it anyway) or
      `check_job` (read-only job status; `kill_job` stays judged)
      (`skipsAutoJudge`) runs with no judge call.
   5. Otherwise the two-stage judge decides. ALLOW runs the call, BLOCK denies it
-     with the tag's canonical sentence, and a timeout, error or unparseable
-     answer falls back to the ordinary prompt.
+     with the tag's canonical sentence, and a timeout, an error or an
+     unparseable stage-2 answer falls back to the ordinary prompt (an
+     unparseable stage-1 answer goes on to stage 2 first).
   An auto allow never grants the per-call exec widening: no `envelopeHash`, no
   `approvedGitConfigWrite`, so a judged call runs under the profile as it stands.
   It still passes the PreToolUse hook.
@@ -467,7 +483,12 @@ no session-wide flag. Three values, cycled with Shift+Tab in this order:
 - **What `"posture"` means now.** `askUser` still resolves `"posture"` for one
   case, whatever the posture: the UI allowed an edit inside the profile's write
   set without showing a prompt (permission-profile.md §5). It is no longer an
-  approve-all outcome.
+  approve-all outcome. The overlay is skipped when `askUser` receives an
+  `autoHandoff`, and `editTargetInWriteSet` returns false for a credential or
+  protected path (`isSensitiveEditPath` on the canonical cwd-relative path, so a
+  workspace ancestor named `credentials-api/` does not match, while
+  `src/credentials.ts` does and prompts). Not a deny: the edit reaches the
+  ordinary prompt. `.git/` and `.nib/settings.json` stay always denied.
 - Sub-agent calls (threaded through `src/orchestrator/index.ts`) share the same
   `askUser` callback as the top-level agent — a sub-agent's ask-tier call
   surfaces to the same prompt flow, labeled with which sub-agent is asking,
@@ -537,8 +558,8 @@ flowchart TD
   AG -- yes --> NG["grant() → allow-by-envelope-grant"]
   AG -- no --> AU{"auto posture<br/>active?"}
   AU -- no --> PROMPT["askUser(tool, args, envelope,<br/>askOrigin, policyRisk)"]
-  AU -- yes --> HS{"hard stop<br/>or paused?"}
-  HS -- yes --> PROMPT
+  AU -- yes --> HS{"hard stop, your ask rule<br/>or paused?"}
+  HS -- "yes (autoHandoff:<br/>no write-set overlay)" --> PROMPT
   HS -- no --> RO{"tier safe or<br/>write-set edit?"}
   RO -- yes --> AC["allow-by-classifier<br/>(stage readonly, no exec grant)"]
   RO -- no --> JG{"two-stage judge<br/>docs/command-risk-classifier.md §15"}
@@ -621,7 +642,8 @@ Each agent-side path emits a distinct `decision`, plus a human-readable
 the judge model's id, `reason` the judge's one-liner (secret-redacted, cut to
 200 characters; audit only, never shown to the agent). A call that fell back to
 the prompt keeps the trace on the `ask-approved` / `ask-denied` row that follows:
-`stage: "fallback"` with outcome `hard-stop` or `suspended`, or the judge's own
+`stage: "fallback"` with outcome `hard-stop` (a stop, or a call matched by the
+user's own `ask` rule) or `suspended`, or the judge's own
 stage with outcome `timeout`, `error` or `unparseable`. `computeSessionPermissionMetrics` counts these as `autoAllows`,
 `autoBlocks`, `autoFallbacks`, `autoJudgeCalls`, `autoStage2Calls` and
 `autoP95Ms`; `/permissions` shows `auto N allowed · N blocked · N asked`.
@@ -645,7 +667,8 @@ best approximation and the finer detail is left to `App.tsx`:
 - **`allow-by-posture`.** When the UI short-circuits an edit inside the profile
   write set, `App.tsx`'s `askUser` resolves `"posture"` **without** showing a
   prompt or writing any row, and `agent.ts` records `allow-by-posture`. It is
-  not an auto-posture outcome: auto's allows are `allow-by-classifier` rows
+  never taken for a credential or protected path, nor for a call auto handed to
+  the user (`autoHandoff`). It is not an auto-posture outcome: auto's allows are `allow-by-classifier` rows
   written by the agent, with no UI involvement. `ask-approved` is therefore
   exclusively an interactive yes. Headless `askUser` implementations (e.g.
   `exec-runner.ts`) never resolve `"posture"` — there is no posture to

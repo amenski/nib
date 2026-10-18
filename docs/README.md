@@ -43,6 +43,7 @@ then follow the reading paths below.
 |-----|--------|
 | [README.md](../README.md) | Install, quickstart, feature overview, FAQ |
 | [troubleshooting.md](./troubleshooting.md) | FAQ + common pitfalls, sourced from code |
+| [auto-mode.md](./auto-mode.md) | User guide to the `auto` permission posture: setup, what it allows, blocks and asks, the judge, how to check it |
 | [architecture.md](./architecture.md) | The 7 layers, one-turn data flow, sequence diagram, file manifest, tradeoffs |
 
 ### Architecture & deep dives

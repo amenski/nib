@@ -187,10 +187,10 @@ checkpoint details in session-spec.md.
 
 ## 8. Layer 6 — Modes
 
-A mode is a YAML persona gating tool groups and file writes. **General** is the
-read-only default, while **Code** has implementation access plus the workflow
-group for `new_task` delegation. Ask, Architect, Debug, and Orchestrator remain
-hidden aliases for compatibility with older sessions and explicit slugs. This
+A mode is a YAML persona gating tool groups and file writes. **Code** is the
+default, with implementation access plus the workflow group for `new_task`
+delegation; **General** is the read-only chat persona (`--mode general`). Ask,
+Architect, Debug, and Orchestrator remain hidden aliases for compatibility with older sessions and explicit slugs. This
 prevents "oops, I accidentally edited your production config" at the
 architectural level. Details: mode-spec.md.
 

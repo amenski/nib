@@ -26,7 +26,7 @@ import { ModeLoader } from "./modes/loader.js";
 import { AgentLoader } from "./agents/index.js";
 import { join } from "node:path";
 import { checkSettingsTrust, stripExecutionKeys, trustSettings } from "./config/settings-trust.js";
-import { GENERAL_MODEL_ID, GENERAL_REASONING_EFFORT, parseModelId } from "./modes/model-policy.js";
+import { GENERAL_MODEL_ID, GENERAL_REASONING_EFFORT, parseModelId, resolveSubagentEffort } from "./modes/model-policy.js";
 
 export interface ExecRunnerOptions {
   prompt: string;
@@ -218,31 +218,33 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
     // Resolve the active mode before touching the provider so a typo fails
     // with a clear "unknown mode" message instead of silently proceeding or
     // crashing later (B1/D7). An explicit --mode wins; otherwise the same
-    // "general" default the TUI starts new sessions with (src/cli.tsx) — so
+    // "code" default the TUI starts new sessions with (src/cli.tsx) — so
     // headless runs get the same tool gating as an unconfigured TUI session
     // instead of registry.getAllDefs()'s every-tool fallback.
     const modeLoader = new ModeLoader();
-    const activeMode = await modeLoader.load(options.mode || "general", options.projectRoot);
+    const activeMode = await modeLoader.load(options.mode || "code", options.projectRoot);
     if (!activeMode) {
       const available = (await modeLoader.listAll(options.projectRoot)).map((m) => m.slug).sort();
-      writeErr(`Error: unknown mode "${options.mode || "general"}", available: ${available.join(", ")}`);
+      writeErr(`Error: unknown mode "${options.mode || "code"}", available: ${available.join(", ")}`);
       return 1;
     }
 
-    // General has a deliberately cheap provider default. An explicit model,
-    // configured provider, or configured effort remains authoritative.
-    if (!rawModel && activeMode.slug === "general") {
-      const modeModel = parseModelId(activeMode.model || GENERAL_MODEL_ID, providerName);
+    // A mode's `model:` (General falls back to its Flash default) seeds the
+    // model. An explicit model, configured provider, or configured effort
+    // remains authoritative.
+    const modeModelId = activeMode.model || (activeMode.slug === "general" ? GENERAL_MODEL_ID : undefined);
+    if (!rawModel && modeModelId) {
+      const modeModel = parseModelId(modeModelId, providerName);
       if (modeModel && (!configResult.config.provider || configResult.config.provider === modeModel.provider)) {
         providerName = modeModel.provider;
         activeModel = modeModel.model;
       }
     }
     const activeCaps = getPreset(providerName)?.models[activeModel ?? getPreset(providerName)?.defaultModel ?? ""];
-    const activeEffort = configResult.config.reasoningEffort
-      ?? (activeMode.slug === "general" && activeCaps?.effort
-        ? (activeMode.reasoningEffort || GENERAL_REASONING_EFFORT)
-        : activeMode.slug === "general" ? undefined : activeCaps?.effort?.default);
+    const modeEffort = activeMode.slug === "general"
+      ? (activeCaps?.effort ? (activeMode.reasoningEffort || GENERAL_REASONING_EFFORT) : undefined)
+      : (activeMode.reasoningEffort && activeCaps?.effort ? activeMode.reasoningEffort : activeCaps?.effort?.default);
+    const activeEffort = configResult.config.reasoningEffort ?? modeEffort;
 
     // createProvider throws for an unknown provider or a missing API key. In
     // headless mode that must be a clean one/two-line message telling the user
@@ -357,6 +359,13 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
           baseUrl: provName === providerName ? resolvedBaseUrl : undefined,
           apiKey: provName === providerName ? resolvedApiKey : undefined,
         });
+      },
+      // The run's explicit reasoningEffort (settings.json) wins over each
+      // sub-mode's own; a defined agent's model override supplies its own caps.
+      resolveEffort: ({ modelId, mode }) => {
+        const parsed = parseModelId(modelId, providerName);
+        const caps = parsed ? getPreset(parsed.provider)?.models[parsed.model] : activeCaps;
+        return resolveSubagentEffort(caps, { explicitEffort: configResult.config.reasoningEffort, mode });
       },
       registry,
       modeLoader: new ModeLoader(),

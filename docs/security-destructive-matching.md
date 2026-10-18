@@ -127,9 +127,12 @@ gate, and to point users at real isolation:
    substitution, leading `VAR=`, escaped `\rm`, command-carrying wrappers
    ⇒ ask, never silent allow. ✅ `isUnresolved`
 4. **Hard circuit-breakers** for the catastrophic set that fire even
-   through substitution and any auto-approve mode. ✅ `destructive.ts`
+   through substitution and the auto posture (a rules `block` is denied
+   before the judge runs). ✅ `destructive.ts`
 5. **Do NOT rely on an LLM classifier as the boundary** (Warp's cautionary
-   tale). Fine as an *extra* ask-trigger, never the sole gate.
+   tale). Fine as an *extra* ask-trigger, never the sole gate. (Amended
+   2026-10-17: under the opt-in auto posture an LLM judge can allow. It never
+   overrides this tier, and the OS sandbox, when enabled, stays the boundary.)
 6. **Document the limitation + offer the real fix** — matching is
    model-error mitigation, not adversary containment; a future OS sandbox
    (Seatbelt/bubblewrap) is the step that actually changes the security

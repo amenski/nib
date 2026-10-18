@@ -43,6 +43,7 @@ then follow the reading paths below.
 |-----|--------|
 | [README.md](../README.md) | Install, quickstart, feature overview, FAQ |
 | [troubleshooting.md](./troubleshooting.md) | FAQ + common pitfalls, sourced from code |
+| [auto-mode.md](./auto-mode.md) | User guide to the `auto` permission posture: setup, what it allows, blocks and asks, the judge, how to check it |
 | [architecture.md](./architecture.md) | The 7 layers, one-turn data flow, sequence diagram, file manifest, tradeoffs |
 
 ### Architecture & deep dives
@@ -131,9 +132,11 @@ then follow the reading paths below.
    `gpt-5.6-sol`, …). Docs cite them as-is because they are what the
    product ships; older docs may show retired IDs. `--model` takes
    `provider/model`, split on the first slash.
-3. **Default pairing is deepseek/deepseek-v4-pro**, except the default
-   `general` mode, which pairs deepseek/deepseek-flash at low reasoning
-   effort (mode-spec.md §5); the anthropic API type is supported via the AI
+3. **Default pairing is deepseek/deepseek-flash** (the built-in `code`
+   persona's `model:` and `reasoningEffort: low`), and `general` pairs the
+   same model at the same low reasoning effort (mode-spec.md §5). The
+   provider preset's own `defaultModel` (deepseek-v4-pro) applies only when
+   the mode declares no model; the anthropic API type is supported via the AI
    SDK but has no bundled preset.
 4. **Previously uncovered areas, now documented (2026-08-13):**
    [eval-harness.md](./eval-harness.md),

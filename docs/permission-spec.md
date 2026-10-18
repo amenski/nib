@@ -1,13 +1,14 @@
 # Permission Specification
 
-**Status:** current · verified 2026-08-13 · covers `src/permissions/{engine,rules,bash-normalize,destructive,guarded,builtin-allow,profile}.ts`, `src/exec-runner.ts`, `src/ui/App.tsx`
+**Status:** current · verified 2026-10-17 · covers `src/permissions/{engine,rules,bash-normalize,destructive,guarded,builtin-allow,profile}.ts`, `src/permissions/risk/auto.ts`, `src/exec-runner.ts`, `src/ui/App.tsx`
 
 ## 1. Overview
 
 The permission system: rule-based pattern matching on tool + argument
 (exact/prefix/glob/any), a builtin destructive-command deny tier, a builtin
 secret-adjacent/network-egress ask tier, and a session-level posture overlay
-that makes the agent usable without editing config mid-session.
+that makes the agent usable without editing config mid-session. The
+**auto** posture (§9) is the one place a model, not a human, answers an ask.
 
 Threat model and known permission-engine defects:
 [security-spec.md](./security-spec.md). The builtin destructive and guarded
@@ -19,11 +20,13 @@ tiers take precedence over ordinary rule resolution as specified in §7.
 
 Source: [`diagrams/nib-permission-gate.excalidraw`](./diagrams/nib-permission-gate.excalidraw)
 (open it at excalidraw.com, then re-export the PNG after editing). The Mermaid
-flows below are the text versions and the ones to keep in step with the code.
+flows below are the text versions and the ones to keep in step with the code;
+the PNG predates the auto posture (§9), which the flows below include.
 
 Every tool call passes these layers in order, and each one can only tighten the
-decision (`allow < ask < deny`). The engine is §6, the ask branch is §10, and
-the classifier is docs/command-risk-classifier.md.
+decision (`allow < ask < deny`) — except the auto posture's judge, which can turn
+an ask into an allow (§9, docs/command-risk-classifier.md §15). The engine is §6,
+the ask branch is §10, and the classifier is docs/command-risk-classifier.md.
 
 ```mermaid
 flowchart TD
@@ -36,13 +39,15 @@ flowchart TD
   UNS -- "yes + engine allow" --> FORCEASK["engineAction = ask"]
   UNS -- no --> CL
   FORCEASK --> CL
-  CL{"classifier.mode"} -- off --> CLAMP
+  CL{"classifier.mode<br/>(auto forces the rules to run)"} -- off --> CLAMP
   CL -- "shadow / enforce" --> RISK["classifyRiskWithModel()"]
   RISK -->|RiskVerdict| CLAMP["applyRiskVerdict()<br/>enforce: max(engine, tier)<br/>shadow: identity"]
   RISK -. "shadow + would be stricter" .-> EVID[(appendClassifierEvidence)]
   CLAMP --> UNA{"unsandboxed requested<br/>but not allowed?"}
   UNA -- yes --> DENYU[UNSANDBOXED_NOT_ALLOWED]
-  UNA -- no --> ACT{action}
+  UNA -- no --> ARB{"auto active and<br/>rules tier block?"}
+  ARB -- yes --> DENYA["deny-by-classifier<br/>(any classifier.mode)"]
+  ARB -- no --> ACT{action}
   ACT -- deny --> DENY["PERMISSION_DENIED"]
   ACT -- ask --> ASK["ask branch · §10"]
   ACT -- allow --> AR["audit allow-by-rule"]
@@ -53,7 +58,7 @@ flowchart TD
   classDef deny fill:#b4231822,stroke:#b42318;
   classDef ask fill:#b5470822,stroke:#b54708;
   classDef ok fill:#06764722,stroke:#067647;
-  class PD,DENYU,DENY,HD deny
+  class PD,DENYU,DENY,DENYA,HD deny
   class ASK,FORCEASK ask
   class EXEC,AR ok
 ```
@@ -168,9 +173,11 @@ rule's wildcard).
 
 A segment containing a construct the normalizer can't safely classify
 resolves to a distinct **unresolved-ask** marker rather than falling through
-to whatever rule happens to match its visible first token. It is **never
-bypassable by posture** — an unresolved segment always surfaces the real
-prompt, regardless of auto-approve.
+to whatever rule happens to match its visible first token. The UI never skips
+its prompt on a posture's account. Under the auto posture (§9) the judge, not
+the user, answers it: `wasUnresolved` is not one of its hard stops, and the
+judge reads the unresolved shape in the feature summary (`parse`,
+`substitution`, `wrappers`).
 
 Triggers: inline command substitution (`$(`, backtick), process substitution
 (`<(`, `>(`), a leading `NAME=value` assignment, a first token that isn't a
@@ -238,7 +245,7 @@ resolve(tool, args)
   │
   └─ matches:
        deny tier wins (any-kind = kill-switch)
-         │ else ask tier (guarded/unresolved never posture-bypassed)
+         │ else ask tier (guarded/unresolved are always asks; auto's judge: §9)
          │ else allow tier (specificity; narrow allow escapes broad ask)
        ▼
   { action, winningRule, wasUnresolved, isGuarded }
@@ -356,9 +363,12 @@ Four categories, all `origin: "builtin-guarded"`, `action: "ask"`:
 
 Guarded rules resolve to `ask`, not `deny` — reading your own `.env` or
 curl-ing an API is common and legitimate. The guarantee is "a human always
-sees this," not "this never runs": a guarded match is exempt from the
-posture bypass exactly like an unresolved bash segment, so it can never be
-silently auto-allowed regardless of posture or `defaultMode: allowAll`.
+sees this," not "this never runs": a guarded match resolves to `ask` exactly
+like an unresolved bash segment, regardless of `defaultMode: allowAll`, and no
+posture ever approves it on its own. The one place a guarded ask is answered
+without a human is the auto posture (§9): one that is not a hard stop (curl,
+`web_search`, `node_modules` reads) is decided by the judge, and a credential
+file path stays a stop that always prompts.
 
 **A guarded ask is not out-specified by a broad grant.** Step 3's
 narrow-allow escape hatch (§5) requires an **exact** allow for that path:
@@ -404,31 +414,88 @@ grant nothing, forever re-prompting.
 
 ## 9. Posture (Shift+Tab)
 
-Posture is **UI-only state** (`App.tsx`), not engine state — the engine has
-no session-wide auto-approve flag. Three values: `normal`, `autoApprove`,
-`plan`. Cycled with Shift+Tab; the prompt shows non-default state.
+Posture is **session state held outside the engine** (`ctx.mutable.posture`,
+read by `src/ui/App.tsx` and, per call, by the agent's auto gate) — the engine has
+no session-wide flag. Three values, cycled with Shift+Tab in this order:
+`normal → auto → plan`; the status bar shows non-default state (`auto`,
+`auto · paused`, `plan`).
 
-- **Session-scoped. Never persisted** — a new session always starts
-  `normal`.
-- In `autoApprove`, the `askUser` callback bypasses an ordinary
-  rule-derived `ask` result without prompting — **but never**:
-  - a `deny` result (never bypassed, in any posture),
-  - a result with `wasUnresolved: true`,
-  - a result with `isGuarded: true`,
-  - any `run_bash` ask. Bash is excluded so that the auto-approve posture and
-    the sandboxed-Bash session consent are one mechanism rather than two ways to
-    stop being asked: a Bash ask now surfaces a prompt, which is where the
-    session option is offered and where the profile's actual write set is
-    stated. Configs that relied on `autoApprove` covering Bash ask more often —
-    once per session per envelope, and always for guarded, denied, `.git/config`
-    and background calls.
-
-  This last exclusion is what prevents a secret-path read or network-egress
-  command from being silently waved through in auto-approve posture.
-- Sub-agent calls (threaded through `src/orchestrator/index.ts`) share the
-  same `askUser` callback as the top-level agent — a sub-agent's ask-tier
-  call surfaces to the same prompt flow, labeled with which sub-agent is
-  asking, rather than being silently denied headlessly.
+- **Session-scoped.** A session starts `normal`, or `auto` when the global-only
+  `classifier.defaultPosture` is `"auto"` (docs/config-spec.md). `plan` is never
+  a starting posture. Nothing else is persisted; entering `auto` resets its
+  block counters.
+- **`normal`.** Every ask is answered by the user (§10), except an edit inside the
+  profile write set, which the UI allows without a prompt (`"posture"`, below).
+  A credential or protected path is never in that set for this purpose
+  (`isSensitiveEditPath`, `src/permissions/risk/features.ts`): an edit of
+  `.env`, `.husky/*`, `.vscode/*`, `.github/workflows/*`, a shell rc file,
+  `id_rsa`, `*.pem` or `credentials*` shows the normal prompt in every posture.
+- **`plan`.** Read-only; see mode-spec.md.
+- **`auto`.** A model judge, not the user, answers an engine `ask`. The decision
+  is made in `gateCall` (`decideAuto`, `src/agent.ts`), never in the UI: the UI
+  does not skip a prompt on this posture's account. Full design:
+  docs/command-risk-classifier.md §15. In order:
+  1. A rules-tier `block` is denied in every `classifier.mode` (an engine
+     `deny` keeps its own message), with one exception: a block whose reasons
+     are exactly `["net.secret-egress"]` (a credential variable sent over the
+     network, `isJudgeableBlock`) becomes an ask and goes on to step 2, even over
+     a user allow rule or `enforce` mode. Engine `deny` is unchanged, and an
+     engine `allow` otherwise runs with no judge.
+  2. After the PermissionRequest hook and the sandboxed-Bash session-grant
+     reuse, **hard stops** go to the real prompt with a note, never to the
+     judge: a credential path (a Bash command that references a credential
+     file, such as `cat .env` or `~/.aws/credentials`, is a stop exactly as
+     `read_file` of `.env` is; a credential variable such as `$GITHUB_TOKEN` is
+     not, and is judged), a protected
+     path, a git config operation, and any call outside the OS sandbox
+     (requested or excluded). Plain `isGuarded` (curl, `web_search`,
+     `node_modules`) is **not** a stop; those are judged.
+     **A call whose winning rule is an `ask` the user wrote** (`action: "ask"`,
+     `origin` anything but `builtin-guarded`) is a stop too, because an `ask`
+     rule is an instruction to be asked and the judge never overrules it. The
+     audit row is `{stage: "fallback", outcome: "hard-stop"}` and the note reads
+     "Auto mode: your ask rule matched (`<tool>: <pattern>`)." No winning rule
+     at all (the `defaultMode` fallthrough) still goes to the judge.
+  3. Once 3 consecutive or 20 total judge blocks have accumulated, auto is
+     **paused**: every ask prompts until the user approves a call.
+     Steps 2 and 3 pass `AutoHandoff` (`"hard-stop"` | `"paused"`) as the sixth
+     argument of `askUser`; the UI then shows the real prompt and never
+     resolves `"posture"` (the write-set overlay), so an edit of `.env` or
+     `.husky/*` is asked about rather than allowed silently. A judge failure
+     (timeout, error, unparseable) carries no handoff.
+  4. Rules tier `safe`, an edit inside the profile write set, or
+     `ask_user_question` (interactive: the user answers it anyway) or
+     `check_job` (read-only job status; `kill_job` stays judged)
+     (`skipsAutoJudge`) runs with no judge call.
+  5. Otherwise the two-stage judge decides. ALLOW runs the call, BLOCK denies it
+     with the tag's canonical sentence, and a timeout, an error or an
+     unparseable stage-2 answer falls back to the ordinary prompt (an
+     unparseable stage-1 answer goes on to stage 2 first).
+  An auto allow never grants the per-call exec widening: no `envelopeHash`, no
+  `approvedGitConfigWrite`, so a judged call runs under the profile as it stands.
+  It still passes the PreToolUse hook.
+- **`autoApprove` is removed** (2026-10-17). It waved ordinary rule-derived asks
+  through in the UI, excluding `deny`, `wasUnresolved`, `isGuarded` and every
+  `run_bash` ask, and was refused when no OS containment was active, so on an
+  unsandboxed session it did nothing for Bash. The auto posture replaces it with
+  a judged decision that works with the sandbox off. `permission_mode` in hook
+  payloads is now `"auto"` where it was `"autoApprove"`.
+- **What `"posture"` means now.** `askUser` still resolves `"posture"` for one
+  case, whatever the posture: the UI allowed an edit inside the profile's write
+  set without showing a prompt (permission-profile.md §5). It is no longer an
+  approve-all outcome. The overlay is skipped when `askUser` receives an
+  `autoHandoff`, and `editTargetInWriteSet` returns false for a credential or
+  protected path (`isSensitiveEditPath` on the canonical cwd-relative path, so a
+  workspace ancestor named `credentials-api/` does not match, while
+  `src/credentials.ts` does and prompts). Not a deny: the edit reaches the
+  ordinary prompt. `.git/` and `.nib/settings.json` stay always denied.
+- Sub-agent calls (threaded through `src/orchestrator/index.ts`) share the same
+  `askUser` callback as the top-level agent — a sub-agent's ask-tier call
+  surfaces to the same prompt flow, labeled with which sub-agent is asking,
+  rather than being silently denied headlessly. Under auto they share the one
+  `AutoModeState` too, and the judge sees the delegated task labelled as
+  written by the main agent, not the user.
+- **Headless (`nib -p`) does not use auto** (§Headless Interaction).
 
 ## 10. The ask prompt
 
@@ -489,27 +556,43 @@ flowchart TD
   LK -- miss --> INV["invalidateOther(): drop a grant<br/>approved for a different hash"]
   INV --> AG{"sandbox.autoAllowBash?"}
   AG -- yes --> NG["grant() → allow-by-envelope-grant"]
-  AG -- no --> PROMPT["askUser(tool, args, envelope,<br/>askOrigin, policyRisk)"]
+  AG -- no --> AU{"auto posture<br/>active?"}
+  AU -- no --> PROMPT["askUser(tool, args, envelope,<br/>askOrigin, policyRisk)"]
+  AU -- yes --> HS{"hard stop, your ask rule<br/>or paused?"}
+  HS -- "yes (autoHandoff:<br/>no write-set overlay)" --> PROMPT
+  HS -- no --> RO{"tier safe or<br/>write-set edit?"}
+  RO -- yes --> AC["allow-by-classifier<br/>(stage readonly, no exec grant)"]
+  RO -- no --> JG{"two-stage judge<br/>docs/command-risk-classifier.md §15"}
+  JG -- allow --> AC
+  JG -- block --> DC["deny-by-classifier<br/>canonical tag sentence"]
+  JG -- "timeout / error /<br/>unparseable" --> PROMPT
   PROMPT -- false --> X3[ask-denied by user]
-  PROMPT -- posture --> PO["allow-by-posture<br/>(no exec grant)"]
+  PROMPT -- posture --> PO["allow-by-posture<br/>(write-set edit, no exec grant)"]
   PROMPT -- envelope-grant --> NG
   PROMPT -- true --> AP["ask-approved / unresolved-ask<br/>git config op → approvedGitConfigWrite"]
   RE --> EH["exec.envelopeHash = profileHash"]
   NG --> EH
   EH --> PTU{PreToolUse hook}
   PO --> PTU
+  AC --> PTU
   AP --> PTU
   PTU -- passes --> GO([execute])
   PTU -- blocks --> X4[denied]
   classDef deny fill:#b4231822,stroke:#b42318;
   classDef ok fill:#06764722,stroke:#067647;
-  class X1,X2,X3,X4 deny
-  class GO,RE,NG,PO,AP ok
+  class X1,X2,X3,X4,DC deny
+  class GO,RE,NG,PO,AP,AC ok
 ```
 
 A changed envelope drops the old grant *before* the prompt, so a "No" cannot
 leave it to re-arm later. At launch, Bash refuses to run if the profile no
 longer hashes to `envelopeHash`.
+
+When auto falls back to the prompt, the prompt carries a note saying why
+("Auto mode: this touches a credential file, so auto mode leaves it to you.",
+"Auto mode paused after repeated blocks.", "Auto mode could not decide
+(timeout)."), and the audit row for the eventual answer carries the `auto`
+trace. A user "yes" on such a prompt clears the consecutive-block count.
 
 ## 11. Audit trail
 
@@ -541,7 +624,9 @@ Each agent-side path emits a distinct `decision`, plus a human-readable
 | `ask-denied` | `resolve()` returned `ask`, `askUser` → false | `denied by user at prompt` |
 | `unresolved-ask` | `ask` approved but a bash segment was `wasUnresolved` | `approved by user; bash segment was unresolved (fail-closed ask)` |
 | `headless-deny` | `resolve()` returned `ask` with no `askUser` supplied | `resolved to ask with no interactive prompter (headless)` |
-| `allow-by-posture` | `resolve()` returned `ask`, `askUser` → `"posture"` (auto-approve posture upgraded it, no prompt shown) | `auto-approve posture upgraded an ordinary ask` |
+| `allow-by-posture` | `resolve()` returned `ask`, `askUser` → `"posture"` (the UI allowed an edit inside the profile write set, no prompt shown) | `allowed by the UI without a prompt (edit inside the profile write set)` |
+| `allow-by-classifier` | auto posture: an engine `ask` that the read-only tier (`auto.stage: "readonly"`) or the judge (`"stage1"` / `"stage2"`) allowed; no `exec` grant | `auto mode judge allowed the call` / `auto mode: read-only call or edit inside the write set` |
+| `deny-by-classifier` | auto posture: the judge blocked the call (`auto.stage` `"stage1"` / `"stage2"`), or a rules-tier `block` was denied in any `classifier.mode` (`"rules"`); the tool result is the rule message or the tag's canonical sentence, never the judge's text | `auto mode judge blocked the call (auto.destruction)` / `denied by the risk classifier in auto mode (git.force-push)` |
 | `allow-by-envelope-grant` | `askUser` → `"envelope-grant"` (the session consent, `envelopeGrant: "granted"`), or an eligible ask covered by the session grant with no prompt at all (`envelopeGrant: "reuse"`) | `session grant granted for the current sandbox envelope` / `session grant reused (approved <ts>)` |
 | `grant-invalidated` | the session grant was dropped: the envelope it was approved against no longer matches this launch's profile (before the re-ask), or the spawn-time profile hash check refused the launch | `session grant invalidated: the envelope … no longer matches` / `the sandbox envelope changed after the grant was approved` |
 | `grant-revoked` | the user revoked the session grant in `/permissions`; written only by that panel | `revoked by the user in /permissions; eligible foreground Bash asks prompt again` |
@@ -549,6 +634,21 @@ Each agent-side path emits a distinct `decision`, plus a human-readable
 
 `winningRule` is attached whenever the resolution had one (absent only for a
 `defaultMode` fallthrough with no matching rule).
+
+**The `auto` field.** A row the auto gate handled carries
+`auto: { stage, outcome, latencyMs, tag?, reason?, judge? }`: `stage` is
+`readonly | rules | stage1 | stage2 | fallback`, `outcome` is
+`allow | block | timeout | error | unparseable | suspended | hard-stop`, `judge`
+the judge model's id, `reason` the judge's one-liner (secret-redacted, cut to
+200 characters; audit only, never shown to the agent). A call that fell back to
+the prompt keeps the trace on the `ask-approved` / `ask-denied` row that follows:
+`stage: "fallback"` with outcome `hard-stop` (a stop, or a call matched by the
+user's own `ask` rule) or `suspended`, or the judge's own
+stage with outcome `timeout`, `error` or `unparseable`. `computeSessionPermissionMetrics` counts these as `autoAllows`,
+`autoBlocks`, `autoFallbacks`, `autoJudgeCalls`, `autoStage2Calls` and
+`autoP95Ms`; `/permissions` shows `auto N allowed · N blocked · N asked`.
+An `allow-by-classifier` row counts as an approval and a `deny-by-classifier`
+row as a denial, neither as a prompt.
 
 ### UI-side nuances (agent-side approximations)
 
@@ -564,11 +664,13 @@ best approximation and the finer detail is left to `App.tsx`:
   `ask-approved` and the UI's fine-grained one. Accepted on purpose: the
   agent's write is the one that guarantees coverage of paths the UI never
   logs.
-- **`allow-by-posture`.** When the auto-approve posture short-circuits an
-  ordinary ask, `App.tsx`'s `askUser` resolves `"posture"` **without**
-  showing a prompt or writing any row, and `agent.ts` records
-  `allow-by-posture`. `ask-approved` is therefore exclusively an
-  interactive yes. Headless `askUser` implementations (e.g.
+- **`allow-by-posture`.** When the UI short-circuits an edit inside the profile
+  write set, `App.tsx`'s `askUser` resolves `"posture"` **without** showing a
+  prompt or writing any row, and `agent.ts` records `allow-by-posture`. It is
+  never taken for a credential or protected path, nor for a call auto handed to
+  the user (`autoHandoff`). It is not an auto-posture outcome: auto's allows are `allow-by-classifier` rows
+  written by the agent, with no UI involvement. `ask-approved` is therefore
+  exclusively an interactive yes. Headless `askUser` implementations (e.g.
   `exec-runner.ts`) never resolve `"posture"` — there is no posture to
   consult.
 - **The session-consent answer.** `askUser` resolving `"envelope-grant"`
@@ -606,6 +708,11 @@ destructive-tier `deny` stays absolute.
   <subject>`, so a scripted user can see why a run did less than expected.
   (A destructive-tier `deny` blocks execution without reaching `askUser`,
   so it does not emit this particular notice.)
+- **No auto posture.** `exec-runner.ts` passes no `autoMode`, so
+  `classifier.defaultPosture: "auto"` does not apply to `nib -p`: an ask is a
+  denial as above. Auto in headless is out of scope for now; the intended route
+  is an explicit `--permission-mode auto` flag, not the global setting, since an
+  unattended run should not silently inherit a model that answers asks.
 - **`runAgent` was already fail-closed** on `ask` when no `askUser` is
   supplied; the only defect was that exec mode passed no engine at all.
   Fixed 2026-07-31 (T11 in security-spec.md); regression coverage in
@@ -629,11 +736,11 @@ destructive-tier `deny` stays absolute.
    configures, and can't be silently removed — only overridden by a
    strictly narrower user rule, or (for guarded) simply answered "yes" at
    the prompt.
-4. **Posture is UI state, not engine state.** The engine has no notion of
-   "auto-approve this session" — that decision is made once, at the point
-   an `ask` result reaches a UI, by checking `wasUnresolved`/`isGuarded`
-   first. This keeps the engine deterministic and testable independent of
-   any UI.
+4. **Posture is not engine state.** The engine has no notion of "auto this
+   session" — the decision is made once, at the point an `ask` result reaches
+   the gate (`decideAuto`), after the hard stops. This keeps the engine
+   deterministic and testable independent of any UI or model; a judge failure
+   degrades to the ordinary prompt rather than to either answer.
 5. **Approval narrows, never broadens.** Every persistence path (session
    or always) defaults to the narrowest rule that satisfies the specific
    call just approved — an exact match on the literal subject text unless a

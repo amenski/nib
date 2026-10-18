@@ -15,7 +15,7 @@ rules — system-prompt.md) and the tool set offered to the model
 - The **persona/mode** defines identity, instructions, available tool groups,
   and optional file restrictions. A missing group means those tools are not
   sent to the model at all.
-- The **permission posture** (`normal`, `autoApprove`, or `plan`) controls how
+- The **permission posture** (`normal`, `auto`, or `plan`) controls how
   an available tool may be used. `Shift+Tab` changes posture without changing
   the persona; plan posture prevents execution and asks for a proposed plan.
 - The **provider/model** generates the response. A persona may supply a model
@@ -96,7 +96,7 @@ personas.
 
 ### Current personas
 
-#### general (default mode)
+#### general
 ```yaml
 slug: general
 name: General
@@ -104,21 +104,40 @@ groups: [read]
 model: deepseek/deepseek-flash
 reasoningEffort: low
 ```
-A session with no explicit `--mode`/`/mode` starts here — `activeMode` is
-never left `undefined` at startup (`src/cli.tsx`); a resumed session's last
-mode wins over this default, and an explicit `--mode` wins over both.
-Its Flash/low default seeds a new session only (`applyModeDefaults`,
-`src/cli.tsx`); switching to another mode keeps that model and effort.
-Headless (`nib -p`, `src/exec-runner.ts`) resolves the same default: an
-unrecognized `--mode` still exits 1 with the "unknown mode" message, and a
-valid explicit `--mode` gates tools to its own groups instead.
+The read-only chat persona. It is entered explicitly (`--mode general`,
+`/mode general`) and is not the default. Its Flash/low default seeds a new
+session when general is chosen at launch, or when you `/mode general` and the
+model was not chosen explicitly (`applyModeDefaults`, `src/cli.tsx`);
+switching to another mode keeps that model and effort.
 
-#### code
+#### code (default mode)
 ```yaml
 slug: code
 name: Code
 groups: [read, edit, command, workflow]
+model: deepseek/deepseek-flash
+reasoningEffort: low
 ```
+A session with no explicit `--mode`/`/mode` starts here — `activeMode` is
+never left `undefined` at startup (`src/cli.tsx`); a resumed session's last
+mode wins over this default, and an explicit `--mode` wins over both. A mode's
+`model:` seeds a new session, and a `/mode` switch, for any mode (not only
+general) unless the model was chosen explicitly: `--model`, settings.json
+`model`, `/model`, or a resumed session. An explicit provider that differs from
+the mode's also wins. Code declares Flash at low effort, so a new session
+starts on `low`; settings.json `reasoningEffort`, `/effort`, or a resumed
+session's recorded effort wins over it, and only when the model lists effort
+values (`applyModeDefaults`, `src/cli.tsx`).
+
+Every built-in mode, current and legacy, declares `reasoningEffort: low`, so a
+new session starts on low effort in any of them; settings.json
+`reasoningEffort`, `/effort`, or a resumed session's recorded effort overrides it.
+Sub-agents spawned with `new_task` use their own mode's `reasoningEffort` unless
+you set an effort explicitly (`/effort`, settings.json `reasoningEffort`, a
+resumed session), which then applies to them too.
+Headless (`nib -p`, `src/exec-runner.ts`) resolves the same default: an
+unrecognized `--mode` still exits 1 with the "unknown mode" message, and a
+valid explicit `--mode` gates tools to its own groups instead.
 
 Code includes the workflow group so delegation is an automatic capability of
 implementation work rather than a separate picker mode. Debugging behavior is
@@ -131,6 +150,7 @@ also handled within Code's normal implementation persona.
 slug: ask
 name: Ask
 groups: [read]
+reasoningEffort: low
 hidden: true
 ```
 
@@ -140,6 +160,7 @@ slug: architect
 name: Architect
 groups: [read, edit]
 fileRegex: "\\.(md|yaml|yml|json|txt)$"
+reasoningEffort: low
 hidden: true
 ```
 
@@ -151,6 +172,7 @@ Architect is a hidden compatibility alias for existing sessions and explicit
 slug: debug
 name: Debug
 groups: [read, edit, command]
+reasoningEffort: low
 hidden: true
 ```
 
@@ -162,6 +184,7 @@ normal implementation behavior.
 slug: orchestrator
 name: Orchestrator
 groups: [workflow]
+reasoningEffort: low
 hidden: true
 ```
 

@@ -123,9 +123,13 @@ the provider contract requires it. Both paths share one `processCall`
 body, so the fast path and the sequential fallback are
 behavior-identical: audit rows, `failedStreak` escalation (5 consecutive),
 repeat-call detection, and reflection retry. The ask branch resolves
-`askUser` to `boolean | "posture"` — `"posture"` means an auto-approve
-posture upgraded an ordinary ask, emitted as the `allow-by-posture` audit
-value (permission-spec.md §11).
+`askUser` to `boolean | "posture"` — `"posture"` means the UI allowed an edit
+inside the profile write set without a prompt, emitted as the
+`allow-by-posture` audit value (permission-spec.md §11). When the auto posture is
+active the ask branch asks the judge before `askUser`
+(`decideAuto`; permission-spec.md §9): an allow is the `allow-by-classifier`
+value, a block a `deny-by-classifier` tool result, and a judge that cannot decide
+falls through to `askUser`.
 
 ### Error taxonomy
 

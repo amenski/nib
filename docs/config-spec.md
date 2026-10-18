@@ -1,6 +1,6 @@
 # Config Specification
 
-**Status:** current · verified 2026-08-13 · covers `src/config/loader.ts`, `src/config/credentials.ts`, `src/ui/core/refresh-rates.ts`
+**Status:** current · verified 2026-10-17 · covers `src/config/loader.ts`, `src/config/credentials.ts`, `src/ui/core/refresh-rates.ts`
 
 ## 1. Overview
 
@@ -86,10 +86,15 @@ are fatal — `main()` exits 1 (`src/cli.tsx`).
   // rules already decided. Global-only. Default "shadow".
   "classifier": {
     "mode": "shadow",                      // "off" | "shadow" | "enforce"
+    // The posture a session starts in: "normal" (default) or "auto", where a
+    // model judge allows or blocks tool calls instead of prompting (command-risk-classifier.md §15).
+    // Global-only.
+    "defaultPosture": "normal",            // "normal" | "auto"
     // The optional second stage (§6): a small model call that can only add a
     // confirmation, never remove one. Default off. `id` names the judge as
     // "provider/model"; absent picks a cheap-class model from a provider you
-    // have a key for.
+    // have a key for. `id` alone (no `enabled`) is accepted and names the
+    // auto-posture judge; without it the auto judge is the session's model.
     "model": { "enabled": false, "id": "anthropic/claude-haiku-5-5" }
   },
 
@@ -282,7 +287,9 @@ gets a deterministic feature vector and a tier — `safe`, `benign`, `confirm`
 or `block` — recorded on its permission audit row. The tier only ever makes a
 call *more* restrictive than the rules already did (locked Decision 5,
 security-architecture-plan.md): `confirm` can turn an allow into an ask,
-`block` denies, and nothing here can quiet a prompt the rules wanted.
+`block` denies, and nothing here can quiet a prompt the rules wanted. The one
+exception is the auto posture (`defaultPosture` below), where a model judge may
+allow what the rules left to a human.
 
 | Mode | Effect |
 |---|---|
@@ -293,6 +300,23 @@ security-architecture-plan.md): `confirm` can turn an allow into an ask,
 `mode` is **global-only** (`~/.nib/settings.json`); a project file's value is
 ignored with a warning, because setting `off` there would switch off a safety
 layer. An unrecognized value is an error rather than a silent fallback.
+
+#### `classifier.defaultPosture` (the starting posture)
+
+`"defaultPosture": "normal" | "auto"` (**default `normal`**) is the permission
+posture a session starts in. `"auto"` starts it in the auto posture
+(docs/permission-spec.md §9, docs/command-risk-classifier.md §15): read-only
+calls and edits inside the write set run silently, a two-stage model judge allows
+or blocks everything else, and credential paths, git config, calls outside the
+sandbox and calls matched by your own `ask` rules still prompt. The same posture is reachable mid-session with Shift+Tab
+(`normal → auto → plan`), and `defaultPosture` only changes where the session
+starts. It works with `sandbox.enabled: false`.
+
+It is **global-only**: a project `.nib/settings.json` value is ignored with a
+warning, since a repository must not be able to hand its own tool calls to a
+model judge. A value other than `"normal"` or `"auto"` is a config error (not a
+silent fallback). It does not apply to `nib -p` (docs/permission-spec.md,
+Headless Interaction).
 
 #### `classifier.model` (the second stage)
 
@@ -305,10 +329,17 @@ change the outcome only for an MCP call allowed by `defaultMode`.
 
 | Key | Default | Effect |
 |---|---|---|
-| `enabled` | `false` | Runs the judge. Off means the classifier is rules-only, byte for byte as before. |
-| `id` | absent | The judge as `"provider/model"`. Absent picks a cheap-class model (`haiku`/`flash`/`mini`/`nano`/`small`/`lite`/`tiny`) from a provider you have a key for, preferring the session's own provider. |
+| `enabled` | `false` | Runs the second-stage judge. Off means the classifier is rules-only, byte for byte as before. May be omitted: `"model": { "id": "…" }` alone is valid. |
+| `id` | absent | The judge as `"provider/model"`. For the second stage, absent picks a cheap-class model (`haiku`/`flash`/`mini`/`nano`/`small`/`lite`/`tiny`) from a provider you have a key for, preferring the session's own provider. |
 
-Both are **global-only** for the same reason as `mode`. Every failure mode —
+`id` is usable **without `enabled`**, because in the auto posture it names the
+auto judge (`classifier.defaultPosture`, above): with `id` set the auto judge is
+that model, and without it the auto judge is the session's currently active
+model at its lowest reasoning effort. The second stage is skipped while auto is
+active (auto's judge already decides those calls), and auto does not require
+`enabled`.
+
+Both keys are **global-only** for the same reason as `mode`. Every failure mode —
 timeout (3 s), provider error, an answer that is not `OK`/`FLAG` — resolves to
 "no change": the rules already bounded the call, and a flaky model must never
 create a prompt. The attempt, its outcome and its latency are recorded on the

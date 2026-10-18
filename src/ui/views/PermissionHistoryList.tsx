@@ -31,6 +31,8 @@ const DECISION_COLOR: Record<string, string> = {
   "grant-renewed": "#f59e0b",
   // Posture — cyan (distinct from rule-based)
   "allow-by-posture": "#22d3ee",
+  "allow-by-classifier": "#22d3ee",
+  "deny-by-classifier": "#ef4444",
   // Containment failures and revocations — red, they take authority away
   "sandbox-failure": "#ef4444",
   "grant-revoked": "#ef4444",
@@ -54,6 +56,8 @@ const DECISION_LABEL: Record<string, string> = {
   always: "always",
   "allow-by-rule": "allow-by-rule",
   "allow-by-posture": "allow-by-posture",
+  "allow-by-classifier": "auto allow",
+  "deny-by-classifier": "auto block",
   "ask-approved": "approved",
   "unresolved-ask": "unresolved-ask",
   "allow-by-envelope-grant": "session grant",
@@ -190,6 +194,9 @@ export default function PermissionHistoryList({ sessionStore, sessionId, onClose
           {", invalidated "}{metrics.envelopeGrantInvalidations}
           {", revoked "}{metrics.envelopeGrantRevocations}{")"}
           {" · sandbox failures "}{metrics.sandboxFailures}
+          {metrics.autoAllows + metrics.autoBlocks + metrics.autoFallbacks > 0
+            ? ` · auto ${metrics.autoAllows} allowed · ${metrics.autoBlocks} blocked · ${metrics.autoFallbacks} asked`
+            : ""}
         </Text>
       )}
 

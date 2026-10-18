@@ -1,5 +1,6 @@
 import type { Provider } from "../providers/types.js";
 import type { Message } from "../types.js";
+import type { AutoHandoff } from "../agent.js";
 import type { CommandDef } from "../commands/index.js";
 import type { ThemeContextValue, ThemeDefinition } from "./theme.js";
 import type { KeybindingMap, KeybindingConfig, KeybindingAction } from "./keybindings.js";
@@ -24,6 +25,12 @@ export interface ModelEntry {
 
 // ── State ──
 
+/**
+ * Shift+Tab posture. `auto` lets a model judge the calls the rules leave to a
+ * human (the gate lives in agent.ts); `plan` proposes instead of executing.
+ */
+export type Posture = "normal" | "auto" | "plan";
+
 export interface MutableState {
   conversationHistory: Message[];
   sessionInput: number;
@@ -31,7 +38,7 @@ export interface MutableState {
   lastContextTokens: number;
   sessionUserInputs: string[];
   modelUsage?: Record<string, { input: number; output: number; cached: number }>;
-  posture?: "normal" | "autoApprove" | "plan";
+  posture?: Posture;
 }
 
 // ── Status Bar ──
@@ -114,10 +121,11 @@ export interface WorkflowIntegrationConfig {
 export interface AppContext {
   mutable: MutableState;
 
-  /** True only while the current session has an OS-enforced sandbox boundary.
-   * Without it, autoApprove remains selectable but continues to show ordinary
-   * permission prompts. */
-  autoApproveAllowed?: boolean;
+  /** Called after Shift+Tab (or a plan toggle) changes the posture, so the
+   *  composition root can reset what depends on it (auto mode's block count). */
+  onPostureChange?: (posture: Posture) => void;
+  /** Called when /clear or /new starts a fresh conversation. */
+  onConversationReset?: () => void;
 
   getProvider: () => Provider;
   sessionId: string;
@@ -269,13 +277,15 @@ export interface AgentBridgeCallbacks {
   onNewMessages: (userInput: string, newMessages: Message[]) => Promise<void>;
   onHistoryUpdate: (messages: Message[]) => void;
   /**
-   * Resolves "posture" when an auto-approve posture upgraded the ask without
-   * showing a prompt (recorded as allow-by-posture), or "envelope-grant" when
+   * Resolves "posture" when the UI allowed the call without showing a prompt
+   * (an edit inside the profile's write set; recorded as allow-by-posture), or "envelope-grant" when
    * the user approved the session grant for the sandbox envelope passed as the
    * third argument (docs/permission-ux-redesign.md) — the agent records that
-   * one and stores the grant, so the UI writes no row for it.
+   * one and stores the grant, so the UI writes no row for it. `autoHandoff` is
+   * set when the auto posture handed the call to the user (a hard stop or a
+   * paused session): the UI must prompt for real and never resolve "posture".
    */
-  askUser: (toolName: string, args: Record<string, unknown>, envelope?: BashEnvelope, origin?: { subagent: string }) => Promise<boolean | "posture" | "envelope-grant">;
+  askUser: (toolName: string, args: Record<string, unknown>, envelope?: BashEnvelope, origin?: { subagent: string }, policyRisk?: { tier: string; reasons: string[]; message?: string }, autoHandoff?: AutoHandoff) => Promise<boolean | "posture" | "envelope-grant">;
   /** Mid-turn steering mailbox: polled once per decision point by the agent
    *  loop; returns the next queued message or null (the queue head is consumed). */
   pollSteeringMessage?: () => string | null;

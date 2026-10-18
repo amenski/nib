@@ -767,7 +767,7 @@ describe("runAgent", () => {
       );
     });
 
-    it("auto-approve posture never grants it — posture approves a class, not this command", async () => {
+    it("a \"posture\" answer never grants it — posture approves a class, not this command", async () => {
       const { provider } = makeProvider([gitInitTurn(), textTurn("ok")]);
       const executeTool = vi.fn(async () => ({ content: "ran" }));
       const sessionStore = fakeSessionStore();
@@ -895,7 +895,7 @@ describe("runAgent", () => {
       expect(executeTool).toHaveBeenCalled();
     });
 
-    it("a profile deny survives an autoApprove posture (deny-absolute matrix)", async () => {
+    it("a profile deny survives a \"posture\" answer (deny-absolute matrix)", async () => {
       const { provider } = makeProvider([deniedReadTurn(), textTurn("ok")]);
       const executeTool = vi.fn(async () => ({ content: "should not run" }));
       const askUser = vi.fn(async (): Promise<boolean | "posture"> => "posture");
@@ -1143,7 +1143,7 @@ describe("runAgent", () => {
       }));
     });
 
-    it("emits allow-by-posture when an auto-approve posture upgrades an ask", async () => {
+    it("emits allow-by-posture when the UI allows an ask without a prompt", async () => {
       const { provider } = makeProvider([
         [
           { type: "tool_call_start", id: "call_1", name: "read_file" },

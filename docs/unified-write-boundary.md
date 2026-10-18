@@ -56,7 +56,8 @@ writable under `workspace-write`:
 - **Seatbelt** (`buildSeatbeltProfile`): emit `(allow file-write* (subpath …))`
   for each write-root, realpath'd (the SBPL filters on resolved paths).
 - **File tools**: when `ctx.sandboxLevel` is workspace-write-class, realpath the
-  target and check against the set. Inside → allow silently. Outside → **ask**
+  target and check against the set. Inside → allow silently (except a credential
+  or protected path, which prompts: `isSensitiveEditPath`). Outside → **ask**
   (not silent write, not hard-deny) — matching the `search`/`glob` containment
   shipped in `3f8fc31`. Route the decision through `PermissionEngine` so the
   prompt and audit are consistent with every other tool. `strict-sandbox` →
@@ -96,7 +97,11 @@ idiom). `src/cli.tsx` and `src/exec-runner.ts` both call it.
 - `strict-sandbox` stays read-only on both paths.
 - Realpath discipline: a symlink inside the workspace pointing out must not
   escape, on either path.
-- In-workspace writes stay silent — no new prompts for the common case.
+- In-workspace writes stay silent — no new prompts for the common case. The
+  exception is a credential or protected path (`isSensitiveEditPath`, checked in
+  `editTargetInWriteSet`): `.env`, `.husky/*`, `.vscode/*`, `.github/workflows/*`,
+  shell rc files and the like are not "inside the write-set" for the silent
+  overlay and show the normal prompt in every posture.
 
 ## Test matrix
 

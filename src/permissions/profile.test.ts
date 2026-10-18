@@ -277,7 +277,7 @@ describe("authorize — composition matrix (§10(c), decision L)", () => {
     expect(r.isGuarded).toBe(false);
   });
 
-  it("profile-deny × posture-autoApprove still denies (a deny is never posture-bypassed)", () => {
+  it("profile-deny × posture still denies (a deny is never posture-bypassed)", () => {
     const engine = new PermissionEngine(undefined, CWD);
     const profile = evaluator("strict-sandbox", { fs: [{ path: "**/*.env", action: "deny" }] });
     const r = authorize({ tool: "read_file", arguments: { path: "/workspace/.env" } }, engine, profile);
@@ -344,9 +344,35 @@ describe("editTargetInWriteSet — consolidation M.1 (§5)", () => {
   });
 
   it("an explicit fs deny rule excludes the target even inside the level's write-set", () => {
-    const profile = evaluator("workspace-write", { fs: [{ path: "**/*.env", action: "deny" }] });
-    expect(profile.editTargetInWriteSet("edit", { path: "/workspace/.env" })).toBe(false);
+    const profile = evaluator("workspace-write", { fs: [{ path: "**/*.gen.ts", action: "deny" }] });
+    expect(profile.editTargetInWriteSet("edit", { path: "/workspace/src/a.gen.ts" })).toBe(false);
     expect(profile.editTargetInWriteSet("edit", { path: "/workspace/src/a.ts" })).toBe(true);
+  });
+
+  // Credential / protected paths always show the prompt, so they are never
+  // "silently in the write-set" at any level.
+  for (const level of ["workspace-write", "unrestricted"] as const) {
+    it(`${level}: credential and protected paths are not in the write-set`, () => {
+      const profile = evaluator(level);
+      for (const path of [
+        ".env", "config/.env.local", ".husky/pre-commit", ".vscode/settings.json",
+        ".github/workflows/ci.yml", ".zshrc", "id_rsa", "certs/x.pem",
+        "/workspace/.env", "/workspace/.husky/pre-commit",
+      ]) {
+        expect(profile.editTargetInWriteSet("edit", { path }), path).toBe(false);
+        expect(profile.editTargetInWriteSet("write_to_file", { filePath: path }), path).toBe(false);
+      }
+      expect(profile.editTargetInWriteSet("edit", { path: "src/a.ts" })).toBe(true);
+      expect(profile.editTargetInWriteSet("edit", { path: "README.md" })).toBe(true);
+    });
+  }
+
+  it("an ancestor of the workspace that looks sensitive does not make its edits sensitive", () => {
+    const profile = new ProfileEvaluator({ level: "workspace-write" }, "/work/credentials-api");
+    expect(profile.editTargetInWriteSet("edit", { path: "/work/credentials-api/src/a.ts" })).toBe(true);
+    expect(profile.editTargetInWriteSet("edit", { path: "src/a.ts" })).toBe(true);
+    expect(profile.editTargetInWriteSet("edit", { path: "/work/credentials-api/.env" })).toBe(false);
+    expect(profile.editTargetInWriteSet("edit", { path: "/work/credentials-api/.husky/pre-commit" })).toBe(false);
   });
 
   it("only edit-group tools qualify; a path-less call has nothing to gate", () => {

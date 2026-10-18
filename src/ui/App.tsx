@@ -7,7 +7,7 @@ import React, {
 } from "react";
 import { Box, Text, useInput, useApp } from "ink";
 import { previewEdit } from "../permissions/diffpreview.js";
-import type { AppContext, StatusSegment, GitStatus } from "./types.js";
+import type { AppContext, StatusSegment, GitStatus, Posture } from "./types.js";
 import type { PermissionRule } from "../permissions/index.js";
 import type { HookEntry } from "../hooks/types.js";
 import { extractToolSubject } from "../permissions/rules.js";
@@ -75,7 +75,7 @@ import { buildReplayLines } from "./core/replay.js";
 import { opensModal } from "./core/modal-commands.js";
 import { parseSkillLoadCommand, isSkillAlreadyLoaded, buildSkillLoadMessage, SKILL_START_PROMPT } from "./core/skill-load.js";
 import { findCommand, expandCommand } from "../commands/index.js";
-import { toolResultForHistory } from "../agent.js";
+import { toolResultForHistory, type AutoHandoff } from "../agent.js";
 import type { Message } from "../types.js";
 import type { AskQuestionItem } from "../tools/types.js";
 import { setAskQuestion } from "../tools/index.js";
@@ -281,12 +281,13 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
     resolve: (trusted: boolean) => void;
   } | null>(null);
 
-  // Permission/execution posture, cycled by Shift+Tab: normal → autoApprove → plan.
+  // Permission/execution posture, cycled by Shift+Tab: normal → auto → plan.
   // - normal: permissions ask per policy.
-  // - autoApprove: non-denied tool calls run without prompting.
+  // - auto: a model judges the asks the rules leave to a human (decided in the
+  //   agent's gate, not here); the UI still shows any prompt it is handed.
   // - plan: model proposes a <proposed_plan> instead of executing.
-  type Posture = "normal" | "autoApprove" | "plan";
-  const [posture, setPosture] = useState<Posture>("normal");
+  // May start in auto when settings.json asks for it (classifier.defaultPosture).
+  const [posture, setPosture] = useState<Posture>(ctx.mutable.posture ?? "normal");
   const planMode = posture === "plan";
   const [planPrompt, setPlanPrompt] = useState<{
     planText: string;
@@ -1232,6 +1233,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           envelope?: BashEnvelope,
           origin?: { subagent: string },
           policyRisk?: { tier: string; reasons: string[]; message?: string },
+          autoHandoff?: AutoHandoff,
         ) => {
           if (
             [
@@ -1261,11 +1263,17 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           // workspace-write's default write-set is the workspace roots (the
           // old isEditToolInWorkspace containment, generalized); strict-sandbox
           // has no write-set, so no edit is overlay-auto-allowed there.
-          // Resolves "posture" so the agent records allow-by-posture, the same
-          // "allowed without showing a prompt" row the auto-approve bypass
-          // uses. Layer 1 already denied any out-of-write-set edit, so an
-          // edit that reaches this point is always inside the write-set.
-          if (ctx.permissionProfile?.editTargetInWriteSet(toolName, args)) {
+          // Resolves "posture" so the agent records allow-by-posture, the
+          // "allowed without showing a prompt" row. Layer 1 already denied any
+          // out-of-write-set edit, so an edit that reaches this point is always
+          // inside the write-set.
+          //
+          // Not when auto handed the call to the user (autoHandoff: a hard
+          // stop such as .env or .husky/*, the user's own ask rule, or a
+          // paused session) — that call was sent here precisely to be asked
+          // about, so the real prompt is shown. A judge failure carries no
+          // handoff and may still take the overlay.
+          if (autoHandoff === undefined && ctx.permissionProfile?.editTargetInWriteSet(toolName, args)) {
             return "posture";
           }
 
@@ -1281,20 +1289,6 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           const oneTimeOnly = toolName === "run_bash_background" || toolName === "apply_patch"
             || isGitConfigOperation(toolName, args)
             || unsandboxedRun(toolName, args) === "requested";
-
-          // Auto-approve posture bypasses an ordinary rule-derived ask, but
-          // never a result the bash normalizer couldn't safely classify, and
-          // never a secret-adjacent path guard — both must always surface the
-          // real prompt, regardless of posture. "posture" (not true) tells
-          // agent.ts to record allow-by-posture instead of ask-approved.
-          //
-          // Bash is excluded outright (docs/permission-ux-redesign.md): the
-          // session grant is the way a Bash ask stops recurring, and consent for
-          // it can only come from a prompt. Approving the class silently would
-          // keep the prompt count where it is while never creating the grant.
-          if (ctx.autoApproveAllowed && ctx.mutable.posture === "autoApprove" && !wasUnresolved && !isGuarded && !oneTimeOnly && toolName !== "run_bash") {
-            return "posture";
-          }
 
           // The session grant is offered only where the gate would honor it —
           // the same single predicate agent.ts consults, applied here to the
@@ -1574,18 +1568,21 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
   function applyPosture(next: Posture) {
     setPosture(next);
     setPlanPrompt(null);
-    // Posture is UI-only state now: the permission engine has no session-wide
-    // auto-approve flag. askUser reads ctx.mutable.posture directly and
-    // bypasses only ordinary rule-derived asks — deny and unresolved-ask
-    // results are never bypassed regardless of posture.
+    // The posture lives in ctx.mutable for the agent's auto gate, which reads it
+    // per call; the UI never skips a prompt on its account. onPostureChange lets
+    // the composition root reset auto mode's block count on entering auto.
     ctx.mutable.posture = next;
+    ctx.onPostureChange?.(next);
     setStatusLine(ctx.buildStatusBar());
   }
 
+  function nextPosture(current: Posture): Posture {
+    const order: Posture[] = ["normal", "auto", "plan"];
+    return order[(order.indexOf(current) + 1) % order.length]!;
+  }
+
   function cyclePosture() {
-    const order: Posture[] = ["normal", "autoApprove", "plan"];
-    const idx = order.indexOf(posture);
-    applyPosture(order[(idx + 1) % order.length]);
+    applyPosture(nextPosture(posture));
   }
 
   function handleSlashCommand(trimmed: string) {
@@ -1618,6 +1615,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
       // screen — parity with the old pinned WelcomeScreen, which survived
       // clears because it lived outside the transcript entirely.
       ctx.mutable.conversationHistory = [];
+      ctx.onConversationReset?.();
       wipeScrollback(
         buildWelcomeLines(theme, {
           model: ctx.modelDisplayName?.() ?? ctx.activeModel ?? ctx.providerName,
@@ -2655,7 +2653,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
             : turnActive
             ? [{ key: "esc", label: "interrupt" }]
             : [
-                { key: "⇧ Tab", label: posture === "normal" ? "auto-approve" : "normal" },
+                { key: "⇧ Tab", label: nextPosture(posture) },
                 { key: "⌃O", label: "mode" },
               ]
         }

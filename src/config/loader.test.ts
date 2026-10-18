@@ -872,6 +872,41 @@ describe("loadConfig classifier.mode (global-only, docs/command-risk-classifier.
     expect(warnings.some((w) => w.includes("classifier.mode is global-only"))).toBe(true);
   });
 
+  it("defaultPosture: absent by default, honors normal/auto, rejects anything else", () => {
+    expect(loadConfig(projectDir).config.classifier?.defaultPosture).toBeUndefined();
+    for (const p of ["normal", "auto"]) {
+      writeGlobalSettings({ classifier: { defaultPosture: p } });
+      const { config, errors } = loadConfig(projectDir);
+      expect(errors, p).toEqual([]);
+      expect(config.classifier?.defaultPosture, p).toBe(p);
+    }
+    writeGlobalSettings({ classifier: { defaultPosture: "yolo" } });
+    const { config, errors } = loadConfig(projectDir);
+    expect(errors.some((e) => e.includes("config.classifier.defaultPosture"))).toBe(true);
+    expect(config.classifier?.defaultPosture).toBeUndefined();
+  });
+
+  it("ignores a PROJECT defaultPosture with a warning", () => {
+    writeProjectSettings({ classifier: { defaultPosture: "auto" } });
+    const { config, warnings } = loadConfig(projectDir);
+    expect(config.classifier?.defaultPosture).toBeUndefined();
+    expect(warnings.some((w) => w.includes("classifier.defaultPosture is global-only"))).toBe(true);
+  });
+
+  it("accepts classifier.model with only an id (enabled defaults false)", () => {
+    writeGlobalSettings({ classifier: { model: { id: "anthropic/claude-haiku" } } });
+    const { config, errors } = loadConfig(projectDir);
+    expect(errors).toEqual([]);
+    expect(config.classifier?.model).toEqual({ enabled: false, id: "anthropic/claude-haiku" });
+  });
+
+  it("still rejects a non-boolean model.enabled and a malformed id", () => {
+    writeGlobalSettings({ classifier: { model: { enabled: "yes" } } });
+    expect(loadConfig(projectDir).errors.some((e) => e.includes("model.enabled: must be a boolean"))).toBe(true);
+    writeGlobalSettings({ classifier: { model: { id: "nomodel" } } });
+    expect(loadConfig(projectDir).errors.some((e) => e.includes("model.id"))).toBe(true);
+  });
+
   it("rejects a non-object classifier", () => {
     writeGlobalSettings({ classifier: "shadow" });
     const { config, errors } = loadConfig(projectDir);

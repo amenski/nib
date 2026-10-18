@@ -48,7 +48,8 @@ export interface CompactionSummary {
  * Canonical agent-emitted decision vocabulary (one per resolution path in
  * src/agent.ts). Each value names exactly how a tool call was resolved:
  *   allow-by-rule    — a user/config allow rule matched, no prompt shown
- *   allow-by-posture — an auto-approve posture upgraded an ask without showing a prompt
+ *   allow-by-posture — the UI allowed the call without a prompt (an edit inside
+ *                      the profile write set)
  *   ask-approved     — an interactive prompt was answered yes
  *   ask-denied       — an interactive prompt was answered no
  *   deny-by-rule     — a deny rule matched (destructive/guarded/config)
@@ -66,6 +67,8 @@ export interface CompactionSummary {
  *   grant-renewed    — the user granted a sandbox capability, which changed
  *                      the profile; the session grant moved to the new
  *                      envelope instead of asking again
+ *   allow-by-classifier — auto posture: the model judge allowed the call (`auto` has the detail)
+ *   deny-by-classifier  — auto posture: the model judge blocked the call (`auto` has the detail)
  *   sandbox-failure  — a sandboxed launch could not confirm its Seatbelt
  *                      profile, so the command did not run and any grant was
  *                      revoked; the specific error is in the tool result
@@ -79,6 +82,8 @@ export type PermissionDecision =
   | "allow-by-rule"
   | "allow-by-posture"
   | "allow-by-envelope-grant"
+  | "allow-by-classifier"
+  | "deny-by-classifier"
   | "ask-approved"
   | "ask-denied"
   | "deny-by-rule"
@@ -101,6 +106,19 @@ export type PermissionDecision =
  * feature-plans.md §10; subsystems.md §7).
  */
 export type AuditSource = "subagent";
+
+/** The auto-posture judge's trace for one call (plan: Audit / metrics / UI). */
+export interface AutoAuditRecord {
+  stage: "readonly" | "rules" | "stage1" | "stage2" | "fallback";
+  outcome: "allow" | "block" | "timeout" | "error" | "unparseable" | "suspended" | "hard-stop";
+  latencyMs: number;
+  tag?: string;
+  reason?: string;
+  judge?: string;
+}
+
+/** Longest `auto.reason` kept in the log. */
+const AUTO_REASON_MAX = 200;
 
 export interface PermissionAuditRecord {
   toolCallId?: string;
@@ -130,6 +148,8 @@ export interface PermissionAuditRecord {
    * review reads.
    */
   risk?: PermissionRiskRecord;
+  /** The auto-posture judge's trace; present on rows the auto gate handled. */
+  auto?: AutoAuditRecord;
 }
 
 export interface ClassifierEvidenceRecord {
@@ -208,6 +228,17 @@ export interface SessionPermissionMetrics {
   stage2FailedOpen: number;
   /** p95 of the stage-2 latency over its successful calls, in ms. */
   stage2P95Ms: number;
+  /** Auto posture: calls the judge allowed / blocked. */
+  autoAllows: number;
+  autoBlocks: number;
+  /** Auto posture: calls that fell back to a prompt (judge timeout/error/unparseable, suspended, hard stop). */
+  autoFallbacks: number;
+  /** Auto posture: rows a model judge stage (1 or 2) handled. */
+  autoJudgeCalls: number;
+  /** Of those, the stage-2 calls. */
+  autoStage2Calls: number;
+  /** p95 of the judge latency over its calls, in ms. */
+  autoP95Ms: number;
 }
 
 export interface TokenUsageRecord {
@@ -452,6 +483,16 @@ export class SessionStore {
       // rather than field by field — a new feature cannot forget to opt in.
       ...(record.risk !== undefined
         ? { risk: redactDeep(record.risk) as PermissionRiskRecord }
+        : {}),
+      ...(record.auto !== undefined
+        ? {
+            auto: {
+              ...(redactDeep(record.auto) as AutoAuditRecord),
+              ...(record.auto.reason !== undefined
+                ? { reason: redactSecrets(record.auto.reason).slice(0, AUTO_REASON_MAX) }
+                : {}),
+            },
+          }
         : {}),
     });
   }

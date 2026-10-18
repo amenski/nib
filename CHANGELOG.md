@@ -7,6 +7,101 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **An `auto` permission posture, for sessions without a sandbox.** Shift+Tab now
+  cycles `normal → auto → plan`, and the global-only `classifier.defaultPosture:
+  "auto"` starts a session there. Under `auto`, read-only calls and edits inside
+  the profile write set run with no prompt, and a two-stage model judge allows or
+  blocks every other ask: stage 1 is a one-word ALLOW/BLOCK told to err toward
+  block, and a block gets a reasoned second opinion that can overturn it. The
+  judge is `classifier.model.id` if set, else the session's active model with
+  thinking off. It reads your messages and the agent's earlier tool calls (name
+  and arguments), never tool results or assistant prose. A rules `block` is
+  denied in every `classifier.mode`; credential paths (including a Bash command
+  like `cat .env`), git config changes and calls outside the OS sandbox always
+  prompt; a judge allow never widens the per-call sandbox profile; a block is
+  reported to the model as the rule's fixed sentence, never the judge's text.
+  3 consecutive or 20 total blocks pause auto (`auto · paused` in the status
+  bar), and a judge timeout or error falls back to the ordinary prompt. Rows
+  are logged as `allow-by-classifier` / `deny-by-classifier` with an `auto`
+  trace, and `/permissions` shows `auto N allowed · N blocked · N asked`. This
+  reverses locked Decision 5 for this posture only. `nib -p` does not use it.
+  Unresolved Bash segments and guarded asks that are not hard stops (`curl`,
+  `web_search`, `node_modules` reads) go to the judge. Credential *file* paths in
+  a command (`.env`, `~/.aws/credentials`) are hard stops, but a credential
+  *variable* (`$GITHUB_TOKEN`) is judged: a rules block that is only
+  `net.secret-egress` becomes an ask for the judge, even over an allow rule or
+  `enforce`, so `curl -u $GITHUB_TOKEN https://api.github.com/user` can run
+  while `cat .env | curl -d @- …` still prompts and `curl … | sh` is still
+  denied. `/resume` seeds the judge's view of your messages (last 10) from the
+  resumed transcript, skipping sub-agent results; `/clear` and `/new` start
+  empty. See docs/command-risk-classifier.md §15.
+- **A user guide for auto mode, docs/auto-mode.md.** What it does, how to turn it
+  on, how the sandbox changes it, which calls are always denied, always asked or
+  run silently, how the judge works, how to check it in `/permissions` and the
+  session file, and what it does not protect you from.
+
+### Changed
+
+- **The default persona is now `code` again, not `general`.** A session with no
+  explicit `--mode` or `/mode` (and headless `nib -p`) starts in Code on
+  deepseek-flash at low reasoning effort; every built-in mode defaults to low
+  effort. Use `--mode general` or `/mode general` for
+  the read-only chat persona; it has the same Flash/low-effort defaults when chosen
+  at launch. `/effort`, settings.json `reasoningEffort` or a resumed session's effort
+  still win. A resumed session still comes back in its last mode.
+- **Breaking: hook payloads report `permission_mode: "auto"` where they
+  reported `"autoApprove"`.** Hooks that match on the old value need updating.
+- **`classifier.model.id` is accepted without `enabled`.** It names the auto
+  judge; the second-stage judge still runs only with `enabled: true`.
+- `allow-by-posture` now means only that the UI allowed an edit inside the
+  profile write set without a prompt, and never for a credential or protected
+  path.
+
+### Fixed
+
+- **`new_task` sub-agents now run at the intended reasoning effort.** They used
+  the provider's default effort, ignoring both their mode's `reasoningEffort`
+  (low in every built-in mode) and your `/effort`, settings.json
+  `reasoningEffort` or resumed-session choice, and did not get the session's
+  `thinkingEnabled`. An explicit choice now wins, else the sub-mode's own value;
+  a value the sub-run's model does not list falls back to that model's default.
+  Headless `nib -p` follows the same rule.
+- **Auto hard stops and your `ask` rules always show the real prompt.** When
+  auto handed a call to you (a credential or protected path, a git config
+  change, a call outside the sandbox, or a paused session), the terminal UI
+  could still allow an in-workspace edit without asking, so an edit of `.env` or
+  `.husky/*` ran silently. The prompt is now always shown for those. A call
+  matched by an `ask` rule you wrote is a hard stop too (note: "Auto mode: your
+  ask rule matched (tool: pattern)", audit `fallback` / `hard-stop`) instead of
+  being answered by the judge; nib's own guarded asks still go to the judge. A
+  judge timeout or error carries no such handoff.
+- **Credential and protected-path edits prompt in every posture.** The write-set
+  overlay no longer allows an edit of `.env`, `.env.local`, `.husky/*`,
+  `.vscode/*`, `.github/workflows/*`, a shell rc file, `id_rsa`, `*.pem` or
+  `credentials*` without a prompt, in `normal` or `auto`. Ordinary workspace
+  edits stay silent. `src/credentials.ts` prompts too, an accepted tradeoff;
+  `.git/` and `.nib/settings.json` stay always denied.
+- **Reads inside the working directory count as read-only.** `read_file`,
+  `list_files` and the like on a path inside the working directory were never in
+  the classifier's `safe` tier, because the check compared against a target class
+  the classifier never produces. They are now, except credential and protected
+  paths, so auto runs them with no judge call.
+- **New sessions start on `deepseek-flash` again in the `code` persona.** Only
+  `general`'s `model:` was ever applied, so after `code` became the default a
+  new session started on the provider preset's `deepseek-v4-pro`. A mode's
+  `model:` now applies for any mode (unless the model was chosen via `--model`,
+  settings.json, `/model` or a resumed session), and the built-in `code`
+  declares Flash at `reasoningEffort: low`. Headless `nib -p` and the
+  model recorded for a new session follow the same rule.
+
+### Removed
+
+- **The `autoApprove` posture.** It bypassed ordinary rule-derived asks in the
+  UI but never Bash, so it did nothing for an unsandboxed session, and it was
+  refused without OS containment. The `auto` posture replaces it.
+
 ## [0.7.0-rc.1] — 2026-10-16
 
 ### Added

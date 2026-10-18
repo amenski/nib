@@ -98,8 +98,8 @@ claim testable:
    sandbox launcher, and handler must all use that plan. No layer may re-parse a
    more permissive view of the original arguments.
 3. **Unknown means no persistent grant.** It may be approved once with an honest
-   full-risk prompt, but cannot create a session, permanent, or auto-approve
-   permission.
+   full-risk prompt, but cannot create a session, permanent, or blanket
+   posture-level permission.
    *Amended 2026-09-18 (docs/permission-ux-redesign.md).* One session-scoped
    exception exists, and it is deliberately not a property of the command text:
    an interactive user may grant sandboxed Bash for the session, which covers
@@ -140,6 +140,25 @@ claim testable:
    widening (auto-running `safe` commands without a grant) out of scope as a
    separate owner decision. Decision 5 stands unchanged: no
    classifier output can widen machine authority.
+   *Status 2026-10-17: reversed for the auto posture only; owner decision.*
+   While the auto posture is active (`classifier.defaultPosture: "auto"` or
+   Shift+Tab), a model judge may *allow* a call the rules left to a human, so
+   the classifier can now widen what runs without a prompt — in that posture and
+   nowhere else; `normal` and `plan` are exactly as above. What bounds the
+   reversal: a rules `block` is denied in every classifier mode and the judge
+   never sees it (sole exception: a block that is only `net.secret-egress`, a
+   credential variable sent over the network, is handed to the judge); credential
+   and protected paths (including a Bash command that names a credential file), git config writes and any call outside the OS sandbox are hard
+   stops that always prompt; the judge reads only the user's words and the
+   agent's own calls (name and arguments), never tool results or assistant prose;
+   an allow grants no per-call exec widening (`envelopeHash`,
+   `approvedGitConfigWrite`); a block reaches the model as the canonical
+   reason sentence, not the judge's text; 3 consecutive or 20 total blocks pause
+   auto; and a judge that times out or errs falls back to the ordinary prompt.
+   Unlike a sandbox, none of this is a kernel boundary: with
+   `sandbox.enabled: false` the judge's allow runs with the user's full account,
+   which is why the judge is told so. Design:
+   docs/command-risk-classifier.md §15; threat: docs/security-spec.md T1.
 
 ### Explicit non-goals for the first security release
 
@@ -186,6 +205,8 @@ confirmed that it then authorizes unrelated patches, including a patch whose
 target contains `../../`.
 
 ### P0.3 — Auto-approve amplifies missing classifications
+
+*(Discovery-time finding; the posture it describes was removed 2026-10-17.)*
 
 Auto-approve upgrades an ordinary `ask` when it is neither marked unresolved
 nor guarded. Because the affected tools never reach the correct classifiers,
@@ -275,7 +296,10 @@ Target coding profile (not all properties are implemented):
   Node, Git, package managers, and arbitrary binaries can create connections.
 - Apply containment to foreground Bash, background Bash, MCP servers, hooks,
   statusline providers, and notification scripts.
-- If containment is unavailable, auto-approve fails closed.
+- If containment is unavailable, the former approve-all posture failed closed.
+  (That posture was removed 2026-10-17. Its replacement, the auto posture, runs
+  without containment by design: its judge is told there is no OS sandbox, and a
+  call that would leave the sandbox always prompts.)
 
 Child-process reads are now bounded (2026-09-16): both sandboxed levels
 subtract `$HOME` from the blanket `(allow file-read*)` grant and re-allow only
@@ -329,8 +353,9 @@ whether the prompt offers the variant.
 
 The grant flows one way and does not outlive the call: `gateCall`
 (`src/agent.ts`) sets `ToolExecOptions.approvedGitConfigWrite` **only** in the
-branch reached when `askUser` returned a plain `true` — auto-approve posture
-returns `"posture"` and never grants, and a persisted rule resolves to
+branch reached when `askUser` returned a plain `true` — the UI's write-set
+`"posture"` answer and the auto posture's own allow never grant, and a persisted
+rule resolves to
 `action: "allow"` and never reaches that branch at all. `App.tsx` marks these
 calls `oneTimeOnly` (the same suppression `run_bash_background` and
 `apply_patch` already use), so the prompt offers only once/deny and there is
@@ -383,7 +408,9 @@ enumerating every `(allow file-write* (regex …))` line in the granted profile.
   secrets, persistence, project-boundary crossings, or irreversible external
   effects.
 - Auto-approve applies only to low-risk capabilities already confined by the
-  sandbox. It never upgrades an arbitrary ordinary ask.
+  sandbox. It never upgrades an arbitrary ordinary ask. *(Amended 2026-10-17:
+  that posture was removed; the auto posture answers asks with a model judge
+  and does not require a sandbox. See Decision 5.)*
 
 ### 4. Conservative deterministic classifier
 
@@ -417,7 +444,8 @@ Rules:
 1. [DONE] Reject empty-subject approval rules.
 2. [DONE] Force background Bash and `apply_patch` to prompt without persistent-grant
    options until their capability extraction is fixed.
-3. [DONE] Prevent auto-approve from upgrading calls with missing capability data.
+3. [DONE] Prevent the (since removed) approve-all posture from upgrading calls with
+   missing capability data.
 4. [DONE] Warn prominently when Nib starts without active containment.
 5. [DONE] Add a regression test that rejects an allow rule whose target is empty,
    missing, or non-canonical before it can be persisted.
@@ -453,7 +481,8 @@ Verify:
 3. [DONE] Block direct egress by default. A temporary broad-egress exception
    is deliberately deferred: it requires a host-aware broker that mediates all
    child-process egress. See `docs/security-network-broker.md`.
-4. [DONE] Fail closed for auto-approved execution when sandboxing is unavailable.
+4. [DONE] Fail closed for approve-all execution (posture since removed) when sandboxing
+   is unavailable.
 5. [DONE] Contain MCP servers and lifecycle subprocesses with appropriate profiles.
 
 The host-aware broker remains deliberately out of this phase unless a concrete
@@ -697,11 +726,12 @@ was checked rather than re-covered:
 - `hasActiveSandboxContainment` is false off darwin, for `unrestricted`, and
   when the sandbox is disabled (`src/config/loader.test.ts`), and
   `containmentWarning` names which of the two states applies.
-- Auto-approval is refused in that state: `cli.tsx` passes `autoApproveAllowed:
-  hasActiveSandboxContainment(...)` and `src/ui/App.tsx` gates the auto-approve
-  shortcut on it, asserted in both directions in `App.streaming.test.tsx`. A
-  platform that cannot enforce the profile therefore cannot auto-approve either;
-  the fallback is an ordinary consent prompt, not a silent unconfined run.
+- Approve-all was refused in that state: `cli.tsx` passed an
+  `autoApproveAllowed` flag derived from `hasActiveSandboxContainment(...)` and
+  `src/ui/App.tsx` gated the shortcut on it. The posture and the flag were
+  removed 2026-10-17; the auto posture does not need containment (its judge is
+  told there is none), and `hasActiveSandboxContainment` stays in use elsewhere
+  (`cli.tsx`, `exec-runner.ts`).
 
 Residual recorded, **not** closed: "macOS is supported but Seatbelt cannot
 apply" (the managed-runner `sandbox_apply: Operation not permitted` case) is not
@@ -894,9 +924,10 @@ demonstrates it.
   extract a `known`, non-empty plan. Foreground and background Bash are asserted
   to produce identical process capabilities. Scope of the claim: coverage is
   over *registered tools*, which is what the kernel authorizes.
-- **Normal, auto-approve, plan, and headless modes have explicit tests —
-  closed.** 306 tests across `App.streaming.test.tsx` (normal, auto-approve,
-  plan posture), `exec-runner.test.ts` and `exec-runner.subagent.test.ts`
+- **Normal, approve-all, plan, and headless modes have explicit tests —
+  closed.** 306 tests across `App.streaming.test.tsx` (normal, approve-all,
+  plan posture; the approve-all tests were replaced by auto-posture tests
+  2026-10-17), `exec-runner.test.ts` and `exec-runner.subagent.test.ts`
   (headless, including subagents), with `permissions/profile.test.ts` and
   `permissions/capabilities.test.ts` covering the policy layer they share.
 - **macOS sandbox-unavailable behavior is tested — closed for fail-closed
@@ -912,8 +943,8 @@ demonstrates it.
 - **Unsupported platforms display honest guarantees and fail closed where
   needed — closed** (gate 3, second half): `hasActiveSandboxContainment` is
   false off darwin and for `unrestricted`, `containmentWarning` names which
-  state applies, and auto-approval is refused in that state, asserted in both
-  directions.
+  state applies, and approve-all was refused in that state, asserted in both
+  directions (the posture was since replaced by auto; see Decision 5).
 - **A manual adversarial pass covers prompt injection, malicious repositories,
   malicious dependencies, MCP, network exfiltration, persistence, and resource
   exhaustion — closed for all seven, one nuance recorded.** Gates 1–4 now

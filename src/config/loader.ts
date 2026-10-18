@@ -129,6 +129,9 @@ export interface DeepCodeSettings {
      *  Off by default; `id` names the judge as "provider/model", and absent
      *  means a cheap-class model from a provider you have a key for. */
     model?: { enabled: boolean; id?: string };
+    /** Posture a session starts in: `normal` (default) or `auto` (a model
+     *  judge allows or blocks tool calls instead of prompting). GLOBAL-only. */
+    defaultPosture?: "normal" | "auto";
   };
 
   // ── MCP Servers ──
@@ -316,7 +319,7 @@ export function sandboxSupportedOnPlatform(platform: NodeJS.Platform = process.p
 /**
  * Whether this session has an OS-enforced containment boundary. This is kept
  * separate from the profile policy: a non-macOS host can evaluate profile
- * rules, but cannot safely let the interactive auto-approve posture execute
+ * rules, but cannot safely let an unattended posture execute
  * an otherwise ordinary ask without a mechanical boundary.
  */
 export function hasActiveSandboxContainment(
@@ -1402,8 +1405,8 @@ export function loadConfig(projectDir?: string): LoadResult {
     const raw = (globalRaw.classifier as Record<string, unknown>).model;
     if (isObject(raw)) {
       const m = raw as Record<string, unknown>;
-      if (typeof m.enabled === "boolean") {
-        config.classifier.model = { enabled: m.enabled };
+      if (m.enabled === undefined || typeof m.enabled === "boolean") {
+        config.classifier.model = { enabled: m.enabled ?? false };
         if ("id" in m) {
           if (typeof m.id === "string" && m.id.includes("/")) {
             config.classifier.model.id = m.id;
@@ -1418,8 +1421,16 @@ export function loadConfig(projectDir?: string): LoadResult {
       errors.push("config.classifier.model: must be an object");
     }
   }
+  if (isObject(globalRaw?.classifier) && "defaultPosture" in (globalRaw.classifier as Record<string, unknown>)) {
+    const raw = (globalRaw.classifier as Record<string, unknown>).defaultPosture;
+    if (raw === "normal" || raw === "auto") {
+      config.classifier.defaultPosture = raw;
+    } else {
+      errors.push('config.classifier.defaultPosture: must be one of "normal" | "auto"');
+    }
+  }
   if (isObject(projectRaw?.classifier)) {
-    const projectKeys = ["mode", "model"].filter((k) => k in (projectRaw.classifier as Record<string, unknown>));
+    const projectKeys = ["mode", "model", "defaultPosture"].filter((k) => k in (projectRaw.classifier as Record<string, unknown>));
     if (projectKeys.length > 0) {
       warnings.push(
         `classifier.${projectKeys.join(", classifier.")} is global-only and was ignored in project .nib/settings.json — set it in ~/.nib/settings.json instead`,

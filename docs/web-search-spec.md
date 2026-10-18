@@ -224,8 +224,10 @@ above and the rule-4 carve-out below.
 { tool: "web_search", kind: "any", pattern: "", action: "ask", origin: "builtin-guarded" }
 ```
 
-Semantics inherited from the guarded tier: always **ask**, exempt from the
-auto-approve posture bypass, **deny in headless**. The query string is the
+Semantics inherited from the guarded tier: always **ask**, never skipped on a
+posture's account, **deny in headless**. Under the `auto` posture a guarded ask
+is not a hard stop: the judge decides it, with the query text as part of the
+pending call (permission-spec.md §9). The query string is the
 permission subject — the prompt shows what would be sent.
 
 ## 6. Security

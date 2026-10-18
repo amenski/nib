@@ -33,13 +33,24 @@
 ## Permissions behavior
 
 - Default posture is `askAll`; **Shift+Tab** cycles `normal →
-  autoApprove → plan`. Plan mode is read-only and requires a
-  `<proposed_plan>` block before implementing.
+  auto → plan`. Plan mode is read-only and requires a
+  `<proposed_plan>` block before implementing. In `auto` a model judge answers
+  most asks; the status bar reads `auto · paused` once it has blocked 3 calls in
+  a row (or 20 in total), and every ask prompts again until you approve one
+  (permission-spec.md §9).
+- **"Auto mode still asked me"** — credential paths (including a Bash command
+  that names `.env`), git config writes, anything outside the sandbox and any
+  call matched by an `ask` rule you wrote always prompt (an edit of `.env` or
+  `.husky/*` inside the workspace does too, in every posture), and so does any call the judge could not decide (timeout, error,
+  unparseable: the prompt says which). `/permissions` shows `auto N allowed · N
+  blocked · N asked`.
 - **"I approved a command but it still asked"** — approvals are rule- and
   scope-specific: a session approval covers the exact subject text; a
   folder-scope grant covers the folder only. Guarded-tier matches (secret
   paths, network egress, `web_search`) and unresolved bash segments are
-  never bypassed by posture — deliberate (permission-spec.md §7, §9).
+  never skipped by the UI on a posture's account — deliberate (permission-spec.md
+  §7, §9). Under `auto` the guarded egress shapes are judged rather than
+  prompted, except credential paths, which always prompt.
 - **Headless runs fail closed**: any call that would ask is denied with one
   stderr line, `permission denied (headless): <tool> <subject>`. Add
   explicit `allow` rules for scripted use.

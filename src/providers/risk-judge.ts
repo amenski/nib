@@ -1,4 +1,5 @@
 import type { Message } from "../types.js";
+import type { ModelCapabilities, Provider } from "./types.js";
 import { createProvider, getConfiguredProviders, getPreset, getProviderModels } from "./presets.js";
 import { STAGE2_TIMEOUT_MS, type RiskJudge, type Stage2Options } from "../permissions/risk/model.js";
 
@@ -96,4 +97,52 @@ export function createRiskJudge(opts: {
   };
 
   return { judge, timeoutMs: opts.timeoutMs ?? STAGE2_TIMEOUT_MS };
+}
+
+/** Effort levels from least to most thinking; a listed value outside this scale is never picked. */
+const EFFORT_ORDER = ["none", "minimal", "low", "medium", "high", "max"];
+
+/**
+ * The least thinking the model offers, or undefined when it lists no effort
+ * levels (nothing to send). A model that cannot turn thinking off still gets its
+ * lowest level, because at its default the reasoning can eat the whole answer
+ * budget: deepseek-flash lists only low/high/max and returned empty text at 256
+ * tokens with the default.
+ */
+function lowestEffort(caps: ModelCapabilities | undefined): string | undefined {
+  const listed = caps?.effort?.values ?? [];
+  return EFFORT_ORDER.find((level) => listed.includes(level));
+}
+
+/**
+ * Auto mode's judge (permissions/risk/auto.ts): the same non-streaming,
+ * tool-less collection as above, but over a provider resolved *per request*
+ * rather than fixed at construction, so a model switch in the picker applies to
+ * the very next judgement and the judge needs no teardown.
+ *
+ * Thinking is minimised using only levels the model's own effort list offers
+ * (sending an unsupported one is the failure): `none` if listed, else the lowest.
+ * A model with no effort list gets none sent. Note that aisdk drops
+ * `temperature` whenever an effort level is set. `maxTokens` comes from the caller because
+ * the two stages need very different budgets (a token vs. room to reason).
+ */
+export function createAutoJudge(resolve: () => { provider: Provider; caps?: ModelCapabilities }): RiskJudge {
+  return async (prompt, signal, opts) => {
+    const { provider, caps } = resolve();
+    const messages: Message[] = [
+      { role: "system", content: prompt.system },
+      { role: "user", content: prompt.user },
+    ];
+    let text = "";
+    for await (const event of provider.streamChat(messages, [], {
+      temperature: 0,
+      ...(opts?.maxTokens !== undefined ? { maxTokens: opts.maxTokens } : {}),
+      ...(lowestEffort(caps) !== undefined ? { effort: lowestEffort(caps) } : {}),
+      ...(signal !== undefined ? { signal } : {}),
+    })) {
+      if (event.type === "text_delta") text += event.content;
+      if (event.type === "done") break;
+    }
+    return text;
+  };
 }

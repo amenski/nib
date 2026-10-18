@@ -9,6 +9,7 @@ import { ToolRegistry } from "../tools/registry.js";
 import { ModeLoader } from "../modes/loader.js";
 import { AgentLoader } from "../agents/index.js";
 import { PermissionEngine } from "../permissions/index.js";
+import { AutoModeState } from "../permissions/risk/auto.js";
 import { bashEnvelopeGrants, type BashEnvelope } from "../permissions/session-grant.js";
 import { SessionStore, slugify } from "../sessions/store.js";
 import { executeTool as realExecuteTool, registry as realRegistry } from "../tools/index.js";
@@ -20,12 +21,12 @@ import type { ToolContext } from "../tools/types.js";
 type TurnScript = StreamEvent[];
 
 function makeProvider(turns: TurnScript[]) {
-  const received: { messages: Message[]; tools: ToolDef[] }[] = [];
+  const received: { messages: Message[]; tools: ToolDef[]; options?: { effort?: string; thinkingEnabled?: boolean } }[] = [];
   let call = 0;
   const provider: Provider = {
     name: "fake",
-    async *streamChat(messages, tools) {
-      received.push({ messages: [...messages], tools: tools ? [...tools] : [] });
+    async *streamChat(messages, tools, options) {
+      received.push({ messages: [...messages], tools: tools ? [...tools] : [], options });
       const events = turns[call] ?? [];
       call++;
       for (const event of events) yield event;
@@ -152,6 +153,49 @@ describe("Orchestrator", () => {
     const subTools = received[0].tools.map((t) => t.name);
     expect(subTools).toEqual(expect.arrayContaining(["read_file", "run_bash", "new_task"]));
     expect(String(received[0].messages[0].content)).toContain("senior software engineer");
+  });
+
+  describe("sub-run reasoning effort", () => {
+    async function spawnAndStream(
+      opts: { resolveEffort?: (sub: { modelId?: string; mode: { slug: string; reasoningEffort?: string } }) => string | undefined; thinkingEnabled?: boolean },
+      mode = "code",
+    ) {
+      const { registry } = makeRegistry();
+      const { provider, received } = makeProvider([textTurn("done")]);
+      const deliveries = trackDeliveries();
+      const orchestrator = new Orchestrator({
+        provider: () => provider,
+        registry,
+        modeLoader: new ModeLoader(),
+        onTaskResult: deliveries.onResult,
+        ...opts,
+      } as ConstructorParameters<typeof Orchestrator>[0]);
+      orchestrator.register(registry);
+      await registry.execute({ id: "t1", name: "new_task", arguments: { description: "do it", mode } }, ctx);
+      await deliveries.delivered();
+      return received[0].options;
+    }
+
+    it("passes the sub-mode to resolveEffort and streams the effort it returns", async () => {
+      const seen: Array<{ modelId?: string; mode: { slug: string; reasoningEffort?: string } }> = [];
+      const options = await spawnAndStream({
+        resolveEffort: (sub) => { seen.push(sub); return sub.mode.reasoningEffort; },
+      });
+      expect(seen).toHaveLength(1);
+      expect(seen[0].modelId).toBeUndefined();
+      expect(seen[0].mode.slug).toBe("code");
+      expect(options?.effort).toBe("low");
+    });
+
+    it("streams a different effort when resolveEffort returns one", async () => {
+      const options = await spawnAndStream({ resolveEffort: () => "high" });
+      expect(options?.effort).toBe("high");
+    });
+
+    it("leaves effort unset without resolveEffort and forwards thinkingEnabled", async () => {
+      expect((await spawnAndStream({}))?.effort).toBeUndefined();
+      expect((await spawnAndStream({ thinkingEnabled: false }))?.thinkingEnabled).toBe(false);
+    });
   });
 
   /** A turn that narrates *and* calls a tool — the shape that pushes an
@@ -1047,5 +1091,56 @@ describe("sub-agent guarded Bash (2026-10-10)", () => {
     await deliveries.delivered();
 
     expect(askUser).toHaveBeenCalled();
+  });
+});
+
+describe("sub-agent auto posture", () => {
+  it("shares the parent's state, tells the judge the delegated task, and records no human turn", async () => {
+    const { registry, runBash } = makeRegistry();
+    const { provider } = makeProvider([
+      toolCallTurn("c1", "run_bash", JSON.stringify({ command: "npm test" })),
+      toolCallTurn("c2", "run_bash", JSON.stringify({ command: "npm run build" })),
+      textTurn("sub-agent done"),
+    ]);
+    const deliveries = trackDeliveries();
+    const state = new AutoModeState();
+    const requests: string[] = [];
+    // Allow the first call, block the second at both stages.
+    const judge = vi.fn(async (request: { system: string; user: string }) => {
+      requests.push(request.user);
+      const stage1 = request.user.includes("Answer with exactly one word");
+      const pending = request.user.split("The pending call")[1] ?? "";
+      if (pending.includes("npm test")) return stage1 ? "ALLOW" : "DECISION: ALLOW";
+      return stage1 ? "BLOCK" : "DECISION: BLOCK [auto.out-of-scope] nope";
+    });
+    const recordHumanTurn = vi.fn();
+    const askUser = vi.fn(async () => true);
+    const orchestrator = new Orchestrator({
+      provider: () => provider,
+      registry,
+      modeLoader: new ModeLoader(),
+      permissions: new PermissionEngine(undefined, "/workspace"),
+      askUser,
+      autoMode: { isActive: () => true, judge, state, humanTurns: () => ["only the human spoke"], recordHumanTurn },
+      onTaskResult: deliveries.onResult,
+    });
+    orchestrator.register(registry);
+
+    await registry.execute(
+      { id: "t1", name: "new_task", arguments: { description: "verify the build", mode: "code" } },
+      ctx,
+    );
+    await deliveries.delivered();
+
+    // The allowed call ran without a prompt; the blocked one did not run.
+    expect(runBash.mock.calls.map((c) => c[0].command)).toEqual(["npm test"]);
+    expect(askUser).not.toHaveBeenCalled();
+    // One shared state: the sub-agent's block is the parent's block.
+    expect(state.totalBlocks).toBe(1);
+    // The judge saw the task as agent-written, and the human's words as the user's.
+    expect(requests[0]).toContain("verify the build");
+    expect(requests[0]).toContain("carries no user authority");
+    expect(requests[0]).toContain("only the human spoke");
+    expect(recordHumanTurn).not.toHaveBeenCalled();
   });
 });

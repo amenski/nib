@@ -56,6 +56,12 @@ const RISK_METRICS = {
   stage2Flags: 3,
   stage2FailedOpen: 1,
   stage2P95Ms: 480,
+  autoAllows: 0,
+  autoBlocks: 0,
+  autoFallbacks: 0,
+  autoJudgeCalls: 0,
+  autoStage2Calls: 0,
+  autoP95Ms: 0,
 };
 
 /** A classified row, as the audit trail stores one. */
@@ -98,6 +104,39 @@ describe("PermissionHistoryList: the risk verdict", () => {
     expect(frame).toContain("classifier-caused asks 2/1 approved");
     expect(frame).toContain("blocks 1");
     expect(frame).toContain("model judge 14 calls, 3 flagged, p95 480ms");
+  });
+
+  it("shows the auto segment only when an auto counter is non-zero", async () => {
+    const renderWith = async (m: unknown) => {
+      const store = { ...fakeStore(), queryPermissionMetrics: vi.fn(async () => m) };
+      const inst = render(
+        <PermissionHistoryList sessionStore={store as never} sessionId={SESSION} onClose={vi.fn()} width={200} />,
+      );
+      mounted.push(inst);
+      await flush();
+      return flatten(inst.lastFrame() ?? "");
+    };
+    expect(await renderWith(RISK_METRICS)).not.toContain("auto 0");
+    expect(await renderWith({ ...RISK_METRICS, autoAllows: 5, autoBlocks: 2, autoFallbacks: 1 }))
+      .toContain("auto 5 allowed · 2 blocked · 1 asked");
+  });
+
+  it("labels the classifier decisions", async () => {
+    const store = {
+      ...fakeStore(),
+      queryPermissionHistory: vi.fn(async () => [
+        { tool: "run_bash", subject: "npm test", decision: "allow-by-classifier", at: "2026-10-15T10:00:00.000Z" },
+        { tool: "run_bash", subject: "rm x", decision: "deny-by-classifier", at: "2026-10-15T10:00:01.000Z" },
+      ]),
+    };
+    const inst = render(
+      <PermissionHistoryList sessionStore={store as never} sessionId={SESSION} onClose={vi.fn()} width={140} />,
+    );
+    mounted.push(inst);
+    await flush();
+    const frame = flatten(inst.lastFrame() ?? "");
+    expect(frame).toContain("auto allow");
+    expect(frame).toContain("auto block");
   });
 
   it("leaves the model judge out of the line when the stage never ran", async () => {

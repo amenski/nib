@@ -25,9 +25,9 @@ export interface PermissionConfig {
 export interface ResolveResult {
   action: PermissionAction;
   winningRule?: PermissionRule;
-  /** True when any bash segment couldn't be safely classified — see bash-normalize.ts. Never bypassable by an auto-approve posture. */
+  /** True when any bash segment couldn't be safely classified — see bash-normalize.ts. Never bypassable by the auto posture. */
   wasUnresolved: boolean;
-  /** True when the winning rule is origin "builtin-guarded" (secret-adjacent path). Never bypassable by an auto-approve posture, same as wasUnresolved. */
+  /** True when the winning rule is origin "builtin-guarded" (secret-adjacent path). Never bypassable by the auto posture, same as wasUnresolved. */
   isGuarded: boolean;
 }
 
@@ -310,7 +310,7 @@ export class PermissionEngine {
    * origin "builtin-guarded" so it flows through the exact same precedence
    * and posture-exemption path as a static guarded rule (see resolve()'s
    * isGuarded derivation and resolveTier) — a human always sees this,
-   * regardless of auto-approve posture or defaultMode: allowAll.
+   * regardless of posture or defaultMode: allowAll.
    */
   private outOfWorkspaceGuardedRule(toolName: string, subject: PermissionSubject): PermissionRule | undefined {
     if (!PermissionEngine.DIR_SCOPED_TOOLS.has(toolName)) return undefined;

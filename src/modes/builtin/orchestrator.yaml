@@ -18,3 +18,4 @@ customInstructions: >
   synthesize them into a coherent response. Each subtask runs in isolated
   context — you only see summaries, not raw tool output.
 hidden: true
+reasoningEffort: low

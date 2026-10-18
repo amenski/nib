@@ -101,15 +101,14 @@ describe("permission system smoke pass", () => {
     // DestructiveConfirmPrompt instead of the standard 4-option prompt.
   });
 
-  it("an obfuscated destructive command still surfaces a real prompt even conceptually under auto-approve posture (wasUnresolved is never bypassable)", () => {
+  it("an obfuscated destructive command still surfaces a real prompt even conceptually under the auto posture (wasUnresolved is never bypassable)", () => {
     const engine = new PermissionEngine(undefined, workDir);
     const result = engine.resolve("run_bash", { command: "env rm -rf /tmp/scratch" });
 
     // The engine's own result must carry wasUnresolved:true — this is the
-    // exact flag App.tsx's askUser callback checks before applying the
-    // auto-approve posture bypass. Confirming it here, at the source, is
+    // flag a posture must never bypass. Confirming it here, at the source, is
     // the real regression test for the kill-chain the plan's review found:
-    // if this flag were ever false for an unresolved segment, the UI-layer
+    // if this flag were ever false for an unresolved segment, a posture-level
     // bypass would silently wave the command through.
     expect(result.action).toBe("ask");
     expect(result.wasUnresolved).toBe(true);

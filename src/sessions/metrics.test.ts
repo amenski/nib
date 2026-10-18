@@ -37,7 +37,37 @@ describe("session permission metrics", () => {
       stage2Flags: 0,
       stage2FailedOpen: 0,
       stage2P95Ms: 0,
+      autoAllows: 0,
+      autoBlocks: 0,
+      autoFallbacks: 0,
+      autoJudgeCalls: 0,
+      autoStage2Calls: 0,
+      autoP95Ms: 0,
     });
+  });
+
+  it("counts the auto posture: allows, blocks, fallbacks, judge calls, stage 2, and a p95", () => {
+    const auto = (stage: string, outcome: string, latencyMs: number) => ({ stage, outcome, latencyMs });
+    const metrics = computeSessionPermissionMetrics([
+      { tool: "read_file", subject: "a.ts", decision: "allow-by-classifier", auto: auto("readonly", "allow", 0) },
+      { tool: "run_bash", subject: "npm test", decision: "allow-by-classifier", auto: auto("stage1", "allow", 100) },
+      { tool: "run_bash", subject: "curl x", decision: "allow-by-classifier", auto: auto("stage2", "allow", 900) },
+      { tool: "run_bash", subject: "rm -rf x", decision: "deny-by-classifier", auto: auto("stage1", "block", 200) },
+      { tool: "run_bash", subject: "ls", decision: "ask-approved", auto: auto("stage1", "timeout", 3000) },
+      { tool: "run_bash", subject: "ls", decision: "ask-approved", auto: auto("fallback", "allow", 0) },
+      { tool: "run_bash", subject: "ls", decision: "ask-approved", auto: auto("rules", "hard-stop", 0) },
+    ] as never);
+
+    expect(metrics.autoAllows).toBe(3);
+    expect(metrics.autoBlocks).toBe(1);
+    expect(metrics.autoFallbacks).toBe(3);
+    expect(metrics.autoJudgeCalls).toBe(4);
+    expect(metrics.autoStage2Calls).toBe(1);
+    expect(metrics.autoP95Ms).toBe(3000);
+    // Auto allows are approvals, auto blocks are denials, neither is a prompt.
+    expect(metrics.permissionApprovals).toBe(6);
+    expect(metrics.permissionDenials).toBe(1);
+    expect(metrics.permissionPrompts).toBe(3);
   });
 
   it("counts the risk tiers, the asks it caused, and the blocks", () => {

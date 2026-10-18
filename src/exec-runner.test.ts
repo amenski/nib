@@ -328,10 +328,21 @@ describe("runExecMode first-run failures are clean (B1)", () => {
     expect(createProviderSpy).not.toHaveBeenCalled();
   });
 
-  it("defaults to General's read-only tool set when no --mode is given, matching the TUI's startup default", async () => {
+  it("defaults to Code's tool set, Flash model and low effort when no --mode is given, matching the TUI's startup default", async () => {
     getByModeSpy.mockClear();
 
     const { code } = await run();
+
+    expect(code).toBe(0);
+    expect(getByModeSpy).toHaveBeenCalledWith(["read", "edit", "command", "mcp", "workflow"]);
+    expect(createProviderSpy).toHaveBeenCalledWith("deepseek", expect.objectContaining({ modelOverride: "deepseek-flash" }));
+    expect(lastStreamOptions?.effort).toBe("low");
+  });
+
+  it("applies General's read-only tool set, Flash model and low effort when --mode general is explicit", async () => {
+    getByModeSpy.mockClear();
+
+    const { code } = await run({ mode: "general" });
 
     expect(code).toBe(0);
     expect(getByModeSpy).toHaveBeenCalledWith(["read"]);
@@ -340,21 +351,20 @@ describe("runExecMode first-run failures are clean (B1)", () => {
   });
 
   it("keeps an explicit model over General's default", async () => {
-    const { code } = await run({ model: "openai/gpt-5.6-luna" });
+    const { code } = await run({ model: "openai/gpt-5.6-luna", mode: "general" });
 
     expect(code).toBe(0);
     expect(createProviderSpy).toHaveBeenCalledWith("openai", expect.objectContaining({ modelOverride: "gpt-5.6-luna" }));
   });
 
-  it("gates tools to the explicit --mode's groups instead of General's default", async () => {
+  it("gates tools to the explicit --mode's groups instead of Code's default", async () => {
     writeSettings({ provider: "deepseek" });
     getByModeSpy.mockClear();
 
-    const { code } = await run({ mode: "code" });
+    const { code } = await run({ mode: "ask" });
 
     expect(code).toBe(0);
-    expect(getByModeSpy).toHaveBeenCalledWith(["read", "edit", "command", "mcp", "workflow"]);
-    expect(createProviderSpy).toHaveBeenCalledWith("deepseek", expect.objectContaining({ modelOverride: undefined }));
+    expect(getByModeSpy).toHaveBeenCalledWith(["read"]);
   });
 });
 

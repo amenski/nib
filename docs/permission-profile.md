@@ -132,7 +132,14 @@ is in both lists the more specific entry wins, ties go to deny.
   edit overlay-auto-allowed; unrestricted → any path). An edit inside the
   write-set auto-allows without a prompt, resolved as `"posture"` so the
   agent records `allow-by-posture` (the established "allowed without showing
-  a prompt" row).
+  a prompt" row). A credential or protected path is never in the write-set for
+  this purpose: `editTargetInWriteSet` returns false when `isSensitiveEditPath`
+  (`src/permissions/risk/features.ts`: `SECRET_TOKEN_RE` plus
+  `PROTECTED_PATH_RULES`) matches the canonical cwd-relative path, so `.env`,
+  `.husky/*`, `.vscode/*`, `.github/workflows/*`, shell rc files, `id_rsa`,
+  `*.pem` and `credentials*` get the normal prompt in every posture (and
+  `src/credentials.ts` too, an accepted tradeoff). It is not a deny, and
+  `.git/` and `.nib/settings.json` stay always denied.
 
 **Level presets** set the implicit default the explicit rules carve into:
 
@@ -159,9 +166,11 @@ profile file itself are always denied, as in Codex.
 2. rules.resolve(call)       → deny ⇒ DONE   (deny-by-rule / guarded)
                                ask  ⇒ continue to posture overlay
                                allow ⇒ DONE (allow-by-rule)
-3. posture overlay           → upgrades rule-ask to allow-by-posture or
-                               stays ask → user prompt (ask-approved /
-                               ask-denied / unresolved-ask)
+3. posture overlay           → upgrades a write-set edit ask to
+                               allow-by-posture, or (auto posture) decides
+                               it: allow-by-classifier / deny-by-classifier;
+                               otherwise stays ask → user prompt
+                               (ask-approved / ask-denied / unresolved-ask)
 4. headless                  → any surviving ask ⇒ deny (existing rule)
 ```
 
@@ -170,7 +179,8 @@ profile file itself are always denied, as in Codex.
   nothing a profile allows bypasses layer 2.
 - Layer 2 `deny` (rule or guarded tier) is untouched by posture — existing
   invariant, unchanged.
-- Layer 3 upgrades only `ask` → `allow`; it can never see a profile deny.
+- Layer 3 upgrades only `ask` → `allow` (or, under auto, denies a judged
+  call); it can never see a profile deny.
 - Therefore every deny produced anywhere is final. ∎
 
 **Why not rules-first (the alternative for L):** rules-first would let a
@@ -192,7 +202,11 @@ rules. But two concrete consolidations happen as the profile lands:
    The workspace-write default *is* that check, generalized: profile fs
    rules subsume the realpath-escape logic, and the overlay's "edits
    inside cwd" condition reads the profile's effective write-set instead
-   of re-implementing containment.
+   of re-implementing containment, minus credential and protected paths
+   (`isSensitiveEditPath`, checked in `editTargetInWriteSet` on the canonical
+   path), which always prompt. Under auto the overlay is also skipped for any
+   call auto handed to the user (a hard stop, an `ask` rule of the user's, or
+   a paused session): permission-spec.md §9.
 2. **Edit-tool path rules in the rule engine get flagged for dedup.** If a
    session rule matches only on edit paths, it may be expressible as an fs
    rule; measure after phase (c), don't pre-migrate.
@@ -203,12 +217,14 @@ secret-adjacent reads, session rules, audit) stays.
 ## 6. Interactions with existing surfaces
 
 - **Approval posture × profile.** Posture stays a *prompt-frequency* knob
-  (manual / autoApprove / plan) layered above both. `autoApprove` never
-  touches a profile deny (layers 1–2 precede it). `plan` aligns naturally
-  with `strict-sandbox` but does not set it — switching levels is explicit
-  config, not a posture side effect. If the OS sandbox is disabled or
-  unavailable, `autoApprove` does not bypass ordinary asks: policy still
-  evaluates, but consent is not containment.
+  (normal / auto / plan) layered above both. `auto` never touches a profile
+  deny (layers 1–2 precede it) and a rules `block` is denied before its judge.
+  `plan` aligns naturally with `strict-sandbox` but does not set it — switching
+  levels is explicit config, not a posture side effect. `auto` does not need the
+  OS sandbox (its judge is told when there is none, and a call outside the
+  sandbox always prompts): policy still evaluates, but consent is not
+  containment. (The former `autoApprove` posture, which was refused without
+  containment, was removed 2026-10-17.)
 - **Guarded tiers.** Survive untouched and apply *after* the profile:
   `curl` egress remains always-prompt even under `unrestricted`, because
   bash's network reach is not profile-expressible (see §7).
@@ -343,8 +359,8 @@ a trustworthy hostname-level authority.
   denied), and the user's explicit one-time approval of that exact command
   is the grant. `gateCall` (src/agent.ts) sets
   `ToolExecOptions.approvedGitConfigWrite` only on the plain-`true` return
-  from `askUser`: auto-approve posture returns `"posture"` and a persisted
-  rule resolves to `action: "allow"`, so neither can produce a grant.
+  from `askUser`: the UI's write-set `"posture"` answer, auto mode's own allow
+  and a persisted rule (`action: "allow"`) cannot produce a grant.
   `App.tsx` marks these calls `oneTimeOnly`, so no session/always answer is
   offered and none can be persisted. The grant lives in a per-call
   `ToolExecOptions`, never in the per-run `ToolContext` singleton, so it

@@ -52,6 +52,15 @@ export function formatResultMessage(taskId: string, summary: string): string {
   return `Sub-agent result (task ${taskId}): ${summary}`;
 }
 
+/**
+ * Whether `text` is a message {@link formatResultMessage} produced. The wake
+ * path delivers it as a user-role message, but no human typed it, so auto
+ * mode must not count it as the user's words.
+ */
+export function isSubagentResultMessage(text: string): boolean {
+  return /^Sub-agent result \(task [^)\s]+\): /.test(text);
+}
+
 export class TaskRegistry {
   private tasks = new Map<string, TaskRecord>();
   private nextId = 1;

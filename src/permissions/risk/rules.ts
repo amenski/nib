@@ -1,4 +1,4 @@
-import { isFileWriteRedirect, type RiskFeatures, type RiskInput, type SegmentFeatures } from "./features.js";
+import { isDiscardRedirect, isFileWriteRedirect, type RiskFeatures, type RiskInput, type SegmentFeatures } from "./features.js";
 
 /**
  * The rule-based half of the risk classifier (docs/command-risk-classifier.md
@@ -342,20 +342,35 @@ export function evaluateRiskRules(f: RiskFeatures, input: RiskInput): RuleEvalua
 }
 
 /**
- * §5.4 `safe`: proven read-only, no redirect, and every path it names inside
- * the workspace. Read-only is the engine's own proof
+ * §5.4 `safe`: proven read-only, no redirect that writes, and every path it
+ * names inside the workspace. Read-only is the engine's own proof
  * (`classifyCommandSegment`), not a second list — a command the engine cannot
- * prove read-only is never called safe here.
+ * prove read-only is never called safe here. Three things do not count against
+ * it: a redirect that only discards output (`2>/dev/null`, features.ts
+ * isDiscardRedirect), a `cd` into the workspace (`neutral`), and the paths that
+ * `cd` moves later segments to, which are checked rather than assumed
+ * (`readsOutside`).
  */
 export function isSafe(f: RiskFeatures): boolean {
   if (f.kind === "shell") {
     if (f.parse !== "parsed") return false;
     if (f.segments.length === 0) return false;
-    if (f.redirects.some((r) => r.target !== "" || r.heredoc)) return false;
-    if (f.segments.some((s) => !s.readOnly)) return false;
+    if (f.redirects.some((r) => r.heredoc || (r.target !== "" && !isDiscardRedirect(r)))) return false;
+    if (f.segments.some((s) => !s.readOnly && !s.neutral)) return false;
+    if (f.segments.some((s) => s.readsOutside)) return false;
     return f.segments.every((s) => s.targets.every((t) => INSIDE_CLASSES.has(t.class)));
   }
-  if (f.kind === "path-read") return f.path !== undefined && f.path.class === "cwd";
+  if (f.kind === "path-read") {
+    // Inside the working directory (a build dir is, by construction, under it;
+    // `write-root` may not be), and never a credential or protected path.
+    const p = f.path;
+    return (
+      p !== undefined &&
+      (p.class === "inside-cwd" || p.class === "build-dir") &&
+      !p.secretRef &&
+      p.protectedPath === undefined
+    );
+  }
   return false;
 }
 

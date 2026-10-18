@@ -13,7 +13,7 @@ checkpoints, resumable sessions, skills, and MCP — one process on your machine
 no hosted service, no telemetry.
 
 <p align="center">
-  <img src="assets/prompt-screen.png" alt="Nib in Code mode with auto-approve on, running DeepSeek V4 Flash" width="900">
+  <img src="assets/prompt-screen.png" alt="Nib in Code mode, running DeepSeek V4 Flash" width="900">
 </p>
 
 ## Why Nib
@@ -94,14 +94,15 @@ nib -p "..."                     # one-shot, no TUI (for scripts)
 ## How Nib works
 
 ```
-nib [general] > explain this codebase            read-only by default
-nib [general] > /mode code                       enable implementation tools
-nib [code]    > Shift+Tab                        cycle normal / auto-approve / plan
+nib [code]    > fix the failing test             implementation tools by default
+nib [code]    > Shift+Tab                        cycle normal / auto / plan
+nib [code]    > /mode general                    switch to read-only chat
 ```
 
-New sessions start in `General`, a fast, read-only mode. Switch to `Code` when
-you want Nib to edit files, run commands, or delegate work. Independently,
-`Shift+Tab` cycles the permission posture through `normal → auto-approve →
+New sessions start in `Code`, which can edit files, run commands, and delegate
+work. Switch to `General`, a fast, read-only chat mode, with `/mode general` or
+`--mode general`. Independently,
+`Shift+Tab` cycles the permission posture through `normal → auto →
 plan`. The active mode controls which tools exist; the posture controls how
 Nib may use them.
 
@@ -114,8 +115,8 @@ behave differently.
 
 | Persona | Capabilities | Best used for |
 |---|---|---|
-| **General** *(default)* | Read-only; DeepSeek V4 Flash at low effort | Questions, exploration, and everyday conversation |
-| **Code** | Read, edit, shell commands, background jobs, and sub-agent delegation | Building, fixing, refactoring, and verification |
+| **General** | Read-only; DeepSeek V4 Flash at low effort | Questions, exploration, and everyday conversation |
+| **Code** *(default)* | Read, edit, shell commands, background jobs, and sub-agent delegation; DeepSeek V4 Flash at low effort | Building, fixing, refactoring, and verification |
 
 Nib deliberately keeps the current built-in surface to General and Code. Code
 handles planning, architecture, debugging, implementation, and delegation
@@ -183,7 +184,7 @@ project wins when both exist):
 }
 ```
 
-With the default DeepSeek setup, General uses DeepSeek Flash with low
+With the default DeepSeek setup, `--mode general` uses DeepSeek Flash with low
 reasoning effort to keep everyday chat fast and inexpensive. An explicit
 provider or model selection in settings, flags, or slash commands takes
 precedence; use `model` and `provider` here, `--model`, or `/model` to choose.
@@ -211,6 +212,19 @@ Full schema: [`docs/config-spec.md`](./docs/config-spec.md).
   not). Because of that boundary, ordinary sandboxed Bash runs without a
   prompt (`sandbox.autoAllowBash`); background jobs and guarded commands still
   ask.
+- **Auto mode.** Press `Shift+Tab` to `auto`, or start there with
+  `"classifier": { "defaultPosture": "auto" }` in `~/.nib/settings.json`
+  (global-only). Read-only calls and ordinary edits inside the workspace run silently,
+  and a model judge allows or blocks everything else instead of prompting. It
+  works with the sandbox off, which is the case it is for. It still asks you
+  about credential files (including `cat .env` and edits of `.env` or `.husky/*`),
+  git config changes, anything that would run outside the sandbox and any call
+  matched by an `ask` rule you wrote, and falls back to a prompt when the judge
+  cannot decide or has blocked 3 calls in a row (20 in total). The judge is
+  `classifier.model.id` if set, otherwise your current model. It reads your
+  messages and the agent's tool calls, never tool output. Not available with
+  `nib -p`. See [`docs/auto-mode.md`](./docs/auto-mode.md) for the full guide
+  and [`docs/permission-spec.md`](./docs/permission-spec.md) §9 for the spec.
 - **Recoverable edits.** Interactive edits are checkpointed in a shadow Git
   repo; `/undo` can rewind code, conversation, or both.
 - **Durable sessions.** Conversations are append-only JSONL with automatic
@@ -270,7 +284,7 @@ Nib features DeepSeek, OpenAI, OpenRouter, Groq, and local Ollama, and its
 bundled Models.dev catalog adds ~190 other OpenAI-compatible providers (run
 `nib auth` to connect one). The catalog supplies the selectable models for each provider;
 switch with `/model` or `--model <provider/model>`. DeepSeek V4 Pro is the
-primary tested model, while the default `general` mode uses DeepSeek V4 Flash
+primary tested model, while the opt-in `general` mode uses DeepSeek V4 Flash
 at low reasoning effort.
 
 ---
@@ -328,7 +342,7 @@ configure or invoke, such as web search, MCP servers, hooks, or notifications.
 
 Nib executes model-chosen commands on your machine. The permission system
 is the safety net — read [`docs/security-spec.md`](./docs/security-spec.md)
-before enabling auto-approve on code you didn't write.
+before enabling auto mode on code you didn't write.
 
 ### How do I configure MCP?
 

@@ -47,9 +47,8 @@ import { enterFakeHome } from "./test-fake-home.js";
 // and what `unrestricted` yields anywhere — the identical probe reads the
 // canary and writes the hook. Containment is absent there, which is exactly
 // why `hasActiveSandboxContainment` (src/config/loader.test.ts) exists to
-// refuse auto-approval in that configuration; the refusal itself is asserted
-// in src/ui/App.streaming.test.tsx. Nothing here claims containment the
-// platform is not providing.
+// report whether a configuration is contained. Nothing here claims containment
+// the platform is not providing.
 //
 // The fixtures are disposable, synthetic, and never touch a real credential,
 // shell startup file, or another project's checkout.

@@ -18,8 +18,8 @@ import { createSessionTempDir } from "./sandbox/session-temp.js";
 import { buildSandboxProfile, configureSandbox, isSandboxedLevel, profileWriteSet, sandboxEnvelopeHash } from "./sandbox/seatbelt.js";
 import { configureUnsandboxed } from "./sandbox/unsandboxed.js";
 import type { BashEnvelope } from "./permissions/session-grant.js";
-import type { RiskMode, Stage2Options } from "./permissions/risk/index.js";
-import { createRiskJudge } from "./providers/risk-judge.js";
+import { AutoModeState, type AutoModeOptions, type RiskMode, type Stage2Options } from "./permissions/risk/index.js";
+import { createAutoJudge, createRiskJudge } from "./providers/risk-judge.js";
 import { filterToolDefs } from "./tools/filter.js";
 import { jobManager } from "./tools/jobs.js";
 import { todoStore } from "./tools/todo.js";
@@ -33,6 +33,7 @@ import { startStallWatchdog } from "./diagnostics/stall-watchdog.js";
 import { ErrorReflector } from "./selfreflection/index.js";
 import { ErrorRecovery } from "./errorrecovery/index.js";
 import { Orchestrator, type SubagentProgress } from "./orchestrator/index.js";
+import { isSubagentResultMessage } from "./orchestrator/runner.js";
 import { authWizard, authList, authLogout, authSaveKey } from "./auth/wizard.js";
 import { runModels } from "./providers/models-command.js";
 import { runMcp } from "./mcp/mcp-command.js";
@@ -67,12 +68,12 @@ import { expandFileMentions } from "./ui/core/file-mentions.js";
 import { BUILTIN_SLASH_COMMANDS } from "./ui/core/slash-commands.js";
 import { probeSyncOutput } from "./terminal-probe.js";
 import { resolveKeybindings, parseKeyCombo, type KeybindingMap, type KeybindingConfig as KeybindingSystemConfig } from "./ui/keybindings.js";
-import type { WorkflowIntegrationConfig, ModelEntry } from "./ui/types.js";
+import type { WorkflowIntegrationConfig, ModelEntry, Posture } from "./ui/types.js";
 import { StatusLineManager } from "./ui/statusline/index.js";
 import { isSkillAlreadyLoaded, buildSkillLoadMessage } from "./ui/core/skill-load.js";
 import { toModelId } from "./ui/core/model-picker.js";
 import { loadFavoriteModels, loadRecentModels, persistRecentModel, persistToggleFavorite } from "./ui/components/ModelsDropdown/settings.js";
-import { GENERAL_MODEL_ID, GENERAL_REASONING_EFFORT, parseModelId, resolveRestoredSelection } from "./modes/model-policy.js";
+import { GENERAL_MODEL_ID, GENERAL_REASONING_EFFORT, parseModelId, resolveRestoredSelection, resolveSubagentEffort } from "./modes/model-policy.js";
 
 // Opt-in stall watchdog (NIB_PROFILE=1|true): started before the Ink
 // render() call, stopped + reported inside logSessionEnd. Module-level so
@@ -87,10 +88,63 @@ let stallWatchdog: ReturnType<typeof startStallWatchdog> | null = null;
  * --model or settings do. A resumed session's selection counts as explicit
  * (see resolveRestoredSelection), so it is never re-seeded.
  */
+/** Where an `@file` expansion ends and the user's own text begins (see runAgentTurnBridge). */
+const FILE_BLOCK_START = '<file path="';
+const FILE_BLOCK_END = "\n</file>\n\n";
+
+/**
+ * Injected user-role messages that are not the user's words: compaction
+ * summaries (model-written, and they summarise tool results too), in the live
+ * and the persisted-overlay forms, and error-reflection nudges (they quote tool
+ * errors). Force-loaded skills are user-invoked and stay.
+ */
+const NOT_USER_WORDS = [/^\[Previous conversation summary\]/, /^\[Earlier in this conversation\]/, /^Your \S+ call failed:/];
+
+/**
+ * The user's own words from a resumed transcript, oldest first, newest `max`:
+ * what the auto judge treats as the user's authority after /resume. Only
+ * user-role text counts. Tool results and assistant text are other roles, a
+ * volatile block is request-only scaffolding, and a finished sub-agent's result
+ * arrives as a user-role message but was written by the agent.
+ *
+ * A stored user message is the *processed* prompt: `@file` contents are
+ * prepended as `<file path="…">…</file>` blocks, then the typed text. File
+ * content is not the user's words, and it may itself contain "</file>", so the
+ * typed text is whatever follows the LAST block terminator (file content always
+ * precedes it). If a message opens with a file block but no terminator is
+ * found, it is skipped rather than kept.
+ */
+export function humanTurnsFromHistory(messages: readonly Message[], max = 10): string[] {
+  const turns: string[] = [];
+  for (const m of messages) {
+    if (m.role !== "user" || m.volatile === true) continue;
+    let text = m.content;
+    if (text.startsWith(FILE_BLOCK_START)) {
+      const end = text.lastIndexOf(FILE_BLOCK_END);
+      if (end === -1) continue;
+      text = text.slice(end + FILE_BLOCK_END.length);
+    }
+    if (text.trim() === "" || isSubagentResultMessage(text)) continue;
+    if (NOT_USER_WORDS.some((pattern) => pattern.test(text.trimStart()))) continue;
+    turns.push(text);
+  }
+  return turns.slice(-max);
+}
+
+/**
+ * Seed a mode's declared model/effort. A mode's `model:` applies for any mode
+ * (General also falls back to GENERAL_MODEL_ID); an explicit model choice
+ * (--model, settings.json, /model, a resumed session) or an explicit provider
+ * that differs from the mode's always wins. Effort: General always sets it
+ * (or clears it when the model has no effort control); any other mode only
+ * sets it when it declares `reasoningEffort`, and otherwise leaves it alone.
+ */
 export function applyModeDefaults(shared: any, mode: ModeConfig | undefined): void {
-  if (!mode || mode.slug !== "general") return;
-  if (!shared.modelExplicit) {
-    const configuredModeModel = parseModelId(mode.model || GENERAL_MODEL_ID, shared.providerName);
+  if (!mode) return;
+  const isGeneral = mode.slug === "general";
+  const modeModelId = mode.model || (isGeneral ? GENERAL_MODEL_ID : undefined);
+  if (modeModelId && !shared.modelExplicit) {
+    const configuredModeModel = parseModelId(modeModelId, shared.providerName);
     const modeModel = configuredModeModel &&
       (!shared.providerExplicit || shared.providerName === configuredModeModel.provider)
       ? configuredModeModel
@@ -100,10 +154,14 @@ export function applyModeDefaults(shared: any, mode: ModeConfig | undefined): vo
       shared.activeModel = modeModel.model;
     }
   }
-  if (!shared.effortExplicit) {
+  if (!shared.effortExplicit && (isGeneral || mode.reasoningEffort)) {
     const preset = getPreset(shared.providerName);
     const caps = preset?.models[shared.activeModel ?? preset.defaultModel];
-    shared.activeEffort = caps?.effort ? (mode.reasoningEffort || GENERAL_REASONING_EFFORT) : undefined;
+    if (isGeneral) {
+      shared.activeEffort = caps?.effort ? (mode.reasoningEffort || GENERAL_REASONING_EFFORT) : undefined;
+    } else if (caps?.effort) {
+      shared.activeEffort = mode.reasoningEffort;
+    }
   }
 }
 
@@ -436,8 +494,60 @@ async function main() {
   const commandLoader = new CommandLoader();
   const commands: CommandDef[] = await commandLoader.load(process.cwd());
 
+  // Auto posture (docs/command-risk-classifier.md §1.4): one block counter for
+  // the process, shared by the root agent and every sub-agent so a streak of
+  // blocks anywhere suspends auto everywhere. The judge is resolved per request,
+  // so a /model switch applies to the next judgement; `classifier.model.id`
+  // pins it to one model instead. `shared` is declared further down and only
+  // read when a call is gated, long after it exists.
+  const autoState = new AutoModeState();
+  const MAX_HUMAN_TURNS = 10;
+  const humanTurns: string[] = [];
+  const judgeModelId = configResult.config.classifier?.model?.id;
+  const autoMode: AutoModeOptions = {
+    isActive: () => shared.posture === "auto",
+    judge: createAutoJudge(() => {
+      if (judgeModelId === undefined) return { provider: getProvider(), caps: getActiveModelCaps() };
+      const slash = judgeModelId.indexOf("/");
+      return {
+        provider: getProvider(judgeModelId),
+        caps: getPreset(judgeModelId.slice(0, slash))?.models[judgeModelId.slice(slash + 1)],
+      };
+    }),
+    judgeLabel: () =>
+      judgeModelId ?? `${shared.providerName}/${shared.activeModel ?? getPreset(shared.providerName)?.defaultModel ?? "unknown"}`,
+    state: autoState,
+    humanTurns: () => humanTurns,
+    recordHumanTurn: (text: string) => {
+      // A finished sub-agent's result is delivered as a user-role message but is
+      // agent-written; counting it would hand the judge's only authority source
+      // to the agent.
+      if (isSubagentResultMessage(text)) return;
+      humanTurns.push(text);
+      if (humanTurns.length > MAX_HUMAN_TURNS) humanTurns.splice(0, humanTurns.length - MAX_HUMAN_TURNS);
+    },
+  };
+  // A new conversation starts with a clean block count and no memory of earlier
+  // user messages. A resumed one also starts clean, then re-learns the user's
+  // words from its transcript so the judge is not left without them.
+  const resetAutoSession = (resumed?: readonly Message[]) => {
+    autoState.reset();
+    humanTurns.length = 0;
+    if (resumed !== undefined) humanTurns.push(...humanTurnsFromHistory(resumed, MAX_HUMAN_TURNS));
+  };
+
   const orchestrator = new Orchestrator({
     provider: getProvider,
+    // Read `shared` at spawn time so /model and /effort apply to later sub-runs.
+    resolveEffort: ({ modelId, mode }) => {
+      const parsed = parseModelId(modelId, shared.providerName);
+      const caps = parsed ? getPreset(parsed.provider)?.models[parsed.model] : getActiveModelCaps();
+      return resolveSubagentEffort(caps, {
+        explicitEffort: shared.effortExplicit ? shared.activeEffort : undefined,
+        mode,
+      });
+    },
+    thinkingEnabled,
     registry,
     modeLoader,
     agents: agentLoader,
@@ -455,6 +565,7 @@ async function main() {
     },
     hooks,
     classifierMode: configResult.config.classifier?.mode,
+    autoMode,
   });
   orchestrator.register(registry);
 
@@ -485,15 +596,22 @@ async function main() {
   let sessionMessages: Message[] = [];
   let sessionLoaded = false;
 
+  // Record the provider/model the session actually starts on, so a resume
+  // restores it: run the startup mode's defaults over a scratch selection.
+  const startupSeed = {
+    providerName,
+    activeModel: initialModel as string | undefined,
+    modelExplicit: rawInitialModel !== undefined,
+    effortExplicit: true,
+    providerExplicit: configResult.config.provider !== undefined || detected !== undefined,
+  };
+  applyModeDefaults(startupSeed, await modeLoader.load(parsed.mode || "code") ?? undefined);
+
   const sessionCreateBase = {
     cwd: process.cwd(),
-    provider: providerName,
-    model: initialModel || ((parsed.mode === "general" || !parsed.mode) &&
-      (!configResult.config.provider || configResult.config.provider === "deepseek") &&
-      (!detected || detected === "deepseek")
-      ? parseModelId(GENERAL_MODEL_ID, providerName)!.model
-      : getPreset(providerName)?.defaultModel || "deepseek-v4-pro"),
-    mode: parsed.mode || "general",
+    provider: startupSeed.providerName,
+    model: startupSeed.activeModel || getPreset(startupSeed.providerName)?.defaultModel || "deepseek-v4-pro",
+    mode: parsed.mode || "code",
     modelExplicit: rawInitialModel !== undefined,
     effortExplicit: reasoningEffort !== undefined,
     ...(reasoningEffort !== undefined ? { effort: reasoningEffort } : {}),
@@ -504,7 +622,7 @@ async function main() {
   // Adopt it unless the user overrode the choice explicitly on this launch
   // (CLI flag / settings.json), which must still win. Mode follows the same
   // rule (resumedMode below): a resumed session's last mode wins over the
-  // general default, but an explicit --mode on this launch still wins over both.
+  // code default, but an explicit --mode on this launch still wins over both.
   let resumedProvider: string | undefined;
   let resumedModel: string | undefined;
   let resumedMode: string | undefined;
@@ -740,7 +858,7 @@ async function main() {
     abort: new AbortController(),
     toolUsage: {} as Record<string, number>,
     modelUsage: {} as Record<string, { input: number; output: number; cached: number }>,
-    posture: "normal" as "normal" | "autoApprove" | "plan",
+    posture: (configResult.config.classifier?.defaultPosture === "auto" ? "auto" : "normal") as Posture,
     // An explicit choice this launch (--model / settings.json) outranks the
     // resumed session's last-used provider/model; otherwise resume restores it.
     providerName: (configResult.config.provider || rawInitialModel ? providerName : resumedProvider) ?? providerName,
@@ -781,10 +899,10 @@ async function main() {
 
   // Startup mode resolution: an explicit --mode on this launch wins (handled
   // below, after this block, same as today); otherwise a resumed session's
-  // last mode wins; otherwise general — the same "everything but write access"
-  // persona sessionCreateBase.mode already defaults new sessions to.
+  // last mode wins; otherwise code — the persona
+  // sessionCreateBase.mode defaults new sessions to.
   if (!parsed.mode) {
-    shared.activeMode = (await modeLoader.load(resumedMode || "general")) ?? (await modeLoader.load("general")) ?? undefined;
+    shared.activeMode = (await modeLoader.load(resumedMode || "code")) ?? (await modeLoader.load("code")) ?? undefined;
   }
 
   applyModeDefaults(shared, shared.activeMode);
@@ -840,7 +958,7 @@ async function main() {
   // Shown inside the app's scrollback after mount — printing to stdout here
   // would get garbled by Ink's first render.
   const resumeNotice = sessionLoaded
-    ? `Resumed ${sessionId} · ${sessionMessages.length} messages · mode: ${shared.activeMode?.slug || "general"}`
+    ? `Resumed ${sessionId} · ${sessionMessages.length} messages · mode: ${shared.activeMode?.slug || "code"}`
     : undefined;
   const initialNotice = [...skillLoader.notices, containmentWarning(configResult.config), resumeNotice].filter(Boolean).join("\n") || undefined;
 
@@ -857,7 +975,7 @@ async function main() {
     // Leading identity: the active mode (green dot) and the permission posture
     // (warning/info dot) are independent switches — a persona and a permission
     // scope answer different questions, so showing one must not hide the other.
-    // (Before, posture replaced mode, so switching to plan/auto-approve made a
+    // (Before, posture replaced mode, so switching to plan/auto made a
     // set /mode look like it had been dropped.) "normal" is the fallback
     // identity only when neither is set.
     // A coloured dot carries the state and the word stays neutral, so the row
@@ -867,14 +985,12 @@ async function main() {
     if (shared.activeMode?.name) {
       segments.push(T(nextId(), `${statusDot(resolvedTheme.theme.success)}${shared.activeMode.name}`, { raw: true }));
     }
-    if (shared.posture === "autoApprove") {
-      // Spelled out, not abbreviated. This is the highest-consequence state the
-      // bar reports — tools run without asking — so it must be readable at a
-      // glance by someone who has never read the docs. The old short form
-      // ("aa") was the least legible label on the row while naming the most
-      // dangerous state, and the hint bar does NOT spell it out as once
-      // assumed: it shows the *action* (⇧ Tab → normal), not the current state.
-      segments.push(T(nextId(), `${statusDot(resolvedTheme.theme.warning)}auto-approve`, { raw: true }));
+    if (shared.posture === "auto") {
+      // Spelled out, not abbreviated: a model now decides what runs without
+      // asking, which is the highest-consequence state the bar reports. "paused"
+      // says the judge has been blocking so much that every ask is back to a
+      // human until the next approval.
+      segments.push(T(nextId(), `${statusDot(resolvedTheme.theme.warning)}${autoState.suspended ? "auto · paused" : "auto"}`, { raw: true }));
     } else if (shared.posture === "plan") {
       segments.push(T(nextId(), `${statusDot(resolvedTheme.theme.info)}plan`, { raw: true }));
     } else if (!shared.activeMode?.name) {
@@ -891,7 +1007,7 @@ async function main() {
     // bare "high" in the bar did not say what was high. Plain dim text rather
     // than a filled chip: this is a preference you set and forget, and as an
     // orange slab it was the loudest thing on a row where it is the least
-    // urgent. The orange is now spent on auto-approve and a full context.
+    // urgent. The orange is now spent on auto and a full context.
     // Shown only when the model declares effort levels.
     if (thinkingEnabled && getActiveModelCaps()?.effort) {
       segments.push(dim(nextId(), `thinking ${shared.activeEffort ?? "on"}`));
@@ -1037,7 +1153,6 @@ async function main() {
 
     const appCtx = {
       mutable: shared,
-      autoApproveAllowed: hasActiveSandboxContainment(configResult.config),
       getProvider,
       sessionId,
       permissions,
@@ -1059,6 +1174,8 @@ async function main() {
       get activeMode() { return shared.activeMode; },
       get activeEffort() { return shared.activeEffort; },
       effortValues: () => getActiveModelCaps()?.effort?.values ?? [],
+      onPostureChange: (posture: Posture) => { if (posture === "auto") autoState.reset(); },
+      onConversationReset: () => resetAutoSession(),
       provideAbortController: () => shared.abort,
       renewAbortController: () => { shared.abort = new AbortController(); },
       completer: (line: string) => completer(line, knownModeSlugs, commands.map((c) => c.name)),
@@ -1112,7 +1229,7 @@ async function main() {
           if (event.kind !== "text") cb.onSubagentProgress?.(event);
           appSubagentSink?.(event);
         });
-        return runAgentTurnBridge(input, cb, shared, permissions, permissionProfile, getProvider, getCompactor(), diagnostics, skills, agents, memoryInjection, memoryStore, sessionStore, sessionId, modeLoader, skillLoader, imageUrls, planMode, checkpoints, configResult.config.notify, configResult.config.env, notifySpawnOptions, errorReflector, errorRecovery, repomapInjection, dirtyBaseline, thinkingEnabled, getActiveModelCaps()?.contextWindow, hooks, currentBashEnvelope, { mode: configResult.config.classifier?.mode ?? "shadow", ...(classifierModel !== undefined ? { model: classifierModel } : {}) });
+        return runAgentTurnBridge(input, cb, shared, permissions, permissionProfile, getProvider, getCompactor(), diagnostics, skills, agents, memoryInjection, memoryStore, sessionStore, sessionId, modeLoader, skillLoader, imageUrls, planMode, checkpoints, configResult.config.notify, configResult.config.env, notifySpawnOptions, errorReflector, errorRecovery, repomapInjection, dirtyBaseline, thinkingEnabled, getActiveModelCaps()?.contextWindow, hooks, currentBashEnvelope, { mode: configResult.config.classifier?.mode ?? "shadow", ...(classifierModel !== undefined ? { model: classifierModel } : {}), autoMode });
       },
       // Async sub-agent delivery (async-subagents.md §2): the App registers its
       // session-scoped wake handler here; the orchestrator calls it once per
@@ -1131,6 +1248,7 @@ async function main() {
         try {
           const loaded = await sessionStore.loadEffective(id);
           shared.conversationHistory = loaded.messages;
+          resetAutoSession(loaded.messages);
           sessionId = id;
           setSessionId(id);
           return loaded.messages;
@@ -1822,7 +1940,7 @@ export async function handleSlashCore(
     case "/mode": {
       const slug = input.slice(6).trim();
       if (!slug) {
-        console.log(`Current: ${shared.activeMode?.slug ?? "general"}`);
+        console.log(`Current: ${shared.activeMode?.slug ?? "code"}`);
         for (const m of await modeLoader.listAll()) console.log(`  ${m.slug} — ${m.description || m.roleDefinition.slice(0, 60)}`);
         return;
       }
@@ -1901,6 +2019,8 @@ export async function handleSlashCore(
 interface ClassifierWiring {
   mode: RiskMode;
   model?: Stage2Options;
+  /** The auto posture's judge and counters; the agent gates on `isActive()`. */
+  autoMode?: AutoModeOptions;
 }
 
 async function runAgentTurnBridge(input: string, cb: any, shared: any, permissions: PermissionEngine, permissionProfile: ProfileEvaluator | undefined, getProvider: any, compactor: Compactor, diagnostics: DiagnosticRunner, skills: SkillDef[], agents: AgentDef[], memoryInjection: string | null | undefined, memoryStore: MemoryStore, sessionStore: SessionStore, sessionId: string, modeLoader: ModeLoader, skillLoader: SkillLoader, imageUrls?: string[], planMode?: boolean, checkpoints?: CheckpointManager, notifyScript?: string, notifyEnv?: Record<string, string | undefined>, notifySpawnOptions?: NotifySpawnOptions, errorReflector?: ErrorReflector, errorRecovery?: ErrorRecovery, repomapInjection?: string, dirtyBaseline?: string, thinkingEnabled?: boolean, contextWindow?: number, hooks?: HookRunner, bashEnvelope?: () => BashEnvelope | undefined, classifier?: ClassifierWiring): Promise<any> {
@@ -1909,6 +2029,9 @@ async function runAgentTurnBridge(input: string, cb: any, shared: any, permissio
     await checkpoints.save(`[convLen:${convLen}] ${input.slice(0, 80)}`);
   }
   shared.sessionUserInputs.push(input);
+  // The raw typed text, before @file expansion: the auto judge reads only what
+  // the user wrote, never what a mentioned file contains.
+  classifier?.autoMode?.recordHumanTurn?.(input);
   // `@file` mentions (Claude Code style): read the referenced files and attach
   // their contents to the model's view of the prompt. The transcript echo and
   // the persisted session keep the raw text — the user's own words — while the
@@ -1963,6 +2086,7 @@ async function runAgentTurnBridge(input: string, cb: any, shared: any, permissio
     tools, executeTool, permissions, permissionProfile,
     classifierMode: classifier?.mode,
     ...(classifier?.model !== undefined ? { classifierModel: classifier.model } : {}),
+    ...(classifier?.autoMode !== undefined ? { autoMode: classifier.autoMode } : {}),
     mode: shared.activeMode, compactor, diagnostics, skills, agents,
     errorReflector, errorRecovery,
     repomap: repomapInjection,
@@ -1996,7 +2120,15 @@ async function runAgentTurnBridge(input: string, cb: any, shared: any, permissio
     bashEnvelope,
     // Mid-turn steering mailbox (App's queue); the loop polls it before each
     // provider call and injects a queued message at the next decision point.
-    pollSteeringMessage: cb.pollSteeringMessage,
+    // A steered message is the user speaking mid-turn, so it counts as a human
+    // turn for the auto judge just like a typed prompt.
+    pollSteeringMessage: cb.pollSteeringMessage
+      ? () => {
+          const steered = cb.pollSteeringMessage();
+          if (steered) classifier?.autoMode?.recordHumanTurn?.(steered);
+          return steered;
+        }
+      : undefined,
     hooks,
     });
   } catch (err) {

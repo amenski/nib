@@ -10,3 +10,4 @@ customInstructions: >
   hypothesis, 3) Gather evidence (logs, stack traces, test output), 4) Isolate
   the root cause, 5) Apply a minimal fix, 6) Verify the fix works.
 hidden: true
+reasoningEffort: low

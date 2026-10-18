@@ -2,14 +2,14 @@ import type { Provider } from "../providers/types.js";
 import type { Message, ToolCall, ToolDef, ToolOutput } from "../types.js";
 import type { ToolHandler, ToolContext, ToolExecOptions } from "../tools/types.js";
 import { ToolRegistry } from "../tools/registry.js";
-import { runAgent, type AgentResult } from "../agent.js";
+import { runAgent, type AgentResult, type AutoHandoff } from "../agent.js";
 import { Compactor } from "../compaction/compactor.js";
-import { ModeLoader } from "../modes/loader.js";
+import { ModeLoader, type ModeConfig } from "../modes/loader.js";
 import { AgentLoader } from "../agents/index.js";
 import type { PermissionEngine, ProfileEvaluator } from "../permissions/index.js";
 import type { BashEnvelope } from "../permissions/session-grant.js";
 import type { HookRunner } from "../hooks/index.js";
-import { classifyRisk, type RiskMode } from "../permissions/risk/index.js";
+import { classifyRisk, type AutoModeOptions, type RiskMode } from "../permissions/risk/index.js";
 import { subagentAuditStore } from "../sessions/store.js";
 import { TodoStore } from "../tools/todo.js";
 import { TaskRegistry } from "./runner.js";
@@ -36,6 +36,15 @@ export interface OrchestratorOptions {
    * to that model instead; absent = the parent's current provider.
    */
   provider: (modelId?: string) => Provider;
+  /**
+   * Reasoning effort for a sub-run, resolved at spawn time from the sub-run's
+   * model (`modelId` = a defined agent's override, absent = the parent's
+   * current model) and mode. Absent = the provider's default effort. Nested
+   * sub-runs resolve through the same callback.
+   */
+  resolveEffort?: (sub: { modelId?: string; mode: ModeConfig }) => string | undefined;
+  /** Forwarded to every sub-run's provider stream, as the parent passes it. */
+  thinkingEnabled?: boolean;
   registry: ToolRegistry;
   modeLoader: ModeLoader;
   /**
@@ -59,7 +68,7 @@ export interface OrchestratorOptions {
    * PERMISSION_DENIED on every ask-tier action it attempts, since agent.ts's
    * headless branch (no askUser) denies rather than asks.
    */
-  askUser?: (toolName: string, args: Record<string, unknown>, envelope?: BashEnvelope, origin?: { subagent: string }) => Promise<boolean | "posture" | "envelope-grant">;
+  askUser?: (toolName: string, args: Record<string, unknown>, envelope?: BashEnvelope, origin?: { subagent: string }, policyRisk?: { tier: string; reasons: string[]; message?: string }, autoHandoff?: AutoHandoff) => Promise<boolean | "posture" | "envelope-grant">;
   /**
    * Surfaces a sub-agent's tool activity to the parent UI while it runs.
    * Without this the parent renders nothing between the `new_task` header and
@@ -92,6 +101,13 @@ export interface OrchestratorOptions {
    * and there is no audit row at this point to record the verdict on.
    */
   classifierMode?: RiskMode;
+  /**
+   * The auto posture (docs/command-risk-classifier.md §1.4). Sub-runs get it
+   * with the same shared state, the task description as `delegatedTask`, and no
+   * `recordHumanTurn`: only a human typing is a human turn. Re-pointable via
+   * setAutoMode, like setAskUser.
+   */
+  autoMode?: AutoModeOptions;
   /** Lifecycle hooks dispatcher (docs/hooks-spec.md) — SubagentStart/Stop
    *  fire around each sub-agent run. */
   hooks?: HookRunner;
@@ -111,6 +127,8 @@ export interface OrchestratorOptions {
 export class Orchestrator {
   private options: Required<Pick<OrchestratorOptions, "maxDepth" | "maxSubTurns">> & {
     provider: (modelId?: string) => Provider;
+    resolveEffort?: OrchestratorOptions["resolveEffort"];
+    thinkingEnabled?: boolean;
     registry: ToolRegistry;
     modeLoader: ModeLoader;
     agents?: AgentLoader;
@@ -121,7 +139,8 @@ export class Orchestrator {
     hooks?: HookRunner;
     classifierMode?: RiskMode;
   };
-  private askUser?: (toolName: string, args: Record<string, unknown>, envelope?: BashEnvelope, origin?: { subagent: string }) => Promise<boolean | "posture" | "envelope-grant">;
+  private askUser?: (toolName: string, args: Record<string, unknown>, envelope?: BashEnvelope, origin?: { subagent: string }, policyRisk?: { tier: string; reasons: string[]; message?: string }, autoHandoff?: AutoHandoff) => Promise<boolean | "posture" | "envelope-grant">;
+  private autoMode?: AutoModeOptions;
   private onSubagentProgress?: (event: SubagentProgress) => void;
   private onTaskResult?: (taskId: string, message: string) => void;
 
@@ -141,6 +160,7 @@ export class Orchestrator {
       ...options,
     };
     this.askUser = options.askUser;
+    this.autoMode = options.autoMode;
     this.onSubagentProgress = options.onSubagentProgress;
     this.onTaskResult = options.onTaskResult;
   }
@@ -151,8 +171,13 @@ export class Orchestrator {
    * must be told about the current turn's bridge rather than holding a stale
    * closure. Headless mode leaves this unset, which auto-denies.
    */
-  setAskUser(askUser: ((toolName: string, args: Record<string, unknown>, envelope?: BashEnvelope, origin?: { subagent: string }) => Promise<boolean | "posture" | "envelope-grant">) | undefined): void {
+  setAskUser(askUser: ((toolName: string, args: Record<string, unknown>, envelope?: BashEnvelope, origin?: { subagent: string }, policyRisk?: { tier: string; reasons: string[]; message?: string }, autoHandoff?: AutoHandoff) => Promise<boolean | "posture" | "envelope-grant">) | undefined): void {
     this.askUser = askUser;
+  }
+
+  /** Re-point the auto posture, for the same reason setAskUser exists. */
+  setAutoMode(autoMode: AutoModeOptions | undefined): void {
+    this.autoMode = autoMode;
   }
 
   /**
@@ -343,6 +368,7 @@ export class Orchestrator {
         };
       }
       const subCompactor = new Compactor(provider);
+      const subEffort = this.options.resolveEffort?.({ modelId, mode: subMode });
 
       // The sub-agent gets its own todo store: its update_todo_list calls must
       // not clobber the parent's checklist panel, and its own model context
@@ -416,6 +442,12 @@ export class Orchestrator {
               // concerned (§12.8, subagent laundering).
               classifierMode: this.options.classifierMode,
               askUser: this.askUser,
+              // Same state as the parent, so blocks count together. The judge
+              // sees the parent's task text labelled as agent-written, and a
+              // sub-run never records a human turn.
+              ...(this.autoMode !== undefined
+                ? { autoMode: { ...this.autoMode, delegatedTask: description, recordHumanTurn: undefined } }
+                : {}),
               // The prompt names the task, so a user can tell a background
               // sub-agent's ask from the main conversation's. First line only,
               // capped: a description is a paragraph and the header is one line.
@@ -425,6 +457,8 @@ export class Orchestrator {
               // envelope is never inherited.
               bashEnvelope: this.options.getBashEnvelope?.(),
               maxTurns: this.options.maxSubTurns,
+              effort: subEffort,
+              thinkingEnabled: this.options.thinkingEnabled,
               mode: subMode,
               // The defined agent's instructions prepend the sub-agent's system
               // prompt (prompt.ts prepends agentInstructions to the preamble).

@@ -103,7 +103,8 @@ export interface SegmentFeatures {
 export interface PathFeatures {
   raw: string;
   resolved: string;
-  class: "cwd" | "write-root" | "outside" | "home" | "system" | "unknown";
+  /** What `classifyTarget` returns, except that `critical` is reported as `system`. */
+  class: Exclude<RiskTargetClass, "critical">;
   /** Set only for the protected paths of §4.3, which no allow rule may cover. */
   protectedPath?: "git" | "nib" | "shell-rc" | "npmrc" | "husky" | "vscode" | "ci";
   secretRef: boolean;

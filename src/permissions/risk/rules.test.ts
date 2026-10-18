@@ -178,6 +178,22 @@ describe("§10.1 rows 49-55 (non-shell tools)", () => {
   }
 });
 
+describe("§5.4 path-read safe", () => {
+  const read = (path: string): RiskInput => ({ ...input(""), tool: "read_file", args: { path } });
+
+  it("treats a read inside the working directory as safe", () => {
+    for (const path of ["src/a.ts", "./README.md", "/work/project/src/a.ts", "node_modules/x/index.js"]) {
+      expect(classify(read(path)).tier, path).toBe("safe");
+    }
+  });
+
+  it("does not treat a secret, protected or outside path as safe", () => {
+    for (const path of [".env", "config/.env.local", ".git/config", ".husky/pre-commit", "../x", "/etc/hosts", "~/notes.txt"]) {
+      expect(classify(read(path)).tier, path).not.toBe("safe");
+    }
+  });
+});
+
 describe("§10.2 properties", () => {
   const blockRows = SHELL_ROWS.filter((r) => r.tier === "block");
 

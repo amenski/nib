@@ -360,7 +360,17 @@ export function isSafe(f: RiskFeatures): boolean {
     if (f.segments.some((s) => s.readsOutside)) return false;
     return f.segments.every((s) => s.targets.every((t) => INSIDE_CLASSES.has(t.class)));
   }
-  if (f.kind === "path-read") return f.path !== undefined && f.path.class === "cwd";
+  if (f.kind === "path-read") {
+    // Inside the working directory (a build dir is, by construction, under it;
+    // `write-root` may not be), and never a credential or protected path.
+    const p = f.path;
+    return (
+      p !== undefined &&
+      (p.class === "inside-cwd" || p.class === "build-dir") &&
+      !p.secretRef &&
+      p.protectedPath === undefined
+    );
+  }
   return false;
 }
 

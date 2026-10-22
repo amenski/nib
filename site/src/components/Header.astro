@@ -9,7 +9,7 @@ const { lang = 'en', langHrefs = homeHrefs() } = Astro.props;
 const t = strings[lang];
 ---
 <header>
-  <a class="brand" href={homePath(lang)} aria-label={t.homeLabel}>Nib</a>
+  <a class="brand" href={homePath(lang)} aria-label={t.homeLabel}>nib</a>
   <nav aria-label={t.navLabel}>
     <a href={homeAnchor(lang, 'cost')}>{t.nav.cost}</a>
     <a href={homeAnchor(lang, 'features')}>{t.nav.features}</a>
@@ -21,11 +21,13 @@ const t = strings[lang];
 </header>
 
 <style>
-header{height:64px;display:flex;align-items:center;justify-content:space-between;gap:16px;border-bottom:1px solid var(--line)}
-.brand{font-weight:700;letter-spacing:-.01em;text-decoration:none;font-size:18px}
-nav{display:flex;gap:22px;font-size:14px}
-nav a{text-decoration:none;color:var(--muted)}
+header{height:68px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+/* A block in the accent color after the wordmark: the terminal cursor. */
+.brand{font:700 20px var(--mono);letter-spacing:-.04em;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
+.brand::after{content:"";width:9px;height:18px;background:var(--accent);border-radius:2px}
+nav{display:flex;gap:26px;font-size:14px}
+nav a{text-decoration:none;color:var(--muted);transition:color .2s}
 nav a:hover{color:var(--text)}
 /* Small screens: the links wrap onto their own row under the logo. */
-@media(max-width:700px){header{height:auto;flex-wrap:wrap;padding:12px 0;row-gap:4px}nav{order:3;flex-basis:100%;flex-wrap:wrap;gap:0 20px}nav a{display:inline-flex;align-items:center;min-height:36px}}
+@media(max-width:760px){header{height:auto;flex-wrap:wrap;padding:14px 0 6px;row-gap:2px}nav{order:3;flex-basis:100%;flex-wrap:wrap;gap:0 22px}nav a{display:inline-flex;align-items:center;min-height:40px}}
 </style>

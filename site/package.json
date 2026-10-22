@@ -5,13 +5,15 @@
   "scripts": {
     "predev": "npm run copy-assets",
     "prebuild": "npm run copy-assets",
-    "copy-assets": "cp ../assets/prompt-screen.png ../assets/social-preview.png public/",
+    "copy-assets": "cp ../assets/prompt-screen.png ../assets/social-preview.png ../assets/usage-deepseek-flash.png ../assets/nib-launch.mp4 ../assets/nib-launch.jpg public/",
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview"
   },
   "dependencies": {
     "@astrojs/sitemap": "3.7.4",
+    "@fontsource-variable/geist": "5.3.0",
+    "@fontsource-variable/geist-mono": "5.3.0",
     "astro": "7.3.8",
     "marked": "18.1.0"
   }

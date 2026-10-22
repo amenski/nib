@@ -48,8 +48,8 @@ const flat404 = {
 
 export default defineConfig({
   site: 'https://nib.emuye.dev',
-  // Links and the sitemap use /blog, not /blog/, so each page has one URL.
-  trailingSlash: 'never',
+  // Links and the sitemap use /blog/, not /blog: the server serves the directory form.
+  trailingSlash: 'always',
   // Emit the pattern-demo script as a file, so the Content-Security-Policy needs no script hash.
   vite: { build: { assetsInlineLimit: 0 } },
   // Writes sitemap-index.xml on every build, so new blog posts are listed automatically.

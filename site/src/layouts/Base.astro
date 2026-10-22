@@ -17,8 +17,8 @@ interface Props {
 const { title, description, ogDescription = description, ogType = 'website', schema = [], noindex = false, lang = 'en', alternates = [] } = Astro.props;
 
 const site = Astro.site!.origin;
-// One URL per page: absolute, no trailing slash except the home page.
-const canonical = new URL(Astro.url.pathname.replace(/(.)\/$/, '$1'), site).href;
+// One URL per page: absolute, with the trailing slash the server serves.
+const canonical = new URL(Astro.url.pathname, site).href;
 // hreflang only when a translation exists.
 const hreflangs = alternates.length > 1 ? alternates : [];
 const enAlt = hreflangs.find((a) => a.lang === 'en');

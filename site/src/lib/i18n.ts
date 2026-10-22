@@ -9,15 +9,16 @@ export const langOf = (id: string): Lang => {
 };
 export const slugOf = (id: string) => (id.includes('/') ? id.slice(id.indexOf('/') + 1) : id);
 
-export const homePath = (lang: Lang) => (lang === 'en' ? '/' : `/${lang}`);
-// Section anchor on the home page of a language: /#cost, /de#cost.
+// Every page path ends in a slash: the live nginx serves directories at /path/ and redirects /path.
+export const homePath = (lang: Lang) => (lang === 'en' ? '/' : `/${lang}/`);
+// Section anchor on the home page of a language: /#cost, /de/#cost.
 export const homeAnchor = (lang: Lang, id: string) => `${homePath(lang)}#${id}`;
 export const homeHrefs = (): Record<Lang, string> => ({ en: homePath('en'), de: homePath('de'), es: homePath('es') });
 
-export const blogPath = (lang: Lang) => (lang === 'en' ? '/blog' : `/${lang}/blog`);
-export const postPath = (lang: Lang, slug: string) => `${blogPath(lang)}/${slug}`;
+export const blogPath = (lang: Lang) => (lang === 'en' ? '/blog/' : `/${lang}/blog/`);
+export const postPath = (lang: Lang, slug: string) => `${blogPath(lang)}${slug}/`;
 
-export const privacyPath = (lang: Lang) => (lang === 'en' ? '/privacy' : `/${lang}/privacy`);
+export const privacyPath = (lang: Lang) => (lang === 'en' ? '/privacy/' : `/${lang}/privacy/`);
 export const privacyHrefs = (): Record<Lang, string> => ({ en: privacyPath('en'), de: privacyPath('de'), es: privacyPath('es') });
 
 export const ogLocale: Record<Lang, string> = { en: 'en_US', de: 'de_DE', es: 'es_ES' };

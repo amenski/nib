@@ -4,3 +4,6 @@ dist/
 # Copied from ../assets by `npm run copy-assets`; the originals are the source.
 public/prompt-screen.png
 public/social-preview.png
+public/usage-deepseek-flash.png
+public/nib-launch.mp4
+public/nib-launch.jpg

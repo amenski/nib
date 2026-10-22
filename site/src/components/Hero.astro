@@ -6,23 +6,29 @@ interface Props { lang?: Lang }
 const { lang = 'en' } = Astro.props;
 const t = strings[lang].hero;
 ---
-<div class="hero">
-  <div>
-    <h1>{t.h1}</h1>
-    <p class="lead">{t.lead}</p>
-    <div class="cta">
-      <a class="btn btn-primary" href={homeAnchor(lang, 'install')}>{t.install}</a>
-      <a class="btn btn-ghost" href={REPO_URL}>{t.source}</a>
+<section class="hero">
+  <h1 class="hero-in" style="--i:0">{t.h1}</h1>
+  <div class="grid">
+    <div class="copy">
+      <p class="lead hero-in" style="--i:1">{t.lead}</p>
+      <div class="cta hero-in" style="--i:2">
+        <a class="btn btn-primary" href={homeAnchor(lang, 'install')}>{t.install}</a>
+        <a class="btn btn-ghost" href={REPO_URL}>{t.source}</a>
+      </div>
+    </div>
+    <div class="media hero-in" style="--i:3">
+      <video controls preload="none" playsinline poster="/nib-launch.jpg" width="1920" height="1080" aria-label={t.video}>
+        <source src="/nib-launch.mp4" type="video/mp4">
+      </video>
     </div>
   </div>
-  <img src="/prompt-screen.png" width="2864" height="674" alt={t.alt} fetchpriority="high">
-</div>
+</section>
 
 <style>
-.hero{padding:72px 0 64px}
-.hero>div{max-width:720px;margin-bottom:40px}
-.lead{font-size:18px;color:var(--muted);max-width:46ch;margin:0 0 26px}
+.grid{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:clamp(32px,5vw,64px);align-items:center;margin-top:48px}
+.lead{font-size:clamp(18px,1.6vw,21px);line-height:1.5;color:var(--muted);max-width:36ch;margin:0 0 32px}
 .cta{display:flex;gap:12px;flex-wrap:wrap}
-img{width:100%;height:auto;border:1px solid var(--line);border-radius:var(--radius);display:block}
-@media(max-width:860px){.hero{padding:48px 0}}
+.media{border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;background:var(--code);box-shadow:0 40px 90px -40px color-mix(in srgb,var(--accent) 45%,transparent)}
+video{display:block;width:100%;height:auto;aspect-ratio:16/9}
+@media(max-width:860px){.grid{grid-template-columns:1fr;margin-top:32px}.media{order:-1}}
 </style>

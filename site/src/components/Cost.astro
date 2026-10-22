@@ -5,18 +5,29 @@ import type { Lang } from '../lib/i18n';
 interface Props { lang?: Lang }
 const { lang = 'en' } = Astro.props;
 const t = strings[lang].cost;
+const [total, ...rest] = t.stats;
 ---
-<section id="cost">
+<section id="cost" class="reveal">
   <h2>{t.h2}</h2>
   <p class="sub">{t.sub}</p>
-  <div class="cost">
-    {t.stats.map((s) => <div><div class="n">{s.n}</div><p>{s.p}</p></div>)}
+  <div class="stats">
+    <div class="total"><div class="n">{total.n}</div><p>{total.p}</p></div>
+    <div class="rest">
+      {rest.map((s) => <div><div class="n small">{s.n}</div><p>{s.p}</p></div>)}
+    </div>
   </div>
+  <figure>
+    <img class="frame" src="/usage-deepseek-flash.png" width="1458" height="200" alt={t.usageAlt} loading="lazy">
+    <figcaption>{t.caption}</figcaption>
+  </figure>
 </section>
 
 <style>
-.cost{display:grid;grid-template-columns:1fr 1fr 1fr;gap:32px}
-.n{font-family:var(--mono);font-size:44px;letter-spacing:-.03em;line-height:1;color:var(--accent)}
-.cost p{margin:10px 0 0;color:var(--muted);font-size:15px}
-@media(max-width:860px){.cost{grid-template-columns:1fr;gap:24px}}
+.stats{display:flex;justify-content:space-between;align-items:flex-end;gap:40px 64px;flex-wrap:wrap}
+.n{font-family:var(--mono);font-weight:500;font-size:clamp(64px,10vw,128px);letter-spacing:-.06em;line-height:.95;color:var(--accent)}
+.n.small{font-size:clamp(32px,4vw,48px);letter-spacing:-.04em;color:var(--text)}
+.total p,.rest p{margin:12px 0 0;color:var(--muted);font-size:15px;max-width:30ch}
+.rest{display:flex;gap:48px;flex-wrap:wrap}
+figure{margin:56px 0 0}
+figcaption{margin-top:14px;color:var(--muted);font-size:14px;max-width:70ch}
 </style>

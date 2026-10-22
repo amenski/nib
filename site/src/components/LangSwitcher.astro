@@ -6,19 +6,16 @@ interface Props { lang: Lang; hrefs: Record<Lang, string> }
 const { lang, hrefs } = Astro.props;
 ---
 <nav class="langs mono" aria-label={ui[lang].langLabel}>
-  {LOCALES.map((l, i) => (
-    <>
-      {i > 0 && <span aria-hidden="true">·</span>}
-      {l === lang
-        ? <span aria-current="true">{l.toUpperCase()}</span>
-        : <a href={hrefs[l]} hreflang={l} lang={l}>{l.toUpperCase()}</a>}
-    </>
-  ))}
+  {LOCALES.map((l) =>
+    l === lang
+      ? <span aria-current="true">{l.toUpperCase()}</span>
+      : <a href={hrefs[l]} hreflang={l} lang={l}>{l.toUpperCase()}</a>
+  )}
 </nav>
 
 <style>
-.langs{display:flex;gap:8px;font-size:14px;color:var(--muted)}
-.langs a{text-decoration:none;display:inline-flex;align-items:center;min-height:44px}
+.langs{display:flex;gap:2px;padding:3px;border:1px solid var(--line);border-radius:var(--r-pill);font-size:12px}
+.langs a,.langs [aria-current]{display:inline-flex;align-items:center;justify-content:center;min-width:34px;height:28px;border-radius:var(--r-pill);text-decoration:none}
 .langs a:hover{color:var(--text)}
-.langs [aria-current]{color:var(--text);display:inline-flex;align-items:center;min-height:44px}
+.langs [aria-current]{background:var(--bg-3);color:var(--text)}
 </style>

@@ -6,7 +6,6 @@ import Cost from './Cost.astro';
 import HowItWorks from './HowItWorks.astro';
 import Features from './Features.astro';
 import Providers from './Providers.astro';
-import Install from './Install.astro';
 import Footer from './Footer.astro';
 import { strings, REPO_URL } from '../lib/strings';
 import { LOCALES, homePath, homeHrefs, type Lang } from '../lib/i18n';
@@ -40,7 +39,6 @@ const alternates = LOCALES.map((l) => ({ lang: l, href: homePath(l) }));
       <HowItWorks lang={lang} />
       <Features lang={lang} />
       <Providers lang={lang} />
-      <Install lang={lang} />
     </main>
     <Footer lang={lang} />
   </div>

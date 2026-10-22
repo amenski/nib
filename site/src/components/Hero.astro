@@ -5,6 +5,8 @@ import { homeAnchor, type Lang } from '../lib/i18n';
 interface Props { lang?: Lang }
 const { lang = 'en' } = Astro.props;
 const t = strings[lang].hero;
+// Cloudflare caches these files for hours. Bump the version when nib-launch.* changes.
+const v = '2026-10-20';
 ---
 <section class="hero">
   <h1 class="hero-in" style="--i:0">{t.h1}</h1>
@@ -17,8 +19,8 @@ const t = strings[lang].hero;
       </div>
     </div>
     <div class="media hero-in" style="--i:3">
-      <video controls preload="none" playsinline poster="/nib-launch.jpg" width="1920" height="1080" aria-label={t.video}>
-        <source src="/nib-launch.mp4" type="video/mp4">
+      <video controls preload="none" playsinline poster={`/nib-launch.jpg?v=${v}`} width="1920" height="1080" aria-label={t.video}>
+        <source src={`/nib-launch.mp4?v=${v}`} type="video/mp4">
       </video>
     </div>
   </div>

@@ -1,0 +1,34 @@
+---
+import Base from '../layouts/Base.astro';
+import Header from './Header.astro';
+import Footer from './Footer.astro';
+import { strings } from '../lib/strings';
+import { homePath, homeAnchor, homeHrefs, blogPath, type Lang } from '../lib/i18n';
+
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const t = strings[lang];
+---
+<Base title={t.notFound.title} description={t.notFound.description} lang={lang} noindex>
+  <div class="wrap">
+    <Header lang={lang} langHrefs={homeHrefs()} />
+    <main>
+      <h1>{t.notFound.h1}</h1>
+      <p>{t.notFound.p}</p>
+      <ul>
+        <li><a href={homePath(lang)}>{t.notFound.home}</a></li>
+        <li><a href={blogPath(lang)}>{t.nav.blog}</a></li>
+        <li><a href={homeAnchor(lang, 'features')}>{t.nav.features}</a></li>
+        <li><a href={homeAnchor(lang, 'install')}>{t.nav.install}</a></li>
+      </ul>
+    </main>
+    <Footer lang={lang} />
+  </div>
+</Base>
+
+<style>
+main{padding:48px 0 96px}
+p{color:var(--muted)}
+ul{list-style:none;padding:0;margin-top:16px}
+li a{display:inline-flex;align-items:center;min-height:44px;color:var(--accent)}
+</style>

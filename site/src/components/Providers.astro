@@ -1,0 +1,20 @@
+---
+import { strings, PROVIDERS } from '../lib/strings';
+import type { Lang } from '../lib/i18n';
+
+interface Props { lang?: Lang }
+const { lang = 'en' } = Astro.props;
+const t = strings[lang].providers;
+---
+<section id="providers">
+  <h2>{t.h2}</h2>
+  <p class="sub">{t.sub.split('`').map((s, i) => (i % 2 ? <code>{s}</code> : s))}</p>
+  <div class="providers">
+    {PROVIDERS.map((p) => <span>{p}</span>)}
+  </div>
+</section>
+
+<style>
+.providers{display:flex;flex-wrap:wrap;gap:12px}
+span{border:1px solid var(--line);border-radius:999px;padding:8px 16px;font-size:15px;background:var(--bg-2)}
+</style>

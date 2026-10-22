@@ -1,0 +1,116 @@
+---
+import { getCollection, render, type CollectionEntry } from 'astro:content';
+import Base from '../layouts/Base.astro';
+import Header from './Header.astro';
+import Footer from './Footer.astro';
+import PostDate from './PostDate.astro';
+import { LOCALES, langOf, slugOf, blogPath, postPath, homePath, ui } from '../lib/i18n';
+
+interface Props { post: CollectionEntry<'blog'> }
+const { post } = Astro.props;
+const lang = langOf(post.id);
+const slug = slugOf(post.id);
+const t = ui[lang];
+
+const all = await getCollection('blog');
+const byId = new Map(all.map((p) => [p.id, p]));
+const idIn = (l: (typeof LOCALES)[number], s: string) => (l === 'en' ? s : `${l}/${s}`);
+const available = LOCALES.filter((l) => byId.has(idIn(l, slug)));
+
+// Related slugs resolve in the post's language; a missing translation falls back to the English post.
+const slugs = (post.data.related ?? []).filter((s) => s !== slug);
+const picked = slugs
+  .map((s) => {
+    const local = byId.get(idIn(lang, s));
+    if (local) return { href: postPath(lang, s), title: local.data.title };
+    const en = byId.get(s);
+    return en ? { href: postPath('en', s), title: en.data.title } : undefined;
+  })
+  .filter((r): r is { href: string; title: string } => !!r);
+const related = picked.length
+  ? picked
+  : all
+      .filter((p) => langOf(p.id) === lang && p.id !== post.id)
+      .sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf())
+      .slice(0, 3)
+      .map((p) => ({ href: postPath(lang, slugOf(p.id)), title: p.data.title }));
+// The two newest posts in this language, so a new guide gets inbound links from every page on
+// deploy without editing anyone's `related` list.
+const linked = new Set(related.map((r) => r.href));
+const latest = all
+  .filter((p) => langOf(p.id) === lang && p.id !== post.id)
+  .sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf())
+  .map((p) => ({ href: postPath(lang, slugOf(p.id)), title: p.data.title }))
+  .filter((r) => !linked.has(r.href))
+  .slice(0, 2);
+const { Content } = await render(post);
+
+const site = Astro.site!.origin;
+const url = `${site}${postPath(lang, slug)}`;
+// Keep the title at 60 characters or fewer: drop the brand suffix when it does not fit.
+const suffixed = `${post.data.title} · Nib`;
+const title = suffixed.length <= 60 ? suffixed : post.data.title;
+const date = post.data.date.toISOString().slice(0, 10);
+const publisher = { '@type': 'Organization', name: 'Nib', url: `${site}/` };
+const schema = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'BlogPosting',
+    headline: post.data.title,
+    description: post.data.description,
+    inLanguage: lang,
+    datePublished: date,
+    dateModified: date,
+    author: publisher,
+    publisher,
+    mainEntityOfPage: url,
+    image: `${site}/social-preview.png`,
+  },
+  {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: t.home, item: `${site}${homePath(lang)}` },
+      { '@type': 'ListItem', position: 2, name: t.blog, item: `${site}${blogPath(lang)}` },
+      { '@type': 'ListItem', position: 3, name: post.data.title, item: url },
+    ],
+  },
+];
+// The same post in another language when it exists, else that language's home page.
+const langHrefs = Object.fromEntries(LOCALES.map((l) => [l, available.includes(l) ? postPath(l, slug) : homePath(l)])) as Record<(typeof LOCALES)[number], string>;
+const alternates = available.map((l) => ({ lang: l, href: postPath(l, slug) }));
+---
+<Base title={title} description={post.data.description} ogType="article" schema={schema} lang={lang} alternates={alternates}>
+  <div class="wrap">
+    <Header lang={lang} langHrefs={langHrefs} />
+    <article class="prose">
+      <a class="back mono" href={blogPath(lang)}>{t.back}</a>
+      <h1>{post.data.title}</h1>
+      <PostDate date={post.data.date} lang={lang} />
+      <Content />
+      <section class="related">
+        <h2>{t.related}</h2>
+        <ul>
+          {related.map((r) => <li><a href={r.href}>{r.title}</a></li>)}
+        </ul>
+        {latest.length > 0 && (
+          <>
+            <h2>{t.latest}</h2>
+            <ul>
+              {latest.map((r) => <li><a href={r.href}>{r.title}</a></li>)}
+            </ul>
+          </>
+        )}
+      </section>
+    </article>
+    <Footer lang={lang} />
+  </div>
+</Base>
+
+<style>
+.back{display:inline-block;margin-bottom:24px;text-decoration:none;color:var(--muted)}
+.back:hover{color:var(--text)}
+h1{margin-bottom:12px}
+.related{margin-top:56px;padding-top:24px;border-top:1px solid var(--line)}
+.related h2{margin-top:0}
+</style>

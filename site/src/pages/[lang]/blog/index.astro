@@ -1,0 +1,13 @@
+---
+import { getCollection } from 'astro:content';
+import BlogIndex from '../../../components/BlogIndex.astro';
+import { langOf } from '../../../lib/i18n';
+
+// Only languages with at least one post get an index page.
+export async function getStaticPaths() {
+  const posts = await getCollection('blog');
+  return (['de', 'es'] as const).filter((l) => posts.some((p) => langOf(p.id) === l)).map((lang) => ({ params: { lang } }));
+}
+const { lang } = Astro.params;
+---
+<BlogIndex lang={lang as 'de' | 'es'} />

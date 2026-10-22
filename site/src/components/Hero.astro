@@ -1,0 +1,28 @@
+---
+import { strings, REPO_URL } from '../lib/strings';
+import { homeAnchor, type Lang } from '../lib/i18n';
+
+interface Props { lang?: Lang }
+const { lang = 'en' } = Astro.props;
+const t = strings[lang].hero;
+---
+<div class="hero">
+  <div>
+    <h1>{t.h1}</h1>
+    <p class="lead">{t.lead}</p>
+    <div class="cta">
+      <a class="btn btn-primary" href={homeAnchor(lang, 'install')}>{t.install}</a>
+      <a class="btn btn-ghost" href={REPO_URL}>{t.source}</a>
+    </div>
+  </div>
+  <img src="/prompt-screen.png" width="2864" height="674" alt={t.alt} fetchpriority="high">
+</div>
+
+<style>
+.hero{padding:72px 0 64px}
+.hero>div{max-width:720px;margin-bottom:40px}
+.lead{font-size:18px;color:var(--muted);max-width:46ch;margin:0 0 26px}
+.cta{display:flex;gap:12px;flex-wrap:wrap}
+img{width:100%;height:auto;border:1px solid var(--line);border-radius:var(--radius);display:block}
+@media(max-width:860px){.hero{padding:48px 0}}
+</style>

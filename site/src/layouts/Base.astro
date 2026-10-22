@@ -1,0 +1,56 @@
+---
+import '../styles/global.css';
+import { ogLocale, homePath, type Lang } from '../lib/i18n';
+
+interface Props {
+  title: string;
+  description: string;
+  ogDescription?: string;
+  ogType?: 'website' | 'article';
+  // Page-specific JSON-LD objects, added to the site-wide WebSite.
+  schema?: object[];
+  noindex?: boolean;
+  lang?: Lang;
+  // Existing translations of this page, for hreflang. x-default is the English one.
+  alternates?: { lang: Lang; href: string }[];
+}
+const { title, description, ogDescription = description, ogType = 'website', schema = [], noindex = false, lang = 'en', alternates = [] } = Astro.props;
+
+const site = Astro.site!.origin;
+// One URL per page: absolute, no trailing slash except the home page.
+const canonical = new URL(Astro.url.pathname.replace(/(.)\/$/, '$1'), site).href;
+// hreflang only when a translation exists.
+const hreflangs = alternates.length > 1 ? alternates : [];
+const enAlt = hreflangs.find((a) => a.lang === 'en');
+const ogImage = `${site}/social-preview.png`;
+
+const siteSchema = [
+  { '@context': 'https://schema.org', '@type': 'WebSite', name: 'Nib', url: `${site}${homePath(lang)}`, inLanguage: lang },
+];
+---
+<!doctype html>
+<html lang={lang}>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{title}</title>
+<meta name="description" content={description}>
+{noindex && <meta name="robots" content="noindex">}
+<link rel="canonical" href={canonical}>
+<meta property="og:title" content={title}>
+<meta property="og:description" content={ogDescription}>
+<meta property="og:url" content={canonical}>
+<meta property="og:type" content={ogType}>
+<meta property="og:site_name" content="Nib">
+<meta property="og:locale" content={ogLocale[lang]}>
+{hreflangs.map((a) => <link rel="alternate" hreflang={a.lang} href={new URL(a.href, site).href}>)}
+{enAlt && <link rel="alternate" hreflang="x-default" href={new URL(enAlt.href, site).href}>}
+<meta property="og:image" content={ogImage}>
+<meta name="twitter:card" content="summary_large_image">
+<link rel="sitemap" href="/sitemap-index.xml">
+{[...siteSchema, ...schema].map((s) => <script type="application/ld+json" set:html={JSON.stringify(s)} />)}
+</head>
+<body>
+<slot />
+</body>
+</html>

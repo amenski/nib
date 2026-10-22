@@ -1,0 +1,32 @@
+---
+import { strings } from '../lib/strings';
+import type { Lang } from '../lib/i18n';
+
+interface Props { lang?: Lang }
+const { lang = 'en' } = Astro.props;
+const t = strings[lang].features;
+// `text` between backticks is inline code.
+const parts = (s: string) => s.split('`');
+---
+<section id="features">
+  <h2>{t.h2}</h2>
+  <div class="bento">
+    {t.items.map((f) => (
+      <div class={`cell ${f.size}`}>
+        <h3>{f.title}</h3>
+        <p>{parts(f.body).map((s, i) => (i % 2 ? <code>{s}</code> : s))}</p>
+      </div>
+    ))}
+  </div>
+</section>
+
+<style>
+.bento{display:grid;grid-template-columns:repeat(6,1fr);gap:16px}
+.cell{border:1px solid var(--line);border-radius:var(--radius);padding:26px;background:var(--bg-2)}
+.wide{grid-column:span 4}.narrow,.third{grid-column:span 2}
+.feature{background:linear-gradient(160deg,rgba(88,179,142,.18),transparent 60%),var(--bg-2)}
+h3{margin:0 0 8px;font-size:18px;letter-spacing:-.01em}
+p{margin:0;color:var(--muted);font-size:15px}
+code{font-family:var(--mono);font-size:13px;color:var(--accent)}
+@media(max-width:860px){.wide,.narrow,.third{grid-column:span 6}}
+</style>

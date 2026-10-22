@@ -1,0 +1,47 @@
+---
+import Base from '../layouts/Base.astro';
+import Header from './Header.astro';
+import Hero from './Hero.astro';
+import Cost from './Cost.astro';
+import HowItWorks from './HowItWorks.astro';
+import Features from './Features.astro';
+import Providers from './Providers.astro';
+import Install from './Install.astro';
+import Footer from './Footer.astro';
+import { strings, REPO_URL } from '../lib/strings';
+import { LOCALES, homePath, homeHrefs, type Lang } from '../lib/i18n';
+
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const t = strings[lang];
+const site = Astro.site!.origin;
+
+const appSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: 'Nib',
+  applicationCategory: 'DeveloperApplication',
+  operatingSystem: 'macOS, Linux',
+  inLanguage: lang,
+  license: 'https://www.apache.org/licenses/LICENSE-2.0',
+  offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+  url: `${site}${homePath(lang)}`,
+  sameAs: REPO_URL,
+  description: t.description,
+};
+const alternates = LOCALES.map((l) => ({ lang: l, href: homePath(l) }));
+---
+<Base title={t.homeTitle} description={t.description} ogDescription={t.ogDescription} lang={lang} alternates={alternates} schema={[appSchema]}>
+  <div class="wrap">
+    <Header lang={lang} langHrefs={homeHrefs()} />
+    <main id="top">
+      <Hero lang={lang} />
+      <Cost lang={lang} />
+      <HowItWorks lang={lang} />
+      <Features lang={lang} />
+      <Providers lang={lang} />
+      <Install lang={lang} />
+    </main>
+    <Footer lang={lang} />
+  </div>
+</Base>

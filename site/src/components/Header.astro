@@ -1,0 +1,31 @@
+---
+import LangSwitcher from './LangSwitcher.astro';
+import { strings, REPO_URL } from '../lib/strings';
+import { homePath, homeAnchor, homeHrefs, blogPath, type Lang } from '../lib/i18n';
+
+// `langHrefs`: the equivalent of this page in each language, for the switcher.
+interface Props { lang?: Lang; langHrefs?: Record<Lang, string> }
+const { lang = 'en', langHrefs = homeHrefs() } = Astro.props;
+const t = strings[lang];
+---
+<header>
+  <a class="brand" href={homePath(lang)} aria-label={t.homeLabel}>Nib</a>
+  <nav aria-label={t.navLabel}>
+    <a href={homeAnchor(lang, 'cost')}>{t.nav.cost}</a>
+    <a href={homeAnchor(lang, 'features')}>{t.nav.features}</a>
+    <a href={homeAnchor(lang, 'install')}>{t.nav.install}</a>
+    <a href={blogPath(lang)}>{t.nav.blog}</a>
+    <a href={REPO_URL}>{t.nav.github}</a>
+  </nav>
+  <LangSwitcher lang={lang} hrefs={langHrefs} />
+</header>
+
+<style>
+header{height:64px;display:flex;align-items:center;justify-content:space-between;gap:16px;border-bottom:1px solid var(--line)}
+.brand{font-weight:700;letter-spacing:-.01em;text-decoration:none;font-size:18px}
+nav{display:flex;gap:22px;font-size:14px}
+nav a{text-decoration:none;color:var(--muted)}
+nav a:hover{color:var(--text)}
+/* Small screens: the links wrap onto their own row under the logo. */
+@media(max-width:700px){header{height:auto;flex-wrap:wrap;padding:12px 0;row-gap:4px}nav{order:3;flex-basis:100%;flex-wrap:wrap;gap:0 20px}nav a{display:inline-flex;align-items:center;min-height:36px}}
+</style>

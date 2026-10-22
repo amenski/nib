@@ -1,0 +1,24 @@
+---
+import { LOCALES, ui, type Lang } from '../lib/i18n';
+
+// One switcher for every page. `hrefs` maps each language to the equivalent page there.
+interface Props { lang: Lang; hrefs: Record<Lang, string> }
+const { lang, hrefs } = Astro.props;
+---
+<nav class="langs mono" aria-label={ui[lang].langLabel}>
+  {LOCALES.map((l, i) => (
+    <>
+      {i > 0 && <span aria-hidden="true">·</span>}
+      {l === lang
+        ? <span aria-current="true">{l.toUpperCase()}</span>
+        : <a href={hrefs[l]} hreflang={l} lang={l}>{l.toUpperCase()}</a>}
+    </>
+  ))}
+</nav>
+
+<style>
+.langs{display:flex;gap:8px;font-size:14px;color:var(--muted)}
+.langs a{text-decoration:none;display:inline-flex;align-items:center;min-height:44px}
+.langs a:hover{color:var(--text)}
+.langs [aria-current]{color:var(--text);display:inline-flex;align-items:center;min-height:44px}
+</style>

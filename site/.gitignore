@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.astro/
+# Copied from ../assets by `npm run copy-assets`; the originals are the source.
+public/prompt-screen.png
+public/social-preview.png

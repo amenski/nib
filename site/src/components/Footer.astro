@@ -1,0 +1,25 @@
+---
+import { strings, REPO_URL, DISCUSSIONS_URL, CHANGELOG_URL } from '../lib/strings';
+import { blogPath, privacyPath, type Lang } from '../lib/i18n';
+
+interface Props { lang?: Lang }
+const { lang = 'en' } = Astro.props;
+const t = strings[lang];
+---
+<footer>
+  <span>{t.footerTagline}</span>
+  <nav aria-label={t.footerNavLabel}>
+    <a href={REPO_URL}>{t.nav.github}</a>
+    <a href={DISCUSSIONS_URL}>{t.nav.discussions}</a>
+    <a href={CHANGELOG_URL}>{t.nav.changelog}</a>
+    <a href={blogPath(lang)}>{t.nav.blog}</a>
+    <a href={privacyPath(lang)}>{t.nav.privacy}</a>
+  </nav>
+</footer>
+
+<style>
+footer{border-top:1px solid var(--line);padding:32px 0;color:var(--muted);font-size:14px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px}
+footer nav{display:flex;flex-wrap:wrap;gap:0 20px}
+footer a{text-decoration:none;display:inline-flex;align-items:center;min-height:32px}
+footer a:hover{color:var(--text)}
+</style>

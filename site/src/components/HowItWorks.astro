@@ -1,0 +1,21 @@
+---
+import { strings } from '../lib/strings';
+import type { Lang } from '../lib/i18n';
+
+interface Props { lang?: Lang }
+const { lang = 'en' } = Astro.props;
+const t = strings[lang].how;
+const [install, auth, run] = t.comments;
+---
+<section id="how">
+  <h2>{t.h2}</h2>
+  <p class="sub">{t.sub}</p>
+<pre><span class="c"># {install}</span>
+npm install -g @amenski/nib
+
+<span class="c"># {auth}</span>
+nib auth
+
+<span class="c"># {run}</span>
+nib</pre>
+</section>

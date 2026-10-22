@@ -1,0 +1,22 @@
+---
+import { strings } from '../lib/strings';
+import type { Lang } from '../lib/i18n';
+
+interface Props { lang?: Lang }
+const { lang = 'en' } = Astro.props;
+const t = strings[lang].cost;
+---
+<section id="cost">
+  <h2>{t.h2}</h2>
+  <p class="sub">{t.sub}</p>
+  <div class="cost">
+    {t.stats.map((s) => <div><div class="n">{s.n}</div><p>{s.p}</p></div>)}
+  </div>
+</section>
+
+<style>
+.cost{display:grid;grid-template-columns:1fr 1fr 1fr;gap:32px}
+.n{font-family:var(--mono);font-size:44px;letter-spacing:-.03em;line-height:1;color:var(--accent)}
+.cost p{margin:10px 0 0;color:var(--muted);font-size:15px}
+@media(max-width:860px){.cost{grid-template-columns:1fr;gap:24px}}
+</style>

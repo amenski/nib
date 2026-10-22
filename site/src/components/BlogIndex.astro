@@ -1,0 +1,64 @@
+---
+import { getCollection } from 'astro:content';
+import Base from '../layouts/Base.astro';
+import Header from './Header.astro';
+import Footer from './Footer.astro';
+import PostDate from './PostDate.astro';
+import { LOCALES, langOf, slugOf, blogPath, postPath, homePath, ui, introParts, type Lang } from '../lib/i18n';
+
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const t = ui[lang];
+
+const all = await getCollection('blog');
+const posts = all.filter((p) => langOf(p.id) === lang).sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
+// hreflang only for languages that have at least one post.
+const alternates = LOCALES.filter((l) => all.some((p) => langOf(p.id) === l)).map((l) => ({ lang: l, href: blogPath(l) }));
+const site = Astro.site!.origin;
+const langHrefs = { en: blogPath('en'), de: blogPath('de'), es: blogPath('es') };
+---
+<Base
+  title={t.indexTitle}
+  description={t.indexDescription}
+  lang={lang}
+  alternates={alternates}
+  schema={[{
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: t.home, item: `${site}${homePath(lang)}` },
+      { '@type': 'ListItem', position: 2, name: t.blog, item: `${site}${blogPath(lang)}` },
+    ],
+  }]}
+>
+  <div class="wrap">
+    <Header lang={lang} langHrefs={langHrefs} />
+    <main>
+      <h1>{t.blog}</h1>
+      <p class="intro">{introParts[lang][0]}<a href={homePath(lang)}>Nib</a>{introParts[lang][1]}</p>
+      <ul class="posts">
+        {posts.map((post) => (
+          <li>
+            <PostDate date={post.data.date} lang={lang} />
+            <h2><a href={postPath(lang, slugOf(post.id))}>{post.data.title}</a></h2>
+            <p>{post.data.description}</p>
+          </li>
+        ))}
+      </ul>
+    </main>
+    <Footer lang={lang} />
+  </div>
+</Base>
+
+<style>
+main{padding:clamp(24px,5vw,56px) 0 clamp(64px,10vw,112px)}
+h1{font-weight:700;font-size:clamp(40px,7vw,72px);line-height:.98;letter-spacing:-.035em}
+.intro{margin-top:24px;max-width:72ch;color:var(--muted);font-size:19px}
+.intro a{color:var(--accent)}
+.posts{list-style:none;padding:0;margin-top:40px;border-top:1px solid var(--line);max-width:72ch}
+.posts li{padding:28px 0;border-bottom:1px solid var(--line)}
+.posts h2{margin-top:8px;font-size:clamp(24px,3.2vw,30px);letter-spacing:-.02em;max-width:none}
+.posts h2 a{text-decoration:none}
+.posts h2 a:hover{color:var(--accent)}
+.posts p{margin-top:8px;color:var(--muted);font-size:17px}
+</style>

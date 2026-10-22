@@ -1,0 +1,37 @@
+---
+import { marked } from 'marked';
+import Base from '../layouts/Base.astro';
+import Header from './Header.astro';
+import Footer from './Footer.astro';
+import { gitDate } from '../lib/lastmod.mjs';
+import { LOCALES, privacyPath, privacyHrefs, formatDate, type Lang } from '../lib/i18n';
+import en from '../../../docs/privacy-policy.md?raw';
+import de from '../../../docs/privacy-policy.de.md?raw';
+import es from '../../../docs/privacy-policy.es.md?raw';
+
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+
+// Single source: the policy files in docs/.
+const policy = { en, de, es }[lang];
+const html = await marked.parse(policy);
+const file = lang === 'en' ? 'privacy-policy.md' : `privacy-policy.${lang}.md`;
+// The page is the policy text plus its wrappers, so any of them changing counts.
+const updated = gitDate('src/pages/privacy.astro', 'src/components/PrivacyPage.astro', `../docs/${file}`);
+
+const text = {
+  en: { title: 'Privacy policy · Nib', description: 'Nib has no telemetry. What stays on your machine, what goes to your model provider, and what this website records.', updated: 'Last updated' },
+  de: { title: 'Datenschutzerklärung · Nib', description: 'Nib hat keine Telemetrie. Was auf deinem Rechner bleibt, was an deinen Modell-Provider geht und was diese Website erfasst.', updated: 'Zuletzt aktualisiert' },
+  es: { title: 'Política de privacidad · Nib', description: 'Nib no tiene telemetría. Qué se queda en tu equipo, qué va a tu proveedor de modelos y qué registra este sitio web.', updated: 'Última actualización' },
+}[lang];
+---
+<Base title={text.title} description={text.description} lang={lang} alternates={LOCALES.map((l) => ({ lang: l, href: privacyPath(l) }))}>
+  <div class="wrap">
+    <Header lang={lang} langHrefs={privacyHrefs()} />
+    <main class="prose">
+      {updated && <p class="mono">{text.updated} <time datetime={updated}>{formatDate(new Date(updated), lang)}</time></p>}
+      <Fragment set:html={html} />
+    </main>
+    <Footer lang={lang} />
+  </div>
+</Base>

@@ -445,7 +445,7 @@ export async function runAgent(
   };
   const promptAssemblyStart = Date.now();
   const stablePreamble = getStablePreamble(promptCtx);
-  const volatileContext = await buildVolatileContext(promptCtx);
+  let volatileContext = await buildVolatileContext(promptCtx);
 
   // Overhead the compaction check must account for beyond `messages` itself.
   // Stable for the session, so computed once here rather than per turn. Shares
@@ -625,9 +625,13 @@ export async function runAgent(
     await maybeCompact(compactionOverheadTokens);
 
     try {
-    // Live todo block: volatileContext is session-stable (computed once above),
-    // but the todo list changes mid-turn, so it is re-read and appended here per
-    // sub-turn — same appendVolatile mechanism, one extra section.
+    // The env block's git line goes stale the moment a tool edits a file, so
+    // every request after the first re-runs it (the first reuses the build
+    // above). It lives only in the request-only tail, so rebuilding it never
+    // touches the cached prefix.
+    if (turn > 1) volatileContext = await buildVolatileContext(promptCtx);
+    // Live todo block: the todo list also changes mid-turn, so it is re-read and
+    // appended here per sub-turn — same appendVolatile mechanism, one extra section.
     const todoBlock = options.getTodos ? formatTodoBlock(options.getTodos()) : "";
     // Mid-turn steering mailbox: poll once per decision point; a hit joins the
     // volatile assembly below AND is pushed to `messages` as a real user

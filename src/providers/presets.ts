@@ -35,6 +35,8 @@ export interface ProviderOptions {
   modelOverride?: string;
   baseUrl?: string;
   apiKey?: string;
+  /** Stable per-conversation id; OpenCode Go requires it as a routing header. */
+  sessionId?: string;
 }
 
 let configProviders: Record<string, { api: string; baseUrl?: string; apiKeyEnv?: string; models?: Record<string, { contextWindow: number }> }> = {};
@@ -131,7 +133,7 @@ export function createProvider(name: string, options?: ProviderOptions): Provide
       defaultModel: model,
       models: {},
     };
-    return createAISDKProvider(preset, model, apiKey, name);
+    return createAISDKProvider(preset, model, apiKey, name, options?.sessionId);
   }
 
   const preset = BUILTIN_PRESETS[name];
@@ -163,5 +165,6 @@ export function createProvider(name: string, options?: ProviderOptions): Provide
     options?.modelOverride ?? preset.defaultModel,
     apiKey,
     name,
+    options?.sessionId,
   );
 }

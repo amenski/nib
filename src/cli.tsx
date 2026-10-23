@@ -420,6 +420,10 @@ async function main() {
       modelOverride: overrideModel ?? shared.activeModel,
       baseUrl: isStartupProvider ? resolvedBaseUrl : undefined,
       apiKey: isStartupProvider ? resolvedApiKey : undefined,
+      // One id per conversation: OpenCode Go routes requests on it (a /model
+      // switch reuses it, a resume reuses the resumed session's id). Declared
+      // above line 665's assignment and read only lazily, so no TDZ issue.
+      sessionId,
     });
   }
 

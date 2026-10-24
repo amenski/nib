@@ -7,8 +7,8 @@ import { ensurePrivateDirectory, writePrivateFileSync } from "./state-permission
 /**
  * Trust-on-first-use store for project `.nib/settings.json` files that
  * declare execution-capable keys (EXECUTION_CAPABLE_KEYS in loader.ts:
- * statusline, mcpServers, notify, env — see loader.ts for why each is
- * execution-capable). Mirrors skill-trust.json / hooks-trust.json: a JSON
+ * statusline, mcpServers, lspServers, notify, env — see loader.ts for why each
+ * is execution-capable). Mirrors skill-trust.json / hooks-trust.json: a JSON
  * file under ~/.nib (NIB_HOME honored, same as every other
  * user-level file) keyed by the settings file's absolute path, storing only
  * the full sha256 of the file's content — never the content itself. The

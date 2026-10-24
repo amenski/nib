@@ -58,7 +58,7 @@ export type ProfileDecision = "allow" | "deny";
  * bash's fs side effects and egress are rule-engine-governed (§7, honest
  * limitation).
  */
-const READ_TOOLS = new Set(["read_file", "list_files", "glob", "search"]);
+const READ_TOOLS = new Set(["read_file", "list_files", "glob", "search", "lsp"]);
 const WRITE_TOOLS = new Set([
   "edit", "edit_file", "write_to_file", "search_replace", "apply_diff", "apply_patch",
 ]);

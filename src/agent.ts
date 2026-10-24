@@ -452,6 +452,7 @@ export async function runAgent(
     memory: options.memory,
     research: options.research,
     planMode: options.planMode,
+    lspServersAvailable: options.lsp?.hasServers === true,
   };
   const promptAssemblyStart = Date.now();
   const stablePreamble = getStablePreamble(promptCtx);
@@ -567,6 +568,7 @@ export async function runAgent(
         agentInstructions: options.agentInstructions,
         repomap: options.repomap,
         memory: options.memory,
+        lspServersAvailable: options.lsp?.hasServers === true,
       });
       messages.unshift({ role: "system", content: rebuiltPrompt });
     }

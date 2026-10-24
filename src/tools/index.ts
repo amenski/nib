@@ -19,6 +19,7 @@ import { registerJobs } from "./jobs.js";
 import { registerTodo, todoStore } from "./todo.js";
 import { registerAttemptCompletion } from "./attempt-completion.js";
 import { registerSwitchMode } from "./switch-mode.js";
+import { registerLsp } from "./lsp.js";
 
 const registry = new ToolRegistry();
 registerFiles(registry);
@@ -33,6 +34,7 @@ registerJobs(registry);
 registerTodo(registry);
 registerAttemptCompletion(registry);
 registerSwitchMode(registry);
+registerLsp(registry);
 
 export { registry };
 export const TOOL_DEFS = registry.getAllDefs();

@@ -44,4 +44,9 @@ export const BUILTIN_ALLOW_RULES: PermissionRule[] = [
   // approved design (mode-spec §4), so a permission prompt on every switch
   // would contradict it.
   { tool: "switch_mode", kind: "any", pattern: "", action: "allow", origin: "config" },
+  // Read-only code intelligence: it queries a language server about files, and
+  // its own handler refuses any path outside the workspace (and the session's
+  // --add-dir roots) with PERMISSION_DENIED. Same trust class as `glob`, and a
+  // prompt on every hover would make the tool useless.
+  { tool: "lsp", kind: "any", pattern: "", action: "allow", origin: "config" },
 ];

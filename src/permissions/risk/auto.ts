@@ -198,8 +198,8 @@ export function autoHardStop(
   return undefined;
 }
 
-/** Tools auto runs without a judge call: ask_user_question is interactive (the user answers it anyway), check_job is a read-only status query. */
-export const AUTO_NO_JUDGE_TOOLS: ReadonlySet<string> = new Set(["ask_user_question", "check_job"]);
+/** Tools auto runs without a judge call: ask_user_question is interactive (the user answers it anyway), check_job is a read-only status query, and lsp only queries a language server about a file inside the workspace. */
+export const AUTO_NO_JUDGE_TOOLS: ReadonlySet<string> = new Set(["ask_user_question", "check_job", "lsp"]);
 
 export function skipsAutoJudge(tool: string): boolean {
   return AUTO_NO_JUDGE_TOOLS.has(tool);

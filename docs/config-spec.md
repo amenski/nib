@@ -123,6 +123,15 @@ are fatal — `main()` exits 1 (`src/cli.tsx`).
   // deno, go, java (src/mcp/connector.ts).
   "strictMcpConfig": true,
 
+  // Language servers for post-edit diagnostics and the `lsp` tool (§18).
+  // Built-ins (dart, typescript) need no entry. User entry with the same
+  // name replaces the built-in. Execution-capable: trust-on-first-use in a
+  // project file, like mcpServers.
+  "lspServers": {
+    "gopls": { "command": "gopls", "extensionToLanguage": { ".go": "go" } }
+  },
+  "lsp": { "diagnostics": true, "builtinServers": true },
+
   // When true, show the client-side estimated cost (status bar segment +
   // the /cost estimate line). Default false (hidden): the estimate is
   // pricing-table math the owner has asked to keep out of view
@@ -667,3 +676,56 @@ it — config, modes, theme dropdown, prompt history, stall watchdog,
 credentials, sessions, checkpoints, and memory. A full install under a
 custom home is portable: `NIB_HOME=/tmp/hh nib` keeps everything
 (config, credentials, sessions, checkpoints, memory) under `/tmp/hh`.
+
+## 18. `lspServers` / `lsp` (language servers)
+
+Language-server support adds two things: a short diagnostics block appended to
+the result of any edit, and the read-only `lsp` tool (tool-spec.md §3).
+
+- `lspServers` (object of name → server). Mirrors Claude Code's `.lsp.json`:
+  - `command` (required, non-empty string), `args` (string array), `env`
+    (object of strings).
+  - `extensionToLanguage` (required, non-empty): keys match
+    `^\.[A-Za-z0-9_+.-]+$`, values are non-empty language ids. A bad key
+    drops the whole server with an error. Two servers claiming one extension:
+    warning, first wins.
+  - `initializationOptions`, `settings` — any JSON, forwarded to the server
+    (`settings` also answers `workspace/configuration`).
+  - `startupTimeout`, `shutdownTimeout` — positive finite milliseconds.
+  - `sandbox: false` — runs the server outside the Seatbelt profile.
+    **Global-only**: in a project file it is ignored with a warning.
+  - Unknown sub-keys produce a warning.
+- `lsp.diagnostics` (default `true`) — append diagnostics after edits.
+  `lsp.builtinServers` (default `true`) — enable the built-in table. Both are
+  off-switches only, so `lsp` is **not** an execution-capable key.
+- **Built-ins** (`src/lsp/defaults.ts`, hardcoded literals — the repo decides
+  *whether*, the table decides *what*): `dart` (marker `pubspec.yaml`,
+  `dart language-server --protocol=lsp`, `.dart`) and `typescript` (marker
+  `tsconfig.json`, `typescript-language-server --stdio`, `.ts .tsx .js .jsx
+  .mts .cts`). Active only when the marker exists in the working directory
+  **and** the binary resolves on `PATH`.
+- **Trust.** `lspServers` is execution-capable: a project file that sets it is
+  held for confirmation on first use, with the same flow and header list as
+  `mcpServers` (security-spec.md). Declining drops the key for the session.
+- **`strictMcpConfig`** also gates `lspServers`, against a separate allowlist
+  (`ALLOWED_LSP_COMMANDS`, `src/lsp/manager.ts`) because the MCP list holds
+  launchers only (`npx`, `node`, …) and would block `dart` or `gopls`. The
+  command must be a bare allowlisted name (a path such as `./dart` is refused,
+  so a project cannot shadow an allowed name), and `env` may not set variables
+  that redirect the launch (`PATH`, `LD_*`, `DYLD_*`, `NODE_*`, …). `args` are
+  not constrained, the same limit as MCP launchers. A blocked server never spawns; it prints `[lsp] <name>: blocked by
+  strictMcpConfig` on stderr and shows in `nib doctor`.
+- **Lifecycle.** Servers start lazily on the first matching file and are shut
+  down on exit (`shutdown` → `exit` → kill). A crash marks the server dead and
+  restarts it once on next use; a second crash disables it for the session
+  with one `[nib] … disabled` note.
+- **Diagnostics.** After a successful edit tool the agent loop syncs every
+  written file to its server and waits for `publishDiagnostics` (300 ms quiet
+  window, 3 s hard cap). Error and Warning only, at most 20 per file. The
+  block is appended to that edit's result, a `[nib] <server> diagnostics for
+  <file>:` label followed by the untrusted-wrapped lines
+  `path:line:col  severity: message [code]`. A clean edit's result is
+  unchanged. It applies to the TUI, `nib exec` and sub-agents alike, and is
+  independent of the project-wide `DiagnosticRunner` (todo.md 6.1).
+- `nib doctor` prints one `lsp` row per server: `dart: dart (ready) [.dart]`,
+  `(not on PATH)`, `(blocked by strictMcpConfig)`, or `none configured`.

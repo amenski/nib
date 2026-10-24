@@ -9,6 +9,19 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Edits now report language-server errors immediately.** After an edit, nib asks
+  the language server for the changed files and appends any errors and warnings
+  to that edit's own result, so the model fixes them in the next step instead of
+  finding them later. Works in the TUI, `nib exec` and sub-agents. Dart and
+  TypeScript servers are built in and start when `pubspec.yaml` or
+  `tsconfig.json` exists and the server binary is on `PATH`; add others under
+  `lspServers`. Switch off with `lsp.diagnostics: false`. `nib doctor` shows a
+  row per server.
+- **A read-only `lsp` tool for code navigation.** Definitions, references, hover,
+  symbols, implementations and call hierarchies come from the language server
+  rather than text search. It only reads files inside the workspace, and results
+  are treated as untrusted content. A project's `lspServers` need the usual
+  trust confirmation, and `strictMcpConfig` limits which commands may start.
 - **Auto mode tells you when its judge is not working.** When more than 10% of
   the judge's last 20 calls (counted from the 10th) timed out, errored or gave
   an unparseable answer, a one-time notice names the judge model, the failure

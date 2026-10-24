@@ -44,7 +44,7 @@ import { SkillLoader, createLoadSkillTool, type SkillDef } from "./skills/index.
 import { AgentLoader, type AgentDef } from "./agents/index.js";
 import { CommandLoader, type CommandDef } from "./commands/index.js";
 import { checkForUpdate } from "./update-check.js";
-import { containmentWarning, hasActiveSandboxContainment, loadConfig, resolveHome } from "./config/loader.js";
+import { containmentWarning, hasActiveSandboxContainment, loadConfig, resolveHome, type DeepCodeSettings } from "./config/loader.js";
 import { projectSettingsPath } from "./config/paths.js";
 import { checkSettingsTrust, trustSettings, stripExecutionKeys } from "./config/settings-trust.js";
 import { checkFolderTrust, trustFolder, buildFolderContentSummary, hasGatedContent } from "./config/folder-trust.js";
@@ -53,7 +53,7 @@ import { readActiveSnapshot } from "./providers/catalog-update.js";
 import { getLiveModels, checkModelListed } from "./providers/live-models.js";
 import { enableDebug } from "./debug/logger.js";
 import { connectMCPServers, disconnectAllMCPServers } from "./mcp/connector.js";
-import { LspManager, createSpawnFn, resolveLspServers } from "./lsp/index.js";
+import { LspManager, createSpawnFn, lspStrictViolation, resolveLspServers, resolveOnPath } from "./lsp/index.js";
 import { setLspManager } from "./tools/index.js";
 import App from "./ui/App.js";
 import { ThemeProvider } from "./ui/contexts.js";
@@ -1460,6 +1460,26 @@ function doctorLabel(label: string): string {
 }
 
 /**
+ * `  lsp               dart: dart (ready) [.dart]` — one row per language
+ * server, or `none configured`. Nothing is started: "ready" means the command
+ * resolves on PATH, and a project command outside the strictMcpConfig
+ * allowlist is reported as blocked, the same test LspManager applies.
+ */
+export function formatLspLines(config: DeepCodeSettings, rootDir: string, pathValue?: string): string[] {
+  const label = doctorLabel("lsp");
+  const servers = Object.entries(resolveLspServers(config, rootDir, pathValue));
+  if (servers.length === 0) return [`${label}none configured`];
+  return servers.map(([name, server], i) => {
+    const state =
+      config.strictMcpConfig && lspStrictViolation(server) !== undefined
+        ? "blocked by strictMcpConfig"
+        : resolveOnPath(server.command, pathValue) ? "ready" : "not on PATH";
+    const exts = Object.keys(server.extensionToLanguage).join(" ");
+    return `${i === 0 ? label : doctorLabel("")}${name}: ${server.command} (${state}) [${exts}]`;
+  });
+}
+
+/**
  * `  catalog           models.dev snapshot from 2026-08-23 (49 days, bundled)`
  * — the bundled/cached models.dev snapshot's date and age, with an update hint
  * once it is older than 30 days. `(date unknown)` when the source carries no
@@ -1739,6 +1759,7 @@ export async function runDoctor(): Promise<void> {
       : null;
     console.log(formatLiveModelsLine(doctorProvider, doctorModel, doctorModels));
   }
+  for (const line of formatLspLines(configResult.config, process.cwd())) console.log(line);
   const searxngUrl = configResult.config.webSearch?.searxngUrl;
   if (searxngUrl) {
     const health = await probeSearXngHealth(searxngUrl);

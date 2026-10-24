@@ -30,6 +30,7 @@ get promoted to `todo.md` / a spec only when picked up.
 | 5 | **Subagents** (`--agents`, `new_task`) | `claude --agents '{"reviewer":{...}}'`; subagent frontmatter (name, description, tools, model) | `new_task` + frontmatter agent definitions **shipped 2026-08-15**: `.nib/agents/*.md` (name, description, mode, model?, instructions), project > global, resolved by `new_task`'s `agent` param; the def changes persona/toolset/model only — permission inheritance, depth cap 3, 10 sub-turns, tagged audit unchanged | M–L | Mostly closed — remaining delta is inline `--agents` JSON definitions (`--agents` flag not built) |
 | 6 | **Git worktrees** (`-w`) | `claude -w feature-auth` → isolated worktree at `<repo>/.claude/worktrees/<name>`; `#<n>`/PR URL support | No worktree support; `workflow.gitCommands` is deprecated/ignored (`loader.ts:789`) | L | Greenfield; separate workstream. |
 | 7 | **Background bash at exit** | `claude -p` terminates background Bash ~5s after result, kills the process tree | Long `run_bash` calls tie up the turn (already on improvement-roadmap as "background/streaming command output") | M | Reuses the existing roadmap item; different framing (exit semantics + tree kill). |
+| 8 | **Language servers** (`lsp` tool + diagnostics after edits) | `lsp` tool (9 operations), `.lsp.json`, diagnostics surfaced after edits | ✅ Shipped 2026-10-24: `lspServers` / `lsp` settings, built-in `dart` + `typescript`, errors appended to the edit's own result (TUI, exec, sub-agents), read-only `lsp` tool with Claude Code's schema | — | Done. Differences: servers also come from built-in table with no plugin system; project `lspServers` need trust confirmation. See config-spec.md §18. |
 
 Ranking note: **1 and 2 are the pair to build first** — 1 is pure surface on the
 existing agent loop, 2 is the natural generalization of `notify.ts`. Both are
@@ -237,6 +238,17 @@ These weren't in the original Claude Code comparison but shipped alongside it:
 - Vision capability derivation from Models.dev modality data
 - Vision warning for non-vision models receiving images
 - Image byte accounting in token budget (budget.ts + promptBytes)
+
+### Language servers — ✅ shipped 2026-10-24
+
+**Claude Code behavior:** an `lsp` tool plus server diagnostics surfaced after
+edits, configured through `.lsp.json`.
+
+**Nib:** `lspServers` and `lsp` in settings.json (config-spec.md §18), with
+zero-config `dart` and `typescript` servers. Diagnostics ride on the edit's own
+tool result rather than a system message, so the model sees them attached to
+the call that caused them; `apply_patch` over several files yields one block per
+file. The `lsp` tool is read-only and path-contained to the workspace.
 
 ## Open questions / verify during implementation
 

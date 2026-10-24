@@ -7,6 +7,15 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Auto mode tells you when its judge is not working.** When more than 10% of
+  the judge's last 20 calls (counted from the 10th) timed out, errored or gave
+  an unparseable answer, a one-time notice names the judge model, the failure
+  count and the latest failure, and suggests `classifier.model.id`. It is shown
+  once per judge model; a `/model` switch starts a fresh count. Failures still
+  fall back to the ordinary prompt at once, with no retry.
+
 ## [0.7.0-rc.2] — 2026-10-18
 
 ### Added

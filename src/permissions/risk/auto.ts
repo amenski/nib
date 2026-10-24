@@ -79,8 +79,43 @@ export class AutoModeState {
   reset(): void {
     this.consecutive = 0;
     this.total = 0;
+    this.judgeRuns = [];
+    this.judgeWarned = false;
+  }
+
+  private judgeRuns: boolean[] = [];
+  private judgeOf: string | undefined;
+  private judgeWarned = false;
+
+  /**
+   * One judged call's health: `failed` is a timeout, error or unparseable
+   * answer. `justFailing` is true once per judge model, on the call that takes
+   * its recent failure rate past {@link JUDGE_FAILURE_RATE}. A different judge
+   * (a /model switch) starts a fresh window, since the old one's failures say
+   * nothing about it.
+   */
+  recordJudgeOutcome(judge: string | undefined, failed: boolean): { justFailing: boolean; failures: number; calls: number } {
+    if (judge !== this.judgeOf) {
+      this.judgeOf = judge;
+      this.judgeRuns = [];
+      this.judgeWarned = false;
+    }
+    this.judgeRuns.push(failed);
+    if (this.judgeRuns.length > JUDGE_HEALTH_WINDOW) this.judgeRuns.shift();
+    const calls = this.judgeRuns.length;
+    const failures = this.judgeRuns.filter(Boolean).length;
+    const justFailing = !this.judgeWarned && calls >= JUDGE_HEALTH_MIN_CALLS && failures / calls > JUDGE_FAILURE_RATE;
+    if (justFailing) this.judgeWarned = true;
+    return { justFailing, failures, calls };
   }
 }
+
+/** A judge failing more than this share of its recent calls is "not working well". */
+const JUDGE_FAILURE_RATE = 0.1;
+/** Recent means the last this-many judged calls... */
+const JUDGE_HEALTH_WINDOW = 20;
+/** ...once there are at least this many, so one early timeout is not 100%. */
+const JUDGE_HEALTH_MIN_CALLS = 10;
 
 export interface AutoModeOptions {
   /** Read per call: Shift+Tab flips the posture mid-session. */

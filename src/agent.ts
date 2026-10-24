@@ -1085,6 +1085,15 @@ export async function runAgent(
             ...(result.reason !== undefined ? { reason: result.reason } : {}),
             ...(judge !== undefined ? { judge } : {}),
           };
+          const failed = result.outcome !== "allow" && result.outcome !== "block";
+          const health = am.state.recordJudgeOutcome(judge, failed);
+          if (health.justFailing) {
+            options.onDiagnostic?.(
+              `auto mode judge ${judge ?? "model"} failed ${health.failures} of its last ${health.calls} calls ` +
+                `(${result.outcome}${result.reason !== undefined ? `: ${result.reason}` : ""}): ` +
+                "each failure asks you instead. Set classifier.model.id to a different model.",
+            );
+          }
           if (result.outcome === "allow") {
             am.state.recordAllow();
             return { kind: "allow", reason: "auto mode judge allowed the call", auto: trace };

@@ -44,7 +44,7 @@ import { SkillLoader, createLoadSkillTool, type SkillDef } from "./skills/index.
 import { AgentLoader, type AgentDef } from "./agents/index.js";
 import { CommandLoader, type CommandDef } from "./commands/index.js";
 import { checkForUpdate } from "./update-check.js";
-import { containmentWarning, hasActiveSandboxContainment, loadConfig, resolveHome } from "./config/loader.js";
+import { containmentWarning, hasActiveSandboxContainment, loadConfig, resolveHome, type DeepCodeSettings } from "./config/loader.js";
 import { projectSettingsPath } from "./config/paths.js";
 import { checkSettingsTrust, trustSettings, stripExecutionKeys } from "./config/settings-trust.js";
 import { checkFolderTrust, trustFolder, buildFolderContentSummary, hasGatedContent } from "./config/folder-trust.js";
@@ -53,6 +53,8 @@ import { readActiveSnapshot } from "./providers/catalog-update.js";
 import { getLiveModels, checkModelListed } from "./providers/live-models.js";
 import { enableDebug } from "./debug/logger.js";
 import { connectMCPServers, disconnectAllMCPServers } from "./mcp/connector.js";
+import { LspManager, createSpawnFn, lspStrictViolation, resolveLspServers, resolveOnPath } from "./lsp/index.js";
+import { setLspManager } from "./tools/index.js";
 import App from "./ui/App.js";
 import { ThemeProvider } from "./ui/contexts.js";
 import SettingsTrustPrompt from "./ui/views/SettingsTrustPrompt.js";
@@ -420,6 +422,10 @@ async function main() {
       modelOverride: overrideModel ?? shared.activeModel,
       baseUrl: isStartupProvider ? resolvedBaseUrl : undefined,
       apiKey: isStartupProvider ? resolvedApiKey : undefined,
+      // One id per conversation: OpenCode Go routes requests on it (a /model
+      // switch reuses it, a resume reuses the resumed session's id). Declared
+      // above line 665's assignment and read only lazily, so no TDZ issue.
+      sessionId,
     });
   }
 
@@ -793,6 +799,42 @@ async function main() {
     process.on("exit", () => disconnectAllMCPServers());
   }
 
+  // Language servers (post-edit diagnostics + the `lsp` tool). Built from
+  // configResult.config, which the TOFU block above already reassigned if the
+  // user declined: an untrusted project's `lspServers` never reaches here.
+  // Servers start lazily, so this costs nothing until an edit needs one.
+  // Re-derived rather than assumed: the prompt above exits on "no", but a
+  // built-in must never start unless the trust store says so.
+  const folderTrusted = !hasGatedContent(folderSummary)
+    || checkFolderTrust(projectDirForTrust, folderSummary).status === "trusted";
+  const lspServers = resolveLspServers(configResult.config, process.cwd(), folderTrusted);
+  const lsp =
+    Object.keys(lspServers).length > 0
+      ? new LspManager({
+          rootDir: process.cwd(),
+          servers: lspServers,
+          strict: configResult.config.strictMcpConfig,
+          onNote: (text) => process.stderr.write(`${text}\n`),
+          spawn: createSpawnFn({
+            cwd: process.cwd(),
+            trustedRoot: process.cwd(),
+            sandboxLevel:
+              configResult.config.sandbox?.enabled && configResult.config.permissionProfile?.level !== "unrestricted"
+                ? configResult.config.permissionProfile?.level
+                : undefined,
+            writeRoots: [...(configResult.config.sandbox?.writeRoots ?? []), ...additionalWriteRoots],
+            sessionTempDir: sessionTemp.path,
+          }),
+        })
+      : undefined;
+  setLspManager(lsp);
+  if (lsp) {
+    orchestrator.setLsp(lsp);
+    // Same exit hook as the MCP servers: shutdown → exit → kill, so no language
+    // server outlives the TUI. `void` because process exit handlers cannot await.
+    process.on("exit", () => void lsp.shutdownAll());
+  }
+
   // web_search backend config (webSearch.searxngUrl): configResult was
   // reassigned above (the TOFU strip on decline) if the project declared any
   // execution-capable keys, so this read already sees the stripped value.
@@ -1016,7 +1058,10 @@ async function main() {
     // The model sits just before the context meter: the two describe the same
     // thing (what the next message runs on and how full its window is), and the
     // bar drops segments from the end, so the model outlasts ctx on a narrow row.
-    segments.push(dim(nextId(), modelDisplayName()));
+    // Provider-prefixed: the same model (e.g. DeepSeek Flash) is served by
+    // several providers with different routing and billing, so the bar names
+    // which one the next message goes to.
+    segments.push(dim(nextId(), `${shared.providerName}/${modelDisplayName()}`));
 
     const ctxPercent = getContextPercent();
     if (ctxPercent !== null) {
@@ -1229,7 +1274,7 @@ async function main() {
           if (event.kind !== "text") cb.onSubagentProgress?.(event);
           appSubagentSink?.(event);
         });
-        return runAgentTurnBridge(input, cb, shared, permissions, permissionProfile, getProvider, getCompactor(), diagnostics, skills, agents, memoryInjection, memoryStore, sessionStore, sessionId, modeLoader, skillLoader, imageUrls, planMode, checkpoints, configResult.config.notify, configResult.config.env, notifySpawnOptions, errorReflector, errorRecovery, repomapInjection, dirtyBaseline, thinkingEnabled, getActiveModelCaps()?.contextWindow, hooks, currentBashEnvelope, { mode: configResult.config.classifier?.mode ?? "shadow", ...(classifierModel !== undefined ? { model: classifierModel } : {}), autoMode });
+        return runAgentTurnBridge(input, cb, shared, permissions, permissionProfile, getProvider, getCompactor(), diagnostics, skills, agents, memoryInjection, memoryStore, sessionStore, sessionId, modeLoader, skillLoader, imageUrls, planMode, checkpoints, configResult.config.notify, configResult.config.env, notifySpawnOptions, errorReflector, errorRecovery, repomapInjection, dirtyBaseline, thinkingEnabled, getActiveModelCaps()?.contextWindow, hooks, currentBashEnvelope, { mode: configResult.config.classifier?.mode ?? "shadow", ...(classifierModel !== undefined ? { model: classifierModel } : {}), autoMode }, lsp);
       },
       // Async sub-agent delivery (async-subagents.md §2): the App registers its
       // session-scoped wake handler here; the orchestrator calls it once per
@@ -1416,6 +1461,31 @@ function resolveLiveModelsKey(providerName: string): string {
 /** The 2-space-indent, 18-column-label prefix shared by the `nib doctor` rows. */
 function doctorLabel(label: string): string {
   return `  ${label.padEnd(18)}`;
+}
+
+/**
+ * `  lsp               dart: dart (ready) [.dart]` — one row per language
+ * server, or `none configured`. Nothing is started: "ready" means the command
+ * resolves on PATH, and a project command outside the strictMcpConfig
+ * allowlist is reported as blocked, the same test LspManager applies.
+ */
+export function formatLspLines(
+  config: DeepCodeSettings,
+  rootDir: string,
+  pathValue?: string,
+  folderTrusted = true,
+): string[] {
+  const label = doctorLabel("lsp");
+  const servers = Object.entries(resolveLspServers(config, rootDir, folderTrusted, pathValue));
+  if (servers.length === 0) return [`${label}none configured`];
+  return servers.map(([name, server], i) => {
+    const state =
+      config.strictMcpConfig && lspStrictViolation(server) !== undefined
+        ? "blocked by strictMcpConfig"
+        : resolveOnPath(server.command, pathValue) ? "ready" : "not on PATH";
+    const exts = Object.keys(server.extensionToLanguage).join(" ");
+    return `${i === 0 ? label : doctorLabel("")}${name}: ${server.command} (${state}) [${exts}]`;
+  });
 }
 
 /**
@@ -1698,6 +1768,9 @@ export async function runDoctor(): Promise<void> {
       : null;
     console.log(formatLiveModelsLine(doctorProvider, doctorModel, doctorModels));
   }
+  const doctorFolderTrusted =
+    checkFolderTrust(process.cwd(), buildFolderContentSummary(process.cwd(), configResult)).status === "trusted";
+  for (const line of formatLspLines(configResult.config, process.cwd(), undefined, doctorFolderTrusted)) console.log(line);
   const searxngUrl = configResult.config.webSearch?.searxngUrl;
   if (searxngUrl) {
     const health = await probeSearXngHealth(searxngUrl);
@@ -2023,7 +2096,7 @@ interface ClassifierWiring {
   autoMode?: AutoModeOptions;
 }
 
-async function runAgentTurnBridge(input: string, cb: any, shared: any, permissions: PermissionEngine, permissionProfile: ProfileEvaluator | undefined, getProvider: any, compactor: Compactor, diagnostics: DiagnosticRunner, skills: SkillDef[], agents: AgentDef[], memoryInjection: string | null | undefined, memoryStore: MemoryStore, sessionStore: SessionStore, sessionId: string, modeLoader: ModeLoader, skillLoader: SkillLoader, imageUrls?: string[], planMode?: boolean, checkpoints?: CheckpointManager, notifyScript?: string, notifyEnv?: Record<string, string | undefined>, notifySpawnOptions?: NotifySpawnOptions, errorReflector?: ErrorReflector, errorRecovery?: ErrorRecovery, repomapInjection?: string, dirtyBaseline?: string, thinkingEnabled?: boolean, contextWindow?: number, hooks?: HookRunner, bashEnvelope?: () => BashEnvelope | undefined, classifier?: ClassifierWiring): Promise<any> {
+async function runAgentTurnBridge(input: string, cb: any, shared: any, permissions: PermissionEngine, permissionProfile: ProfileEvaluator | undefined, getProvider: any, compactor: Compactor, diagnostics: DiagnosticRunner, skills: SkillDef[], agents: AgentDef[], memoryInjection: string | null | undefined, memoryStore: MemoryStore, sessionStore: SessionStore, sessionId: string, modeLoader: ModeLoader, skillLoader: SkillLoader, imageUrls?: string[], planMode?: boolean, checkpoints?: CheckpointManager, notifyScript?: string, notifyEnv?: Record<string, string | undefined>, notifySpawnOptions?: NotifySpawnOptions, errorReflector?: ErrorReflector, errorRecovery?: ErrorRecovery, repomapInjection?: string, dirtyBaseline?: string, thinkingEnabled?: boolean, contextWindow?: number, hooks?: HookRunner, bashEnvelope?: () => BashEnvelope | undefined, classifier?: ClassifierWiring, lsp?: LspManager): Promise<any> {
   if (checkpoints) {
     const convLen = shared.conversationHistory.length;
     await checkpoints.save(`[convLen:${convLen}] ${input.slice(0, 80)}`);
@@ -2089,6 +2162,7 @@ async function runAgentTurnBridge(input: string, cb: any, shared: any, permissio
     ...(classifier?.autoMode !== undefined ? { autoMode: classifier.autoMode } : {}),
     mode: shared.activeMode, compactor, diagnostics, skills, agents,
     errorReflector, errorRecovery,
+    ...(lsp !== undefined ? { lsp } : {}),
     repomap: repomapInjection,
     dirtyBaseline,
     research: researchInjection,

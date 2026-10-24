@@ -352,6 +352,13 @@ get the normal prompt with a note: "Auto mode could not decide (timeout)." and
 the call is not counted as a block. Pressing Esc while the judge is thinking
 cancels it at once and denies the call.
 
+**When the judge keeps failing.** If more than 10% of the judge's last 20 calls
+failed (counted once there are at least 10), you get one notice: "auto mode
+judge `<model>` failed N of its last M calls (`<latest failure>`): each failure
+asks you instead. Set classifier.model.id to a different model." It is shown
+once per judge model; switching models starts a new count, and so do `/clear`,
+`/new`, `/resume` and re-entering auto. A failure is never retried.
+
 **Cost and speed.** Each judged call is one short model request, two when
 stage 1 blocks. Read-only calls and edits cost nothing extra. Speed is your
 judge model's round trip, bounded by the 10 s and 30 s limits; measure yours
@@ -509,7 +516,8 @@ rows mean the model is too slow for the 10 s and 30 s limits.
   rules (4.3). That is by design; remove or narrow the `ask` rule if it is the
   one asking.
 - The judge is failing. Check for `timeout`, `error` and `unparseable` rows
-  (section 7); the prompt says "Auto mode could not decide (...)".
+  (section 7); the prompt says "Auto mode could not decide (...)", and past a
+  10% failure rate a notice says so (section 5).
 
 **It blocked something that should have run.**
 - Read the tag (the terminal shows it; the jq block recipe lists it). It says

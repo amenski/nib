@@ -7,6 +7,29 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Edits now report language-server errors immediately.** After an edit, nib asks
+  the language server for the changed files and appends any errors and warnings
+  to that edit's own result, so the model fixes them in the next step instead of
+  finding them later. Works in the TUI, `nib exec` and sub-agents. Dart and
+  TypeScript servers are built in and start when `pubspec.yaml` or
+  `tsconfig.json` exists, the server binary is on `PATH` and the folder is
+  trusted (they run repo code; `nib exec` needs a prior interactive trust); add others under
+  `lspServers`. Switch off with `lsp.diagnostics: false`. `nib doctor` shows a
+  row per server.
+- **A read-only `lsp` tool for code navigation.** Definitions, references, hover,
+  symbols, implementations and call hierarchies come from the language server
+  rather than text search. It only reads files inside the workspace, and results
+  are treated as untrusted content. A project's `lspServers` need the usual
+  trust confirmation, and `strictMcpConfig` limits which commands may start.
+- **Auto mode tells you when its judge is not working.** When more than 10% of
+  the judge's last 20 calls (counted from the 10th) timed out, errored or gave
+  an unparseable answer, a one-time notice names the judge model, the failure
+  count and the latest failure, and suggests `classifier.model.id`. It is shown
+  once per judge model; a `/model` switch starts a fresh count. Failures still
+  fall back to the ordinary prompt at once, with no retry.
+
 ## [0.7.0-rc.2] — 2026-10-18
 
 ### Added

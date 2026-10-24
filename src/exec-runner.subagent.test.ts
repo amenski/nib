@@ -122,6 +122,7 @@ vi.mock("./tools/index.js", async () => {
     setWritePolicyLevel: () => {},
     setWriteRoots: () => {},
     setWebSearchConfig: () => {},
+    setLspManager: () => {},
   };
 });
 

@@ -82,6 +82,7 @@ vi.mock("./tools/index.js", () => ({
   setWritePolicyLevel: () => {},
   setWriteRoots: () => {},
   setWebSearchConfig: () => {},
+  setLspManager: () => {},
 }));
 
 // The notify hook is mocked so the completion-site tests below can assert
@@ -89,6 +90,32 @@ vi.mock("./tools/index.js", () => ({
 const fireNotifySpy = vi.fn();
 vi.mock("./notify.js", () => ({
   fireNotify: (...args: unknown[]) => fireNotifySpy(...args),
+}));
+
+// Language servers are mocked at the module boundary: resolveLspServers yields
+// nothing by default (no server → no manager, exactly as an unconfigured
+// project behaves), and a test can make it yield one to assert the teardown.
+const lspShutdownSpy = vi.fn(async () => {});
+let lspServerFactory: () => Record<string, unknown> = () => ({});
+vi.mock("./lsp/index.js", () => ({
+  resolveLspServers: () => lspServerFactory(),
+  createSpawnFn: () => () => {
+    throw new Error("language servers never spawn in these tests");
+  },
+  LspManager: class {
+    async shutdownAll(): Promise<void> {
+      await lspShutdownSpy();
+    }
+    get workspaceRoot(): string {
+      return process.cwd();
+    }
+    serverNameFor(): string | undefined {
+      return undefined;
+    }
+    async diagnosticsFor(): Promise<Map<string, never[]>> {
+      return new Map();
+    }
+  },
 }));
 
 function nonTtyInput(): ExecInputStream {
@@ -178,6 +205,24 @@ describe("runExecMode headless permission enforcement (T11)", () => {
     await run();
 
     expect(jobManager.check(id)?.status).toBe("killed");
+  });
+
+  it("shuts language servers down when the headless run ends", async () => {
+    lspServerFactory = () => ({ dart: { command: "dart", extensionToLanguage: { ".dart": "dart" } } });
+    lspShutdownSpy.mockClear();
+
+    await run();
+
+    expect(lspShutdownSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("builds no language-server manager when nothing is configured", async () => {
+    lspServerFactory = () => ({});
+    lspShutdownSpy.mockClear();
+
+    await run();
+
+    expect(lspShutdownSpy).not.toHaveBeenCalled();
   });
 
   it("(b) denies an ask-resolving call (defaultMode askAll) without executing it", async () => {

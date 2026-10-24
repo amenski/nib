@@ -126,8 +126,21 @@ Pick the smallest tool that expresses the change. Never write_to_file to change 
 
 ### `read` group
 
-No prompt text. Read tools are self-explanatory from their schemas;
-guidance here would be dead weight.
+No prompt text, except one conditional paragraph. Read tools are
+self-explanatory from their schemas; guidance here would be dead weight. The
+exception is code navigation, added only when the mode grants `read` **and**
+at least one language server applies to the workspace:
+
+```
+# Code navigation
+- Use lsp instead of grep for symbol lookups: goToDefinition, findReferences, hover (types and docs), documentSymbol, goToImplementation, workspaceSymbol, and call hierarchies.
+- line and character are 1-based; filePath must be inside the workspace.
+- It answers from the language server's own analysis, so it is exact where a text search is approximate.
+```
+
+Session-stable (the server table is built once), so it lives in the cached
+preamble. Diagnostics after edits need no prompt text: they arrive inside the
+edit tool's result.
 
 ## 5. Environment
 
@@ -212,6 +225,8 @@ offers Implement / Stay / Switch-to-Default
 
 ## Changelog
 
+- 2026-10-24 — read group gains a conditional `# Code navigation` paragraph
+  (`lspServersAvailable`), emitted only when a language server is configured.
 - 2026-08-15 — agent definitions (§F4): "Available agents" index added after
   skills; agent `instructions` prepend the preamble for agent-routed sub-runs.
 - 2026-08-13 — rewritten against the shipped split: stable preamble

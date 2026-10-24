@@ -93,7 +93,7 @@ export class PermissionEngine {
 
   /** Tools whose exact/glob patterns carry file paths (normalized on load). */
   private static readonly FILE_TOOLS = new Set([
-    "read_file", "write_to_file", "edit", "list_files", "glob", "search",
+    "read_file", "write_to_file", "edit", "list_files", "glob", "search", "lsp",
   ]);
 
   /**

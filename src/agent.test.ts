@@ -171,6 +171,34 @@ describe("runAgent", () => {
     });
   });
 
+  // The env block's git line must describe the tree at the moment each request
+  // goes out. A tool call that edits files changes it, so the next request in
+  // the same turn must see the new state, not the one captured at turn start.
+  it("rebuilds the environment block for every request in a turn", async () => {
+    vi.mocked(buildVolatileContext)
+      .mockResolvedValueOnce("ENV-BEFORE-EDITS") // turn start, reused by request 1
+      .mockResolvedValueOnce("ENV-AFTER-EDITS"); // rebuilt for request 2
+    const { provider, receivedMessages } = makeProvider([
+      [
+        { type: "tool_call_start", id: "c1", name: "edit" },
+        { type: "tool_call_delta", id: "c1", arguments: "{}" },
+        { type: "done", finishReason: "tool_calls" },
+      ],
+      textTurn("done"),
+    ]);
+
+    await runAgent("edit things", {
+      provider,
+      tools: [],
+      executeTool: async () => ({ content: "edited" }),
+    });
+
+    const volatileOf = (msgs: Message[]) => msgs.find((m) => m.role === "user" && m.volatile)?.content;
+    expect(volatileOf(receivedMessages[0])).toBe("ENV-BEFORE-EDITS");
+    expect(volatileOf(receivedMessages[1])).toBe("ENV-AFTER-EDITS");
+    vi.mocked(buildVolatileContext).mockResolvedValue("");
+  });
+
   it("records tool calls, tool results, and the final reply in newMessages", async () => {
     const { provider } = makeProvider([
       [

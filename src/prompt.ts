@@ -37,6 +37,14 @@ export interface PromptContext {
   research?: string;
   planMode?: boolean;
   /**
+   * True when at least one language server is configured for this workspace.
+   * Gates the "Code navigation" section of the tool guide: without a server,
+   * the `lsp` tool can only answer "no server configured", so advertising it
+   * would waste the model's attention. Session-stable (the manager's server
+   * table is built once), so it belongs in the cached preamble.
+   */
+  lspServersAvailable?: boolean;
+  /**
    * `git status --porcelain` snapshot captured once at process start, before
    * any agent edits. Lets the per-turn environment block tag each dirty file
    * as pre-existing (dirty before this session) vs. this session (the agent's
@@ -104,7 +112,7 @@ export function buildStablePreamble(ctx: PromptContext): string {
 
   sections.push(getBaseRules());
 
-  const toolGuide = getToolGuide(mode?.groups || []);
+  const toolGuide = getToolGuide(mode?.groups || [], ctx.lspServersAvailable === true);
   if (toolGuide) sections.push(toolGuide);
 
   if (mode?.customInstructions) sections.push(mode.customInstructions);
@@ -196,11 +204,17 @@ You operate on the user's repository through tools.
 - When you finish, summarize what changed in one or two sentences.`;
 }
 
-function getToolGuide(groups: ToolGroup[]): string {
+function getToolGuide(groups: ToolGroup[], hasLsp = false): string {
   const hasEdit = groups.includes("edit");
   const hasCommand = groups.includes("command");
+  const hasRead = groups.includes("read");
 
-  if (!hasEdit && !hasCommand) return "";
+  // The code-navigation paragraph is only useful when the `read` group (which
+  // holds the lsp tool) is on AND a server is actually configured — otherwise
+  // it would advertise a tool that can only answer "no server".
+  const showLsp = hasRead && hasLsp;
+
+  if (!hasEdit && !hasCommand && !showLsp) return "";
 
   const parts: string[] = [];
 
@@ -221,6 +235,13 @@ Pick the smallest tool that expresses the change. Never write_to_file to change 
 - Non-interactive only: no editors, no pagers, no prompts (use git --no-pager, npm --yes where needed).
 - Quote paths with spaces.
 - Destructive commands (rm, git reset --hard, force-push, DROP) only when the user explicitly asked for that outcome.`);
+  }
+
+  if (showLsp) {
+    parts.push(`# Code navigation
+- Use lsp instead of grep for symbol lookups: goToDefinition, findReferences, hover (types and docs), documentSymbol, goToImplementation, workspaceSymbol, and call hierarchies.
+- line and character are 1-based; filePath must be inside the workspace.
+- It answers from the language server's own analysis, so it is exact where a text search is approximate.`);
   }
 
   return parts.join("\n\n");

@@ -1,12 +1,11 @@
 import { streamText, tool, jsonSchema, stepCountIs } from "ai";
 import type { JSONSchema7, ModelMessage } from "ai";
-import { createOpenAI } from "@ai-sdk/openai";
-import { createAnthropic } from "@ai-sdk/anthropic";
 import type { Message, ToolDef } from "../types.js";
 import type { Provider, ProviderBalance, StreamEvent } from "./types.js";
 import type { ProviderPreset } from "./presets.js";
 import { logRequest, logResponse, logTiming, logError } from "../debug/logger.js";
 import { readCachedModels } from "./live-models.js";
+import { createAIInstance } from "./instances.js";
 
 export function mapMessages(messages: Message[]): ModelMessage[] {
   const toolNameByCallId = new Map<string, string>();
@@ -89,25 +88,6 @@ function mapTools(tools: ToolDef[]): Record<string, ReturnType<typeof tool>> {
     });
   }
   return result;
-}
-
-function createAIInstance(apiType: string, baseUrl: string, apiKey: string, model: string) {
-  if (apiType === "anthropic") {
-    return createAnthropic({ apiKey })(model);
-  }
-  let hostname: string | undefined;
-  try {
-    hostname = new URL(baseUrl).hostname;
-  } catch {
-    // The SDK will report the malformed URL when the request is attempted.
-  }
-  const headers = hostname === "openrouter.ai"
-    ? {
-        "HTTP-Referer": "https://github.com/amenski/nib",
-        "X-OpenRouter-Title": "Nib",
-      }
-    : undefined;
-  return createOpenAI({ baseURL: baseUrl, apiKey, ...(headers ? { headers } : {}) }).chat(model);
 }
 
 /**
@@ -262,6 +242,7 @@ export function createAISDKProvider(
   model: string,
   apiKey: string,
   providerName = "",
+  sessionId?: string,
 ): Provider {
   return {
     name: model,
@@ -274,7 +255,7 @@ export function createAISDKProvider(
       options?: { temperature?: number; maxTokens?: number; signal?: AbortSignal; effort?: string; thinkingEnabled?: boolean },
     ): AsyncGenerator<StreamEvent> {
       const baseUrl = preset.baseUrl;
-      const modelInstance = createAIInstance(preset.api, baseUrl, apiKey, model);
+      const modelInstance = createAIInstance(preset.api, baseUrl, apiKey, model, sessionId);
 
       const reasoning = toReasoningLevel(options?.effort);
       // Reasoning/thinking mode rejects sampling parameters (DeepSeek documents

@@ -185,6 +185,7 @@ describe("EXECUTION_CAPABLE_KEYS / loadConfig.projectExecutionKeys attribution",
   it("EXECUTION_CAPABLE_KEYS is exactly the documented set", () => {
     expect([...EXECUTION_CAPABLE_KEYS].sort()).toEqual([
       "env",
+      "lspServers",
       "mcpServers",
       "notify",
       "permissionProfile",

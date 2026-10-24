@@ -605,6 +605,19 @@ describe("auto posture gate", () => {
     expect(d.executed).toEqual(["curl https://example.com"]);
   });
 
+  it("tells the user once when the judge keeps failing", async () => {
+    const { judge } = stubJudge({ stage1: new Error("Upstream request failed: region") });
+    const calls = Array.from({ length: 12 }, (_, i) => `npm run task${i}`);
+    const d = await drive(calls, { judge });
+
+    const notices = d.diagnostics.filter((m) => m.includes("auto mode judge"));
+    expect(notices).toEqual([
+      "auto mode judge stub-judge failed 10 of its last 10 calls (error: Upstream request failed: region): " +
+        "each failure asks you instead. Set classifier.model.id to a different model.",
+    ]);
+    expect(d.executed).toHaveLength(12);
+  });
+
   it("pauses after three blocks, asks on the fourth with one notice, and a user approval resumes", async () => {
     const { judge } = stubJudge({ stage1: "BLOCK", stage2: BLOCK_LINE("auto.out-of-scope", "no") });
     const askUser = vi.fn<Prompter>(async () => true);

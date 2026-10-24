@@ -66,6 +66,9 @@ export default function FolderTrustPrompt({ projectDir, summary, status, resolve
         {summary.hooks.length > 0 ? (
           <Text>  - <Text bold>{summary.hooks.length}</Text> hook{summary.hooks.length === 1 ? "" : "s"}</Text>
         ) : null}
+        {summary.builtinLspServers?.length > 0 ? (
+          <Text>  - built-in language servers: <Text bold>{summary.builtinLspServers.join(", ")}</Text> (run code from this folder)</Text>
+        ) : null}
       </Box>
       <Text color={theme.colorEnabled ? ansi256(theme.theme.textDim) : undefined}>
         This is a one-time bulk approval for exactly what's here now — content added or changed later still asks again.

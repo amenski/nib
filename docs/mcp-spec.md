@@ -36,7 +36,10 @@ environment for the child.
 - **`strictMcpConfig: true`** gates spawning: only launchers whose
   *basename* is in the allowlist may run — `npx, node, python3, python,
   uvx, uv, bun, deno, go, java`. A blocked server is marked `failed` with
-  the reason in `errorMap` (visible in `/mcp`), never spawned.
+  the reason in `errorMap` (visible in `/mcp`), never spawned. The same flag
+  also gates `lspServers`, but against its own allowlist
+  (`ALLOWED_LSP_COMMANDS`) because the launcher list would block language-server
+  binaries such as `dart` (config-spec.md §18).
 - `reconnectMCPServer(name, config, { approvePinChange })` disconnects a
   stale client, re-checks the allowlist, spawns, lists tools, compares
   against the persisted tool-def pin (§6), and registers them; the `/mcp`

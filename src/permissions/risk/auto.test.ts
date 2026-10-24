@@ -99,6 +99,36 @@ describe("AutoModeState", () => {
   });
 });
 
+describe("AutoModeState judge health", () => {
+  const record = (s: AutoModeState, outcomes: string, judge = "p/m") =>
+    [...outcomes].map((c) => s.recordJudgeOutcome(judge, c === "x").justFailing);
+
+  it("says nothing before ten judged calls, even when every one failed", () => {
+    expect(record(new AutoModeState(), "xxxxxxxxx")).not.toContain(true);
+  });
+
+  it("reports once when more than 10% of the recent calls failed", () => {
+    const s = new AutoModeState();
+    expect(record(s, "ooooooooox")).not.toContain(true); // 1 of 10 is exactly 10%
+    expect(s.recordJudgeOutcome("p/m", true)).toEqual({ justFailing: true, failures: 2, calls: 11 });
+    expect(record(s, "xxxx")).not.toContain(true);
+  });
+
+  it("looks only at the last twenty calls", () => {
+    const s = new AutoModeState();
+    record(s, "xxooooooooooooooooooooo"); // the two failures have left the window
+    expect(s.recordJudgeOutcome("p/m", true).justFailing).toBe(false);
+  });
+
+  it("starts over for a different judge model, and on reset", () => {
+    const s = new AutoModeState();
+    record(s, "xxxxxxxxxx");
+    expect(record(s, "xxxxxxxxxx", "p/other").slice(-1)).toEqual([true]);
+    s.reset();
+    expect(record(s, "xxxxxxxxxx", "p/other").slice(-1)).toEqual([true]);
+  });
+});
+
 describe("autoHardStop", () => {
   const verdictFor = (r: RiskInput) => classifyRisk(r);
 

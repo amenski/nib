@@ -208,7 +208,7 @@ const SHELL_TOOLS = new Set(["run_bash", "run_bash_background"]);
 const PATH_WRITE_TOOLS = new Set([
   "edit", "edit_file", "write_to_file", "apply_patch", "apply_diff", "search_replace",
 ]);
-const PATH_READ_TOOLS = new Set(["read_file", "list_files", "glob", "search"]);
+const PATH_READ_TOOLS = new Set(["read_file", "list_files", "glob", "search", "lsp"]);
 const NETWORK_TOOLS = new Set(["web_fetch", "view_image", "web_search"]);
 
 const WRAPPERS = ["sudo", "env", "timeout", "nice", "nohup", "xargs", "command"];

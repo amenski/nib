@@ -48,6 +48,43 @@ export interface McpServerConfig {
   sandbox?: false;
 }
 
+/**
+ * One language server, modelled on Claude Code's `.lsp.json` entry. Spawned
+ * lazily the first time an edit touches a file whose extension appears in
+ * `extensionToLanguage`.
+ */
+export interface LspServerConfig {
+  /** Executable to spawn (e.g. "dart", "typescript-language-server") */
+  command: string;
+  /** Arguments for the command */
+  args?: string[];
+  /** Environment variables for the server process */
+  env?: Record<string, string>;
+  /** File extension → LSP language id, e.g. { ".dart": "dart" }. Required: it is what routes a path to this server. */
+  extensionToLanguage: Record<string, string>;
+  /** Passed to `initialize` as `initializationOptions` */
+  initializationOptions?: unknown;
+  /** Sent as `workspace/didChangeConfiguration` after `initialized`, and answered to `workspace/configuration` */
+  settings?: unknown;
+  /** Milliseconds to wait for `initialize` (default 15 s) */
+  startupTimeout?: number;
+  /** Milliseconds to wait for `shutdown` before killing (default 2 s) */
+  shutdownTimeout?: number;
+  /**
+   * `false` runs this server outside the Seatbelt profile. Global-only, same
+   * rule and rationale as McpServerConfig.sandbox.
+   */
+  sandbox?: false;
+}
+
+/** `lsp` block: off-switches only, so an untrusted project can never turn a surface ON. */
+export interface LspOptions {
+  /** Post-edit diagnostics in the agent loop (default true) */
+  diagnostics?: boolean;
+  /** The built-in zero-config server table (default true) */
+  builtinServers?: boolean;
+}
+
 export interface WebSearchConfig {
   /**
    * Base URL of a user-run SearXNG instance, used as the primary web_search
@@ -136,6 +173,11 @@ export interface DeepCodeSettings {
 
   // ── MCP Servers ──
   mcpServers?: Record<string, McpServerConfig>;
+
+  // ── Language servers (docs: lsp tool + post-edit diagnostics) ──
+  lspServers?: Record<string, LspServerConfig>;
+  /** Off-switches only (both default ON), so a project can only narrow. */
+  lsp?: LspOptions;
 
   // ── Notify ──
   /** Path to notification script */
@@ -423,6 +465,8 @@ const KNOWN_KEYS = new Set([
   "sandbox",
   "classifier",
   "mcpServers",
+  "lspServers",
+  "lsp",
   "notify",
   "webSearchTool",
   "webSearch",
@@ -454,6 +498,11 @@ const KNOWN_KEYS = new Set([
  *  - statusline: providers[].command runs a shell command (manager.ts); a
  *    module provider does `import()` of a project-relative path.
  *  - mcpServers: each entry spawns a subprocess at connect time.
+ *  - lspServers: each entry spawns a language-server subprocess at import
+ *    time, and — like mcpServers — the command is attacker-chosen. Gated by
+ *    the same TOFU strip, and additionally by a separate literal allowlist
+ *    (lsp/manager.ts ALLOWED_LSP_COMMANDS under strictMcpConfig) because the
+ *    MCP list holds launchers only and would block `dart`, `gopls`, etc.
  *  - notify: spawns a script (argv-only, no shell — still an attacker-chosen
  *    executable).
  *  - env: only the BASE_URL redirect matters here (API traffic destination);
@@ -492,6 +541,7 @@ const KNOWN_KEYS = new Set([
 export const EXECUTION_CAPABLE_KEYS = new Set([
   "statusline",
   "mcpServers",
+  "lspServers",
   "notify",
   "env",
   "strictMcpConfig",
@@ -887,6 +937,167 @@ function validateMcpServers(
   return validated;
 }
 
+/** Extension keys are the routing table — a bad key would silently never match. */
+const LSP_EXTENSION_RE = /^\.[A-Za-z0-9_+.-]+$/;
+
+const LSP_SERVER_KEYS = new Set([
+  "command",
+  "args",
+  "env",
+  "extensionToLanguage",
+  "initializationOptions",
+  "settings",
+  "startupTimeout",
+  "shutdownTimeout",
+  "sandbox",
+]);
+
+/**
+ * Validates the `lspServers` block, mirroring validateMcpServers' shape (same
+ * source/errors convention, same per-entry skip rather than whole-block
+ * failure). Same-named servers claiming one extension is a warning, not an
+ * error: the first entry wins, so a working config is never broken by a
+ * duplicate.
+ */
+function validateLspServers(
+  raw: unknown,
+  source: string,
+  errors: string[],
+  warnings: string[],
+): Record<string, LspServerConfig> | undefined {
+  if (!isObject(raw)) {
+    errors.push(`${source}: lspServers must be an object`);
+    return undefined;
+  }
+  const validated: Record<string, LspServerConfig> = {};
+  /** extension → first server name that claimed it */
+  const claimed = new Map<string, string>();
+
+  for (const [name, entry] of Object.entries(raw as Record<string, unknown>)) {
+    if (!isObject(entry)) {
+      errors.push(`${source}: lspServers.${name} must be an object`);
+      continue;
+    }
+    const e = entry as Record<string, unknown>;
+
+    if (typeof e.command !== "string" || e.command.trim() === "") {
+      errors.push(`${source}: lspServers.${name}.command is required`);
+      continue;
+    }
+
+    if (!isObject(e.extensionToLanguage)) {
+      errors.push(`${source}: lspServers.${name}.extensionToLanguage is required and must be an object`);
+      continue;
+    }
+    const rawExtensions = Object.entries(e.extensionToLanguage as Record<string, unknown>);
+    if (rawExtensions.length === 0) {
+      errors.push(`${source}: lspServers.${name}.extensionToLanguage must not be empty`);
+      continue;
+    }
+    const extensionToLanguage: Record<string, string> = {};
+    let badExtension = false;
+    for (const [ext, language] of rawExtensions) {
+      if (!LSP_EXTENSION_RE.test(ext)) {
+        errors.push(
+          `${source}: lspServers.${name}.extensionToLanguage key "${ext}" must look like ".dart"`,
+        );
+        badExtension = true;
+        break;
+      }
+      if (typeof language !== "string" || language.trim() === "") {
+        errors.push(
+          `${source}: lspServers.${name}.extensionToLanguage["${ext}"] must be a non-empty string`,
+        );
+        badExtension = true;
+        break;
+      }
+      const owner = claimed.get(ext);
+      if (owner !== undefined) {
+        warnings.push(
+          `${source}: lspServers.${name} also claims "${ext}" (first claimed by lspServers.${owner}) — ${owner} wins`,
+        );
+        continue;
+      }
+      claimed.set(ext, name);
+      extensionToLanguage[ext] = language;
+    }
+    if (badExtension) continue;
+
+    const srv: LspServerConfig = { command: e.command, extensionToLanguage };
+
+    if ("args" in e) {
+      if (Array.isArray(e.args)) {
+        srv.args = e.args.filter((a): a is string => typeof a === "string");
+      } else {
+        errors.push(`${source}: lspServers.${name}.args must be an array of strings`);
+      }
+    }
+
+    if ("env" in e) {
+      if (isObject(e.env)) {
+        const env: Record<string, string> = {};
+        for (const [ek, ev] of Object.entries(e.env as Record<string, unknown>)) {
+          if (typeof ev === "string") env[ek] = ev;
+          else errors.push(`${source}: lspServers.${name}.env.${ek} must be a string`);
+        }
+        srv.env = env;
+      } else {
+        errors.push(`${source}: lspServers.${name}.env must be an object`);
+      }
+    }
+
+    for (const key of ["startupTimeout", "shutdownTimeout"] as const) {
+      if (!(key in e)) continue;
+      const value = e[key];
+      if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+        srv[key] = value;
+      } else {
+        errors.push(`${source}: lspServers.${name}.${key} must be a positive number`);
+      }
+    }
+
+    if ("initializationOptions" in e) srv.initializationOptions = e.initializationOptions;
+    if ("settings" in e) srv.settings = e.settings;
+    // `sandbox: false` is NOT read here — like mcpServers it is global-only and
+    // applied from globalRaw in loadConfig's merge block, so a project value can
+    // never opt a server out of the Seatbelt profile.
+
+    for (const key of Object.keys(e)) {
+      if (!LSP_SERVER_KEYS.has(key)) {
+        warnings.push(`${source}: lspServers.${name}: unknown field "${key}"`);
+      }
+    }
+
+    validated[name] = srv;
+  }
+
+  return validated;
+}
+
+function validateLspOptions(
+  raw: unknown,
+  source: string,
+  errors: string[],
+): LspOptions | undefined {
+  if (!isObject(raw)) {
+    errors.push(`${source}: lsp must be an object`);
+    return undefined;
+  }
+  const l = raw as Record<string, unknown>;
+  const options: LspOptions = {};
+  for (const key of ["diagnostics", "builtinServers"] as const) {
+    if (!(key in l)) continue;
+    if (typeof l[key] === "boolean") options[key] = l[key];
+    else errors.push(`${source}: lsp.${key} must be a boolean`);
+  }
+  for (const key of Object.keys(l)) {
+    if (key !== "diagnostics" && key !== "builtinServers") {
+      errors.push(`${source}: lsp: unknown field "${key}"`);
+    }
+  }
+  return options;
+}
+
 function validateStatusline(
   raw: unknown,
   source: string,
@@ -1095,6 +1306,12 @@ function resolveProjectExecutionKeys(projectRaw: Record<string, unknown> | null)
   if ("mcpServers" in projectRaw) {
     if (validateMcpServers(projectRaw.mcpServers, "project", scratchErrors) !== undefined) {
       detected.push("mcpServers");
+    }
+  }
+  if ("lspServers" in projectRaw) {
+    const scratchWarnings: string[] = [];
+    if (validateLspServers(projectRaw.lspServers, "project", scratchErrors, scratchWarnings) !== undefined) {
+      detected.push("lspServers");
     }
   }
   if ("notify" in projectRaw) {
@@ -1458,6 +1675,34 @@ export function loadConfig(projectDir?: string): LoadResult {
       }
       config.mcpServers = mcp;
     }
+  }
+
+  // ── lspServers ──
+  if ("lspServers" in merged) {
+    const lspServers = validateLspServers(merged.lspServers, "config", errors, warnings);
+    if (lspServers) {
+      // sandbox:false is global-only, same rule and same reasoning as
+      // mcpServers above: a project entry under the same name voids it, since
+      // deepMerge would otherwise pair the project's command with the global
+      // opt-out.
+      const globalLsp = isObject(globalRaw?.lspServers) ? (globalRaw.lspServers as Record<string, unknown>) : {};
+      const projectLsp = isObject(projectRaw?.lspServers) ? (projectRaw.lspServers as Record<string, unknown>) : {};
+      for (const [name, srv] of Object.entries(lspServers)) {
+        const g = globalLsp[name];
+        const p = projectLsp[name];
+        if (isObject(p) && "sandbox" in p) {
+          warnings.push(`lspServers.${name}.sandbox is global-only and was ignored in project .nib/settings.json`);
+        }
+        if (isObject(g) && g.sandbox === false && !(name in projectLsp)) srv.sandbox = false;
+      }
+      config.lspServers = lspServers;
+    }
+  }
+
+  // ── lsp (off-switches only; not execution-capable) ──
+  if ("lsp" in merged) {
+    const lsp = validateLspOptions(merged.lsp, "config", errors);
+    if (lsp) config.lsp = lsp;
   }
 
   // ── notify ──

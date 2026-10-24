@@ -5,6 +5,9 @@ import { authorize, type ProfileEvaluator } from "./permissions/index.js";
 import type { ModeConfig } from "./modes/loader.js";
 import type { Compactor } from "./compaction/compactor.js";
 import type { DiagnosticRunner } from "./diagnostics/index.js";
+import type { LspManager } from "./lsp/index.js";
+import { formatDiagnostics, diagnosticsBlock, relPath } from "./lsp/index.js";
+import { wrapUntrusted, sanitizeControlChars } from "./tools/untrusted-content.js";
 import type { ErrorReflector } from "./selfreflection/index.js";
 import type { ErrorRecovery } from "./errorrecovery/index.js";
 import type { SkillDef } from "./skills/index.js";
@@ -241,6 +244,13 @@ export interface AgentOptions {
   mode?: ModeConfig;
   compactor?: Compactor;
   diagnostics?: DiagnosticRunner;
+  /**
+   * Native language-server support. Present when at least one server is
+   * configured (`resolveLspServers`); the loop then asks it for diagnostics on
+   * the files each successful write tool touched and appends them to that
+   * call's own result. Absent → no diagnostics, no cost.
+   */
+  lsp?: LspManager;
   errorReflector?: ErrorReflector;
   errorRecovery?: ErrorRecovery;
   /**
@@ -442,10 +452,11 @@ export async function runAgent(
     memory: options.memory,
     research: options.research,
     planMode: options.planMode,
+    lspServersAvailable: options.lsp?.hasServers === true,
   };
   const promptAssemblyStart = Date.now();
   const stablePreamble = getStablePreamble(promptCtx);
-  const volatileContext = await buildVolatileContext(promptCtx);
+  let volatileContext = await buildVolatileContext(promptCtx);
 
   // Overhead the compaction check must account for beyond `messages` itself.
   // Stable for the session, so computed once here rather than per turn. Shares
@@ -557,6 +568,7 @@ export async function runAgent(
         agentInstructions: options.agentInstructions,
         repomap: options.repomap,
         memory: options.memory,
+        lspServersAvailable: options.lsp?.hasServers === true,
       });
       messages.unshift({ role: "system", content: rebuiltPrompt });
     }
@@ -625,9 +637,13 @@ export async function runAgent(
     await maybeCompact(compactionOverheadTokens);
 
     try {
-    // Live todo block: volatileContext is session-stable (computed once above),
-    // but the todo list changes mid-turn, so it is re-read and appended here per
-    // sub-turn — same appendVolatile mechanism, one extra section.
+    // The env block's git line goes stale the moment a tool edits a file, so
+    // every request after the first re-runs it (the first reuses the build
+    // above). It lives only in the request-only tail, so rebuilding it never
+    // touches the cached prefix.
+    if (turn > 1) volatileContext = await buildVolatileContext(promptCtx);
+    // Live todo block: the todo list also changes mid-turn, so it is re-read and
+    // appended here per sub-turn — same appendVolatile mechanism, one extra section.
     const todoBlock = options.getTodos ? formatTodoBlock(options.getTodos()) : "";
     // Mid-turn steering mailbox: poll once per decision point; a hit joins the
     // volatile assembly below AND is pushed to `messages` as a real user
@@ -1081,6 +1097,15 @@ export async function runAgent(
             ...(result.reason !== undefined ? { reason: result.reason } : {}),
             ...(judge !== undefined ? { judge } : {}),
           };
+          const failed = result.outcome !== "allow" && result.outcome !== "block";
+          const health = am.state.recordJudgeOutcome(judge, failed);
+          if (health.justFailing) {
+            options.onDiagnostic?.(
+              `auto mode judge ${judge ?? "model"} failed ${health.failures} of its last ${health.calls} calls ` +
+                `(${result.outcome}${result.reason !== undefined ? `: ${result.reason}` : ""}): ` +
+                "each failure asks you instead. Set classifier.model.id to a different model.",
+            );
+          }
           if (result.outcome === "allow") {
             am.state.recordAllow();
             return { kind: "allow", reason: "auto mode judge allowed the call", auto: trace };
@@ -1486,6 +1511,40 @@ export async function runAgent(
             result.error = `${result.error}\n${note}`;
           } else {
             result.content = result.content ? `${result.content}\n${note}` : note;
+          }
+        }
+      }
+      // Post-edit language-server diagnostics: the errors in the file(s) this
+      // call just wrote. Appended to the call's own result — not a separate
+      // system message — so the model reads "these errors belong to that edit"
+      // rather than having to infer which write a later note refers to. This
+      // one hook covers every write tool (including multi-file apply_patch),
+      // and reaches sub-agents because the orchestrator calls this same runAgent.
+      if (options.lsp && !result.error) {
+        const paths = writtenPaths(tc.name, tc.arguments);
+        if (paths.length > 0) {
+          try {
+            const found = await options.lsp.diagnosticsFor(paths);
+            for (const [path, diagnostics] of found) {
+              const serverName = options.lsp.serverNameFor(path) ?? "lsp";
+              const block = diagnosticsBlock(
+                serverName,
+                path,
+                diagnostics,
+                options.lsp.workspaceRoot,
+              );
+              if (!block) continue;
+              result.content = result.content ? `${result.content}\n\n${block}` : block;
+              const errors = diagnostics.filter((d) => d.severity === 1).length;
+              if (errors > 0) {
+                options.onDiagnostic?.(
+                  `lsp: ${errors} error(s) in ${relPath(options.lsp.workspaceRoot, path)}`,
+                );
+              }
+            }
+          } catch {
+            // Diagnostics are an enhancement: a language server that will not
+            // start must never turn a successful edit into a failed result.
           }
         }
       }

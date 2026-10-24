@@ -6,6 +6,7 @@ import type { HookEntry } from "../hooks/types.js";
 import { hookContentHash, hookTrustKey, loadHookTrust, saveHookTrust, type ContentHashCache } from "../hooks/trust.js";
 import { loadSkillTrust, saveSkillTrust, skillContentHash } from "../skills/trust.js";
 import { loadSettingsTrust, saveSettingsTrust, settingsContentHash } from "./settings-trust.js";
+import { detectBuiltinServers } from "../lsp/defaults.js";
 import { ensurePrivateDirectory, writePrivateFileSync } from "./state-permissions.js";
 
 /**
@@ -151,6 +152,9 @@ export interface FolderContentSummary {
   settingsKeys: string[];
   settingsPath: string;
   hooks: HookEntry[];
+  /** Built-in language servers (marker file + binary present) that would
+   *  start here. They execute repo-provided code, so they need folder trust. */
+  builtinLspServers: string[];
 }
 
 /**
@@ -161,19 +165,25 @@ export interface FolderContentSummary {
  * same "what's gated right now" view the three real gates will use moments
  * later.
  */
-export function buildFolderContentSummary(projectDir: string, configResult: LoadResult): FolderContentSummary {
+export function buildFolderContentSummary(
+  projectDir: string,
+  configResult: LoadResult,
+  pathValue?: string,
+): FolderContentSummary {
   return {
     skills: discoverProjectSkills(projectDir),
     settingsKeys: configResult.projectExecutionKeys,
     settingsPath: projectSettingsPath(projectDir),
     hooks: (configResult.config.hooks?.entries ?? []).filter((e) => e.origin === "project"),
+    builtinLspServers:
+      configResult.config.lsp?.builtinServers === false ? [] : Object.keys(detectBuiltinServers(projectDir, pathValue)),
   };
 }
 
 /** True when there is nothing gated to ask about — the folder-trust prompt
  *  must not fire for a project with no untrusted gated content. */
 export function hasGatedContent(summary: FolderContentSummary): boolean {
-  return summary.skills.length > 0 || summary.settingsKeys.length > 0 || summary.hooks.length > 0;
+  return summary.skills.length > 0 || summary.settingsKeys.length > 0 || summary.hooks.length > 0 || summary.builtinLspServers.length > 0;
 }
 
 // ── Classifying folder trust ──
@@ -204,6 +214,7 @@ function artifactHashesFor(summary: FolderContentSummary, cwd: string): Record<s
       // Unreadable — skip.
     }
   }
+  for (const name of summary.builtinLspServers) hashes[`lsp:${name}`] = name;
   const cache: ContentHashCache = new Map();
   for (const entry of summary.hooks) {
     const contentHash = hookContentHash(entry.command, cwd, cache);

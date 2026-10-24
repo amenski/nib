@@ -6,6 +6,7 @@ import type { ProfileLevel } from "../permissions/profile.js";
 import type { WebSearchConfig } from "../config/loader.js";
 import type { CheckpointManager } from "../checkpoints/index.js";
 import type { SessionStore } from "../sessions/store.js";
+import type { LspManager } from "../lsp/index.js";
 import { registerFiles } from "./files.js";
 import { registerBash } from "./bash.js";
 import { registerSearch } from "./search.js";
@@ -18,6 +19,7 @@ import { registerJobs } from "./jobs.js";
 import { registerTodo, todoStore } from "./todo.js";
 import { registerAttemptCompletion } from "./attempt-completion.js";
 import { registerSwitchMode } from "./switch-mode.js";
+import { registerLsp } from "./lsp.js";
 
 const registry = new ToolRegistry();
 registerFiles(registry);
@@ -32,6 +34,7 @@ registerJobs(registry);
 registerTodo(registry);
 registerAttemptCompletion(registry);
 registerSwitchMode(registry);
+registerLsp(registry);
 
 export { registry };
 export const TOOL_DEFS = registry.getAllDefs();
@@ -115,6 +118,16 @@ export function setWriteRoots(v: string[] | undefined): void {
  */
 export function setWebSearchConfig(v: WebSearchConfig | undefined): void {
   ctx.webSearch = v;
+}
+
+/**
+ * Set the session's language-server manager, consumed by the read-only `lsp`
+ * tool (and by the prompt guide's "a server exists" condition). Absent means
+ * no servers are configured, so the tool refuses with a clear message rather
+ * than silently doing nothing.
+ */
+export function setLspManager(v: LspManager | undefined): void {
+  ctx.lsp = v;
 }
 
 export async function executeTool(call: ToolCall, exec?: ToolExecOptions): Promise<ToolOutput> {

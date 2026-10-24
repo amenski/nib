@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { createAISDKProvider, mapMessages } from "./aisdk.js";
 import type { ProviderPreset } from "./presets.js";
+import type { Provider } from "./types.js";
+import { pkg } from "../version.js";
 
 function preset(baseUrl: string): ProviderPreset {
   return {
@@ -204,6 +206,54 @@ describe("OpenRouter request mapping", () => {
     expect(new Headers(otherRequestInit.headers).get("HTTP-Referer")).toBeNull();
     expect(new Headers(otherRequestInit.headers).get("X-OpenRouter-Title")).toBeNull();
     vi.unstubAllGlobals();
+  });
+});
+
+describe("OpenCode Go request headers", () => {
+  const GO_URL = "https://opencode.ai/inference/go/v1";
+
+  function stubStreamingFetch(): ReturnType<typeof vi.fn> {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response("data: [DONE]\n\n", { status: 200, headers: { "Content-Type": "text/event-stream" } }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  function makeProvider(url: string, sessionId?: string): Provider {
+    return createAISDKProvider(preset(url), "glm-5.3-flash", "sk-og", "opencode-go", sessionId);
+  }
+
+  async function capturedHeaders(fetchMock: ReturnType<typeof vi.fn>, provider: Provider): Promise<Headers> {
+    for await (const _ of provider.streamChat([{ role: "user", content: "hello" }], [])) {
+      // consume the stream so the SDK performs the request
+    }
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    return new Headers(init.headers);
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("sends the conversation session header and a nib user agent to the Go endpoint", async () => {
+    const fetchMock = stubStreamingFetch();
+    const headers = await capturedHeaders(fetchMock, makeProvider(GO_URL, "sess-123"));
+    expect(headers.get("x-opencode-session")).toBe("sess-123");
+    // The SDK appends its own suffix to user-agent; the plan's rule is that it starts with nib/.
+    expect(headers.get("user-agent") ?? "").toMatch(new RegExp(`^${pkg.name}/${pkg.version}`));
+  });
+
+  it("falls back to a stable per-process session id when none is given", async () => {
+    const fetchMock = stubStreamingFetch();
+    const headers = await capturedHeaders(fetchMock, makeProvider(GO_URL));
+    expect(headers.get("x-opencode-session") ?? "").not.toBe("");
+  });
+
+  it("sends no session header to the plain Console endpoint", async () => {
+    const fetchMock = stubStreamingFetch();
+    const headers = await capturedHeaders(fetchMock, makeProvider("https://opencode.ai/inference/v1", "sess-123"));
+    expect(headers.get("x-opencode-session")).toBeNull();
   });
 });
 

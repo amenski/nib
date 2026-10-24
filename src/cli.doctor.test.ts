@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { probeSearXngHealth, runDoctor } from "./cli.js";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { formatLspLines, probeSearXngHealth, runDoctor } from "./cli.js";
 import { loadConfig } from "./config/loader.js";
 
 // runDoctor calls loadConfig() itself (three times); mock it so the test
@@ -110,5 +113,61 @@ describe("runDoctor SearXNG line", () => {
     vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true })));
     await runDoctor();
     expect(logs.some((l) => l.startsWith("  SearXNG"))).toBe(false);
+  });
+});
+
+describe("runDoctor lsp row", () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "nib-doctor-lsp-"));
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  const server = (command: string) => ({ command, extensionToLanguage: { ".dart": "dart", ".dt": "dart" } });
+
+  it("says 'none configured' when no server applies", () => {
+    expect(formatLspLines({ lsp: { builtinServers: false } } as any, dir, dir)).toEqual([
+      "  lsp               none configured",
+    ]);
+  });
+
+  it("reports a resolvable command as ready, with its extensions", () => {
+    const bin = join(dir, "dart");
+    writeFileSync(bin, "#!/bin/sh\n");
+    chmodSync(bin, 0o755);
+    const lines = formatLspLines({ lsp: { builtinServers: false }, lspServers: { dart: server("dart") } } as any, dir, dir);
+    expect(lines).toEqual(["  lsp               dart: dart (ready) [.dart .dt]"]);
+  });
+
+  it("reports a missing binary as not on PATH", () => {
+    const lines = formatLspLines({ lsp: { builtinServers: false }, lspServers: { dart: server("dart") } } as any, dir, dir);
+    expect(lines[0]).toMatch(/^  lsp {15}dart: dart \(not on PATH\) \[\.dart \.dt\]$/);
+  });
+
+  it("reports a command outside the allowlist as blocked under strictMcpConfig", () => {
+    const lines = formatLspLines(
+      { strictMcpConfig: true, lsp: { builtinServers: false }, lspServers: { evil: server("./x") } } as any,
+      dir,
+      dir,
+    );
+    expect(lines[0]).toMatch(/^  lsp {15}evil: \.\/x \(blocked by strictMcpConfig\)/);
+  });
+
+  it("reports an allowlisted command with a PATH override as blocked under strictMcpConfig", () => {
+    const lines = formatLspLines(
+      { strictMcpConfig: true, lsp: { builtinServers: false }, lspServers: { dart: { ...server("dart"), env: { PATH: "./bin" } } } } as any,
+      dir,
+      dir,
+    );
+    expect(lines[0]).toContain("(blocked by strictMcpConfig)");
+  });
+
+  it("is printed by runDoctor", async () => {
+    mockConfig();
+    const logs: string[] = [];
+    const spy = vi.spyOn(console, "log").mockImplementation((...a) => logs.push(a.map(String).join(" ")));
+    await runDoctor();
+    spy.mockRestore();
+    expect(logs.some((l) => /^ {2}lsp {15}\S/.test(l))).toBe(true);
   });
 });

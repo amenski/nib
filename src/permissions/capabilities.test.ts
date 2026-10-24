@@ -24,6 +24,7 @@ const SAMPLE_ARGS: Record<string, Record<string, unknown>> = {
   update_todo_list: { todos: [{ content: "Plan", status: "pending" }] },
   attempt_completion: { summary: "Done" },
   switch_mode: { slug: "code" },
+  lsp: { operation: "goToDefinition", filePath: "src/example.ts", line: 1, character: 1 },
 };
 
 describe("unknownCapabilityPlan", () => {

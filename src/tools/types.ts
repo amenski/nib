@@ -6,6 +6,7 @@ import type { SandboxLevel } from "../sandbox/seatbelt.js";
 import type { ProfileLevel } from "../permissions/profile.js";
 import type { WebSearchConfig } from "../config/loader.js";
 import type { SandboxFailureReason } from "../sandbox/launcher.js";
+import type { LspManager } from "../lsp/index.js";
 
 export type ToolHandler = (
   args: Record<string, unknown>,
@@ -125,6 +126,9 @@ export interface ToolContext {
    *  loadConfig() per call, which would bypass the trust gate for
    *  webSearch.searxngUrl. Absent = Bing-only (today's default). */
   webSearch?: WebSearchConfig;
+  /** Language-server manager for the read-only `lsp` tool. Absent = no server
+   *  configured (the tool then refuses with a configuration hint). */
+  lsp?: LspManager;
 }
 
 export interface ToolRegistration {

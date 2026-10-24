@@ -122,6 +122,15 @@ export function extractCapabilityPlan(
       : unknownCapabilityPlan(tool, "path is missing");
   }
 
+  // lsp is read-only code intelligence: it reads the one file it is asked
+  // about (pathFromArgs already accepts `filePath`).
+  if (tool === "lsp") {
+    const path = pathFromArgs(args, workingDir);
+    return path
+      ? knownCapabilityPlan(tool, [{ type: "fs.read", path }])
+      : unknownCapabilityPlan(tool, "filePath is missing");
+  }
+
   if (tool === "glob") {
     const cwd = typeof args.cwd === "string" && args.cwd ? args.cwd : ".";
     return knownCapabilityPlan(tool, [{ type: "fs.read", path: resolve(workingDir, cwd) }]);

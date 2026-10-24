@@ -9,6 +9,7 @@ import { AgentLoader } from "../agents/index.js";
 import type { PermissionEngine, ProfileEvaluator } from "../permissions/index.js";
 import type { BashEnvelope } from "../permissions/session-grant.js";
 import type { HookRunner } from "../hooks/index.js";
+import type { LspManager } from "../lsp/index.js";
 import { classifyRisk, type AutoModeOptions, type RiskMode } from "../permissions/risk/index.js";
 import { subagentAuditStore } from "../sessions/store.js";
 import { TodoStore } from "../tools/todo.js";
@@ -111,6 +112,12 @@ export interface OrchestratorOptions {
   /** Lifecycle hooks dispatcher (docs/hooks-spec.md) — SubagentStart/Stop
    *  fire around each sub-agent run. */
   hooks?: HookRunner;
+  /**
+   * The session's language-server manager. Sub-runs get the same instance, so
+   * a sub-agent's edits produce the same post-edit diagnostics as the parent's
+   * — the hook lives in runAgent, which both call.
+   */
+  lsp?: LspManager;
   maxDepth?: number;
   maxSubTurns?: number;
   /**
@@ -138,6 +145,7 @@ export class Orchestrator {
     getBashEnvelope?: () => BashEnvelope | undefined;
     hooks?: HookRunner;
     classifierMode?: RiskMode;
+    lsp?: LspManager;
   };
   private askUser?: (toolName: string, args: Record<string, unknown>, envelope?: BashEnvelope, origin?: { subagent: string }, policyRisk?: { tier: string; reasons: string[]; message?: string }, autoHandoff?: AutoHandoff) => Promise<boolean | "posture" | "envelope-grant">;
   private autoMode?: AutoModeOptions;
@@ -178,6 +186,15 @@ export class Orchestrator {
   /** Re-point the auto posture, for the same reason setAskUser exists. */
   setAutoMode(autoMode: AutoModeOptions | undefined): void {
     this.autoMode = autoMode;
+  }
+
+  /**
+   * Re-point the language-server manager. The TUI builds it after the
+   * orchestrator (it needs the resolved write-set), so this is set once,
+   * shortly after construction. Headless passes it to the constructor instead.
+   */
+  setLsp(lsp: LspManager | undefined): void {
+    this.options = { ...this.options, ...(lsp !== undefined ? { lsp } : {}) };
   }
 
   /**
@@ -464,6 +481,9 @@ export class Orchestrator {
               // prompt (prompt.ts prepends agentInstructions to the preamble).
               agentInstructions,
               hooks: this.options.hooks,
+              // Same manager as the parent: post-edit diagnostics come from the
+              // hook in runAgent, which this sub-run calls too.
+              ...(this.options.lsp !== undefined ? { lsp: this.options.lsp } : {}),
               // Parent session identity behind the audit-only view: permission
               // and token rows land in the parent's JSONL tagged "subagent";
               // every other write is blocked by the view (subsystems.md §7).

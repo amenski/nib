@@ -1144,3 +1144,45 @@ describe("sub-agent auto posture", () => {
     expect(recordHumanTurn).not.toHaveBeenCalled();
   });
 });
+
+describe("Orchestrator language-server threading", () => {
+  it("passes the language-server manager into sub-runs", async () => {
+    const registry = new ToolRegistry();
+    registry.register({
+      def: { name: "edit", description: "edit a file", parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"] } },
+      handler: async () => ({ content: "edited" }),
+      groups: ["edit"],
+    });
+    const { provider } = makeProvider([
+      toolCallTurn("c1", "edit", '{"path":"/workspace/a.dart"}'),
+      textTurn("done"),
+    ]);
+    const deliveries = trackDeliveries();
+    const diagnosticsFor = vi.fn(async () => new Map());
+    const lsp = {
+      workspaceRoot: "/workspace",
+      hasServers: true,
+      serverNameFor: () => "dart",
+      diagnosticsFor,
+    } as unknown as import("../lsp/index.js").LspManager;
+
+    const orchestrator = new Orchestrator({
+      provider: () => provider,
+      registry,
+      modeLoader: new ModeLoader(),
+      lsp,
+      onTaskResult: deliveries.onResult,
+    });
+    orchestrator.register(registry);
+
+    await registry.execute(
+      { id: "t1", name: "new_task", arguments: { description: "edit a file", mode: "code" } },
+      ctx,
+    );
+    await deliveries.delivered();
+
+    // The sub-run's own runAgent called the manager — it reached the sub-run,
+    // not just the parent.
+    expect(diagnosticsFor).toHaveBeenCalledWith(["/workspace/a.dart"]);
+  });
+});

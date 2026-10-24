@@ -1020,7 +1020,10 @@ async function main() {
     // The model sits just before the context meter: the two describe the same
     // thing (what the next message runs on and how full its window is), and the
     // bar drops segments from the end, so the model outlasts ctx on a narrow row.
-    segments.push(dim(nextId(), modelDisplayName()));
+    // Provider-prefixed: the same model (e.g. DeepSeek Flash) is served by
+    // several providers with different routing and billing, so the bar names
+    // which one the next message goes to.
+    segments.push(dim(nextId(), `${shared.providerName}/${modelDisplayName()}`));
 
     const ctxPercent = getContextPercent();
     if (ctxPercent !== null) {

@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { ToolOutput, ToolDef } from "../types.js";
@@ -44,13 +45,24 @@ type Operation = (typeof OPERATIONS)[number];
  * reading the file there.
  */
 function insideWorkspace(path: string, ctx: ToolContext): boolean {
-  const root = resolve(ctx.workingDir);
-  const target = resolve(ctx.workingDir, path);
-  if (isWithin(root, target)) return true;
-  for (const extra of ctx.writeRoots ?? []) {
-    if (isWithin(resolve(extra), target)) return true;
+  // Canonical paths on both sides: a symlink inside the workspace must not
+  // let the server read (and echo back) a file outside it. The tool is
+  // auto-allowed, so it cannot lean on path rules the way read_file does.
+  const target = canonical(resolve(ctx.workingDir, path));
+  if (target === undefined) return false;
+  for (const root of [ctx.workingDir, ...(ctx.writeRoots ?? [])]) {
+    const canon = canonical(resolve(root));
+    if (canon !== undefined && isWithin(canon, target)) return true;
   }
   return false;
+}
+
+function canonical(path: string): string | undefined {
+  try {
+    return realpathSync(path);
+  } catch {
+    return undefined;
+  }
 }
 
 function isWithin(root: string, target: string): boolean {

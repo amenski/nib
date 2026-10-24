@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -113,6 +113,23 @@ describe("lsp tool containment and configuration", () => {
     );
     expect(out.error).toContain("PERMISSION_DENIED");
     expect(requests).toHaveLength(0);
+  });
+
+  it("denies a symlink inside the workspace that points outside it", async () => {
+    const outside = mkdtempSync(join(tmpdir(), "nib-lsptool-outside-"));
+    try {
+      writeFileSync(join(outside, "secret.dart"), "int s = 1;\n", "utf-8");
+      symlinkSync(join(outside, "secret.dart"), join(dir, "lib", "link.dart"));
+      const { manager, requests } = makeManager(() => []);
+      const out = await call(
+        { operation: "hover", filePath: join(dir, "lib", "link.dart"), line: 1, character: 1 },
+        ctxFor(dir, manager),
+      );
+      expect(out.error).toContain("PERMISSION_DENIED");
+      expect(requests).toHaveLength(0);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
   });
 
   it("allows a path inside an explicit write root", async () => {

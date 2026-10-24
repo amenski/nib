@@ -803,7 +803,11 @@ async function main() {
   // configResult.config, which the TOFU block above already reassigned if the
   // user declined: an untrusted project's `lspServers` never reaches here.
   // Servers start lazily, so this costs nothing until an edit needs one.
-  const lspServers = resolveLspServers(configResult.config, process.cwd(), true);
+  // Re-derived rather than assumed: the prompt above exits on "no", but a
+  // built-in must never start unless the trust store says so.
+  const folderTrusted = !hasGatedContent(folderSummary)
+    || checkFolderTrust(projectDirForTrust, folderSummary).status === "trusted";
+  const lspServers = resolveLspServers(configResult.config, process.cwd(), folderTrusted);
   const lsp =
     Object.keys(lspServers).length > 0
       ? new LspManager({

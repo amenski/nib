@@ -24,6 +24,7 @@ import { connectMCPServers, disconnectAllMCPServers } from "./mcp/connector.js";
 import { LspManager, createSpawnFn, resolveLspServers } from "./lsp/index.js";
 import { setLspManager } from "./tools/index.js";
 import { Orchestrator } from "./orchestrator/index.js";
+import { checkFolderTrust, buildFolderContentSummary } from "./config/folder-trust.js";
 import { ModeLoader } from "./modes/loader.js";
 import { AgentLoader } from "./agents/index.js";
 import { join } from "node:path";
@@ -211,7 +212,16 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
     // EFFECTIVE config, so an untrusted project's `lspServers` was already
     // stripped by the TOFU gate above. Servers start lazily; nothing spawns
     // until a write or an `lsp` call needs one.
-    const lspServers = resolveLspServers(effectiveConfig, options.projectRoot);
+    // Built-in servers execute repo-provided code (workspace TypeScript, analyzer
+    // plugins), so they need folder trust. Read-only check: headless never
+    // prompts or records trust; a folder trusted in an interactive session counts.
+    const folderTrusted =
+      checkFolderTrust(options.projectRoot, buildFolderContentSummary(options.projectRoot, configResult)).status === "trusted";
+    const lspServers = resolveLspServers(effectiveConfig, options.projectRoot, folderTrusted);
+    // Warn only when a built-in actually applies here (marker + binary present).
+    if (!folderTrusted && Object.keys(resolveLspServers(effectiveConfig, options.projectRoot, true)).length > Object.keys(lspServers).length) {
+      writeErr("[warn] Folder not trusted — built-in language servers disabled (trust it once in an interactive nib session)");
+    }
     lsp =
       Object.keys(lspServers).length > 0
         ? new LspManager({

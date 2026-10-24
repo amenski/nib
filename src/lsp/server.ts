@@ -32,6 +32,13 @@ export const DEFAULT_MAX_WAIT_MS = 3_000;
 /** `initialize` gets longer than an ordinary request: it is the server's cold start. */
 const DEFAULT_STARTUP_TIMEOUT_MS = 15_000;
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 2_000;
+/**
+ * After `initialized`, how long the server must stay silent before it counts as
+ * ready. Servers load the project lazily (tsserver answers references with
+ * only the declaration until it has), so the first request waits for a
+ * `$/progress` end or this quiet window; the hard cap is `startupTimeout`.
+ */
+export const DEFAULT_READY_QUIET_MS = 1_000;
 
 /** Bounds on a per-file diagnostic list, so one broken file cannot flood context. */
 export const MAX_DIAGNOSTICS_PER_FILE = 20;
@@ -59,6 +66,7 @@ export interface LspServerOptions {
   /** Overridable for tests. */
   quietMs?: number;
   maxWaitMs?: number;
+  readyQuietMs?: number;
 }
 
 /**
@@ -78,11 +86,17 @@ export class LspServer {
   private readonly onNote: ((text: string) => void) | undefined;
   private readonly quietMs: number;
   private readonly maxWaitMs: number;
+  private readonly readyQuietMs: number;
 
   private state: LspServerState = "idle";
   private connection: JsonRpcConnection | undefined;
   private startPromise: Promise<void> | undefined;
   private hasRestarted = false;
+  private reasonDisabled: string | undefined;
+  /** Live only while start() waits for project readiness. */
+  private readyWatch: { activity(): void; progressEnded(): void; abort(): void } | undefined;
+  private sawProgress = false;
+  private warmedUp = false;
 
   /** Per-file latest publish, keyed by absolute path. */
   private readonly diagnostics = new Map<string, DiagnosticsEntry>();
@@ -101,10 +115,16 @@ export class LspServer {
     this.onNote = options.onNote;
     this.quietMs = options.quietMs ?? DEFAULT_QUIET_MS;
     this.maxWaitMs = options.maxWaitMs ?? DEFAULT_MAX_WAIT_MS;
+    this.readyQuietMs = options.readyQuietMs ?? DEFAULT_READY_QUIET_MS;
   }
 
   get currentState(): LspServerState {
     return this.state;
+  }
+
+  /** Why the server is disabled for the session, when it is. */
+  get disabledReason(): string | undefined {
+    return this.reasonDisabled;
   }
 
   get extensions(): string[] {
@@ -128,6 +148,7 @@ export class LspServer {
     const transport = this.spawnFn(this.config, this.name);
     const connection = new JsonRpcConnection(transport);
     this.connection = connection;
+    this.sawProgress = false;
 
     // A crash mid-life must be visible to every waiter instead of leaving the
     // turn hanging until the cap.
@@ -155,13 +176,56 @@ export class LspServer {
       if (this.config.settings !== undefined) {
         connection.notify(METHODS.didChangeConfiguration, { settings: this.config.settings });
       }
+      await this.waitForReady();
+      if (this.connection !== connection) throw new Error("LSP server exited during startup");
       this.state = "ready";
     } catch (err) {
-      this.state = "dead";
       connection.dispose();
       this.connection = undefined;
+      // A failed start (initialize error, or exit before the response) counts
+      // like a crash: one automatic retry, then disabled with the reason.
+      if (this.hasRestarted) {
+        const reason = ((err as Error).message ?? String(err)).split("\n")[0]!;
+        this.state = "disabled";
+        this.reasonDisabled = reason;
+        this.onNote?.(
+          `[nib] ${this.name} language server failed to start (${reason}); LSP disabled for ${this.extensions.join(" ")} this session`,
+        );
+      } else {
+        this.state = "dead";
+      }
       throw err;
     }
+  }
+
+  /**
+   * Resolves once the server looks done loading: a `$/progress` end with no
+   * token still open, or `readyQuietMs` without any server message. Capped by
+   * the startup timeout so a chatty server cannot stall the first request.
+   */
+  private waitForReady(): Promise<void> {
+    return new Promise<void>((resolve) => {
+      let quiet: ReturnType<typeof setTimeout> | undefined;
+      const finish = (): void => {
+        clearTimeout(quiet);
+        clearTimeout(cap);
+        this.readyWatch = undefined;
+        resolve();
+      };
+      const arm = (): void => {
+        clearTimeout(quiet);
+        quiet = setTimeout(() => (this.progressTokens.size === 0 ? finish() : arm()), this.readyQuietMs);
+      };
+      const cap = setTimeout(finish, this.config.startupTimeout ?? DEFAULT_STARTUP_TIMEOUT_MS);
+      this.readyWatch = {
+        activity: arm,
+        progressEnded: () => {
+          if (this.sawProgress && this.progressTokens.size === 0) finish();
+        },
+        abort: finish,
+      };
+      arm();
+    });
   }
 
   /**
@@ -176,6 +240,7 @@ export class LspServer {
       this.hasRestarted = true;
       this.diagnostics.clear();
       this.openVersions.clear();
+      this.warmedUp = false;
       this.state = "idle";
     }
     if (this.state === "disabled") return;
@@ -199,6 +264,13 @@ export class LspServer {
       connection.notify(METHODS.didOpen, {
         textDocument: { uri, languageId, version: 1, text },
       });
+      if (!this.warmedUp) {
+        // tsserver only loads the project on the first didOpen; until then a
+        // references/call-hierarchy answer is silently incomplete.
+        this.warmedUp = true;
+        this.sawProgress = false;
+        await this.waitForReady();
+      }
     } else {
       this.openVersions.set(path, version + 1);
       connection.notify(METHODS.didChange, {
@@ -251,6 +323,7 @@ export class LspServer {
   }
 
   private handleNotification(method: string, params: unknown): void {
+    this.readyWatch?.activity();
     if (method === METHODS.publishDiagnostics) {
       this.handlePublish(params);
       return;
@@ -258,9 +331,11 @@ export class LspServer {
     if (method === PROGRESS_NOTIFICATION) {
       const p = params as { token?: string | number; value?: { kind?: string } } | undefined;
       const kind = p?.value?.kind;
+      if (kind === "begin") this.sawProgress = true;
       if (kind === "begin" && p?.token !== undefined) this.progressTokens.add(String(p.token));
       if (kind === "end") {
         if (p?.token !== undefined) this.progressTokens.delete(String(p.token));
+        this.readyWatch?.progressEnded();
         // Analysis finished: no need to wait out the quiet window.
         this.settle(null);
       }
@@ -313,8 +388,11 @@ export class LspServer {
 
   /** Answers the server→client requests an ordinary session produces. */
   private handleServerRequest(method: string, params: unknown): unknown {
+    this.readyWatch?.activity();
     switch (method) {
       case METHODS.workDoneProgressCreate:
+        this.sawProgress = true;
+        return null;
       case METHODS.registerCapability:
         return null;
       case METHODS.showMessageRequest:
@@ -330,14 +408,19 @@ export class LspServer {
   }
 
   private handleCrash(): void {
+    this.readyWatch?.abort();
     this.connection = undefined;
     this.progressTokens.clear();
     // Waiters settle with what is on record rather than hanging to the cap.
     this.settle(null);
 
     if (this.state === "disabled") return;
+    // An exit during `initialize` is decided by doStart's catch, which owns
+    // the failed-start policy and note.
+    if (this.state === "starting") return;
     if (this.hasRestarted) {
       this.state = "disabled";
+      this.reasonDisabled = "crashed twice";
       this.onNote?.(
         `[nib] ${this.name} language server crashed twice — disabled for .${this.primaryExtension().replace(/^\./, "")} this session`,
       );

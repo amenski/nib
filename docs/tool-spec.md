@@ -119,7 +119,7 @@ not a failure to retry.
 - Read-only code navigation through a language server (config-spec.md §18). The
   tool is always registered; the prompt only advertises it when a server
   applies to the workspace (a built-in whose marker file and binary are both
-  present, or an `lspServers` entry).
+  present and the folder is trusted, or an `lspServers` entry).
 - `operation` is one of `goToDefinition`, `findReferences`, `hover`,
   `documentSymbol`, `workspaceSymbol`, `goToImplementation`,
   `prepareCallHierarchy`, `incomingCalls`, `outgoingCalls` (Claude Code's

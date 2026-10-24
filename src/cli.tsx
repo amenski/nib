@@ -803,7 +803,7 @@ async function main() {
   // configResult.config, which the TOFU block above already reassigned if the
   // user declined: an untrusted project's `lspServers` never reaches here.
   // Servers start lazily, so this costs nothing until an edit needs one.
-  const lspServers = resolveLspServers(configResult.config, process.cwd());
+  const lspServers = resolveLspServers(configResult.config, process.cwd(), true);
   const lsp =
     Object.keys(lspServers).length > 0
       ? new LspManager({
@@ -1465,9 +1465,14 @@ function doctorLabel(label: string): string {
  * resolves on PATH, and a project command outside the strictMcpConfig
  * allowlist is reported as blocked, the same test LspManager applies.
  */
-export function formatLspLines(config: DeepCodeSettings, rootDir: string, pathValue?: string): string[] {
+export function formatLspLines(
+  config: DeepCodeSettings,
+  rootDir: string,
+  pathValue?: string,
+  folderTrusted = true,
+): string[] {
   const label = doctorLabel("lsp");
-  const servers = Object.entries(resolveLspServers(config, rootDir, pathValue));
+  const servers = Object.entries(resolveLspServers(config, rootDir, folderTrusted, pathValue));
   if (servers.length === 0) return [`${label}none configured`];
   return servers.map(([name, server], i) => {
     const state =
@@ -1759,7 +1764,9 @@ export async function runDoctor(): Promise<void> {
       : null;
     console.log(formatLiveModelsLine(doctorProvider, doctorModel, doctorModels));
   }
-  for (const line of formatLspLines(configResult.config, process.cwd())) console.log(line);
+  const doctorFolderTrusted =
+    checkFolderTrust(process.cwd(), buildFolderContentSummary(process.cwd(), configResult)).status === "trusted";
+  for (const line of formatLspLines(configResult.config, process.cwd(), undefined, doctorFolderTrusted)) console.log(line);
   const searxngUrl = configResult.config.webSearch?.searxngUrl;
   if (searxngUrl) {
     const health = await probeSearXngHealth(searxngUrl);

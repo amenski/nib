@@ -79,6 +79,10 @@ function isExecutable(path: string): boolean {
  * exist AND the binary must resolve. A missing binary is the common case (most
  * machines have no language server installed) and must stay silent — the
  * doctor row is where that gets reported, not the startup path.
+ *
+ * Callers must only use this for a trusted folder (see `resolveLspServers`):
+ * the servers it returns execute repo-provided code (workspace TypeScript,
+ * tsconfig/analysis_options plugins).
  */
 export function detectBuiltinServers(
   rootDir: string,

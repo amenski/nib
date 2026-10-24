@@ -45,6 +45,7 @@ describe("LspManager", () => {
       spawn: countingSpawn,
       onNote: (text) => notes.push(text),
       quietMs: 40,
+      readyQuietMs: 5,
       maxWaitMs: 300,
       ...extra,
     });
@@ -121,6 +122,30 @@ describe("LspManager", () => {
     const result = await manager.diagnosticsFor([dartFile, tsFile]);
     expect(result.has(dartFile)).toBe(false);
     expect(result.get(tsFile)?.map((d) => d.message)).toEqual(["ts bad"]);
+  });
+
+  it("failed start: retried once, then disabled with one note and files skipped", async () => {
+    const file = join(dir, "a.dart");
+    writeFileSync(file, "int a = 1;\n", "utf-8");
+    const manager = makeManager(
+      { dart: DART },
+      {
+        spawn: () => {
+          const fake = createFakeLspServer({ failInitialize: "boom" });
+          fakes.push(fake);
+          return fake.client;
+        },
+      },
+    );
+    expect((await manager.diagnosticsFor([file])).size).toBe(0);
+    expect(fakes).toHaveLength(1);
+    expect((await manager.diagnosticsFor([file])).size).toBe(0);
+    expect(fakes).toHaveLength(2);
+    expect((await manager.diagnosticsFor([file])).size).toBe(0);
+    expect(fakes).toHaveLength(2);
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toContain("failed to start (LSP error -32000: boom)");
+    expect(manager.status()[0]?.state).toBe("disabled");
   });
 
   it("refuses a command outside the allowlist under strictMcpConfig", () => {
@@ -319,6 +344,7 @@ describe("resolveLspServers", () => {
     const merged = resolveLspServers(
       { lspServers: { dart: { command: "dart", args: ["custom"], extensionToLanguage: { ".dart": "dart" } } } },
       dir,
+      true,
       bin,
     );
 
@@ -333,7 +359,20 @@ describe("resolveLspServers", () => {
     chmodSync(exe, 0o755);
     writeFileSync(join(dir, "pubspec.yaml"), "name: x\n", "utf-8");
 
-    const merged = resolveLspServers({ lsp: { builtinServers: false } }, dir, bin);
+    const merged = resolveLspServers({ lsp: { builtinServers: false } }, dir, true, bin);
     expect(merged).toEqual({});
+  });
+
+  it("skips built-ins in an untrusted folder but keeps user lspServers", () => {
+    const bin = join(dir, "bin");
+    mkdirSync(bin);
+    const exe = join(bin, "dart");
+    writeFileSync(exe, "");
+    chmodSync(exe, 0o755);
+    writeFileSync(join(dir, "pubspec.yaml"), "name: x\n", "utf-8");
+    const user = { command: "gopls", args: [], extensionToLanguage: { ".go": "go" } };
+
+    expect(resolveLspServers({ lspServers: { go: user } }, dir, false, bin)).toEqual({ go: user });
+    expect(Object.keys(resolveLspServers({ lspServers: { go: user } }, dir, true, bin)).sort()).toEqual(["dart", "go"]);
   });
 });

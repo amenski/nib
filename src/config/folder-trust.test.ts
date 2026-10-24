@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, statSync, readdirSync, realpathSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, statSync, readdirSync, realpathSync, chmodSync } from "node:fs";
 import { join } from "node:path";
 import { projectDirPath } from "./paths.js";
 import { tmpdir } from "node:os";
@@ -92,6 +92,38 @@ describe("hasGatedContent / buildFolderContentSummary", () => {
     expect(summary.hooks).toHaveLength(1);
     expect(summary.hooks[0].command).toBe("echo hi");
     expect(summary.hooks[0].origin).toBe("project");
+  });
+});
+
+describe("built-in LSP servers count as gated content", () => {
+  function fakeBin(name: string): string {
+    const bin = join(TEST_DIR, "fakebin");
+    mkdirSync(bin, { recursive: true });
+    const exe = join(bin, name);
+    writeFileSync(exe, "");
+    chmodSync(exe, 0o755);
+    return bin;
+  }
+
+  it("marker + binary → gated, and the name is listed", () => {
+    writeFileSync(join(projectDir, "pubspec.yaml"), "name: x\n", "utf-8");
+    const summary = buildFolderContentSummary(projectDir, loadConfig(projectDir), fakeBin("dart"));
+    expect(summary.builtinLspServers).toEqual(["dart"]);
+    expect(hasGatedContent(summary)).toBe(true);
+  });
+
+  it("marker without binary → not gated", () => {
+    writeFileSync(join(projectDir, "pubspec.yaml"), "name: x\n", "utf-8");
+    const summary = buildFolderContentSummary(projectDir, loadConfig(projectDir), join(TEST_DIR, "emptybin"));
+    expect(hasGatedContent(summary)).toBe(false);
+  });
+
+  it("trustFolder then check → trusted", () => {
+    writeFileSync(join(projectDir, "pubspec.yaml"), "name: x\n", "utf-8");
+    const summary = buildFolderContentSummary(projectDir, loadConfig(projectDir), fakeBin("dart"));
+    expect(checkFolderTrust(projectDir, summary).status).toBe("new");
+    trustFolder(projectDir, summary);
+    expect(checkFolderTrust(projectDir, summary).status).toBe("trusted");
   });
 });
 

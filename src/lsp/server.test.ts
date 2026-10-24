@@ -57,6 +57,7 @@ describe("LspServer", () => {
       },
       onNote: (text) => notes.push(text),
       quietMs: QUIET_MS,
+      readyQuietMs: 5,
       maxWaitMs: MAX_WAIT_MS,
       ...overrides,
     });
@@ -174,8 +175,9 @@ describe("LspServer", () => {
     const elapsed = Date.now() - started;
 
     expect(diagnostics.map((d) => d.message)).toEqual(["real"]);
-    // Progress end arrives with the publish, so no full quiet window elapses.
-    expect(elapsed).toBeLessThan(QUIET_MS);
+    // Progress end arrives with the publish (during the first-open warm-up),
+    // so only the short quiet window for an already-recorded publish remains.
+    expect(elapsed).toBeLessThan(QUIET_MS + 40);
   });
 
   it("gives up at the hard cap when the server never settles", async () => {
@@ -262,6 +264,44 @@ describe("LspServer", () => {
     const server = serverWith({ failInitialize: "no dart here" });
     await expect(server.start()).rejects.toThrow("no dart here");
     expect(server.currentState).toBe("dead");
+  });
+
+  it("failed start: one retry, then disabled with one note and the reason", async () => {
+    const server = serverWith({ failInitialize: "Could not find a valid TypeScript installation\nmore" });
+    await expect(server.start()).rejects.toThrow();
+    expect(server.currentState).toBe("dead");
+    await expect(server.syncFile(file)).rejects.toThrow(); // the one retry
+    expect(server.currentState).toBe("disabled");
+    expect(fakes).toHaveLength(2);
+    await server.syncFile(file); // no spawn
+    expect(fakes).toHaveLength(2);
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toContain("language server failed to start (LSP error -32000: Could not find a valid TypeScript installation); LSP disabled for .dart this session");
+    expect(server.disabledReason).toBe("LSP error -32000: Could not find a valid TypeScript installation");
+  });
+
+  it("an exit before the initialize response takes the same failed-start path", async () => {
+    spawn = (): any => {
+      const fake = createFakeLspServer();
+      fakes.push(fake);
+      // Dies on receiving `initialize`, before any response.
+      return { ...fake.client, write: () => fake.crash() };
+    };
+    const server = serverWith({}, { spawn });
+    await expect(server.start()).rejects.toThrow();
+    expect(server.currentState).toBe("dead");
+    await expect(server.syncFile(file)).rejects.toThrow();
+    expect(server.currentState).toBe("disabled");
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toContain("failed to start");
+  });
+
+  it("start() waits out the ready quiet window when the server sends no progress", async () => {
+    const server = serverWith({}, { readyQuietMs: 120 });
+    const t = Date.now();
+    await server.start();
+    expect(Date.now() - t).toBeGreaterThanOrEqual(100);
+    expect(server.currentState).toBe("ready");
   });
 
   it("shutdown sends shutdown then exit", async () => {

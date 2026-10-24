@@ -703,7 +703,9 @@ the result of any edit, and the read-only `lsp` tool (tool-spec.md §3).
   `dart language-server --protocol=lsp`, `.dart`) and `typescript` (marker
   `tsconfig.json`, `typescript-language-server --stdio`, `.ts .tsx .js .jsx
   .mts .cts`). Active only when the marker exists in the working directory
-  **and** the binary resolves on `PATH`.
+  **and** the binary resolves on `PATH`, and the folder is trusted (the servers
+  run repo-provided code); headless `nib exec` honors a prior interactive trust
+  and otherwise disables built-ins with a stderr warning.
 - **Trust.** `lspServers` is execution-capable: a project file that sets it is
   held for confirmation on first use, with the same flow and header list as
   `mcpServers` (security-spec.md). Declining drops the key for the session.

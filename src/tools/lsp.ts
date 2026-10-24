@@ -120,6 +120,12 @@ const lspHandler: ToolHandler = async (args, ctx) => {
     };
   }
 
+  if (server.currentState === "disabled") {
+    const ext = /(\.[^.\\/]+)$/.exec(filePath)?.[1] ?? "this file type";
+    const message = `No language server available for ${ext}: ${server.disabledReason ?? "disabled for this session"}`;
+    return { content: message, error: message };
+  }
+
   try {
     // The file on disk is the source of truth for a read-only query, so sync
     // first — a stale buffer would answer about code that is no longer there.

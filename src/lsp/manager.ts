@@ -90,12 +90,13 @@ export interface LspManagerOptions {
   onNote?: (text: string) => void;
   quietMs?: number;
   maxWaitMs?: number;
+  readyQuietMs?: number;
 }
 
 /**
  * Routes a file to its language server and owns the set of servers.
  *
- * Servers start lazily on first use: importing nib in a Dart project must not
+ * Servers start lazily on first use: importing nib in a project must not
  * cost a language-server cold start unless an edit or an `lsp` call actually
  * needs one.
  */
@@ -106,6 +107,7 @@ export class LspManager {
   private readonly onNote: ((text: string) => void) | undefined;
   private readonly quietMs: number | undefined;
   private readonly maxWaitMs: number | undefined;
+  private readonly readyQuietMs: number | undefined;
 
   private readonly instances = new Map<string, LspServer>();
   /** extension → server name, resolved once. First server wins a duplicate. */
@@ -120,6 +122,7 @@ export class LspManager {
     this.onNote = options.onNote;
     this.quietMs = options.quietMs;
     this.maxWaitMs = options.maxWaitMs;
+    this.readyQuietMs = options.readyQuietMs;
 
     for (const [name, config] of Object.entries(this.configs)) {
       const violation = options.strict ? lspStrictViolation(config) : undefined;
@@ -181,6 +184,7 @@ export class LspManager {
       ...(this.onNote ? { onNote: this.onNote } : {}),
       ...(this.quietMs !== undefined ? { quietMs: this.quietMs } : {}),
       ...(this.maxWaitMs !== undefined ? { maxWaitMs: this.maxWaitMs } : {}),
+      ...(this.readyQuietMs !== undefined ? { readyQuietMs: this.readyQuietMs } : {}),
     });
     this.instances.set(name, server);
     return server;
@@ -324,13 +328,20 @@ export function createSpawnFn(spawnOptions: LspSpawnOptions): SpawnFn {
  * Built-ins ∪ user entries, user wins on a name collision. Built-ins are gated
  * on `lsp.builtinServers` (default on) so a user can turn the table off
  * entirely without listing every name.
+ *
+ * Built-ins also require `folderTrusted`: the servers they start execute
+ * repo-provided code (tsserver loads the workspace's node_modules/typescript
+ * and tsconfig plugins; the Dart analyzer loads analysis_options.yaml
+ * plugins), so on an untrusted clone merely detecting a marker file must not
+ * spawn one. User `lspServers` are unaffected — they are already TOFU-gated.
  */
 export function resolveLspServers(
   config: DeepCodeSettings,
   rootDir: string,
+  folderTrusted: boolean,
   pathValue?: string,
 ): Record<string, LspServerConfig> {
-  const builtins = config.lsp?.builtinServers === false
+  const builtins = config.lsp?.builtinServers === false || !folderTrusted
     ? {}
     : detectBuiltinServers(rootDir, pathValue);
   return { ...builtins, ...(config.lspServers ?? {}) };

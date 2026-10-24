@@ -14,7 +14,8 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   to that edit's own result, so the model fixes them in the next step instead of
   finding them later. Works in the TUI, `nib exec` and sub-agents. Dart and
   TypeScript servers are built in and start when `pubspec.yaml` or
-  `tsconfig.json` exists and the server binary is on `PATH`; add others under
+  `tsconfig.json` exists, the server binary is on `PATH` and the folder is
+  trusted (they run repo code; `nib exec` needs a prior interactive trust); add others under
   `lspServers`. Switch off with `lsp.diagnostics: false`. `nib doctor` shows a
   row per server.
 - **A read-only `lsp` tool for code navigation.** Definitions, references, hover,

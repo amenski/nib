@@ -208,7 +208,8 @@ Full-file write; creates parent directories.
   command does not look interactive, the child process is moved into
   `JobManager` instead of killed, and the result is
   `Command exceeded 120s timeout — moved to background as job <id>…` so the
-  model polls `check_job`. Output accumulated before the handover is seeded
+  model calls `check_job`, which waits for the job. Output accumulated before
+  the handover is seeded
   into the job, so `check_job` shows the whole run. Gated by
   `commands.timeoutToBackground` (config-spec.md §13; **default ON**). With
   the key off — or for an interactive-looking command (editors, pagers,
@@ -239,7 +240,15 @@ For commands that outlive 120 s (dev servers, builds, test runs):
 - `run_bash_background(command, cwd?, timeout?)` — starts the job and
   returns a job ID immediately; default timeout 300,000 ms. Max 10
   concurrent jobs (`MAX_JOBS`, `src/tools/jobs.ts`).
-- `check_job(job_id)` — status (`running | done | failed | killed`), exit
+- `check_job(job_id, wait_seconds?)` — **waits** for a running job before
+  reporting: it returns as soon as the job leaves `running`, when
+  `wait_seconds` (default 30, clamped to 0–300) elapses, or on Esc. So one call
+  covers the wait and the model is told not to call it back-to-back; a short
+  job costs no extra time, and `wait_seconds: 0` restores the old instant
+  behaviour for servers that never exit
+  (`JobManager.waitFor`, `src/tools/jobs.ts`). The wait never touches the job:
+  timing it out leaves the job running under its own `timeout`/`timeoutMs`.
+  Returns `Status`, `Running for`, `Waited`, exit
   code, and accumulated stdout/stderr. A job that ran under the sandbox carries
   the same refusal note as `run_bash` when its output contains
   `Operation not permitted` — recorded per job (`Job.sandboxed`), so an

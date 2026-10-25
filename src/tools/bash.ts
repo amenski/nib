@@ -230,7 +230,7 @@ export function runBashTimed(
           });
           if (adopted.ok) {
             resolve({
-              content: `Command exceeded ${Math.ceil(timeoutMs / 1000)}s timeout — moved to background as job ${adopted.id}. Use check_job with job_id "${adopted.id}" to poll status and output; kill_job to terminate it.`,
+              content: `Command exceeded ${Math.ceil(timeoutMs / 1000)}s timeout — moved to background as job ${adopted.id}. check_job with job_id "${adopted.id}" waits for it and returns the output; kill_job terminates it.`,
             });
             return;
           }
@@ -326,7 +326,7 @@ const runBashHandler: ToolHandler = async (args, ctx, exec) => {
 
 const runBashDef: ToolDef = {
   name: "run_bash",
-  description: `Execute a shell command. Returns stdout and stderr. Commands that exceed the 120s timeout are moved to the background and return a job id to poll with check_job (unless they look interactive, e.g. editors/sleep, or timeoutToBackground is disabled). ${SANDBOX_TOOL_NOTE}`,
+  description: `Execute a shell command. Returns stdout and stderr. Commands that exceed the 120s timeout are moved to the background and return a job id; check_job waits for it and returns the output (unless they look interactive, e.g. editors/sleep, or timeoutToBackground is disabled). ${SANDBOX_TOOL_NOTE}`,
   parameters: {
     type: "object",
     properties: {

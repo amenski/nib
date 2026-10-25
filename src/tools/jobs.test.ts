@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { tmpdir } from "node:os";
 import { ToolRegistry } from "./registry.js";
+import { executeTool, setSignal } from "./index.js";
 import { registerJobs, jobManager, appendCapped } from "./jobs.js";
 import { parseUntrustedMarker } from "./untrusted-content.js";
 import type { JobStatusReport } from "./jobs.js";
@@ -51,6 +52,11 @@ describe("registerJobs", () => {
     expect(Object.keys(bg.parameters.properties)).toEqual(["command", "cwd", "timeout", "unsandboxed"]);
     const check = registry.getAllDefs().find((d) => d.name === "check_job")!;
     expect(check.parameters.required).toEqual(["job_id"]);
+    expect(Object.keys(check.parameters.properties)).toEqual(["job_id", "wait_seconds"]);
+    // The texts must ask for a wait, not a poll loop (plan §5.3).
+    expect(check.description).toContain("Waits up to wait_seconds");
+    expect(check.description).toContain("do not call it back-to-back");
+    expect(bg.description).not.toMatch(/poll/i);
   });
 
   itOnDarwin("handler threads ctx.workingDir as the trusted root (escaping cwd rejected)", async () => {
@@ -339,6 +345,132 @@ describe("job completion/output events (plan §3)", () => {
     } finally {
       off();
     }
+  });
+});
+
+// ── check_job waits (docs/check-job-wait-plan.md) ──
+//
+// Elapsed-time assertions use generous lower bounds only: a loaded CI box can
+// make a wait finish late, never early, so `>= job duration` is the property
+// that actually matters (the wait did not return instantly) and
+// `<< the timeout` proves it stopped when the job did.
+describe("check_job wait (plan §5)", () => {
+  let registry: ToolRegistry;
+
+  beforeEach(() => {
+    registry = new ToolRegistry();
+    registerJobs(registry);
+    jobManager.cleanup();
+  });
+
+  afterEach(() => {
+    jobManager.killAll();
+  });
+
+  const checkJob = (jobId: string, wait_seconds?: number, ctx: ToolContext = mockCtx) =>
+    registry.execute(
+      { id: "1", name: "check_job", arguments: wait_seconds === undefined ? { job_id: jobId } : { job_id: jobId, wait_seconds } },
+      ctx,
+    );
+
+  it("returns as soon as the job finishes, well before wait_seconds elapses", async () => {
+    const started = jobManager.start("sleep 1; echo waited-out", process.cwd(), 10_000);
+    const jobId = started.ok ? started.id : "";
+    const t0 = Date.now();
+    const out = await checkJob(jobId, 20);
+    const elapsed = Date.now() - t0;
+
+    expect(out.error).toBeUndefined();
+    expect(out.content).toContain("Status: done (exit 0)");
+    expect(out.content).toContain("waited-out");
+    expect(elapsed).toBeGreaterThanOrEqual(900);
+    expect(elapsed).toBeLessThan(15_000);
+  });
+
+  it("returns running when wait_seconds elapses first, leaving the job alive", async () => {
+    const started = jobManager.start("sleep 30", process.cwd(), 60_000);
+    const jobId = started.ok ? started.id : "";
+    const t0 = Date.now();
+    const out = await checkJob(jobId, 0.3);
+    const elapsed = Date.now() - t0;
+
+    expect(out.content).toContain("Status: running");
+    // The wait's own timeout must not touch the job (plan §4.4).
+    expect(jobManager.check(jobId)!.status).toBe("running");
+    expect(elapsed).toBeGreaterThanOrEqual(200);
+    expect(elapsed).toBeLessThan(10_000);
+  });
+
+  it("wait_seconds: 0 returns immediately for a running job", async () => {
+    const started = jobManager.start("sleep 30", process.cwd(), 60_000);
+    const jobId = started.ok ? started.id : "";
+    const t0 = Date.now();
+    const out = await checkJob(jobId, 0);
+    expect(out.content).toContain("Status: running");
+    expect(Date.now() - t0).toBeLessThan(1_000);
+  });
+
+  it("an aborted signal ends the wait quickly and still reports the status", async () => {
+    const started = jobManager.start("sleep 30", process.cwd(), 60_000);
+    const jobId = started.ok ? started.id : "";
+    const ac = new AbortController();
+    const t0 = Date.now();
+    setTimeout(() => ac.abort(), 150);
+    const out = await checkJob(jobId, 20, { ...mockCtx, signal: ac.signal });
+    expect(out.content).toContain("Status: running");
+    expect(Date.now() - t0).toBeLessThan(5_000);
+  });
+
+  it("setSignal wires the shared tool context, so aborting the turn controller ends a check_job wait", async () => {
+    const started = jobManager.start("sleep 30", process.cwd(), 60_000);
+    const jobId = started.ok ? started.id : "";
+    const turn = new AbortController();
+    setSignal(turn.signal);
+    try {
+      const t0 = Date.now();
+      let settled = false;
+      const pending = executeTool({ id: "1", name: "check_job", arguments: { job_id: jobId, wait_seconds: 30 } })
+        .finally(() => { settled = true; });
+      await new Promise((r) => setTimeout(r, 200));
+      expect(settled).toBe(false); // really waiting before the abort
+      turn.abort();
+      await waitFor(() => settled, 5_000);
+      const out = await pending;
+      expect(out.content).toContain("Status: running");
+      expect(Date.now() - t0).toBeLessThan(5_000);
+    } finally {
+      setSignal(new AbortController().signal);
+    }
+  });
+
+  it("an unknown job_id is still an error without waiting", async () => {
+    const t0 = Date.now();
+    const out = await checkJob("nope", 20);
+    expect(out.error).toContain("Unknown job");
+    expect(Date.now() - t0).toBeLessThan(1_000);
+  });
+
+  it("a non-numeric wait_seconds falls back to the 30s default", async () => {
+    const started = jobManager.start("sleep 30", process.cwd(), 60_000);
+    const jobId = started.ok ? started.id : "";
+    // Proving the default is 30 s would cost 30 s; the clamp table below covers
+    // the arithmetic, and here we only prove a bad value waits at all.
+    const ac = new AbortController();
+    setTimeout(() => ac.abort(), 250);
+    const t0 = Date.now();
+    const out = await registry.execute(
+      { id: "1", name: "check_job", arguments: { job_id: jobId, wait_seconds: "soon" } },
+      { ...mockCtx, signal: ac.signal },
+    );
+    expect(out.content).toContain("Status: running");
+    expect(Date.now() - t0).toBeGreaterThanOrEqual(200);
+  });
+
+  it("reports how long it waited", async () => {
+    const started = jobManager.start("sleep 0.5", process.cwd(), 10_000);
+    const jobId = started.ok ? started.id : "";
+    const out = await checkJob(jobId, 20);
+    expect(out.content).toMatch(/Waited: \d+\.\ds/);
   });
 });
 

@@ -391,6 +391,43 @@ export class JobManager {
     return this.buildReport(job);
   }
 
+  /**
+   * Wait until the job leaves "running", `ms` elapses, or `signal` aborts —
+   * whichever comes first (docs/check-job-wait-plan.md). check_job uses this so
+   * one call covers the wait instead of the model polling in a loop.
+   *
+   * Never touches the job: a wait that times out leaves a running job running
+   * under its own timeoutMs. Resolves at once for an unknown or finished job,
+   * for `ms <= 0`, and for an already-aborted signal. The listener and timer
+   * are always released before resolving.
+   */
+  waitFor(jobId: string, ms: number, signal?: AbortSignal): Promise<void> {
+    const job = this.jobs.get(jobId);
+    if (!job || job.status !== "running" || ms <= 0 || signal?.aborted) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      let settled = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let off: (() => void) | undefined;
+      const finish = (): void => {
+        if (settled) return;
+        settled = true;
+        if (timer) clearTimeout(timer);
+        off?.();
+        signal?.removeEventListener("abort", finish);
+        resolve();
+      };
+      // Subscribed before the timer so a completion that lands while the timer
+      // is being armed still wins the race.
+      off = this.onCompleted((report) => {
+        if (report.id === jobId) finish();
+      });
+      timer = setTimeout(finish, ms);
+      // A pending wait is not a reason to keep the process alive.
+      timer.unref();
+      signal?.addEventListener("abort", finish, { once: true });
+    });
+  }
+
   kill(jobId: string): { ok: boolean; error?: string } {
     const job = this.jobs.get(jobId);
     if (!job) return { ok: false, error: `Unknown job: ${jobId}` };
@@ -502,23 +539,43 @@ const runBackgroundHandler: ToolHandler = async (args, ctx, exec) => {
     content: [
       `Started background job ${result.id}`,
       `Command: ${command}`,
-      `Use check_job with job_id "${result.id}" to poll status; kill_job to terminate.`,
+      `Use check_job with job_id "${result.id}" to wait for it and read the output; kill_job to terminate.`,
     ].join("\n"),
   };
 };
 
-const checkJobHandler: ToolHandler = async (args) => {
+/** check_job waits for a running job by default instead of returning instantly
+ *  (plan §4.2); 0 restores the old behaviour for servers that never exit. */
+const DEFAULT_WAIT_SECONDS = 30;
+const MAX_WAIT_SECONDS = 300;
+
+/** `wait_seconds` → milliseconds, defaulting on a missing/non-numeric value and
+ *  clamping into 0–300 s. */
+function waitMs(args: Record<string, unknown>): number {
+  const raw = args.wait_seconds;
+  if (typeof raw !== "number" || !Number.isFinite(raw)) return DEFAULT_WAIT_SECONDS * 1000;
+  return Math.min(Math.max(raw, 0), MAX_WAIT_SECONDS) * 1000;
+}
+
+const checkJobHandler: ToolHandler = async (args, ctx) => {
   const jobId = args.job_id as string;
   if (typeof jobId !== "string" || jobId === "") {
     return { content: "", error: "Missing required argument: job_id" };
   }
-  const report = jobManager.check(jobId);
-  if (!report) {
+  const before = jobManager.check(jobId);
+  if (!before) {
     return { content: "", error: `Unknown job: ${jobId}. Job tracking is in-memory and does not survive a restart.` };
   }
+  const waitStart = Date.now();
+  await jobManager.waitFor(jobId, waitMs(args), ctx.signal);
+  const waitedMs = Date.now() - waitStart;
+  // A job can only disappear after finishing (cleanup skips running jobs), so
+  // the pre-wait report is the accurate answer if the TTL dropped it meanwhile.
+  const report = jobManager.check(jobId) ?? before;
   const lines = [
     `Status: ${report.status}${report.exitCode !== null ? ` (exit ${report.exitCode})` : ""}`,
     `Running for: ${(report.runningMs / 1000).toFixed(1)}s`,
+    `Waited: ${(waitedMs / 1000).toFixed(1)}s`,
   ];
   // The command's own bytes are wrapped in the untrusted-content delimiters;
   // the status lines above stay outside (tool voice, like web_search's).
@@ -554,7 +611,7 @@ const killJobHandler: ToolHandler = async (args) => {
 
 const runBackgroundDef: ToolDef = {
   name: "run_bash_background",
-  description: `Start a shell command in the background. Returns a job ID immediately; use check_job to poll status and read accumulated stdout/stderr, and kill_job to terminate it. For commands that run longer than the normal 120s run_bash timeout (dev servers, builds, tests). ${SANDBOX_TOOL_NOTE}`,
+  description: `Start a shell command in the background. Returns a job ID immediately; check_job waits for the job and returns its accumulated stdout/stderr, and kill_job terminates it. For commands that run longer than the normal 120s run_bash timeout (dev servers, builds, tests). ${SANDBOX_TOOL_NOTE}`,
   parameters: {
     type: "object",
     properties: {
@@ -569,11 +626,12 @@ const runBackgroundDef: ToolDef = {
 
 const checkJobDef: ToolDef = {
   name: "check_job",
-  description: "Check the status of a background job started with run_bash_background. Returns status (running/done/failed/killed), exit code, and accumulated stdout/stderr.",
+  description: "Check a background job started with run_bash_background. Waits up to wait_seconds (default 30) for a running job to finish, so one call covers the wait — do not call it back-to-back. Pass wait_seconds: 0 for a server that never exits. Returns status (running/done/failed/killed), exit code, and accumulated stdout/stderr.",
   parameters: {
     type: "object",
     properties: {
       job_id: { type: "string", description: "The job ID returned by run_bash_background" },
+      wait_seconds: { type: "number", description: "Seconds to wait for the job to finish before returning (optional, default 30, max 300; 0 returns immediately)" },
     },
     required: ["job_id"],
   },

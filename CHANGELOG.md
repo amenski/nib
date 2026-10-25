@@ -9,6 +9,13 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`check_job` waits for the job instead of reporting instantly.** A call now
+  returns as soon as the job exits, or after `wait_seconds` (default 30, capped
+  at 300), whichever comes first — so one call covers the wait and the model
+  stops polling a long build in a loop. Esc cancels the wait. `wait_seconds: 0`
+  keeps the old instantly-returning behaviour, for dev servers that never exit.
+  The wait never kills or times out the job, and every report now says how long
+  it waited. The tool descriptions no longer tell the model to poll.
 - **Edits now report language-server errors immediately.** After an edit, nib asks
   the language server for the changed files and appends any errors and warnings
   to that edit's own result, so the model fixes them in the next step instead of

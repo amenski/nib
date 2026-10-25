@@ -923,6 +923,8 @@ async function main() {
     allowedTools: parsed.allowedTools as string[],
     disallowedTools: parsed.disallowedTools as string[],
   };
+  // The tool context holds the signal, so it must follow the per-turn controller.
+  setSignal(shared.abort.signal);
 
   // The classifier's optional model stage (docs/command-risk-classifier.md §6).
   // Resolved once per session: the judge is a fixed cheap model, not the
@@ -1222,7 +1224,7 @@ async function main() {
       onPostureChange: (posture: Posture) => { if (posture === "auto") autoState.reset(); },
       onConversationReset: () => resetAutoSession(),
       provideAbortController: () => shared.abort,
-      renewAbortController: () => { shared.abort = new AbortController(); },
+      renewAbortController: () => { shared.abort = new AbortController(); setSignal(shared.abort.signal); },
       completer: (line: string) => completer(line, knownModeSlugs, commands.map((c) => c.name)),
       buildStatusBar,
       modelDisplayName,

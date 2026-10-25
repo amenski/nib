@@ -93,6 +93,10 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Esc in the terminal UI now cancels tool-level waits.** `check_job`'s wait,
+  `web_fetch`, `web_search` and the `view_image` URL fetch kept running after
+  Esc, because only headless runs passed the turn's abort signal to the tools.
+  The terminal UI now does too.
 - **`new_task` sub-agents now run at the intended reasoning effort.** They used
   the provider's default effort, ignoring both their mode's `reasoningEffort`
   (low in every built-in mode) and your `/effort`, settings.json

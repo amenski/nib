@@ -1,15 +1,15 @@
 ---
 import { strings, REPO_URL } from '../lib/strings';
 import { homeAnchor, type Lang } from '../lib/i18n';
+import Demo from './Demo.astro';
+import auto from '../demos/auto.txt?raw';
 
 interface Props { lang?: Lang }
 const { lang = 'en' } = Astro.props;
 const t = strings[lang].hero;
 const how = strings[lang].how;
-const fig = strings[lang].fig;
+const demoCaption = strings[lang].features.demos.auto;
 const commands = ['npm install -g @amenski/nib', 'brew install amenski/tap/nib'];
-// Cloudflare caches these files for hours. Bump the version when nib-launch.* changes.
-const v = '2026-10-20';
 ---
 <section class="hero">
   <h1 class="hero-in" style="--i:0">{t.h1}</h1>
@@ -29,14 +29,9 @@ const v = '2026-10-20';
         <a class="setup" href={homeAnchor(lang, 'install')}>{t.setup} ↓</a>
       </div>
     </div>
-    <figure class="fig hero-in" style="--i:4">
-      <div class="media">
-        <video controls preload="none" playsinline poster={`/nib-launch.jpg?v=${v}`} width="1920" height="1080" aria-label={t.video}>
-          <source src={`/nib-launch.mp4?v=${v}`} type="video/mp4">
-        </video>
-      </div>
-      <figcaption><span class="mono">{fig} 01</span>{t.video}</figcaption>
-    </figure>
+    <div class="fig hero-in" style="--i:4">
+      <Demo text={auto} ranges={[[9, 15], [20, 31], [36, 36]]} n="01" caption={demoCaption} {lang} />
+    </div>
   </div>
 </section>
 
@@ -50,8 +45,7 @@ const v = '2026-10-20';
 .cta{display:flex;gap:12px 20px;flex-wrap:wrap;align-items:center}
 .setup{color:var(--muted);font-size:15px;text-decoration:none}
 .setup:hover{color:var(--text)}
-.fig{margin:0}
-.media{border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;background:var(--code);box-shadow:0 40px 90px -40px color-mix(in srgb,var(--accent) 45%,transparent)}
-video{display:block;width:100%;height:auto;aspect-ratio:16/9}
-@media(max-width:860px){.grid{grid-template-columns:1fr;margin-top:32px}.fig{order:-1}}
+.fig{min-width:0}
+.fig :global(figure){margin-top:0}
+@media(max-width:860px){.grid{grid-template-columns:1fr;margin-top:32px}}
 </style>

@@ -1,0 +1,108 @@
+---
+import { strings, REPO_URL } from '../lib/strings';
+import type { Lang } from '../lib/i18n';
+import Demo from './Demo.astro';
+import undo from '../demos/undo.txt?raw';
+import headless from '../demos/headless.txt?raw';
+
+interface Props { lang?: Lang }
+const { lang = 'en' } = Astro.props;
+const t = strings[lang].features;
+// Text between backticks is inline code.
+const parts = (s: string) => s.split('`');
+
+// Per-row, language-neutral parts, in the order of t.rows. Commands, keys and settings are not translated.
+// A row shows a snippet (input only), a demo (verbatim capture) or neither.
+const doc = (path: string) => `${REPO_URL}/blob/main/docs/${path}`;
+const rows = [
+  {
+    id: 'permissions', doc: doc('permission-spec.md'),
+    snippet: `{
+  "permissions": {
+    "rules": [
+      {
+        "tool": "run_bash",
+        "pattern": "git *",
+        "action": "allow"
+      },
+      {
+        "tool": "run_bash",
+        "pattern": "rm *",
+        "action": "deny"
+      },
+      {
+        "tool": "run_bash",
+        "pattern": "*",
+        "action": "ask"
+      }
+    ]
+  }
+}`,
+  },
+  { id: 'auto', doc: doc('auto-mode.md'), keys: ['Shift+Tab'] },
+  {
+    id: 'lsp', doc: doc('config-spec.md'),
+    snippet: `"lspServers": {
+  "gopls": {
+    "command": "gopls",
+    "extensionToLanguage": {
+      ".go": "go"
+    }
+  }
+}`,
+  },
+  { id: 'steer', doc: doc('cli-spec.md'), keys: ['Enter', 'Esc'] },
+  { id: 'undo', doc: doc('session-spec.md'), demo: { text: undo, ranges: [[23, 31], [58, 58], [61, 61]] as [number, number][], n: '04', caption: t.demos.undo } },
+  { id: 'sessions', doc: doc('subsystems/context-management.md'), snippet: `nib -c\nnib -r <id>` },
+  { id: 'jobs', doc: doc('tool-spec.md') },
+  { id: 'media', doc: doc('web-search-spec.md'), keys: ['Ctrl+V'], snippet: `"webSearch": {
+  "searxngUrl": "http://localhost:8888"
+}` },
+  { id: 'extend', doc: doc('hooks-spec.md'), snippet: `nib mcp add github \\
+  --env GITHUB_TOKEN=... \\
+  -- npx -y \\
+  @modelcontextprotocol/server-github` },
+  { id: 'headless', doc: doc('cli-spec.md'), demo: { text: headless, ranges: [[1, 10]] as [number, number][], n: '05', caption: t.demos.headless } },
+];
+---
+<section id="features" class="reveal">
+  <h2>{t.h2}</h2>
+  <p class="sub">{t.sub}</p>
+  {t.rows.map((r, i) => {
+    const c = rows[i];
+    const side = c.demo || c.snippet;
+    return (
+      <article class:list={['row', { flip: i % 2 === 1, solo: !side, stack: !!c.demo }]} id={`f-${c.id}`}>
+        <div class="text">
+          <p class="mono kicker">{String(i + 1).padStart(2, '0')} / {r.kicker}</p>
+          <h3>{r.title}</h3>
+          {r.body.map((p) => <p class="body">{parts(p).map((s, j) => (j % 2 ? <code>{s}</code> : s))}</p>)}
+          {c.keys && <p class="keys">{c.keys.map((k) => <kbd>{k}</kbd>)}</p>}
+          <a href={c.doc}>{r.doc} →</a>
+        </div>
+        {c.demo && <div class="side"><Demo text={c.demo.text} ranges={c.demo.ranges} n={c.demo.n} caption={c.demo.caption} {lang} /></div>}
+        {c.snippet && <div class="side"><pre>{c.snippet}</pre></div>}
+      </article>
+    );
+  })}
+</section>
+
+<style>
+.row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:48px;align-items:center;padding:56px 0;border-top:1px solid var(--line)}
+.row.flip .text{order:2}
+.row.solo,.row.stack{grid-template-columns:minmax(0,1fr)}
+.row.stack.flip .text{order:0}
+.text{min-width:0}
+.side{min-width:0}
+.side :global(figure){margin-top:0}
+.kicker{margin:0 0 10px}
+h3{margin:0 0 14px;font-size:clamp(22px,2.4vw,28px);letter-spacing:-.02em;line-height:1.2}
+.body{margin:0 0 12px;color:var(--muted);font-size:16px;max-width:52ch}
+code{font-size:14px;color:var(--accent)}
+.keys{margin:16px 0 0;display:flex;flex-wrap:wrap;gap:8px}
+kbd{font-family:var(--mono);font-size:13px;padding:2px 8px;border:1px solid var(--line-2);border-radius:6px;background:var(--bg-3);color:var(--text)}
+a{display:inline-block;margin-top:16px;color:var(--accent);font-size:15px;font-weight:600;text-decoration:none}
+a:hover{text-decoration:underline}
+pre{font-size:13px;line-height:1.6}
+@media(max-width:860px){.row{grid-template-columns:1fr;gap:24px;padding:40px 0}.row.flip .text{order:0}}
+</style>

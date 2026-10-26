@@ -1,0 +1,37 @@
+---
+import { strings, REPO_URL, DOCS_URL } from '../lib/strings';
+import { homeAnchor, privacyPath, type Lang } from '../lib/i18n';
+
+interface Props { lang?: Lang }
+const { lang = 'en' } = Astro.props;
+const t = strings[lang].differs;
+// One link per card, in the order of t.items.
+const hrefs = [homeAnchor(lang, 'cost'), `${REPO_URL}/blob/main/docs/auto-mode.md`, privacyPath(lang), DOCS_URL];
+// Text between backticks is inline code.
+const parts = (s: string) => s.split('`');
+---
+<section id="differs" class="reveal">
+  <h2>{t.h2}</h2>
+  <p class="sub">{t.sub}</p>
+  <div class="cards">
+    {t.items.map((f, i) => (
+      <div class="card">
+        <h3>{f.title}</h3>
+        <p>{parts(f.body).map((s, j) => (j % 2 ? <code>{s}</code> : s))}</p>
+        <a href={hrefs[i]}>{f.link} →</a>
+      </div>
+    ))}
+  </div>
+</section>
+
+<style>
+.cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.card{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:var(--radius);padding:28px;background:var(--bg-2);transition:border-color .25s}
+.card:hover{border-color:var(--line-2)}
+h3{margin:0 0 10px;font-size:20px;letter-spacing:-.02em}
+p{margin:0 0 20px;color:var(--muted);font-size:16px;max-width:52ch}
+code{font-size:14px;color:var(--accent)}
+a{margin-top:auto;color:var(--accent);font-size:15px;font-weight:600;text-decoration:none}
+a:hover{text-decoration:underline}
+@media(max-width:860px){.cards{grid-template-columns:1fr}}
+</style>

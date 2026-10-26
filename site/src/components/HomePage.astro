@@ -1,11 +1,16 @@
 ---
 import Base from '../layouts/Base.astro';
+import Banner from './Banner.astro';
 import Header from './Header.astro';
 import Hero from './Hero.astro';
 import Cost from './Cost.astro';
 import HowItWorks from './HowItWorks.astro';
+import Modes from './Modes.astro';
 import Features from './Features.astro';
+import Differs from './Differs.astro';
+import CopyButtons from './CopyButtons.astro';
 import Providers from './Providers.astro';
+import Involved from './Involved.astro';
 import Footer from './Footer.astro';
 import { strings, REPO_URL } from '../lib/strings';
 import { LOCALES, homePath, homeHrefs, type Lang } from '../lib/i18n';
@@ -31,15 +36,20 @@ const appSchema = {
 const alternates = LOCALES.map((l) => ({ lang: l, href: homePath(l) }));
 ---
 <Base title={t.homeTitle} description={t.description} ogDescription={t.ogDescription} lang={lang} alternates={alternates} schema={[appSchema]}>
+  <Banner lang={lang} />
   <div class="wrap">
     <Header lang={lang} langHrefs={homeHrefs()} />
     <main id="top">
       <Hero lang={lang} />
       <Cost lang={lang} />
       <HowItWorks lang={lang} />
+      <Modes lang={lang} />
       <Features lang={lang} />
+      <Differs lang={lang} />
       <Providers lang={lang} />
+      <Involved lang={lang} />
     </main>
+    <CopyButtons />
     <Footer lang={lang} />
   </div>
 </Base>

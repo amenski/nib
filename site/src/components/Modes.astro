@@ -1,0 +1,32 @@
+---
+import { strings, MODE_CMDS } from '../lib/strings';
+import type { Lang } from '../lib/i18n';
+
+interface Props { lang?: Lang }
+const { lang = 'en' } = Astro.props;
+const t = strings[lang].modes;
+// Text between backticks is inline code.
+const parts = (s: string) => s.split('`');
+---
+<section id="modes" class="reveal">
+  <h2>{t.h2}</h2>
+  <div class="cards">
+    {t.items.map((f, i) => (
+      <div class="card">
+        <pre>{MODE_CMDS[i]}</pre>
+        <p>{parts(f.body).map((s, j) => (j % 2 ? <code>{s}</code> : s))}</p>
+      </div>
+    ))}
+  </div>
+</section>
+
+<style>
+.cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-top:40px}
+.card{border:1px solid var(--line);border-radius:var(--radius);padding:24px;background:var(--bg-2);transition:border-color .25s}
+.card:hover{border-color:var(--line-2)}
+pre{margin:0 0 16px;padding:10px 14px;font-size:14px;line-height:1.5;color:var(--accent)}
+p{margin:0;color:var(--muted);font-size:15px}
+code{font-size:13.5px;color:var(--accent)}
+@media(max-width:1080px){.cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:860px){.cards{grid-template-columns:1fr}}
+</style>

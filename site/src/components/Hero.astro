@@ -5,32 +5,53 @@ import { homeAnchor, type Lang } from '../lib/i18n';
 interface Props { lang?: Lang }
 const { lang = 'en' } = Astro.props;
 const t = strings[lang].hero;
+const how = strings[lang].how;
+const fig = strings[lang].fig;
+const commands = ['npm install -g @amenski/nib', 'brew install amenski/tap/nib'];
 // Cloudflare caches these files for hours. Bump the version when nib-launch.* changes.
 const v = '2026-10-20';
 ---
 <section class="hero">
   <h1 class="hero-in" style="--i:0">{t.h1}</h1>
   <div class="grid">
-    <div class="copy">
+    <div class="text">
       <p class="lead hero-in" style="--i:1">{t.lead}</p>
-      <div class="cta hero-in" style="--i:2">
-        <a class="btn btn-primary" href={homeAnchor(lang, 'install')}>{t.install}</a>
+      <div class="cmds hero-in" style="--i:2">
+        {commands.map((c) => (
+          <div class="row">
+            <code class="mono">{c}</code>
+            <button class="copy mono" type="button" data-copy={c} data-done={how.copied} aria-live="polite">{how.copy}</button>
+          </div>
+        ))}
+      </div>
+      <div class="cta hero-in" style="--i:3">
         <a class="btn btn-ghost" href={REPO_URL}>{t.source}</a>
+        <a class="setup" href={homeAnchor(lang, 'install')}>{t.setup} ↓</a>
       </div>
     </div>
-    <div class="media hero-in" style="--i:3">
-      <video controls preload="none" playsinline poster={`/nib-launch.jpg?v=${v}`} width="1920" height="1080" aria-label={t.video}>
-        <source src={`/nib-launch.mp4?v=${v}`} type="video/mp4">
-      </video>
-    </div>
+    <figure class="fig hero-in" style="--i:4">
+      <div class="media">
+        <video controls preload="none" playsinline poster={`/nib-launch.jpg?v=${v}`} width="1920" height="1080" aria-label={t.video}>
+          <source src={`/nib-launch.mp4?v=${v}`} type="video/mp4">
+        </video>
+      </div>
+      <figcaption><span class="mono">{fig} 01</span>{t.video}</figcaption>
+    </figure>
   </div>
 </section>
 
 <style>
 .grid{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:clamp(32px,5vw,64px);align-items:center;margin-top:48px}
-.lead{font-size:clamp(18px,1.6vw,21px);line-height:1.5;color:var(--muted);max-width:36ch;margin:0 0 32px}
-.cta{display:flex;gap:12px;flex-wrap:wrap}
+.lead{font-size:clamp(18px,1.6vw,21px);line-height:1.5;color:var(--muted);max-width:36ch;margin:0 0 28px}
+.cmds{display:grid;gap:8px;margin-bottom:20px}
+.row{display:flex;align-items:center;gap:12px;padding:8px 8px 8px 16px;border:1px solid var(--line);border-radius:var(--radius);background:var(--code)}
+.row code{flex:1;min-width:0;overflow-x:auto;white-space:nowrap;color:#e6e8ee}
+.row .copy{flex:none}
+.cta{display:flex;gap:12px 20px;flex-wrap:wrap;align-items:center}
+.setup{color:var(--muted);font-size:15px;text-decoration:none}
+.setup:hover{color:var(--text)}
+.fig{margin:0}
 .media{border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;background:var(--code);box-shadow:0 40px 90px -40px color-mix(in srgb,var(--accent) 45%,transparent)}
 video{display:block;width:100%;height:auto;aspect-ratio:16/9}
-@media(max-width:860px){.grid{grid-template-columns:1fr;margin-top:32px}.media{order:-1}}
+@media(max-width:860px){.grid{grid-template-columns:1fr;margin-top:32px}.fig{order:-1}}
 </style>

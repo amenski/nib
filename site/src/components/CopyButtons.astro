@@ -1,0 +1,10 @@
+<script>
+  document.querySelectorAll<HTMLButtonElement>('[data-copy]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(btn.dataset.copy ?? ''); } catch { return; }
+      const label = btn.textContent;
+      btn.textContent = btn.dataset.done ?? label;
+      setTimeout(() => { btn.textContent = label; }, 1600);
+    });
+  });
+</script>

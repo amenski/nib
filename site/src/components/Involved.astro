@@ -1,0 +1,32 @@
+---
+import { strings, REPO_URL, DISCUSSIONS_URL, DOCS_URL, CHANGELOG_URL } from '../lib/strings';
+import type { Lang } from '../lib/i18n';
+
+interface Props { lang?: Lang }
+const { lang = 'en' } = Astro.props;
+const t = strings[lang].involved;
+// One link per card, in the order of t.items.
+const hrefs = [`${REPO_URL}/issues`, DISCUSSIONS_URL, DOCS_URL, CHANGELOG_URL];
+---
+<section id="involved" class="reveal">
+  <h2>{t.h2}</h2>
+  <div class="cards">
+    {t.items.map((f, i) => (
+      <a class="card" href={hrefs[i]}>
+        <h3>{f.title} <span aria-hidden="true">→</span></h3>
+        <p>{f.body}</p>
+      </a>
+    ))}
+  </div>
+</section>
+
+<style>
+.cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-top:40px}
+.card{display:block;border:1px solid var(--line);border-radius:var(--radius);padding:24px;background:var(--bg-2);text-decoration:none;transition:border-color .25s}
+.card:hover{border-color:var(--line-2)}
+h3{margin:0 0 10px;font-size:20px;letter-spacing:-.02em}
+h3 span{color:var(--accent)}
+p{margin:0;color:var(--muted);font-size:15px}
+@media(max-width:1080px){.cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:860px){.cards{grid-template-columns:1fr}}
+</style>

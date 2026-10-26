@@ -6,6 +6,7 @@ interface Props { lang?: Lang }
 const { lang = 'en' } = Astro.props;
 const t = strings[lang].cost;
 const [total, ...rest] = t.stats;
+const fig = strings[lang].fig;
 ---
 <section id="cost" class="reveal">
   <h2>{t.h2}</h2>
@@ -18,7 +19,7 @@ const [total, ...rest] = t.stats;
   </div>
   <figure>
     <img class="frame" src="/usage-deepseek-flash.png" width="1458" height="200" alt={t.usageAlt} loading="lazy">
-    <figcaption>{t.caption}</figcaption>
+    <figcaption><span class="mono">{fig} 02</span>{t.caption}</figcaption>
   </figure>
 </section>
 
@@ -29,5 +30,4 @@ const [total, ...rest] = t.stats;
 .total p,.rest p{margin:12px 0 0;color:var(--muted);font-size:15px;max-width:30ch}
 .rest{display:flex;gap:48px;flex-wrap:wrap}
 figure{margin:56px 0 0}
-figcaption{margin-top:14px;color:var(--muted);font-size:14px;max-width:70ch}
 </style>

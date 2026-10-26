@@ -38,6 +38,10 @@ code{font-family:var(--mono)}
 pre{background:var(--code);color:#e6e8ee;border:1px solid var(--line);border-radius:var(--radius);padding:22px 24px;overflow:auto;font-family:var(--mono);font-size:14px;line-height:1.75;margin:0}
 pre .c{color:#7d8699}
 .frame{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:var(--radius);background:var(--code)}
+figcaption{margin-top:14px;color:var(--muted);font-size:14px;max-width:70ch}
+figcaption .mono{margin-right:8px}
+.copy{padding:6px 12px;border:1px solid var(--line-2);border-radius:var(--radius);background:var(--bg-3);color:var(--muted);cursor:pointer;transition:color .2s,border-color .2s}
+.copy:hover{color:var(--text);border-color:var(--muted)}
 
 main>section{padding:96px 0;border-top:1px solid var(--line)}
 main>section.hero{border-top:0;padding:64px 0 88px}

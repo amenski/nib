@@ -1,0 +1,10 @@
+$ nib -p "fix the failing test" --max-turns 12
+permission denied (headless): run_bash cat package.json 2>/dev/null; ls -la
+permission denied (headless): run_bash node --test slug.test.js
+Fixed `slug.js:2` — `replace(' ', '-')` only replaced the first space; now `replaceAll(' ', '-')`, which satisfies `slugify('Hello Big World') === 'hello-big-world'`.
+
+I could not verify: both `node --test slug.test.js` attempts were denied, so the test still needs a run.
+
+Caveat: `replaceAll` needs Node 15+. If you target older Node, use `.replace(/ /g, '-')` instead.
+
+Next action: run `node --test slug.test.js` in the repo.

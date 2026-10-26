@@ -1,6 +1,8 @@
 ---
 import { strings, REPO_URL, DOCS_URL } from '../lib/strings';
 import { homeAnchor, privacyPath, type Lang } from '../lib/i18n';
+import Demo from './Demo.astro';
+import auto from '../demos/auto.txt?raw';
 
 interface Props { lang?: Lang }
 const { lang = 'en' } = Astro.props;
@@ -22,6 +24,7 @@ const parts = (s: string) => s.split('`');
       </div>
     ))}
   </div>
+  <Demo text={auto} ranges={[[9, 15], [20, 31], [36, 36]]} n="04" caption={t.demo} {lang} />
 </section>
 
 <style>

@@ -1,6 +1,8 @@
 ---
 import { strings } from '../lib/strings';
 import type { Lang } from '../lib/i18n';
+import Demo from './Demo.astro';
+import undo from '../demos/undo.txt?raw';
 
 interface Props { lang?: Lang }
 const { lang = 'en' } = Astro.props;
@@ -21,6 +23,7 @@ const parts = (s: string) => s.split('`');
       </div>
     ))}
   </div>
+  <Demo text={undo} ranges={[[23, 31], [58, 58], [61, 61]]} n="06" caption={t.demo} {lang} />
 </section>
 
 <style>

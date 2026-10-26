@@ -1,6 +1,8 @@
 ---
 import { strings, MODE_CMDS } from '../lib/strings';
 import type { Lang } from '../lib/i18n';
+import Demo from './Demo.astro';
+import headless from '../demos/headless.txt?raw';
 
 interface Props { lang?: Lang }
 const { lang = 'en' } = Astro.props;
@@ -18,6 +20,7 @@ const parts = (s: string) => s.split('`');
       </div>
     ))}
   </div>
+  <Demo text={headless} ranges={[[1, 10]]} n="05" caption={t.demo} {lang} />
 </section>
 
 <style>

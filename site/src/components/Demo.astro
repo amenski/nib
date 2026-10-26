@@ -1,0 +1,28 @@
+---
+import { strings } from '../lib/strings';
+import type { Lang } from '../lib/i18n';
+
+// Shows only whole lines of a verbatim capture: `ranges` are inclusive 1-based line ranges;
+// a dimmed "…" marks every gap between them.
+interface Props { text: string; ranges: [number, number][]; n: string; caption: string; lang?: Lang }
+const { text, ranges, n, caption, lang = 'en' } = Astro.props;
+const fig = strings[lang].fig;
+const src = text.replace(/\n$/, '').split('\n');
+const lines: (string | null)[] = [];
+ranges.forEach(([a, b], i) => {
+  if (i && a !== ranges[i - 1][1] + 1) lines.push(null);
+  lines.push(...src.slice(a - 1, b));
+});
+// Text between backticks is inline code.
+const parts = (s: string) => s.split('`');
+---
+<figure>
+  <pre class="demo">{lines.map((l, i) => <Fragment>{i ? '\n' : ''}{l === null ? <span class="c">…</span> : l}</Fragment>)}</pre>
+  <figcaption><span class="mono">{fig} {n}</span>{parts(caption).map((s, j) => (j % 2 ? <code>{s}</code> : s))}</figcaption>
+</figure>
+
+<style>
+figure{margin:40px 0 0;min-width:0}
+pre{max-width:100%;font-size:12.5px;line-height:1.5;padding:18px 20px}
+code{font-size:13px;color:var(--accent)}
+</style>

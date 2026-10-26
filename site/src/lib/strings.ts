@@ -50,6 +50,7 @@ const en = {
     copied: 'Copied',
   },
   modes: {
+    demo: 'The same task with `nib -p`: no one to ask, so the test runs are denied and nib says so.',
     h2: 'One agent, several ways to run it.',
     items: [
       { body: 'The interactive terminal UI, starting in Code mode: edit files, run commands, delegate work.' },
@@ -59,6 +60,7 @@ const en = {
     ],
   },
   features: {
+    demo: '`/undo` restores the file and puts the original prompt back in the input.',
     h2: 'Everything a hosted agent does, inside one process you can read.',
     items: [
       { title: 'Permissions are rules, not vibes', body: 'Every tool call passes an allow / ask / deny engine before it runs. Sandbox profiles confine the shell to your workspace. Every decision is logged.', size: 'a' },
@@ -70,6 +72,7 @@ const en = {
   },
   fig: 'Fig.',
   differs: {
+    demo: 'Auto posture, real run on DeepSeek V4.1 Flash: nib fixes the bug and runs the tests with no permission prompt.',
     h2: 'What nib does differently.',
     sub: 'Four choices that shape how it runs, each with the doc behind it.',
     items: [
@@ -142,6 +145,7 @@ const de: typeof en = {
     copied: 'Kopiert',
   },
   modes: {
+    demo: 'Dieselbe Aufgabe mit `nib -p`: Niemand kann gefragt werden, also werden die Testläufe abgelehnt und Nib sagt das.',
     h2: 'Ein Agent, mehrere Wege, ihn laufen zu lassen.',
     items: [
       { body: 'Die interaktive Terminaloberfläche, startet im Code-Modus: Dateien bearbeiten, Befehle ausführen, Arbeit delegieren.' },
@@ -151,6 +155,7 @@ const de: typeof en = {
     ],
   },
   features: {
+    demo: '`/undo` stellt die Datei wieder her und setzt den ursprünglichen Prompt zurück in die Eingabe.',
     h2: 'Alles, was ein gehosteter Agent kann, in einem Prozess, den du lesen kannst.',
     items: [
       { title: 'Berechtigungen sind Regeln, keine Stimmungen', body: 'Jeder Tool-Aufruf durchläuft vor der Ausführung eine Engine mit erlauben / fragen / verweigern. Sandbox-Profile beschränken die Shell auf deinen Workspace. Jede Entscheidung wird protokolliert.', size: 'a' },
@@ -162,6 +167,7 @@ const de: typeof en = {
   },
   fig: 'Abb.',
   differs: {
+    demo: 'Auto-Haltung, echter Lauf mit DeepSeek V4.1 Flash: Nib behebt den Fehler und führt die Tests ohne Berechtigungsabfrage aus.',
     h2: 'Was Nib anders macht.',
     sub: 'Vier Entscheidungen, die bestimmen, wie Nib arbeitet, jeweils mit der Doku dahinter.',
     items: [
@@ -234,6 +240,7 @@ const es: typeof en = {
     copied: 'Copiado',
   },
   modes: {
+    demo: 'La misma tarea con `nib -p`: no hay a quién preguntar, así que se deniegan las ejecuciones de pruebas y Nib lo indica.',
     h2: 'Un agente, varias formas de ejecutarlo.',
     items: [
       { body: 'La interfaz de terminal interactiva, que arranca en modo Code: editar archivos, ejecutar comandos, delegar trabajo.' },
@@ -243,6 +250,7 @@ const es: typeof en = {
     ],
   },
   features: {
+    demo: '`/undo` restaura el archivo y devuelve el prompt original a la entrada.',
     h2: 'Todo lo que hace un agente alojado, dentro de un proceso que puedes leer.',
     items: [
       { title: 'Los permisos son reglas, no corazonadas', body: 'Cada llamada a una herramienta pasa por un motor de permitir / preguntar / denegar antes de ejecutarse. Los perfiles de sandbox confinan la shell a tu espacio de trabajo. Cada decisión queda registrada.', size: 'a' },
@@ -254,6 +262,7 @@ const es: typeof en = {
   },
   fig: 'Fig.',
   differs: {
+    demo: 'Postura auto, ejecución real con DeepSeek V4.1 Flash: Nib corrige el error y ejecuta las pruebas sin pedir permiso.',
     h2: 'Lo que Nib hace de forma distinta.',
     sub: 'Cuatro decisiones que marcan cómo funciona, cada una con la documentación que la respalda.',
     items: [

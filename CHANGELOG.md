@@ -7,6 +7,11 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-10-26
+
+First stable release of the 0.7.0 line. It includes everything in
+0.7.0-rc.1 and 0.7.0-rc.2 below, plus the changes in this section.
+
 ### Added
 
 - **`check_job` waits for the job instead of reporting instantly.** A call now
@@ -36,6 +41,13 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   count and the latest failure, and suggests `classifier.model.id`. It is shown
   once per judge model; a `/model` switch starts a fresh count. Failures still
   fall back to the ordinary prompt at once, with no retry.
+
+### Fixed
+
+- **Esc now cancels tool waits in the TUI.** The interactive session never
+  passed the turn's abort signal to tools, so `check_job`'s wait,
+  `web_fetch`, `web_search` and `view_image` kept running after Esc. They now
+  stop when you press it.
 
 ## [0.7.0-rc.2] — 2026-10-18
 
@@ -883,7 +895,8 @@ further injection sinks.
 Earlier releases predate this changelog. See the git history for
 `v0.1.0..v0.2.1`.
 
-[Unreleased]: https://github.com/amenski/nib/compare/v0.7.0-rc.2...HEAD
+[Unreleased]: https://github.com/amenski/nib/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/amenski/nib/compare/v0.7.0-rc.2...v0.7.0
 [0.7.0-rc.2]: https://github.com/amenski/nib/compare/v0.7.0-rc.1...v0.7.0-rc.2
 [0.7.0-rc.1]: https://github.com/amenski/nib/compare/v0.6.1...v0.7.0-rc.1
 [0.6.1]: https://github.com/amenski/nib/compare/v0.6.0...v0.6.1

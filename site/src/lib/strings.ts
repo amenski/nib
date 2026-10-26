@@ -11,7 +11,7 @@ export const CHANGELOG_URL = `${REPO_URL}/blob/main/CHANGELOG.md`;
 // Text between backticks is rendered as inline code. Commands in code blocks are not translated.
 const en = {
   homeTitle: 'Nib: open-source coding agent for the terminal',
-  description: 'Open-source, bring-your-own-key coding agent for the terminal. Run all day on DeepSeek for a few dollars, or use OpenAI, OpenRouter, Groq, local Ollama. Explicit permissions, no telemetry.',
+  description: 'Open-source, bring-your-own-key terminal coding agent. A day on DeepSeek costs a few dollars; ~190 other providers, local Ollama included. No telemetry.',
   ogDescription: 'Bring your own key. Run all day on DeepSeek for a few dollars. Explicit permissions, rewindable checkpoints, MCP, skills. No telemetry.',
 
   // Header and footer
@@ -43,7 +43,7 @@ const en = {
   how: {
     h2: 'Three commands to a first session.',
     sub: 'Needs Node.js 20 or newer and Git. Keys are stored locally with mode 0600.',
-    comments: ['install', 'add a DeepSeek, OpenAI, OpenRouter, Groq or Ollama key', 'interactive session, read-only until you switch to /mode code'],
+    comments: ['install', 'add a key for DeepSeek, OpenAI, Ollama or ~190 other providers', 'interactive session in Code mode; /mode general for read-only chat'],
     brew: 'On macOS with Homebrew:',
     copy: 'Copy',
     copied: 'Copied',
@@ -59,8 +59,9 @@ const en = {
     ],
   },
   providers: {
-    h2: 'Your key, your model.',
-    sub: 'Switch providers mid-session with `/model`. Nothing leaves your machine except the request to the provider you chose.',
+    h2: 'Your key, any model.',
+    sub: 'Five providers built in, plus ~190 more OpenAI-compatible ones from the Models.dev catalog. Connect any with `nib auth`, switch mid-session with `/model`. Nothing leaves your machine except the request to the provider you chose.',
+    more: 'and ~190 more',
   },
   notFound: {
     title: 'Page not found | Nib',
@@ -73,7 +74,7 @@ const en = {
 
 const de: typeof en = {
   homeTitle: 'Nib: Open-Source-Coding-Agent für das Terminal',
-  description: 'Open-Source-Coding-Agent für das Terminal mit eigenem API-Schlüssel. Einen ganzen Tag für ein paar Dollar mit DeepSeek arbeiten oder OpenAI, OpenRouter, Groq und lokales Ollama nutzen. Explizite Berechtigungen, keine Telemetrie.',
+  description: 'Open-Source-Coding-Agent fürs Terminal, eigener Schlüssel. Ein Tag mit DeepSeek kostet ein paar Dollar; ~190 weitere Provider, auch Ollama lokal. Keine Telemetrie.',
   ogDescription: 'Eigener Schlüssel. Ein ganzer Tag mit DeepSeek für ein paar Dollar. Explizite Berechtigungen, zurückspulbare Checkpoints, MCP, Skills. Keine Telemetrie.',
 
   homeLabel: 'Nib, Startseite',
@@ -104,7 +105,7 @@ const de: typeof en = {
   how: {
     h2: 'Drei Befehle bis zur ersten Sitzung.',
     sub: 'Benötigt Node.js 20 oder neuer und Git. Schlüssel werden lokal mit Modus 0600 gespeichert.',
-    comments: ['installieren', 'Schlüssel für DeepSeek, OpenAI, OpenRouter, Groq oder Ollama hinzufügen', 'interaktive Sitzung, schreibgeschützt, bis du mit /mode code wechselst'],
+    comments: ['installieren', 'Schlüssel für DeepSeek, OpenAI, Ollama oder ~190 weitere Provider hinzufügen', 'interaktive Sitzung im Code-Modus; /mode general für schreibgeschützten Chat'],
     brew: 'Auf macOS mit Homebrew:',
     copy: 'Kopieren',
     copied: 'Kopiert',
@@ -120,8 +121,9 @@ const de: typeof en = {
     ],
   },
   providers: {
-    h2: 'Dein Schlüssel, dein Modell.',
-    sub: 'Wechsle den Provider mitten in der Sitzung mit `/model`. Nichts verlässt deinen Rechner außer der Anfrage an den Provider, den du gewählt hast.',
+    h2: 'Dein Schlüssel, jedes Modell.',
+    sub: 'Fünf Provider sind eingebaut, dazu rund 190 weitere OpenAI-kompatible aus dem Models.dev-Katalog. Verbinde jeden mit `nib auth`, wechsle mitten in der Sitzung mit `/model`. Nichts verlässt deinen Rechner außer der Anfrage an den Provider, den du gewählt hast.',
+    more: 'und ~190 weitere',
   },
   notFound: {
     title: 'Seite nicht gefunden | Nib',
@@ -134,7 +136,7 @@ const de: typeof en = {
 
 const es: typeof en = {
   homeTitle: 'Nib: agente de programación de código abierto para la terminal',
-  description: 'Agente de programación de código abierto para la terminal con tu propia clave de API. Trabaja todo el día con DeepSeek por unos pocos dólares, o usa OpenAI, OpenRouter, Groq y Ollama local. Permisos explícitos, sin telemetría.',
+  description: 'Agente de código abierto para la terminal, con tu propia clave. Un día con DeepSeek cuesta unos dólares; ~190 proveedores más, Ollama local incluido. Sin telemetría.',
   ogDescription: 'Trae tu propia clave. Un día entero con DeepSeek por unos pocos dólares. Permisos explícitos, puntos de control reversibles, MCP, skills. Sin telemetría.',
 
   homeLabel: 'Nib, inicio',
@@ -165,7 +167,7 @@ const es: typeof en = {
   how: {
     h2: 'Tres comandos hasta tu primera sesión.',
     sub: 'Requiere Node.js 20 o superior y Git. Las claves se guardan en local con permisos 0600.',
-    comments: ['instalar', 'añade una clave de DeepSeek, OpenAI, OpenRouter, Groq u Ollama', 'sesión interactiva, solo lectura hasta que cambies a /mode code'],
+    comments: ['instalar', 'añade una clave de DeepSeek, OpenAI, Ollama o ~190 proveedores más', 'sesión interactiva en modo Code; /mode general para chat de solo lectura'],
     brew: 'En macOS con Homebrew:',
     copy: 'Copiar',
     copied: 'Copiado',
@@ -181,8 +183,9 @@ const es: typeof en = {
     ],
   },
   providers: {
-    h2: 'Tu clave, tu modelo.',
-    sub: 'Cambia de proveedor a mitad de sesión con `/model`. Nada sale de tu equipo salvo la petición al proveedor que elegiste.',
+    h2: 'Tu clave, cualquier modelo.',
+    sub: 'Cinco proveedores integrados, más unos 190 compatibles con OpenAI del catálogo de Models.dev. Conecta cualquiera con `nib auth` y cambia a mitad de sesión con `/model`. Nada sale de tu equipo salvo la petición al proveedor que elegiste.',
+    more: 'y ~190 más',
   },
   notFound: {
     title: 'Página no encontrada | Nib',

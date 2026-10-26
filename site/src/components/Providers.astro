@@ -11,10 +11,12 @@ const t = strings[lang].providers;
   <p class="sub">{t.sub.split('`').map((s, i) => (i % 2 ? <code>{s}</code> : s))}</p>
   <div class="providers">
     {PROVIDERS.map((p) => <span>{p}</span>)}
+    <span class="more">{t.more}</span>
   </div>
 </section>
 
 <style>
 .providers{display:flex;flex-wrap:wrap;gap:12px}
 span{border:1px solid var(--line-2);border-radius:var(--r-pill);padding:12px 24px;font-size:clamp(17px,2vw,22px);font-weight:560;letter-spacing:-.02em;background:var(--bg-2)}
+.more{border-style:dashed;color:var(--muted);background:transparent}
 </style>

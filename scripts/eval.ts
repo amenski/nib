@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readdirSync, rmSync, cpSync, writeFileSync, read
 import { join, resolve } from "node:path";
 import { projectDirPath } from "../src/config/paths.js";
 import { resolveHome } from "../src/config/loader.js";
+import { trustSettings } from "../src/config/settings-trust.js";
 import { slugify } from "../src/sessions/store.js";
 
 const FIXTURES_DIR = resolve(import.meta.dirname!, "..", "fixtures");
@@ -314,6 +315,14 @@ async function main() {
     const settingsDir = projectDirPath(evalWorkdir);
     if (!existsSync(settingsDir)) mkdirSync(settingsDir, { recursive: true });
     writeFileSync(join(settingsDir, "settings.json"), EVAL_SETTINGS);
+    // Headless strips the permissions of an untrusted project settings file
+    // (exec-runner.ts), which would deny every run_bash. The eval wrote these
+    // rules, so it records trust in the eval home, as a user would.
+    const realNibHome = process.env.NIB_HOME;
+    process.env.NIB_HOME = evalHome;
+    trustSettings(join(settingsDir, "settings.json"));
+    if (realNibHome === undefined) delete process.env.NIB_HOME;
+    else process.env.NIB_HOME = realNibHome;
 
     process.stdout.write(`  ${testCase.name}... `);
     const start = Date.now();
@@ -407,7 +416,10 @@ async function main() {
   console.log("└────────────────────────┴────────┴───────────────────────────┘");
   console.log(`\n  ${passed} passed, ${failed} failed, ${results.length} total`);
 
-  rmSync(EVAL_TMP, { recursive: true, force: true });
+  // Keep the workdirs and session logs of a failing run: they are the only
+  // record of what the agent tried.
+  if (failed > 0) console.log(`  kept ${EVAL_TMP} for inspection`);
+  else rmSync(EVAL_TMP, { recursive: true, force: true });
 
   process.exit(failed > 0 ? 1 : 0);
 }

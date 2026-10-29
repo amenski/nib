@@ -47,6 +47,7 @@ import { jobManager } from "../tools/jobs.js";
 import HintBar from "./HintBar.js";
 import TodoPanel from "./TodoPanel.js";
 import { todoStore } from "../tools/todo.js";
+import { savePlan } from "../plans/store.js";
 import type { TodoItem } from "../tools/todo.js";
 import StatusBar from "./StatusBar.js";
 import PermissionPrompt, { DestructiveConfirmPrompt, ScopeChoicePrompt, ExternalScopeChoicePrompt, permissionOptions, type PermissionDecision, type PermissionRequest } from "./PermissionPrompt.js";
@@ -1406,7 +1407,15 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           const replyText: string = lastAssistant?.content ?? "";
           const planMatch = replyText.match(/<proposed_plan>([\s\S]+?)<\/proposed_plan>/);
           if (planMatch && planMatch[1].trim()) {
-            setPlanPrompt({ planText: planMatch[1].trim(), followUpPrompt: "" });
+            const planText = planMatch[1].trim();
+            setPlanPrompt({ planText, followUpPrompt: "" });
+            // Persisted plan artifact (docs/todo.md D6): the proposal outlives
+            // the turn and is re-injected after compaction.
+            try {
+              // Persistence is best-effort; the in-TUI plan prompt still works.
+              savePlan(process.cwd(), planText);
+            } catch {
+            }
           }
         }
 

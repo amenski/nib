@@ -8,6 +8,7 @@ import { configureSandbox } from "./sandbox/seatbelt.js";
 import { configureUnsandboxed } from "./sandbox/unsandboxed.js";
 import { filterToolDefs } from "./tools/filter.js";
 import { todoStore } from "./tools/todo.js";
+import { loadPlan } from "./plans/store.js";
 import { jobManager } from "./tools/jobs.js";
 import { initPresets, createProvider, getPreset } from "./providers/presets.js";
 import { createRiskJudge } from "./providers/risk-judge.js";
@@ -542,6 +543,7 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
         errorReflector: new ErrorReflector(),
         errorRecovery: new ErrorRecovery(),
         getTodos: () => todoStore.getTodos(),
+        getPlan: () => loadPlan(options.projectRoot),
         hooks,
         onUsage: (input: number, output: number, cached?: number) => {
           inputTokens += input;

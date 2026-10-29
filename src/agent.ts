@@ -21,6 +21,7 @@ import { editToolResultsForRequest } from "./compaction/context-editing.js";
 import { VerificationGate } from "./verification-gate.js";
 import { formatTodoBlock } from "./tools/todo.js";
 import type { TodoItem } from "./tools/todo.js";
+import { formatPlanBlock } from "./plans/store.js";
 import { logTiming } from "./debug/logger.js";
 import { extractCapabilityPlan } from "./permissions/capabilities.js";
 import { isGitConfigOperation } from "./permissions/git-config-operations.js";
@@ -270,6 +271,8 @@ export interface AgentOptions {
   /** Context-window ceiling used as budgetMax for per-turn token rows. Defaults to 128000, the codebase-wide fallback. */
   contextWindow?: number;
   skills?: SkillDef[];
+  /** Re-read per sub-turn: the persisted plan artifact (docs/todo.md D6), so it survives compaction like the todo block. */
+  getPlan?: () => string | undefined;
   /** Loaded agent definitions — their name+description index joins the stable
    *  preamble so the model knows the names new_task accepts (feature-plans.md §F4). */
   agents?: AgentDef[];
@@ -656,6 +659,10 @@ export async function runAgent(
     // Live todo block: the todo list also changes mid-turn, so it is re-read and
     // appended here per sub-turn — same appendVolatile mechanism, one extra section.
     const todoBlock = options.getTodos ? formatTodoBlock(options.getTodos()) : "";
+    // Persisted plan (docs/todo.md D6): same mechanism as the todo block —
+    // re-read per sub-turn into the request-only tail, so compaction cannot
+    // drop it and an amended plan file is picked up on the next request.
+    const planBlock = options.getPlan ? formatPlanBlock(options.getPlan() ?? "") : "";
     // Mid-turn steering mailbox: poll once per decision point; a hit joins the
     // volatile assembly below AND is pushed to `messages` as a real user
     // message. Pushed at the poll site (not flushed after the turn) so the
@@ -672,7 +679,7 @@ export async function runAgent(
     // that carried the question the question appeared twice, and the model
     // answered it twice: once to the note, once to the message, both before a
     // tool call (2026-10-10, onramp 1117-ecdc).
-    const prefix = [volatileContext, todoBlock, steering ? STEERING_NOTE : ""].filter(Boolean).join("\n\n");
+    const prefix = [volatileContext, todoBlock, planBlock, steering ? STEERING_NOTE : ""].filter(Boolean).join("\n\n");
     const orphaned = repairOrphanedToolCalls(messages);
     if (orphaned > 0) {
       options.onDiagnostic?.(`backfilled ${orphaned} unanswered tool result${orphaned === 1 ? "" : "s"}`);

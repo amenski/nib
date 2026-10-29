@@ -1980,6 +1980,70 @@ describe("runAgent", () => {
     });
   });
 
+  describe("persisted plan artifact (docs/todo.md D6)", () => {
+    it("injects the plan block into every request while a plan exists", async () => {
+      const { provider, receivedMessages } = makeProvider([
+        textTurn("step one"),
+        textTurn("step two"),
+      ]);
+      const plan = "## Staged steps\n1. first";
+      await runAgent("go", {
+        provider,
+        tools: [],
+        executeTool: async () => ({ content: "ok" }),
+        getPlan: () => plan,
+      });
+      for (const request of receivedMessages) {
+        expect(request.some(
+          (m) => m.role === "user" && String(m.content).includes("# Active plan"),
+        )).toBe(true);
+      }
+    });
+
+    it("picks up an amended plan on the next request", async () => {
+      let plan = "v1";
+      const { provider, receivedMessages } = makeProvider([
+        textTurn("ack"),
+        textTurn("ack"),
+      ]);
+      await runAgent("go", {
+        provider,
+        tools: [],
+        executeTool: async () => ({ content: "ok" }),
+        getPlan: () => plan,
+      });
+      plan = "v2 amended";
+      await runAgent("continue", {
+        provider,
+        tools: [],
+        executeTool: async () => ({ content: "ok" }),
+        getPlan: () => plan,
+      });
+      const joined = receivedMessages.map((m) => JSON.stringify(m)).join("\n");
+      expect(joined).toContain("v2 amended");
+      expect(joined).not.toContain('"v1\\n"');
+    });
+
+    it("injects nothing when getPlan is absent or returns undefined", async () => {
+      const { provider, receivedMessages } = makeProvider([textTurn("ok")]);
+      await runAgent("go", {
+        provider,
+        tools: [],
+        executeTool: async () => ({ content: "ok" }),
+      });
+      expect(JSON.stringify(receivedMessages[0])).not.toContain("# Active plan");
+
+      const { provider: p2, receivedMessages: rm2 } = makeProvider([textTurn("ok")]);
+      await runAgent("go", {
+        provider: p2,
+        tools: [],
+        executeTool: async () => ({ content: "ok" }),
+        getPlan: () => undefined,
+      });
+      expect(JSON.stringify(rm2[0])).not.toContain("# Active plan");
+    });
+  });
+
   describe("attempt_completion — tool-initiated turn end", () => {
     it("ends the turn after the tool result without another provider call", async () => {
       const { provider, receivedMessages } = makeProvider([
@@ -2098,8 +2162,7 @@ describe("runAgent", () => {
         expect(result.messages.some((m) => typeof m.content === "string" && m.content.includes("has not been verified"))).toBe(false);
       });
 
-      it("off (absent): the first attempt_completion completes, no reminder in the transcript", async () => {
-        const { provider, receivedMessages } = makeProvider([
+      it("off (absent): the first attempt_completion completes, no reminder in the transcript", async () => {        const { provider, receivedMessages } = makeProvider([
           editCall,
           completeCall(),
         ]);

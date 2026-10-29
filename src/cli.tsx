@@ -23,6 +23,7 @@ import { createAutoJudge, createRiskJudge } from "./providers/risk-judge.js";
 import { filterToolDefs } from "./tools/filter.js";
 import { jobManager } from "./tools/jobs.js";
 import { todoStore } from "./tools/todo.js";
+import { loadPlan } from "./plans/store.js";
 import { PermissionEngine, ProfileEvaluator, authorize } from "./permissions/index.js";
 import { previewEdit } from "./permissions/diffpreview.js";
 import { ModeLoader, type ModeConfig } from "./modes/loader.js";
@@ -2177,6 +2178,7 @@ async function runAgentTurnBridge(input: string, cb: any, shared: any, permissio
     maxTurns: shared.maxTurns,
     ...(completionGate ? { completionGate: true } : {}),
     getTodos: () => todoStore.getTodos(),
+    getPlan: () => loadPlan(process.cwd()),
     onText: cb.onText, onReasoning: cb.onReasoning, onToolStart: (name, args) => { shared.toolUsage[name] = (shared.toolUsage[name] || 0) + 1; cb.onToolStart(name, args); }, onToolResult: cb.onToolResult,
     onDiagnostic: cb.onDiagnostic, onRetry: cb.onRetry, onCompacted: cb.onCompacted,
     onLoopDetected: cb.onLoopDetected, onMaxTurns: cb.onMaxTurns,

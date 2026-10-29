@@ -159,7 +159,11 @@ export async function buildVolatileContext(ctx: PromptContext): Promise<string> 
     sections.push(
       "You are in planning mode. Do NOT execute any tool calls that modify files. " +
       "Instead, analyze the request and produce a detailed plan. " +
-      "Your reply must end with a <proposed_plan>...</proposed_plan> block containing the step-by-step plan."
+      "Your reply must end with a <proposed_plan>...</proposed_plan> block containing the plan. " +
+      "The plan must have these sections: Files and interfaces (what changes where), " +
+      "Verification protocol (the exact commands that prove each step done), and " +
+      "Staged steps (ordered, each independently verifiable). " +
+      "The plan is persisted and re-injected after compaction, so write it to be read cold."
     );
     if (ctx.research) {
       sections.push(ctx.research);

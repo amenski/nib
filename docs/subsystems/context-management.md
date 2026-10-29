@@ -37,59 +37,49 @@ plus `estimateOverheadTokens` (tool schemas + volatile prefix) so the meter,
 the /context display, and compaction all measure the same payload. The check
 runs **before each provider call** so an oversized request never goes out.
 
-### What to keep during compaction
+### What compaction keeps — actual behavior
 
-| Tier | Content | Strategy |
+| Tier | Content | What the code does |
 |------|---------|----------|
-| T0 | System prompt, mode, tool defs | **Never compact** |
-| T1 | User's original task | **Compress, never delete** |
-| T2 | Key decisions | **Extract to decision log** |
-| T3 | File changes | **Extract to change log** |
-| T4 | Errors + fixes | **Extract to error log** |
-| T5 | Tool outputs (old) | **Prune, keep 1-sentence summary** |
-| T6 | Tool outputs (recent) | **Keep verbatim** |
-| T7 | Recent conversation | **Keep verbatim** |
+| T0 | System prompt | Reinserted after compaction (`agent.ts` `maybeCompact`) |
+| T1 | Original task | Preserved in the summary's `## Task` (the prompt asks for the latest user instruction verbatim) |
+| T2 | Key decisions | Prose under `## Decisions` |
+| T3 | File changes | Prose under `## Files`; also the fidelity check's input (`compactor.ts` `trackFiles`) |
+| T4 | Errors + fixes | Prose under `## Errors` |
+| T5–T6 | Tool outputs | Flattened to `[tool result: first 200 chars]` inside the conversation handed to the summarizer |
+| T7 | Recent conversation | Last 4+ messages kept verbatim (`keepBoundary`) |
 
 ### Structured compaction output
 
-Compaction produces structured data, not prose:
+The summary is **heading-structured prose**, not YAML — the persisted
+`CompactionSummary` (`sessions/store.ts` `appendCompaction`) carries the
+prose `task`, a `files[]` list (from the fidelity tracker, not parsed out of
+the prose), and empty `decisions`/`errors_resolved` buckets kept for format
+compatibility:
 
-```yaml
-compacted:
-  task: "Refactor auth module to use JWT"
-  decisions:
-    - what: "Use RS256 asymmetric signing"
-      why: "Enables key rotation without shared secrets"
-  files:
-    - path: src/auth/jwt.ts
-      action: created
-      summary: "JWT sign/verify with RS256, 120 lines"
-  errors_resolved:
-    - error: "Type 'string' is not assignable to 'KeyLike'"
-      fix: "Added type assertion for private key import"
-  pending: []
+```
+## Task …
+## Decisions …
+## Files …
+## Errors …
+## Pending …
 ```
 
-The LLM reads the decision log, checks which files changed, and resumes
-without re-deriving history.
+The LLM reads the prose summary and resumes without re-deriving history.
 
 ### Fidelity check — don't trust the summary
 
-A summary that silently drops an unresolved error or a changed file is worse
-than no compaction. After generating, verify mechanically (no LLM call):
-
-1. Every file path in the messages being compacted appears in `files[]`.
-2. Every todo item not marked complete appears in `pending[]`
-   (compaction-summary fidelity only — the live per-sub-turn view of the
-   current list rides in the volatile prefix, not the summary; see
-   tool-spec.md).
-3. `task` is non-empty and derived from the original request.
-
-On failure: regenerate once, naming the misses. On second failure: defer
+Files the session wrote are tracked (`compactor.ts` `trackFiles`) and checked
+mechanically after summarizing (no LLM call): every tracked path must appear
+in the summary text. On failure: regenerate once. On second failure: defer
 compaction and keep the messages verbatim — a deferred compaction is
 recoverable, a lossy one is not. Backstop: sessions are append-only
 (session-spec.md), so compaction can only ever degrade the model's recall,
 never destroy the transcript.
+
+There is no todo/pending parsing: the live todo list is re-injected every
+sub-turn from the TodoStore (`formatTodoBlock`), so the summary never needs
+to carry it.
 
 ### Keep-boundary invariant (`keepBoundary`, compactor.ts)
 

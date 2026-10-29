@@ -1,6 +1,6 @@
 # Architecture
 
-**Status:** current · verified 2026-08-13 · covers the whole `src/` tree; deep dives in [subsystems.md](./subsystems.md)
+**Status:** current · verified 2026-10-29 · covers the whole `src/` tree; deep dives in [subsystems.md](./subsystems.md)
 
 > Personal AI coding agent. Provider-agnostic, mode-gated, safety-first.
 > Target: opencode-quality CLI, built incrementally from first principles.
@@ -256,6 +256,15 @@ src/
 │
 ├── permissions/                # engine, rules, bash-normalize, destructive,
 │                               # guarded, builtin-allow, diffpreview
+├── config/                     # loader (global+project settings), credentials,
+│                               # paths, trust gates (folder/settings/hooks)
+├── lsp/                        # language-server manager (post-edit diagnostics + lsp tool)
+├── sandbox/                    # macOS Seatbelt launcher, write-roots, unsandboxed runs
+├── hooks/                      # HookRunner: lifecycle events (hooks-spec.md)
+├── agents/                     # agent definitions for new_task
+├── commands/                   # custom slash commands (commands/*.md)
+├── debug/                      # redacted debug JSONL logger
+├── eval/                       # golden-task case definitions + report shapes
 ├── checkpoints/                # shadow-Git checkpoint/restore
 ├── compaction/                 # budget.ts + compactor.ts
 ├── repomap/                    # symbol map (4KB budget)
@@ -272,6 +281,11 @@ src/
 ├── diagnostics/                # post-edit checks + stall watchdog
 ├── auth/                       # nib auth wizard
 ├── notify.ts                   # notify hook
+├── image-source.ts             # local-file vs remote URL classification (view_image)
+├── terminal-probe.ts           # terminal capability probe (repaint/support detection)
+├── update-check.ts             # npm dist-tag update check (once per day)
+├── exec-input.ts               # stdin handling for headless -p (piped context, EOF)
+├── verification-gate.ts        # completion gate (test/tsc/build/lint tracking, D2)
 └── ui/                         # Ink TUI: App, core/, views/, components/,
                                 # contexts, keybindings, theme, statusline
 ```

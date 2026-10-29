@@ -16,11 +16,29 @@ vi.mock("./config/loader.js", async (importOriginal) => {
 
 const mockLoadConfig = vi.mocked(loadConfig);
 
+// runDoctor's checkFolderTrust (and credentials/catalog reads) go through
+// resolveHome(); without this the result depends on whether the real
+// ~/.nib trusts this checkout.
+let homeDir: string;
+let prevHome: string | undefined;
+beforeEach(() => {
+  homeDir = mkdtempSync(join(tmpdir(), "nib-doctor-home-"));
+  prevHome = process.env.NIB_HOME;
+  process.env.NIB_HOME = homeDir;
+});
+afterEach(() => {
+  rmSync(homeDir, { recursive: true, force: true });
+  if (prevHome === undefined) delete process.env.NIB_HOME;
+  else process.env.NIB_HOME = prevHome;
+});
+
 function mockConfig(searxngUrl?: string): void {
   mockLoadConfig.mockReturnValue({
     config: { model: "test-model", webSearch: searxngUrl ? { searxngUrl } : {} },
     errors: [],
     warnings: [],
+    // LoadResult field; buildFolderContentSummary reads it unconditionally.
+    projectExecutionKeys: [],
   } as any);
 }
 

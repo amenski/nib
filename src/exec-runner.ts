@@ -535,7 +535,6 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
         repomap: repomapInjection,
         signal: abortController.signal,
         maxTurns: options.maxTurns ?? 100,
-        ...(configResult.config.completionGate ? { completionGate: true } : {}),
         // Images referenced by `@path` in the prompt (see expandFileMentions);
         // absent for the wake-loop turns, which carry sub-agent results, not
         // user input.

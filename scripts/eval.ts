@@ -43,7 +43,7 @@ const DEFAULT_TRIALS = 3;
 //   redirects ride their segment, so prefix rules are model-error
 //   mitigation, not adversary containment. Run untrusted evals in a
 //   container/VM — the real boundary is OS isolation (security-spec §6).
-const EVAL_SETTINGS: { permissions: object; completionGate?: boolean } = {
+const EVAL_SETTINGS = {
   permissions: {
     defaultMode: "askAll",
     rules: [
@@ -258,9 +258,6 @@ function runTrial(testCase: EvalCase, trial: number, evalHome: string): TrialRes
 
 function main(): void {
   const args = parseArgs(process.argv.slice(2));
-  // D2 comparison lever: NIB_EVAL_COMPLETION_GATE=1 runs every case with the
-  // gate on, against the default-off baseline.
-  if (process.env.NIB_EVAL_COMPLETION_GATE === "1") EVAL_SETTINGS.completionGate = true;
   const cases = args.filters.length > 0
     ? EVAL_CASES.filter((c) => args.filters.includes(c.id.toUpperCase()))
     : EVAL_CASES;

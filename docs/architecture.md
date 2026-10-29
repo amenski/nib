@@ -286,7 +286,6 @@ src/
 ├── terminal-probe.ts           # terminal capability probe (repaint/support detection)
 ├── update-check.ts             # npm dist-tag update check (once per day)
 ├── exec-input.ts               # stdin handling for headless -p (piped context, EOF)
-├── verification-gate.ts        # completion gate (test/tsc/build/lint tracking, D2)
 └── ui/                         # Ink TUI: App, core/, views/, components/,
                                 # contexts, keybindings, theme, statusline
 ```

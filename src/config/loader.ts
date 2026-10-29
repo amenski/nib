@@ -257,11 +257,6 @@ export interface DeepCodeSettings {
   };
   /** Context window override (nib extension) */
   contextWindow?: number;
-  /**
-   * Completion gate, off by default: the first attempt_completion after an
-   * unverified edit gets a one-time reminder instead of ending the turn.
-   */
-  completionGate?: boolean;
   /** Status line provider plugins (nib extension, deepcode-compatible) */
   statusline?: StatuslineConfig;
   /** Favorited models in the /model picker, as "provider/model" ids (nib extension) */
@@ -491,7 +486,6 @@ const KNOWN_KEYS = new Set([
   "compaction",
   "commands",
   "contextWindow",
-  "completionGate",
   "statusline",
   "favoriteModels",
   "recentModels",
@@ -1906,15 +1900,6 @@ export function loadConfig(projectDir?: string): LoadResult {
       config.contextWindow = merged.contextWindow;
     } else {
       errors.push("config.contextWindow: must be a number");
-    }
-  }
-
-  // completionGate
-  if ("completionGate" in merged) {
-    if (typeof merged.completionGate === "boolean") {
-      config.completionGate = merged.completionGate;
-    } else {
-      errors.push("config.completionGate: must be a boolean");
     }
   }
 

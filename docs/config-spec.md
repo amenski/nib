@@ -156,7 +156,6 @@ are fatal — `main()` exits 1 (`src/cli.tsx`).
   // Misc extensions
   "keybindings": { "overrides": {}, "disabled": [] },
   "compaction": { "auto": true, "threshold": 0.7 },  // auto gates automatic compaction (default true)
-  "completionGate": false,
   "contextWindow": 128000,                 // fallback context window
   "workflow": { "gitStatus": true, "gitPollInterval": 30000 },
   "commands": { "timeoutToBackground": true },  // run_bash timeout → background migration (default true)

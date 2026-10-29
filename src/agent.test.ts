@@ -9,7 +9,7 @@ import { ErrorRecovery } from "./errorrecovery/index.js";
 import { CLEARED_TOOL_RESULT_PLACEHOLDER } from "./compaction/context-editing.js";
 import { SessionStore } from "./sessions/store.js";
 import type { Provider, StreamEvent } from "./providers/types.js";
-import type { Message, ToolCall } from "./types.js";
+import type { Message, ToolCall, ToolOutput } from "./types.js";
 import { buildVolatileContext } from "./prompt.js";
 import { todoStore } from "./tools/todo.js";
 import { runBashTimed } from "./tools/bash.js";
@@ -2030,6 +2030,91 @@ describe("runAgent", () => {
       // had the rule been missing, askUser would have been called.
       expect(askUser).not.toHaveBeenCalled();
       expect(receivedMessages).toHaveLength(1);
+    });
+
+    describe("completion gate (docs/todo.md D2)", () => {
+      const editCall: TurnScript = [
+        { type: "tool_call_start", id: "c1", name: "edit" },
+        { type: "tool_call_delta", id: "c1", arguments: '{"path":"src/a.ts","oldString":"a","newString":"b"}' },
+        { type: "done", finishReason: "tool_calls" },
+      ];
+      const completeCall = (summary = "done"): TurnScript => [
+        { type: "tool_call_start", id: "c2", name: "attempt_completion" },
+        { type: "tool_call_delta", id: "c2", arguments: JSON.stringify({ summary }) },
+        { type: "done", finishReason: "tool_calls" },
+      ];
+      const verifyCall: TurnScript = [
+        { type: "tool_call_start", id: "c3", name: "run_bash" },
+        { type: "tool_call_delta", id: "c3", arguments: '{"command":"npm test"}' },
+        { type: "done", finishReason: "tool_calls" },
+      ];
+      const executeTool = vi.fn(async (call: ToolCall): Promise<ToolOutput> =>
+        call.name === "attempt_completion" ? { content: String(call.arguments.summary ?? ""), stop: true } : { content: "ok" },
+      );
+
+      it("edit → attempt_completion: first call gets the reminder, turn continues, second completes", async () => {
+        const { provider, receivedMessages } = makeProvider([
+          editCall,
+          completeCall(),
+          completeCall("done for real"),
+        ]);
+        const result = await runAgent("fix it", {
+          provider,
+          tools: [],
+          executeTool,
+          completionGate: true,
+        });
+
+        // Two provider calls: the reminder continued the turn.
+        expect(receivedMessages).toHaveLength(3);
+        expect(result.stopReason).toBe("done");
+        // The reminder reached the model as the completion call's tool result.
+        const reminder = result.messages.find(
+          (m) => m.role === "tool" && m.content?.includes("has not been verified"),
+        );
+        expect(reminder).toBeDefined();
+        expect(reminder!.content).toContain("edit src/a.ts");
+        expect(result.messages.some(
+          (m) => m.role === "tool" && m.content === "done for real",
+        )).toBe(true);
+      });
+
+      it("edit → verification → attempt_completion: completes on the first call", async () => {
+        const { provider, receivedMessages } = makeProvider([
+          editCall,
+          verifyCall,
+          completeCall(),
+        ]);
+        const result = await runAgent("fix it", {
+          provider,
+          tools: [],
+          executeTool,
+          completionGate: true,
+        });
+
+        expect(receivedMessages).toHaveLength(3);
+        expect(result.stopReason).toBe("done");
+        expect(result.messages.some((m) => m.role === "tool" && m.content === "done")).toBe(true);
+        expect(result.messages.some((m) => typeof m.content === "string" && m.content.includes("has not been verified"))).toBe(false);
+      });
+
+      it("off (absent): the first attempt_completion completes, no reminder in the transcript", async () => {
+        const { provider, receivedMessages } = makeProvider([
+          editCall,
+          completeCall(),
+        ]);
+        const result = await runAgent("fix it", {
+          provider,
+          tools: [],
+          executeTool,
+        });
+
+        // 2 requests = the pre-gate baseline: edit turn + completion turn.
+        expect(receivedMessages).toHaveLength(2);
+        expect(result.stopReason).toBe("done");
+        expect(result.messages.some((m) => m.role === "tool" && m.content === "done")).toBe(true);
+        expect(result.messages.some((m) => typeof m.content === "string" && m.content.includes("has not been verified"))).toBe(false);
+      });
     });
 
     it("does not prompt on switch_mode either (builtin allow, auto-switch design)", async () => {

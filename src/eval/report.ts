@@ -19,10 +19,9 @@ export interface EvalPermissionRow {
 }
 
 /**
- * What a headless run writes when `NIB_EVAL_REPORT` names a path. Tokens are
- * provider-reported; cost is an estimate from the bundled catalog's
- * approximate pricing (`null` when the model has none — "free" and "unknown"
- * are different facts).
+ * What a headless run writes when `NIB_EVAL_REPORT` names a path. Cost is an
+ * estimate from the bundled catalog's approximate pricing — `null` when the
+ * model has none ("free" and "unknown" are different facts).
  */
 export interface HeadlessReport {
   provider: string;

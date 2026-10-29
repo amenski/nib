@@ -18,6 +18,7 @@ import type { SessionStore, CompactionSummary, PermissionDecision, PermissionAud
 import { buildStablePreamble, buildVolatileContext, type PromptContext } from "./prompt.js";
 import { estimateTokens, estimateOverheadTokens } from "./compaction/budget.js";
 import { editToolResultsForRequest } from "./compaction/context-editing.js";
+import { VerificationGate } from "./verification-gate.js";
 import { formatTodoBlock } from "./tools/todo.js";
 import type { TodoItem } from "./tools/todo.js";
 import { logTiming } from "./debug/logger.js";
@@ -262,6 +263,8 @@ export interface AgentOptions {
    * given.
    */
   maxTurns?: number;
+  /** Advisory: remind once when attempt_completion follows an unverified edit (docs/todo.md D2). */
+  completionGate?: boolean;
   /** Request-time trimming of old tool results (compaction/context-editing.ts). Default off — see the call site. */
   contextEditing?: boolean;
   /** Context-window ceiling used as budgetMax for per-turn token rows. Defaults to 128000, the codebase-wide fallback. */
@@ -432,6 +435,7 @@ export async function runAgent(
   options: AgentOptions,
 ): Promise<AgentResult> {
   const { provider, tools, executeTool, permissions, permissionProfile, compactor, diagnostics, errorReflector, errorRecovery, maxTurns = Infinity, effort, thinkingEnabled } = options;
+  const completionGate = options.completionGate ? new VerificationGate() : undefined;
 
   /**
    * Paths this session's own write tools produced, for the risk classifier's
@@ -1505,12 +1509,24 @@ export async function runAgent(
         exec = gate.exec;
       }
 
+      // Completion gate: the first attempt_completion after an unverified
+      // edit becomes the reminder instead of ending the turn.
+      if (completionGate && tc.name === "attempt_completion") {
+        const reminder = completionGate.check();
+        if (reminder) {
+          options.onDiagnostic?.("completion gate: edit not verified — one reminder sent");
+          appendFreshToolResult(tc.id, tc.name, reminder.content);
+          return false;
+        }
+      }
+
       const result = preResult ?? await executeTool(tc, exec);
       executedAny = true;
       // A write tool that succeeded produced a file this session owns; the
       // classifier's delete rules read this to tell "the agent made it" from
       // "it was here before we were" (§4.2 preSessionTarget).
       if (!result.error) for (const path of writtenPaths(tc.name, tc.arguments)) createdThisSession.add(path);
+      if (!result.error) completionGate?.observe(tc.name, tc.arguments);
       // PostToolUse / PostToolUseFailure: hook stdout appends to the result
       // (hooks-spec.md §2) before it reaches the model or the UI preview.
       if (options.hooks) {

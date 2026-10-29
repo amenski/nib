@@ -507,10 +507,8 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
     let compactions = 0;
     const permissionRows: PermissionAuditRecord[] = [];
 
-    // Compaction, same resolution the TUI uses (cli.tsx). Headless used to
-    // pass no compactor at all, so a long `-p` run grew until the provider
-    // rejected the request instead of summarizing — and the compaction
-    // golden task (G6) could not exist.
+    // Compaction, same resolution the TUI uses (cli.tsx). Headless previously
+    // built none, so a long `-p` run never summarized.
     const contextWindow = configResult.config.contextWindow ?? activeCaps?.contextWindow ?? 128000;
     const compactor = new Compactor(
       provider,
@@ -536,6 +534,7 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
         repomap: repomapInjection,
         signal: abortController.signal,
         maxTurns: options.maxTurns ?? 100,
+        ...(configResult.config.completionGate ? { completionGate: true } : {}),
         // Images referenced by `@path` in the prompt (see expandFileMentions);
         // absent for the wake-loop turns, which carry sub-agent results, not
         // user input.

@@ -5,11 +5,9 @@ import { tmpdir } from "node:os";
 import { EVAL_CASES, hashTree, type EvalCase, type EvalContext } from "./cases.js";
 import type { HeadlessReport } from "./report.js";
 
-// A green eval run means nothing unless each assertion can go red. Every case
-// is checked twice: against the pristine fixture (which IS the broken state —
-// a planted bug, a missing flag, an unanswered diagnosis) and against a
-// minimal repair. The repair half is what stops a tautology like `pass: true`
-// from shipping.
+// A green eval run means nothing unless each assertion can go red: every case
+// is checked against the pristine fixture (which IS the broken state) and
+// against a minimal repair. The repair half stops a tautology from shipping.
 
 const FIXTURES = join(import.meta.dirname!, "..", "..", "fixtures");
 const TMP = join(tmpdir(), `nib-eval-cases-${process.pid}`);

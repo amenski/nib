@@ -57,10 +57,6 @@ function computePreviewDiff(toolName: string, args: Record<string, unknown>): st
   } else if (toolName === "write_to_file" || toolName === "write") {
     const content = typeof args.content === "string" ? args.content : "";
     preview = generateFullDiff(path, original, content);
-  } else if (toolName === "search_replace") {
-    const search = typeof args.search === "string" ? args.search : "";
-    const replace = typeof args.replace === "string" ? args.replace : "";
-    preview = generateReplacePreview(path, original, search, replace);
   } else if (toolName === "apply_diff" || toolName === "apply_patch") {
     const rawDiff = args.diff ?? args.patch;
     const diffContent = typeof rawDiff === "string" ? rawDiff : "";
@@ -120,42 +116,6 @@ function generateFullDiff(filePath: string, original: string, newContent: string
   }
   for (const line of newLines) {
     diff += `+${line}\n`;
-  }
-
-  return diff;
-}
-
-function generateReplacePreview(filePath: string, original: string, search: string, replace: string): string {
-  const count = countOccurrences(original, search);
-  if (count === 0) return `(replacement not found in current file — may have been modified since)`;
-
-  const firstIdx = original.indexOf(search);
-  const before = original.slice(0, firstIdx);
-  const beforeLines = before.split("\n");
-  const startLine = beforeLines.length;
-  const searchLines = search.split("\n");
-  const replaceLines = replace.split("\n");
-
-  let diff = `--- ${filePath}\n+++ ${filePath}\n`;
-  diff += `@@ -${startLine},${searchLines.length} +${startLine},${replaceLines.length} @@ (${count} occurrence${count > 1 ? "s" : ""})\n`;
-
-  const contextBefore = beforeLines.slice(-2);
-  for (const line of contextBefore) {
-    diff += ` ${line}\n`;
-  }
-
-  for (const line of searchLines) {
-    diff += `-${line}\n`;
-  }
-  for (const line of replaceLines) {
-    diff += `+${line}\n`;
-  }
-
-  const afterStart = firstIdx + search.length;
-  const after = original.slice(afterStart);
-  const afterLines = after.split("\n").slice(0, 2);
-  for (const line of afterLines) {
-    if (line !== undefined) diff += ` ${line}\n`;
   }
 
   return diff;

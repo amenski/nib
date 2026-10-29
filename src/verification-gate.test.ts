@@ -99,9 +99,10 @@ describe("VerificationGate", () => {
 });
 
 describe("EDIT_TOOLS coverage", () => {
-  it("covers every single-file write tool and apply_patch", () => {
-    for (const tool of ["edit", "edit_file", "write_to_file", "apply_diff", "apply_patch", "search_replace"]) {
+  it("covers every write tool after the D12 fold (4 tools)", () => {
+    for (const tool of ["edit", "write_to_file", "apply_diff", "apply_patch"]) {
       expect(EDIT_TOOLS.has(tool), tool).toBe(true);
     }
+    expect(EDIT_TOOLS.size).toBe(4);
   });
 });

@@ -11,8 +11,6 @@ const SAMPLE_ARGS: Record<string, Record<string, unknown>> = {
   edit: { path: "src/example.ts", oldString: "old", newString: "new" },
   apply_diff: { path: "src/example.ts", diff: "@@ -1 +1 @@\n-old\n+new" },
   apply_patch: { patch: "+++ b/src/example.ts\n@@ -1 +1 @@\n-old\n+new" },
-  search_replace: { path: "src/example.ts", search: "old", replace: "new" },
-  edit_file: { path: "src/example.ts", search: "old", replace: "new", expectedCount: 1 },
   write_to_file: { path: "src/example.ts", content: "new" },
   ask_user_question: { questions: [{ question: "Continue?", options: [{ label: "Yes" }] }] },
   web_search: { query: "nib security" },

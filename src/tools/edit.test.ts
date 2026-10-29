@@ -6,8 +6,6 @@ import {
   editHandler,
   applyDiffHandler,
   applyPatchHandler,
-  searchReplaceHandler,
-  editFileHandler,
   writeToFileHandler,
 } from "./edit.js";
 
@@ -330,7 +328,7 @@ diff --git a/b.txt b/b.txt
   });
 });
 
-describe("search_replace", () => {
+describe("edit replace_all (docs/todo.md D12 — folds search_replace/edit_file)", () => {
   beforeEach(() => {
     if (!existsSync(TEST_DIR)) mkdirSync(TEST_DIR, { recursive: true });
   });
@@ -338,23 +336,11 @@ describe("search_replace", () => {
     rmSync(TEST_DIR, { recursive: true, force: true });
   });
 
-  it("replaces single occurrence", async () => {
-    const path = testPath("test.txt");
-    writeFileSync(path, "hello world", "utf-8");
-    const result = await searchReplaceHandler(
-      { path, search: "hello", replace: "hi" },
-      mockCtx,
-    );
-    expect(result.error).toBeUndefined();
-    expect(result.content).toContain("1 occurrences");
-    expect(readFileSync(path, "utf-8")).toBe("hi world");
-  });
-
-  it("replaces all occurrences", async () => {
+  it("replaces every occurrence with replace_all", async () => {
     const path = testPath("test.txt");
     writeFileSync(path, "foo bar foo", "utf-8");
-    const result = await searchReplaceHandler(
-      { path, search: "foo", replace: "baz" },
+    const result = await editHandler(
+      { path, oldString: "foo", newString: "baz", replace_all: true },
       mockCtx,
     );
     expect(result.error).toBeUndefined();
@@ -362,57 +348,36 @@ describe("search_replace", () => {
     expect(readFileSync(path, "utf-8")).toBe("baz bar baz");
   });
 
-  it("returns error when string not found", async () => {
+  it("still refuses a multi-match without replace_all", async () => {
+    const path = testPath("test.txt");
+    writeFileSync(path, "foo bar foo", "utf-8");
+    const result = await editHandler(
+      { path, oldString: "foo", newString: "baz" },
+      mockCtx,
+    );
+    expect(result.error).toContain("Found 2 occurrences");
+    expect(readFileSync(path, "utf-8")).toBe("foo bar foo");
+  });
+
+  it("still refuses replace_all when the string is absent", async () => {
     const path = testPath("test.txt");
     writeFileSync(path, "hello world", "utf-8");
-    const result = await searchReplaceHandler(
-      { path, search: "xyz", replace: "abc" },
+    const result = await editHandler(
+      { path, oldString: "xyz", newString: "abc", replace_all: true },
       mockCtx,
     );
     expect(result.error).toContain("String not found");
   });
-});
 
-describe("edit_file", () => {
-  beforeEach(() => {
-    if (!existsSync(TEST_DIR)) mkdirSync(TEST_DIR, { recursive: true });
-  });
-  afterEach(() => {
-    rmSync(TEST_DIR, { recursive: true, force: true });
-  });
-
-  it("replaces when count matches", async () => {
+  it("replaces the single occurrence untouched by replace_all", async () => {
     const path = testPath("test.txt");
-    writeFileSync(path, "foo foo foo", "utf-8");
-    const result = await editFileHandler(
-      { path, search: "foo", replace: "bar", expectedCount: 3 },
+    writeFileSync(path, "hello world", "utf-8");
+    const result = await editHandler(
+      { path, oldString: "hello", newString: "hi" },
       mockCtx,
     );
     expect(result.error).toBeUndefined();
-    expect(result.content).toContain("3 occurrences");
-    expect(readFileSync(path, "utf-8")).toBe("bar bar bar");
-  });
-
-  it("aborts when count differs", async () => {
-    const path = testPath("test.txt");
-    writeFileSync(path, "foo foo foo", "utf-8");
-    const result = await editFileHandler(
-      { path, search: "foo", replace: "bar", expectedCount: 2 },
-      mockCtx,
-    );
-    expect(result.error).toContain("Expected 2 occurrences, found 3");
-    expect(readFileSync(path, "utf-8")).toBe("foo foo foo");
-  });
-
-  it("aborts when zero occurrences expected and found", async () => {
-    const path = testPath("test.txt");
-    writeFileSync(path, "foo foo foo", "utf-8");
-    const result = await editFileHandler(
-      { path, search: "foo", replace: "bar", expectedCount: 0 },
-      mockCtx,
-    );
-    expect(result.error).toBeDefined();
-    expect(readFileSync(path, "utf-8")).toBe("foo foo foo");
+    expect(readFileSync(path, "utf-8")).toBe("hi world");
   });
 });
 
@@ -469,10 +434,8 @@ describe("write containment", () => {
     const outside = join(process.cwd(), ".edit-outside-test.txt");
     writeFileSync(outside, "original", "utf-8");
     const handlers = [
-      () => editHandler({ path: outside, oldString: "original", newString: "changed" }, mockCtx),
+      () => editHandler({ path: outside, oldString: "original", newString: "changed", replace_all: true }, mockCtx),
       () => applyDiffHandler({ path: outside, diff: "@@ -1 +1 @@\n-original\n+changed" }, mockCtx),
-      () => searchReplaceHandler({ path: outside, search: "original", replace: "changed" }, mockCtx),
-      () => editFileHandler({ path: outside, search: "original", replace: "changed", expectedCount: 1 }, mockCtx),
       () => writeToFileHandler({ path: outside, content: "changed" }, mockCtx),
     ];
 

@@ -233,9 +233,7 @@ function getToolGuide(groups: ToolGroup[], hasLsp = false): string {
 
   if (hasEdit) {
     parts.push(`# Choosing an edit tool
-- edit — the default. One exact string → one replacement. The old string must match the file byte-for-byte (whitespace included) and be unique in the file.
-- edit_file — like edit, but you state how many occurrences you expect; fails if the count differs. Use when the string may not be unique.
-- search_replace — replace every occurrence in one file.
+- edit — replaces oldString with newString in a file. Appears exactly once, or pass replace_all: true to replace every occurrence.
 - apply_diff — apply a unified diff to one file. Use when you already think in diff form.
 - apply_patch — one unified diff spanning multiple files. Use for a single logical change that touches several files.
 - write_to_file — create a new file, or rewrite one where most of the content changes.

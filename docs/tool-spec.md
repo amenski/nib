@@ -157,23 +157,18 @@ prompt-discouraged. When an interactive session supplies a checkpoint manager,
 every write also triggers a checkpoint save first. Headless runs do not create
 checkpoints.
 
-### `edit(path, oldString, newString)`
+### `edit(path, oldString, newString, replace_all?)`
 The default editing tool. `oldString` must match the file byte-for-byte
-(whitespace included) and occur **exactly once**.
+(whitespace included). Without `replace_all`, it must occur **exactly once**.
 - 0 matches → `String not found in <path>`.
-- \>1 matches → `Found N occurrences, expected 1. Use search_replace for
-  bulk changes.`
-- Success: `Replaced 1 occurrence in <path>`.
-
-### `edit_file(path, search, replace, expectedCount)`
-Replaces **all** occurrences iff the actual count equals `expectedCount`.
-- Mismatch → `Expected N occurrences, found M. No changes made.`
-- Success: `<count> occurrences replaced in <path>`.
-
-### `search_replace(path, search, replace)`
-Replaces every occurrence, no count validation.
-- Success: `<count> occurrences replaced in <path>` (0 occurrences is a
-  valid success).
+- \>1 matches without `replace_all` → `Found N occurrences, expected 1. Pass
+  replace_all to replace every occurrence.`
+- Success: `Replaced N occurrence(s) in <path>` — 1, or all with
+  `replace_all: true`.
+- Retired: `edit_file` and `search_replace` folded into this tool's
+  `replace_all` flag (docs/todo.md D12). Old call names fall through to the
+  registry's `Unknown tool` result and are backfilled by the agent loop's
+  orphaned-tool-call repair.
 
 ### `apply_diff(path, diff)`
 Applies a unified diff to one file; context lines must match exactly (no
@@ -345,8 +340,8 @@ handlers may add strings without a spec change):
 ## 8. Verified against
 
 `src/tools/files.ts` (read_file, list_files, glob) · `src/tools/search.ts` ·
-`src/tools/edit.ts` (edit, edit_file, search_replace, apply_diff,
-apply_patch, write_to_file) · `src/tools/bash.ts` · `src/tools/jobs.ts` ·
+`src/tools/edit.ts` (edit, apply_diff, apply_patch, write_to_file) ·
+`src/tools/bash.ts` · `src/tools/jobs.ts` ·
 `src/tools/web-fetch.ts` + `web-fetch-guard.ts` · `src/tools/web-search.ts` ·
 `src/tools/ask_user_question.ts` · `src/tools/todo.ts` ·
 `src/skills/index.ts` · `src/orchestrator/index.ts` · `src/agent.ts`

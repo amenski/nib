@@ -79,7 +79,7 @@ function testsPass(workdir: string, file: string): Assertion {
   return { pass: res.ok && res.out.includes("# pass") && res.out.includes("# fail 0"), message: res.ok ? summary : res.out };
 }
 
-const EDIT_TOOLS = ["edit", "edit_file", "search_replace", "apply_diff", "apply_patch", "write_to_file"];
+const EDIT_TOOLS = ["edit", "apply_diff", "apply_patch", "write_to_file"];
 
 export const EVAL_CASES: EvalCase[] = [
   {

@@ -48,8 +48,6 @@ const EVAL_SETTINGS: { permissions: object; completionGate?: boolean } = {
     defaultMode: "askAll",
     rules: [
       { tool: "edit", pattern: "./**", action: "allow" },
-      { tool: "edit_file", pattern: "./**", action: "allow" },
-      { tool: "search_replace", pattern: "./**", action: "allow" },
       { tool: "apply_diff", pattern: "./**", action: "allow" },
       { tool: "apply_patch", pattern: "./**", action: "allow" },
       { tool: "write_to_file", pattern: "./**", action: "allow" },

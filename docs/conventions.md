@@ -91,7 +91,7 @@ zero-config TypeScript, watch mode. `npm test` runs `vitest run`.
 
 ### Unit tests (from Phase 2)
 Highest-value targets, in priority order:
-1. **Edit strategies** — each of the 6 tools against fixture files: clean
+1. **Edit strategies** — each of the 4 write tools against fixture files: clean
    match, no match, count mismatch, multi-file patch atomicity (tool-spec.md).
 2. **Permission engine** — rule resolution (most-restrictive-wins,
    specificity tiers, glob patterns; permission-spec.md).

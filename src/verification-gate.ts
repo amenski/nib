@@ -7,11 +7,9 @@ import { splitCompound } from "./permissions/bash-normalize.js";
 
 export const EDIT_TOOLS = new Set([
   "edit",
-  "edit_file",
   "write_to_file",
   "apply_diff",
   "apply_patch",
-  "search_replace",
 ]);
 
 /**

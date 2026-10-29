@@ -58,16 +58,17 @@ The historical adapter files (`deepseek.ts`, `openai-compatible.ts`,
 
 ## 4. Layer 2 — Tools
 
-**Why 6 edit tools instead of 1?** RooCode's key insight: with one generic
-"edit" tool the LLM has to derive the right strategy from the description;
-with 6 specialized tools, the system prompt guides it to pick the right one.
-More prompt tokens = fewer wrong tool calls.
+**Why a reduced edit toolset?** Originally 6 tools (RooCode's insight: with
+one generic "edit" tool the LLM had to derive the right strategy from the
+description; specialized tools let the system prompt guide the pick). The
+2026 eval loop showed cheap models used only `edit`+`write_to_file`
+meaningfully — `edit_file` 126 and `search_replace` 25 calls vs 6,232 for
+`edit` — and the D12 A/B confirmed the reduced set does no worse (wide set
+7/7, reduced 6/7 with the difference on an equally flaky case in both arms).
 
-| Tool | Strategy | Inspired by |
+| Tool | Strategy | Inspired by / origin |
 |------|----------|-------------|
-| `edit` | Exact string → replacement | opencode |
-| `edit_file` | Replace-all with count validation | RooCode |
-| `search_replace` | Global find-and-replace | RooCode |
+| `edit` | Exact string → replacement, optional `replace_all` | opencode + RooCode |
 | `apply_diff` | Unified diff, first occurrence | RooCode, Aider's editblock |
 | `apply_patch` | Multi-file unified diff | RooCode |
 | `write_to_file` | Full file overwrite | RooCode, opencode |
@@ -243,7 +244,7 @@ src/
 │   ├── types.ts                # ToolContext, ToolHandler, ToolGroup
 │   ├── registry.ts             # ToolRegistry (register/getByMode/execute)
 │   ├── files.ts                # read_file, list_files, glob
-│   ├── edit.ts                 # 6 edit tools + stale-file detection
+│   ├── edit.ts                 # 4 write tools + stale-file detection
 │   ├── bash.ts                 # run_bash (120s cap)
 │   ├── jobs.ts                 # run_bash_background, check_job, kill_job
 │   ├── search.ts               # search (grep)
@@ -295,8 +296,10 @@ src/
 1. **Canonical types vs SDK types.** Canonical types make the agent loop
    provider-agnostic forever; the AI SDK now handles wire formats.
    Decision: canonical types at the loop boundary, SDK underneath.
-2. **6 edit tools vs 1.** More tools = more prompt tokens, but higher-
-   quality edits. Decision: 6 tools.
+2. **Edit toolset: 6 specialized tools vs a reduced 4.** The 6-tool set
+   (RooCode's insight) was retired after the eval loop: cheap models used
+   `edit` 51× more than `edit_file`, and the D1 A/B showed no pass-rate cost
+   in folding (docs/todo.md D12). Decision: 4 tools, `replace_all` on `edit`.
 3. **Git-based checkpoints vs file snapshots.** Git is heavier but gives
    diff viewing, selective restore, and conversation-aware rollback for
    free. Decision: shadow Git repo.

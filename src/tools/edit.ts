@@ -90,20 +90,24 @@ const editHandler: ToolHandler = async (args, ctx) => {
     return { content: msg, error: msg };
   }
 
-  if (occurrences > 1) {
-    const msg = `Found ${occurrences} occurrences, expected 1. Use search_replace for bulk changes.`;
+  // replace_all (docs/todo.md D12 — folds edit_file/search_replace into edit):
+  // every occurrence goes; without it a multi-match stays an error with the
+  // count, pointing at the flag.
+  if (occurrences > 1 && args.replace_all !== true) {
+    const msg = `Found ${occurrences} occurrences, expected 1. Pass replace_all to replace every occurrence.`;
     return { content: msg, error: msg };
   }
 
-  const idx = content.indexOf(oldString);
-  const newContent = content.slice(0, idx) + newString + content.slice(idx + oldString.length);
+  const newContent = args.replace_all === true
+    ? replaceAllLiterals(content, oldString, newString)
+    : content.slice(0, content.indexOf(oldString)) + newString + content.slice(content.indexOf(oldString) + oldString.length);
 
   try {
     const stale = await checkStaleFile(path, ctx);
     if (stale) return stale;
     await ctx.checkpoint?.save();
     await writeAndTrack(path, newContent, ctx);
-    return { content: `Replaced 1 occurrence in ${path}` };
+    return { content: `Replaced ${args.replace_all === true ? occurrences : 1} occurrence${occurrences === 1 && args.replace_all !== true ? "" : "s"} in ${path}` };
   } catch (err: unknown) {
     const msg = `Error writing file: ${(err as Error).message}`;
     return { content: msg, error: msg };
@@ -112,13 +116,14 @@ const editHandler: ToolHandler = async (args, ctx) => {
 
 const editDef: ToolDef = {
   name: "edit",
-  description: "Perform exact string replacement in a file. Fails if oldString is not found or appears multiple times.",
+  description: "Perform exact string replacement in a file. Fails if oldString is not found or appears multiple times without replace_all.",
   parameters: {
     type: "object",
     properties: {
       path: { type: "string", description: "Absolute file path" },
       oldString: { type: "string", description: "The exact text to replace" },
       newString: { type: "string", description: "The text to replace it with" },
+      replace_all: { type: "boolean", description: "Replace every occurrence instead of failing when oldString appears multiple times" },
     },
     required: ["path", "oldString", "newString"],
   },
@@ -334,120 +339,6 @@ const applyPatchDef: ToolDef = {
   },
 };
 
-const searchReplaceHandler: ToolHandler = async (args, ctx) => {
-  const target = resolveWriteTarget(args.path as string, ctx);
-  if ("error" in target) return { content: target.error, error: target.error };
-  const path = target.path;
-  const search = args.search as string;
-  const replace = (args.replace as string) ?? "";
-
-  if (search === "") {
-    return { content: "search string must not be empty", error: "search string must not be empty" };
-  }
-
-  let content: string;
-  try {
-    content = await readFile(path, "utf-8");
-  } catch (err: unknown) {
-    const msg = `Error reading file: ${(err as Error).message}`;
-    return { content: msg, error: msg };
-  }
-
-  const count = countOccurrences(content, search);
-
-  if (count === 0) {
-    const msg = `String not found in ${path}`;
-    return { content: msg, error: msg };
-  }
-
-  const newContent = replaceAllLiterals(content, search, replace);
-
-  try {
-    const stale = await checkStaleFile(path, ctx);
-    if (stale) return stale;
-    await ctx.checkpoint?.save();
-    await writeAndTrack(path, newContent, ctx);
-    return { content: `${count} occurrences replaced in ${path}` };
-  } catch (err: unknown) {
-    const msg = `Error writing file: ${(err as Error).message}`;
-    return { content: msg, error: msg };
-  }
-};
-
-const searchReplaceDef: ToolDef = {
-  name: "search_replace",
-  description: "Replace ALL occurrences of a search string with a replacement in a file.",
-  parameters: {
-    type: "object",
-    properties: {
-      path: { type: "string", description: "Absolute file path" },
-      search: { type: "string", description: "String to search for (literal, not regex)" },
-      replace: { type: "string", description: "Replacement string" },
-    },
-    required: ["path", "search", "replace"],
-  },
-};
-
-const editFileHandler: ToolHandler = async (args, ctx) => {
-  const target = resolveWriteTarget(args.path as string, ctx);
-  if ("error" in target) return { content: target.error, error: target.error };
-  const path = target.path;
-  const search = args.search as string;
-  const replace = (args.replace as string) ?? "";
-  const expectedCount = args.expectedCount as number;
-
-  if (search === "") {
-    return { content: "search string must not be empty", error: "search string must not be empty" };
-  }
-
-  let content: string;
-  try {
-    content = await readFile(path, "utf-8");
-  } catch (err: unknown) {
-    const msg = `Error reading file: ${(err as Error).message}`;
-    return { content: msg, error: msg };
-  }
-
-  const count = countOccurrences(content, search);
-
-  if (count !== expectedCount) {
-    const msg = `Expected ${expectedCount} occurrences, found ${count}. No changes made.`;
-    return { content: msg, error: msg };
-  }
-
-  if (count === 0) {
-    const msg = `String not found in ${path}`;
-    return { content: msg, error: msg };
-  }
-
-  const newContent = replaceAllLiterals(content, search, replace);
-
-  try {
-    const stale = await checkStaleFile(path, ctx);
-    if (stale) return stale;
-    await ctx.checkpoint?.save();
-    await writeAndTrack(path, newContent, ctx);
-    return { content: `${count} occurrences replaced in ${path}` };
-  } catch (err: unknown) {
-    const msg = `Error writing file: ${(err as Error).message}`;
-    return { content: msg, error: msg };
-  }
-};
-
-const editFileDef: ToolDef = {
-  name: "edit_file",
-  description: "Replace all occurrences of search with replace, verifying the expected count matches. No changes if count differs.",
-  parameters: {
-    type: "object",
-    properties: {
-      path: { type: "string", description: "Absolute file path" },
-      search: { type: "string", description: "String to search for (literal, not regex)" },
-      replace: { type: "string", description: "Replacement string" },
-      expectedCount: { type: "number", description: "Expected number of occurrences" },
-    },
-    required: ["path", "search", "replace", "expectedCount"],
-  },
-};
 
 const writeToFileHandler: ToolHandler = async (args, ctx) => {
   const target = resolveWriteTarget(args.path as string, ctx);
@@ -481,13 +372,11 @@ const writeToFileDef: ToolDef = {
   },
 };
 
-export { editHandler, applyDiffHandler, applyPatchHandler, searchReplaceHandler, editFileHandler, writeToFileHandler };
+export { editHandler, applyDiffHandler, applyPatchHandler, writeToFileHandler };
 
 export function registerEdits(registry: ToolRegistry): void {
   registry.register({ def: editDef, handler: editHandler, groups: ["edit"] });
   registry.register({ def: applyDiffDef, handler: applyDiffHandler, groups: ["edit"] });
   registry.register({ def: applyPatchDef, handler: applyPatchHandler, groups: ["edit"] });
-  registry.register({ def: searchReplaceDef, handler: searchReplaceHandler, groups: ["edit"] });
-  registry.register({ def: editFileDef, handler: editFileHandler, groups: ["edit"] });
   registry.register({ def: writeToFileDef, handler: writeToFileHandler, groups: ["edit"] });
 }

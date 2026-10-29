@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { mkdtemp, mkdir, writeFile, rm, cp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
@@ -34,6 +34,29 @@ describe("ModeLoader", () => {
     const slugs = (await loader.listAll()).map((m) => m.slug);
     expect(slugs).toEqual(expect.arrayContaining(["general", "code"]));
     expect(slugs).not.toEqual(expect.arrayContaining(["ask", "architect", "debug", "orchestrator"]));
+  });
+
+  it("warns once per deprecated alias mode and never for the visible modes", async () => {
+    const errSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      let loader = new ModeLoader();
+      await loader.load("ask");
+      await loader.load("debug");
+      await loader.load("ask"); // repeat: cache collapses the second warning
+
+      const lines = errSpy.mock.calls.map((c) => String(c[0])).filter((l) => l.includes("deprecated"));
+      expect(lines).toHaveLength(2); // one per alias, not per load
+      expect(lines[0]).toContain('"ask"');
+      expect(lines[0]).toContain("removed in 0.9.0");
+      expect(lines[1]).toContain('"debug"');
+
+      loader = new ModeLoader();
+      await loader.load("code");
+      await loader.load("general");
+      expect(errSpy.mock.calls.map((c) => String(c[0])).filter((l) => l.includes("deprecated"))).toHaveLength(2);
+    } finally {
+      errSpy.mockRestore();
+    }
   });
 
   it("declares reasoningEffort low on every builtin mode", async () => {

@@ -70,6 +70,12 @@ function parseYaml(content: string): Record<string, unknown> {
   return result;
 }
 
+/** The hidden alias modes (Ask, Architect, Debug, Orchestrator): deprecated
+ *  compatibility aliases for retired personas, still loadable by slug but
+ *  removed in 0.9.0. When you touch that release, delete the four yaml files
+ *  and this set. */
+export const DEPRECATED_ALIAS_MODES = new Set(["ask", "architect", "debug", "orchestrator"]);
+
 export class ModeLoader {
   private builtinDir: string;
   private cache: Map<string, ModeConfig> = new Map();
@@ -78,8 +84,18 @@ export class ModeLoader {
     this.builtinDir = builtinDir ?? new URL("./builtin/", import.meta.url).pathname;
   }
 
+  /** One stderr line per deprecated alias mode, per process (cache collapses repeats). */
+  private warnIfDeprecated(slug: string): void {
+    if (!DEPRECATED_ALIAS_MODES.has(slug) || this.deprecationWarned.has(slug)) return;
+    this.deprecationWarned.add(slug);
+    process.stderr.write(`[warn] mode "${slug}" is deprecated and will be removed in 0.9.0 — use general or code instead\n`);
+  }
+
+  private deprecationWarned = new Set<string>();
+
   async load(slug: string, projectDir?: string): Promise<ModeConfig | null> {
     if (this.cache.has(slug)) return this.cache.get(slug)!;
+    this.warnIfDeprecated(slug);
 
     const paths: string[] = [];
     if (projectDir) {

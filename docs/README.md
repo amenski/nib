@@ -102,7 +102,7 @@ then follow the reading paths below.
 | [feature-plans.md](./feature-plans.md) | Per-feature plans for the remaining roadmap: SOTA research, current state, design, decisions |
 | [model-catalog-plan.md](./model-catalog-plan.md) | Models.dev-backed catalog: snapshot, overrides, update contract, and delivery slices |
 | [improvement-roadmap.md](./improvement-roadmap.md) | Roadmap index: borrow list, open items; detail in `roadmap/` (shipped waves, logging plan, PR reviews, dead-wiring audit) |
-| [agent-memory-that-evolves.md](./agent-memory-that-evolves.md) | Memory-design research essay (context only) |
+| [archive/agent-memory-that-evolves.md](./archive/agent-memory-that-evolves.md) | Memory-design research essay (archived context; describes a design that does not match this codebase) |
 
 ### Development
 

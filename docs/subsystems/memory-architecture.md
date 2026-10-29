@@ -51,11 +51,6 @@ end, `src/cli.tsx:322`); `writeFact()` appends to `decisions.md` /
 - Facts derivable from the repo (code structure, git history, anything in
   docs/) are skipped — memory holds what the repo cannot tell you.
 
-### Future
-
-Add LanceDB for semantic search when memory exceeds ~50 files. Start with
-grep over markdown — it's fast enough for hundreds of files.
-
 ---
 
 _Part of the [subsystems deep dive](../subsystems.md)._

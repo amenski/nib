@@ -20,3 +20,6 @@ dev-todo.md
 
 # Throwaway tree the eval harness builds and removes (scripts/eval.ts)
 .eval-tmp/
+
+# Machine-readable eval report (scripts/eval.ts --report)
+eval-report.json

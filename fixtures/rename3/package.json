@@ -1,0 +1,8 @@
+{
+  "name": "nib-fixture-rename3",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node src/index.js"
+  }
+}

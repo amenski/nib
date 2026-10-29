@@ -1,0 +1,8 @@
+{
+  "name": "nib-fixture-compact",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test src/task.test.js"
+  }
+}

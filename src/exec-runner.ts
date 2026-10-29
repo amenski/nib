@@ -30,6 +30,9 @@ import { AgentLoader } from "./agents/index.js";
 import { join } from "node:path";
 import { checkSettingsTrust, stripExecutionKeys, trustSettings } from "./config/settings-trust.js";
 import { GENERAL_MODEL_ID, GENERAL_REASONING_EFFORT, parseModelId, resolveSubagentEffort } from "./modes/model-policy.js";
+import type { PermissionAuditRecord } from "./sessions/store.js";
+import { computeCostUsd, toPermissionRows, writeHeadlessReport } from "./eval/report.js";
+import { Compactor } from "./compaction/compactor.js";
 
 export interface ExecRunnerOptions {
   prompt: string;
@@ -482,7 +485,6 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
       // everything through. maxTurns from CLI caps agentic turns.
       const modeTools = activeMode.groups ? registry.getByMode(activeMode.groups) : registry.getAllDefs();
       const filteredTools = filterToolDefs(modeTools, options.allowedTools, options.disallowedTools);
-
       // The classifier's optional model stage (docs/command-risk-classifier.md
     // §6). Headless is where a flaky judge costs the most — there is no human
     // to answer a prompt it invents — so it is the same opt-in as the TUI, and
@@ -495,10 +497,35 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
       ...(providerName !== undefined ? { preferProvider: providerName } : {}),
     });
 
+    // `NIB_EVAL_REPORT` opts this run into the machine-readable report the
+    // eval harness reads (docs/eval-harness.md §3). Unset in every other use,
+    // so a normal headless run is unchanged.
+    const reportPath = process.env.NIB_EVAL_REPORT;
+    let inputTokens = 0;
+    let outputTokens = 0;
+    let cachedInputTokens = 0;
+    let compactions = 0;
+    const permissionRows: PermissionAuditRecord[] = [];
+
+    // Compaction, same resolution the TUI uses (cli.tsx). Headless used to
+    // pass no compactor at all, so a long `-p` run grew until the provider
+    // rejected the request instead of summarizing — and the compaction
+    // golden task (G6) could not exist.
+    const contextWindow = configResult.config.contextWindow ?? activeCaps?.contextWindow ?? 128000;
+    const compactor = new Compactor(
+      provider,
+      contextWindow,
+      configResult.config.compaction?.threshold,
+      configResult.config.compaction?.auto ?? true,
+      configResult.config.compaction?.maxTokens,
+    );
+
     const agentOptions = {
         provider,
         tools: filteredTools,
         effort: activeEffort,
+        compactor,
+        contextWindow,
         executeTool,
         permissions,
         permissionProfile,
@@ -517,6 +544,17 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
         errorRecovery: new ErrorRecovery(),
         getTodos: () => todoStore.getTodos(),
         hooks,
+        onUsage: (input: number, output: number, cached?: number) => {
+          inputTokens += input;
+          outputTokens += output;
+          cachedInputTokens += cached ?? 0;
+        },
+        onCompacted: () => {
+          compactions++;
+        },
+        onPermissionDecision: (row: PermissionAuditRecord) => {
+          permissionRows.push(row);
+        },
         ...(lsp !== undefined ? { lsp } : {}),
       };
       let result = await runAgent(expandedPrompt, agentOptions);
@@ -560,6 +598,19 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
       // SessionEnd fires immediately after, before teardown.
       fireNotificationHooks(hooks, completedNotifyInput);
       await hooks.dispatch("SessionEnd", {});
+      if (reportPath) {
+        writeHeadlessReport(reportPath, {
+          provider: providerName,
+          model: activeModel ?? "default",
+          stopReason: result.stopReason,
+          inputTokens,
+          outputTokens,
+          cachedInputTokens,
+          costUsd: computeCostUsd(activeCaps?.pricing, inputTokens, outputTokens),
+          compactions,
+          permissions: toPermissionRows(permissionRows),
+        });
+      }
       return result.stopReason === "done" ? 0 : 1;
     } catch (err) {
       if (interrupted) return 130;

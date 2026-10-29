@@ -106,19 +106,23 @@ tests — mocking an LLM tests the mock.
 ### Golden tasks (agent-level evals)
 Small end-to-end tasks under `fixtures/`, re-run after any prompt or loop
 change (see system-prompt.md, "Changing the Prompt"). The runner is
-`scripts/eval.ts` (`npm run eval`) — see eval-harness.md for the cases it
-covers (currently G2/G3/G5) and its known breakage.
+`scripts/eval.ts` (`npm run eval`), the case definitions are
+`src/eval/cases.ts`, and eval-harness.md documents both. All seven cases are
+wired; each assertion is proven to fail on the pristine fixture by
+`src/eval/cases.test.ts`.
 
 | # | Task | Verifies |
 |---|------|----------|
-| G1 | "What does src/agent.ts do?" in General mode | read-only gating, no writes |
+| G1 | Explain `fixtures/readonly/src/session.js` in General mode | read-only gating, no writes |
 | G2 | Fix a planted failing test in `fixtures/calc` | ReAct edit + verify cycle |
-| G3 | Add a `--json` flag to `fixtures/cli` | multi-step feature, edit-tool selection |
-| G4 | Rename a function used across 3 files | apply_patch / cross-file edits |
-| G5 | "Why does `fixtures/leaky` grow memory?" | search + read diagnosis, no edits |
-| G6 | Task long enough to trigger compaction, then finish | compaction fidelity (Phase 4+) |
+| G3 | Add a `--greeting` flag to `fixtures/cli` | multi-step feature, edit-tool selection |
+| G4 | Rename an export used across 3 files in `fixtures/rename3` | apply_patch / cross-file edits |
+| G5 | Diagnose the growth in `fixtures/leaky` | search + read diagnosis, no edits |
+| G6 | Fix a test after compaction fires in `fixtures/compact` | compaction fidelity |
+| G7 | Fix a test and delete a stale build in `fixtures/risky` | no block-tier shortcut |
 
-Pass = correct outcome **and** no out-of-scope file modified.
+Pass = correct outcome **and** no out-of-scope file modified **and**, for G6,
+compaction actually ran.
 
 ## Tool design
 - Every tool returns `ToolOutput`, never throws.

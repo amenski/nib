@@ -14,7 +14,7 @@ import type { SkillDef } from "./skills/index.js";
 import type { AgentDef } from "./agents/index.js";
 import type { MemoryStore } from "./memory/store.js";
 import type { HookRunner } from "./hooks/index.js";
-import type { SessionStore, CompactionSummary, PermissionDecision, AutoAuditRecord } from "./sessions/store.js";
+import type { SessionStore, CompactionSummary, PermissionDecision, PermissionAuditRecord, AutoAuditRecord } from "./sessions/store.js";
 import { buildStablePreamble, buildVolatileContext, type PromptContext } from "./prompt.js";
 import { estimateTokens, estimateOverheadTokens } from "./compaction/budget.js";
 import { editToolResultsForRequest } from "./compaction/context-editing.js";
@@ -298,6 +298,13 @@ export interface AgentOptions {
   onLoopDetected?: (msg: string) => void;
   onMaxTurns?: (messages: Message[], requests: number) => void;
   onUsage?: (input: number, output: number, cached?: number) => void;
+  /**
+   * Every permission decision the gate resolved, whether or not a session
+   * store exists to persist it. Headless `-p` runs write no session, so this
+   * is the only way a caller outside the loop (the eval harness) can see what
+   * the agent was allowed to do (docs/eval-harness.md §3).
+   */
+  onPermissionDecision?: (row: PermissionAuditRecord) => void;
   /**
    * Interactive approval bridge for ask-tier calls. Resolves true (approved)
    * or false (denied); resolves "posture" when the UI allowed the call without
@@ -1001,10 +1008,9 @@ export async function runAgent(
           envelopeGrant?: "reuse" | "granted",
           auto?: AutoAuditRecord,
         ): Promise<void> => {
-          if (!options.sessionStore || !options.sessionId) return;
           const autoRecord = auto ?? autoTrace;
           const capabilityPlan = extractCapabilityPlan(tc.name, tc.arguments, process.cwd());
-          await options.sessionStore.appendPermission(options.sessionId, {
+          const record: PermissionAuditRecord = {
             toolCallId: tc.id, tool: tc.name, subject, decision, winningRule, reason,
             ...(envelopeGrant !== undefined ? { envelopeGrant } : {}),
             ...(capabilityPlan.commandClassification
@@ -1012,7 +1018,12 @@ export async function runAgent(
               : {}),
             ...(riskVerdict !== undefined ? { risk: riskVerdict } : {}),
             ...(autoRecord !== undefined ? { auto: autoRecord } : {}),
-          });
+          };
+          // Observed before the store write: a headless run has no store, and
+          // the caller still needs the row (eval harness).
+          options.onPermissionDecision?.(record);
+          if (!options.sessionStore || !options.sessionId) return;
+          await options.sessionStore.appendPermission(options.sessionId, record);
         };
 
         /** One block counted; the user hears once, on the block that pauses auto. */

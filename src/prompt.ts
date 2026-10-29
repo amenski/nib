@@ -1,7 +1,7 @@
 import type { ModeConfig } from "./modes/loader.js";
 import type { SkillDef } from "./skills/index.js";
 import type { AgentDef } from "./agents/index.js";
-import { RepoMap } from "./repomap/index.js";
+import { RepoMap, type RepoMapOptions } from "./repomap/index.js";
 import type { ToolGroup } from "./tools/types.js";
 import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { execFile } from "node:child_process";
@@ -69,7 +69,16 @@ export const REPOMAP_BYTE_BUDGET = 4 * 1024;
  */
 export async function buildRepoMap(workingDir: string): Promise<string | null> {
   try {
-    const map = new RepoMap(workingDir);
+    // Options wiring is lazy-imported so a failure in the LSP seam degrades
+    // to the plain TS/JS map instead of no map at all.
+    let options: RepoMapOptions | undefined;
+    try {
+      const { repoMapOptionsFromLsp } = await import("./lsp/lsp-symbols.js");
+      options = await repoMapOptionsFromLsp(workingDir);
+    } catch {
+      options = undefined;
+    }
+    const map = new RepoMap(workingDir, options);
     // getMap's tokenBudget counts ~4 chars/token, so the byte budget maps to
     // budget/4 tokens. Empty conversation → a session-stable, un-keyed ranking.
     const tokenBudget = Math.floor(REPOMAP_BYTE_BUDGET / 4);

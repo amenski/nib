@@ -24,3 +24,4 @@ dev-todo.md
 # Machine-readable eval report (scripts/eval.ts --report)
 eval-report.json
 eval-report-gate-on.json
+eval-report-d8.json

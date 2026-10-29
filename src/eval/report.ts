@@ -61,6 +61,8 @@ export function writeHeadlessReport(path: string, report: HeadlessReport): void 
 /** One case's outcome in one trial. */
 export interface TrialResult {
   pass: boolean;
+  /** Excluded from the pass rate (see Assertion.invalid in cases.ts). */
+  invalid?: boolean;
   message: string;
   durationMs: number;
   inputTokens: number;
@@ -71,8 +73,10 @@ export interface TrialResult {
 export interface CaseReport {
   name: string;
   trials: TrialResult[];
-  /** Share of trials that passed, in [0, 1]. */
+  /** Share of valid trials that passed, in [0, 1]. */
   passRate: number;
+  /** Trials that did not exercise the case; not counted in passRate. */
+  invalid: number;
   inputTokens: number;
   outputTokens: number;
   /** Sum over trials; `null` when any trial had no pricing to price against. */
@@ -88,12 +92,14 @@ export interface SuiteReport {
 }
 
 export function summarizeCase(name: string, trials: TrialResult[]): CaseReport {
-  const passed = trials.filter((t) => t.pass).length;
+  const valid = trials.filter((t) => !t.invalid);
+  const passed = valid.filter((t) => t.pass).length;
   const priced = trials.every((t) => t.costUsd !== null);
   return {
     name,
     trials,
-    passRate: trials.length === 0 ? 0 : passed / trials.length,
+    passRate: valid.length === 0 ? 0 : passed / valid.length,
+    invalid: trials.length - valid.length,
     inputTokens: trials.reduce((sum, t) => sum + t.inputTokens, 0),
     outputTokens: trials.reduce((sum, t) => sum + t.outputTokens, 0),
     costUsd: priced ? trials.reduce((sum, t) => sum + t.costUsd!, 0) : null,
@@ -106,10 +112,11 @@ export function summarizeCase(name: string, trials: TrialResult[]): CaseReport {
  * from "same score, same tokens".
  */
 export function formatSuiteTable(report: SuiteReport): string {
-  const header = ["Task", "Pass", "Input", "Output", "Cost"];
+  const header = ["Task", "Pass", "Invalid", "Input", "Output", "Cost"];
   const rows = report.cases.map((c) => [
     c.name,
-    `${Math.round(c.passRate * c.trials.length)}/${c.trials.length}`,
+    `${c.trials.filter((t) => t.pass).length}/${c.trials.length - c.invalid}`,
+    String(c.invalid),
     String(c.inputTokens),
     String(c.outputTokens),
     c.costUsd === null ? "n/a" : `$${c.costUsd.toFixed(4)}`,
@@ -120,9 +127,9 @@ export function formatSuiteTable(report: SuiteReport): string {
   return [line(header), ...rows.map(line)].join("\n");
 }
 
-/** Mean pass rate across cases — the single number a harness change must move. */
+/** Pass rate over every valid trial — the single number a harness change must move. */
 export function overallPassRate(report: SuiteReport): number {
-  const trials = report.cases.flatMap((c) => c.trials);
+  const trials = report.cases.flatMap((c) => c.trials).filter((t) => !t.invalid);
   if (trials.length === 0) return 0;
   return trials.filter((t) => t.pass).length / trials.length;
 }

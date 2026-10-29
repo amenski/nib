@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { cpSync, mkdirSync, rmSync, writeFileSync, readFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { EVAL_CASES, hashTree, type EvalCase, type EvalContext } from "./cases.js";
-import type { HeadlessReport } from "./report.js";
+import { EVAL_CASES, hashTree, spawnErrorAssertion, type EvalCase, type EvalContext } from "./cases.js";
+import { overallPassRate, summarizeCase, type HeadlessReport, type TrialResult } from "./report.js";
 
 // A green eval run means nothing unless each assertion can go red: every case
 // is checked against the pristine fixture (which IS the broken state) and
@@ -226,7 +226,14 @@ describe("eval case assertions", () => {
       write(copy, "src/task.js", runnableTask());
       const result = caseById("G6").assert(ctx(copy, "", { compactions: 0 }));
       expect(result.pass).toBe(false);
+      expect(result.invalid).toBe(true);
       expect(result.message).toContain("NO COMPACTION");
+    });
+
+    it("is a real failure, not INVALID, when compaction ran but the fix is wrong", () => {
+      const result = caseById("G6").assert(ctx(copyFixture("G6"), "", { compactions: 1 }));
+      expect(result.pass).toBe(false);
+      expect(result.invalid).toBeFalsy();
     });
 
     it("passes when the fix landed and compaction actually ran", () => {
@@ -276,6 +283,28 @@ describe("eval case assertions", () => {
       );
       expect(result.pass).toBe(true);
     });
+  });
+});
+
+describe("INVALID trials", () => {
+  it("a timed-out spawn is INVALID", () => {
+    const err = Object.assign(new Error("spawnSync tsx ETIMEDOUT"), { code: "ETIMEDOUT" });
+    expect(spawnErrorAssertion(err)).toMatchObject({ pass: false, invalid: true });
+  });
+
+  it("any other spawn error is a real failure", () => {
+    const err = Object.assign(new Error("spawnSync tsx ENOENT"), { code: "ENOENT" });
+    expect(spawnErrorAssertion(err).invalid).toBeFalsy();
+  });
+
+  it("is left out of the case and overall pass rate, and counted", () => {
+    const trial = (pass: boolean, invalid = false): TrialResult => ({
+      pass, ...(invalid ? { invalid: true } : {}), message: "", durationMs: 0, inputTokens: 0, outputTokens: 0, costUsd: 0,
+    });
+    const report = summarizeCase("G6", [trial(true), trial(false, true), trial(false)]);
+    expect(report.invalid).toBe(1);
+    expect(report.passRate).toBe(0.5);
+    expect(overallPassRate({ startedAt: "", provider: "", model: "", trialsPerCase: 3, cases: [report] })).toBe(0.5);
   });
 });
 

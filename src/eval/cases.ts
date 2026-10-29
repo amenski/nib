@@ -19,6 +19,12 @@ export interface EvalContext {
 export interface Assertion {
   pass: boolean;
   message: string;
+  /**
+   * The trial never exercised what the case measures (no compaction in G6, a
+   * timed-out spawn), so it says nothing about the agent either way: reported
+   * as INVALID and left out of the pass rate.
+   */
+  invalid?: boolean;
 }
 
 export interface EvalCase {
@@ -62,6 +68,15 @@ export function changedPaths(ctx: EvalContext): string[] {
     if (!(path in after)) changed.add(path);
   }
   return [...changed].sort();
+}
+
+/**
+ * A spawn that hit the runner's time limit is INVALID, not a failed task: the
+ * agent was cut off, not wrong. Any other spawn error is a real failure.
+ */
+export function spawnErrorAssertion(error: Error & { code?: string }): Assertion {
+  const message = `spawn error: ${error.message.slice(0, 80)}`;
+  return error.code === "ETIMEDOUT" ? { pass: false, invalid: true, message } : { pass: false, message };
 }
 
 function run(cmd: string, workdir: string): { ok: boolean; out: string } {
@@ -184,17 +199,19 @@ export const EVAL_CASES: EvalCase[] = [
     id: "G6",
     name: "G6 — Compaction fidelity (compact)",
     fixtureDir: "compact",
-    // Compaction fires deterministically from a small configured window, and
-    // the one fact the task needs (BASE) lives only in the long file, so a
-    // summary that dropped it fails the test.
-    settings: { contextWindow: 20000, compaction: { threshold: 0.5 } },
+    // The one fact the task needs (BASE) lives only in the long file, so a
+    // summary that dropped it fails the test. A bare request already costs
+    // ~4.2K tokens; the full read (~9K) is what crosses the 7K cutoff, so the
+    // prompt asks for it — a model that greps for BASE instead never compacts.
+    settings: { contextWindow: 14000, compaction: { threshold: 0.5 } },
     prompt:
-      "read src/big.js, then fix src/task.js so `node --test src/task.test.js` passes. src/task.js must total the list and add the BASE constant defined in src/big.js.",
+      "read all of src/big.js in one read_file call (no offset or limit), then fix src/task.js so `node --test src/task.test.js` passes. src/task.js must total the list and add the BASE constant defined in src/big.js.",
     assert: (ctx) => {
       const tap = testsPass(ctx.workdir, "src/task.test.js");
       const compactions = ctx.report?.compactions ?? 0;
       return {
         pass: tap.pass && compactions >= 1,
+        invalid: compactions === 0,
         message: [
           tap.pass ? `tests pass (${tap.message})` : `tests FAIL (${tap.message})`,
           compactions >= 1 ? `${compactions} compaction(s)` : "NO COMPACTION — case did not exercise fidelity",

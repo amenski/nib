@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { projectDirPath } from "../src/config/paths.js";
 import { resolveHome } from "../src/config/loader.js";
 import { trustSettings } from "../src/config/settings-trust.js";
-import { EVAL_CASES, hashTree, type EvalCase } from "../src/eval/cases.js";
+import { EVAL_CASES, hashTree, spawnErrorAssertion, type EvalCase } from "../src/eval/cases.js";
 import {
   formatSuiteTable,
   overallPassRate,
@@ -237,7 +237,7 @@ function runTrial(testCase: EvalCase, trial: number, evalHome: string): TrialRes
     : null;
   const tokens = { inputTokens: report?.inputTokens ?? 0, outputTokens: report?.outputTokens ?? 0, costUsd: report?.costUsd ?? null };
 
-  if (result.error) return { pass: false, message: `spawn error: ${result.error.message.slice(0, 80)}`, durationMs, ...tokens };
+  if (result.error) return { ...spawnErrorAssertion(result.error), durationMs, ...tokens };
   // Distinguish "the agent could not run" from "the agent ran and did not
   // pass": a non-zero nib exit (e.g. no provider key) must not be reported
   // as a fixture-level task failure.
@@ -253,7 +253,7 @@ function runTrial(testCase: EvalCase, trial: number, evalHome: string): TrialRes
     report,
     baseline,
   });
-  return { pass: assertion.pass, message: assertion.message, durationMs, ...tokens };
+  return { pass: assertion.pass, ...(assertion.invalid ? { invalid: true } : {}), message: assertion.message, durationMs, ...tokens };
 }
 
 function main(): void {
@@ -283,6 +283,7 @@ function main(): void {
 
   const caseReports = [];
   let failures = 0;
+  let invalid = 0;
 
   for (const testCase of cases) {
     const fixtureSrc = join(FIXTURES_DIR, testCase.fixtureDir);
@@ -295,12 +296,13 @@ function main(): void {
     for (let trial = 1; trial <= args.trials; trial++) {
       const outcome = runTrial(testCase, trial, evalHome);
       trials.push(outcome);
-      const status = outcome.pass ? "PASS" : "FAIL";
+      const status = outcome.pass ? "PASS" : outcome.invalid ? "INVALID" : "FAIL";
       const cost = outcome.costUsd === null ? "n/a" : `$${outcome.costUsd.toFixed(4)}`;
       process.stdout.write(
         `    trial ${trial}: ${status}  ${outcome.inputTokens}in/${outcome.outputTokens}out ${cost}  ${outcome.pass ? "" : outcome.message}\n`.replace(/ {2}\n/, "\n"),
       );
-      if (!outcome.pass) failures++;
+      if (!outcome.pass && !outcome.invalid) failures++;
+      if (outcome.invalid) invalid++;
     }
     caseReports.push(summarizeCase(testCase.name, trials));
   }
@@ -314,13 +316,13 @@ function main(): void {
   };
 
   console.log(`\n${formatSuiteTable(suite)}`);
-  console.log(`\n  overall pass rate: ${(overallPassRate(suite) * 100).toFixed(0)}%`);
+  console.log(`\n  overall pass rate: ${(overallPassRate(suite) * 100).toFixed(0)}% (${invalid} invalid trial(s) excluded)`);
   writeFileSync(args.reportPath, JSON.stringify(suite, null, 2) + "\n");
   console.log(`  report: ${args.reportPath}`);
 
   // Keep the workdirs of a failing run: they are the only record of what the
   // agent tried. `--keep` keeps them even when everything passed.
-  if (failures > 0 || args.keep) console.log(`  kept ${EVAL_TMP} for inspection`);
+  if (failures > 0 || invalid > 0 || args.keep) console.log(`  kept ${EVAL_TMP} for inspection`);
   else rmSync(EVAL_TMP, { recursive: true, force: true });
 
   process.exit(failures > 0 ? 1 : 0);

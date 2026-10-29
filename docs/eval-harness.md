@@ -26,12 +26,13 @@ task-table rationale is in conventions.md §Golden tasks. `G2`, `G3`, `G4` and
 `G6` asserts compaction fidelity.
 
 `G6` is the compaction case conventions.md calls for: the fixture's settings
-pin `contextWindow: 20000` and `compaction.threshold: 0.5`, so compaction fires
-mid-run deterministically instead of depending on how much the model happens to
-read. The one fact the task needs (`BASE`) exists only in the long
-`src/big.js`, so a summary that dropped it surfaces as a failing test. The case
-asserts `compactions >= 1` as well — a run that never compacted exercised
-nothing and must not pass.
+pin `contextWindow: 14000` and `compaction.threshold: 0.5` (a 7K cutoff). A
+bare request already costs ~4.2K tokens, and the prompt asks for one full
+read of the long `src/big.js` (~9K), which is what crosses the cutoff — at
+20K, a model that grepped for `BASE` instead skipped compaction in 3 of 10
+trials. The one fact the task needs (`BASE`) exists only in `src/big.js`, so a
+summary that dropped it surfaces as a failing test. A run that never compacted
+exercised nothing: it is reported **INVALID**, not passed.
 
 The old `risky` case is now `G7`, so `G6` means exactly one thing.
 
@@ -71,9 +72,13 @@ The old `risky` case is now `G7`, so `G6` means exactly one thing.
 - **Failure attribution**: a non-zero nib exit (e.g. no provider key) reports
   `nib exited N: <stderr>` — distinct from a fixture-level task failure, so a
   missing key can't masquerade as "the agent failed the task".
-- Results print per trial, then a table of pass rate / input tokens / output
-  tokens / cost per case, then the overall pass rate. Exit 0 iff every trial
-  passed.
+- **INVALID trials**: a trial that did not exercise what its case measures —
+  `G6` with no compaction, or a spawn cut off by the 180 s timeout
+  (`ETIMEDOUT`) — prints `INVALID`, is counted separately, and is left out of
+  the pass rate. It says nothing about the agent either way.
+- Results print per trial, then a table of pass / invalid / input tokens /
+  output tokens / cost per case, then the overall pass rate over valid trials.
+  Exit 0 iff no valid trial failed.
 
 ## 4. Security model (containment)
 

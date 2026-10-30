@@ -44,7 +44,6 @@ import {
 } from "./core/stream-blocks.js";
 import { JobOutputCoalescer } from "./core/job-stream.js";
 import { jobManager } from "../tools/jobs.js";
-import HintBar from "./HintBar.js";
 import TodoPanel from "./TodoPanel.js";
 import { todoStore } from "../tools/todo.js";
 import { savePlan } from "../plans/store.js";
@@ -68,7 +67,7 @@ import ModeList from "./views/ModeList.js";
 import UndoSelector from "./views/UndoSelector.js";
 import McpStatusList from "./views/McpStatusList.js";
 import BackgroundList from "./views/BackgroundList.js";
-import { backgroundRowText, collectBackgroundItems, completionLine, shellLabel, type BackgroundItem } from "./core/background-items.js";
+import { backgroundRowText, collectBackgroundItems, completionLine, runningShellCount, shellLabel, type BackgroundItem } from "./core/background-items.js";
 import PermissionHistoryList from "./views/PermissionHistoryList.js";
 import UsageView from "./views/UsageView.js";
 import ResumeChooser from "./views/ResumeChooser.js";
@@ -2210,7 +2209,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
       return;
     }
     jobManager.killAll();
-    // Collapse the whole frame (header, input, menu, hint bar) to a single
+    // Collapse the whole frame (header, input, menu, status line) to a single
     // resume-hint line, flush it to the terminal, then unmount and hand off to
     // ctx.onExit() — the CLI-side handler that logs session end and calls
     // process.exit(0). Without that hand-off, Ink unmounts but the process keeps
@@ -2270,6 +2269,10 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
     liveTail: activeLine !== "" && !busy,
     lastOutputLine: outputLines[outputLines.length - 1],
   });
+  // Static text, not animated: the spinner lives on the status line (last row).
+  const showBackgroundRow = backgroundRow !== null && !modalOpen;
+  const workingText = modalOpen ? null : compacting ? "compacting…" : turnActive ? "working… (esc to interrupt)" : null;
+  const panelAbove = todos.length > 0 || queuedItems.length > 0 || showBackgroundRow;
 
   return (
     <Box flexDirection="column" width={term.columns}>
@@ -2604,6 +2607,21 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
         </Box>
       )}
 
+      {/* Background shells and agents. Static text that changes at most once a
+          second, only while something runs. */}
+      {showBackgroundRow && (
+        <Box marginTop={todos.length === 0 && queuedItems.length === 0 && transcriptGap ? 1 : 0}>
+          <Text wrap="truncate" color={ansi256(theme.theme.textDim)}>{backgroundRow}</Text>
+        </Box>
+      )}
+
+      {/* The blank line below stands in for the composer's own gap above. */}
+      {workingText !== null && (
+        <Box marginTop={!panelAbove && transcriptGap ? 1 : 0} marginBottom={1}>
+          <Text color={ansi256(theme.theme.textDim)}>{workingText}</Text>
+        </Box>
+      )}
+
       {/* Always mounted: a modal suspends the composer rather than unmounting
           it, so a permission prompt arriving mid-typing keeps the draft. */}
       <PromptInput
@@ -2611,7 +2629,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
         screenWidth={term.columns}
         promptHistory={promptHistory}
         busy={busy}
-        placeholder="Type your message..."
+        placeholder="Type your message… (/ commands · ⌃O mode)"
         promptDraft={promptDraft}
         onSubmit={submitFromInput}
         onInterrupt={() => ctx.provideAbortController().abort()}
@@ -2622,10 +2640,11 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
         onOpenBackground={backgroundRow !== null ? openBackground : undefined}
         completer={ctx.completer}
         onDraftChange={onPromptDraftChange}
-        gapAbove={needsComposerGap({
-          // The todo checklist and the queued-follow-up stack both render
-          // between the transcript and the composer, flush against the prompt.
-          panelAbove: todos.length > 0 || queuedItems.length > 0,
+        gapAbove={workingText === null && needsComposerGap({
+          // The todo checklist, the queued-follow-up stack and the background
+          // row all render between the transcript and the composer, flush
+          // against the prompt.
+          panelAbove,
           liveTail: activeLine !== "" && !busy,
           lastOutputLine: outputLines[outputLines.length - 1],
         })}
@@ -2637,50 +2656,18 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
                 : statusLine
             }
             gitStatus={gitStatus}
+            runningJobs={runningShellCount(backgroundItems)}
+            working={turnActive || compacting}
           />
         }
       />
-
-      {/* Background shells and agents, directly under the status bar. It
-          sits above the hint bar (which must stay last) and changes at most
-          once a second, only while something runs. */}
-      {backgroundRow !== null && !modalOpen && (
-        <Text wrap="truncate" color={ansi256(theme.theme.textDim)}>{backgroundRow}</Text>
-      )}
-
-      {/* The hint bar is deliberately the LAST row of the frame, and carries the
-          only continuously-changing element (the working indicator). Ink
-          repaints a changed line by walking the cursor UP from the bottom, so
-          anything rendered BELOW an 80ms animation gets rewritten 12.5x/second
-          — which is what made the prompt box tear while streaming. With nothing
-          under it, a tick rewrites just this row. */}
-      <HintBar
-        working={turnActive || compacting}
-        left={
-          compacting
-            ? [{ key: "", label: "compacting…" }]
-            : turnActive
-            ? [{ key: "esc", label: "interrupt" }]
-            : [
-                { key: "⇧ Tab", label: nextPosture(posture) },
-                { key: "⌃O", label: "mode" },
-              ]
-        }
-        // Only chords that actually reach a handler. "^⇧P commands" was dead
-        // twice over: a terminal sends the same byte (0x10) for ctrl+p and
-        // ctrl+shift+p, so the shift-qualified binding can never match, and
-        // PromptInput claims ctrl+p for history navigation before App's
-        // useInput would see it anyway. "/" already lists the same commands
-        // with fuzzy filtering, and is discoverable without a hint.
-        right={[
-          // "/" is the honest router — the slash menu reaches everything,
-          // matching Claude Code. Rendered without the key-cap chip: "/" is a
-          // literal character you type, not a key chord, so chipping it like
-          // "esc" looked wrong. (A "^M model" hint lived here once: dead on
-          // arrival, since Ctrl+M is byte-identical to Enter in a terminal.)
-          { key: "", label: "/ commands" },
-        ]}
-      />
+      {/* The status line above is deliberately the LAST row of the frame, and
+          carries the only continuously-changing element (its leading spinner).
+          Ink repaints a changed line by walking the cursor UP from the bottom,
+          so anything rendered BELOW an 80ms animation gets rewritten 12.5x/second
+          — which is what made the prompt box tear while streaming. Everything
+          above the input (the working line, the background row) is static text,
+          so a tick rewrites just the status row. */}
     </Box>
   );
 }

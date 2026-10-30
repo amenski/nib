@@ -416,8 +416,8 @@ const ModelsDropdown: React.FC<Props> = ({
         </Box>
       )}
 
-      {/* Same key-cap treatment as the main hint bar, so a chord looks like a
-          chord everywhere in the UI rather than only in the composer. */}
+      {/* Same key-cap treatment as the other pickers, so a chord looks like a
+          chord everywhere in the UI. */}
       <Box marginTop={1}>
         <Text>{keyCap("ctrl+a", capStyle)}</Text>
         <Text color={slotColor(theme, "textDim")}>{" connect provider   "}</Text>

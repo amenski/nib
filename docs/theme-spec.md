@@ -53,7 +53,7 @@ through to `resolveTheme` at startup.
   enumerates `BUILTIN_THEMES`), and both resolve by name in
   `resolveTheme`. Verified: `src/ui/theme.test.ts` registration + resolve
   tests, `src/ui/components/ThemeDropdown/index.test.ts` picker adoption,
-  `src/ui/HintBar.test.tsx` key-cap contrast regression.
+  `src/ui/theme.test.ts` key-cap contrast regression.
 - **Accepted limitation (decided 2026-08-13):** a theme change applies to
   new output and the live frame only. Already-flushed scrollback keeps the
   colors baked in at push time until `/clear` or restart — `<Static>` is

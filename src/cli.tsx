@@ -1027,44 +1027,34 @@ async function main() {
     // has one accent per meaning rather than three competing coloured words.
     const statusDot = (code: number) =>
       colorEnabled ? `${ansiFg(code)}●${ANSI_RESET} ` : "* ";
+    // Dim key hint trailing the posture segment; replaces the old bottom hint row.
+    const postureHint = colorEnabled ? ` ${ansiFg(resolvedTheme.theme.textDim)}(shift+tab)${ANSI_RESET}` : " (shift+tab)";
     if (shared.activeMode?.name) {
-      segments.push(T(nextId(), `${statusDot(resolvedTheme.theme.success)}${shared.activeMode.name}`, { raw: true }));
+      // Normal posture emits no segment of its own when a mode is named, so the
+      // hint rides on the mode; otherwise the commonest state has no hint.
+      const modeHint = shared.posture === "normal" ? postureHint : "";
+      segments.push(T(nextId(), `${statusDot(resolvedTheme.theme.success)}${shared.activeMode.name}${modeHint}`, { raw: true }));
     }
     if (shared.posture === "auto") {
       // Spelled out, not abbreviated: a model now decides what runs without
       // asking, which is the highest-consequence state the bar reports. "paused"
       // says the judge has been blocking so much that every ask is back to a
       // human until the next approval.
-      segments.push(T(nextId(), `${statusDot(resolvedTheme.theme.warning)}${autoState.suspended ? "auto · paused" : "auto"}`, { raw: true }));
+      // Bold warning colour and a glyph instead of the dot: with no OS
+      // containment notice at startup, this is the only reminder that
+      // approvals are skipped.
+      const autoText = `▸▸ ${autoState.suspended ? "auto · paused" : "auto"}`;
+      segments.push(T(nextId(), (colorEnabled ? `\x1b[1m${ansiFg(resolvedTheme.theme.warning)}${autoText}${ANSI_RESET}` : autoText) + postureHint, { raw: true }));
     } else if (shared.posture === "plan") {
-      segments.push(T(nextId(), `${statusDot(resolvedTheme.theme.info)}plan`, { raw: true }));
+      segments.push(T(nextId(), `${statusDot(resolvedTheme.theme.info)}plan${postureHint}`, { raw: true }));
     } else if (!shared.activeMode?.name) {
-      segments.push(T(nextId(), `${statusDot(resolvedTheme.theme.success)}normal`, { raw: true }));
+      segments.push(T(nextId(), `${statusDot(resolvedTheme.theme.success)}normal${postureHint}`, { raw: true }));
     }
 
     // The permission profile level is NOT in the bar: it is static config
     // (set once in settings), not ambient session state — the bar shows what
     // changes mid-session (mode, posture, effort, context fill). The level is
     // visible in `nib doctor` and /permissions (decided 2026-08-14).
-
-    // Thinking mode, labelled the same way the welcome screen labels it
-    // ("thinking high" / "thinking on" / "thinking off") so the two agree — a
-    // bare "high" in the bar did not say what was high. Plain dim text rather
-    // than a filled chip: this is a preference you set and forget, and as an
-    // orange slab it was the loudest thing on a row where it is the least
-    // urgent. The orange is now spent on auto and a full context.
-    // Shown only when the model declares effort levels.
-    if (thinkingEnabled && getActiveModelCaps()?.effort) {
-      segments.push(dim(nextId(), `thinking ${shared.activeEffort ?? "on"}`));
-    }
-
-    // The model sits just before the context meter: the two describe the same
-    // thing (what the next message runs on and how full its window is), and the
-    // bar drops segments from the end, so the model outlasts ctx on a narrow row.
-    // Provider-prefixed: the same model (e.g. DeepSeek Flash) is served by
-    // several providers with different routing and billing, so the bar names
-    // which one the next message goes to.
-    segments.push(dim(nextId(), `${shared.providerName}/${modelDisplayName()}`));
 
     const ctxPercent = getContextPercent();
     if (ctxPercent !== null) {
@@ -1091,6 +1081,21 @@ async function main() {
     if (costStr !== null) {
       segments.push(dim(nextId(), `$${costStr}`));
     }
+
+    // Right group, flush to the right edge and dropped first on a narrow row.
+    // Thinking mode, labelled the same way the welcome screen labels it
+    // ("thinking high" / "thinking on" / "thinking off") so the two agree — a
+    // bare "high" next to the model name reads as part of it. Plain dim text
+    // rather than a filled chip: this is a preference you set and forget.
+    // Shown only when the model declares effort levels.
+    if (thinkingEnabled && getActiveModelCaps()?.effort) {
+      segments.push(T(nextId(), `thinking ${shared.activeEffort ?? "on"}`, { dimColor: true, align: "right" }));
+    }
+
+    // Provider-prefixed: the same model (e.g. DeepSeek Flash) is served by
+    // several providers with different routing and billing, so the bar names
+    // which one the next message goes to.
+    segments.push(T(nextId(), `${shared.providerName}/${modelDisplayName()}`, { dimColor: true, align: "right" }));
 
     return segments;
   }

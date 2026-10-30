@@ -1,10 +1,12 @@
 /**
- * Nib StatusBar — the session status line above the hint bar.
+ * Nib StatusBar — the session status line, the last row of the frame.
  *
  * Segments are built by the caller (see buildStatusBar in cli.tsx) and
- * typically include: active mode/posture, effort level, the active model,
- * context usage (meter + %), and session cost — plus gitStatus and the
- * optional session timer rendered directly by this component.
+ * typically include: active mode/posture, context usage (meter + %), and
+ * session cost on the left; effort level and the active model on the right
+ * (`align: "right"`). This component adds gitStatus, the running-job count
+ * and the optional session timer to the left group, and owns the frame's only
+ * animation: a spinner slot at the very start of the row.
  *
  * All colors are theme-driven via ThemeContext.
  */
@@ -12,18 +14,26 @@
 import React, { useState, useEffect, useMemo, memo } from "react";
 import { Box, Text } from "ink";
 import type { StatusSegment, GitStatus } from "./types.js";
-import { useTheme, useTerminalInfo } from "./contexts.js";
+import { useTheme, useTerminalInfo, useRefresh } from "./contexts.js";
 import { ansiFg, ANSI_RESET, ANSI } from "./theme.js";
 
 interface StatusBarProps {
   segments: StatusSegment[];
   /** Optional git status to display */
   gitStatus?: GitStatus | null;
+  /** Running background jobs; shown after git, only while at least one runs */
+  runningJobs?: number;
+  /** True while a turn or compaction runs: animates the leading spinner slot. */
+  working?: boolean;
   /** Whether to show the session timer */
   showTimer?: boolean;
   /** Unix timestamp when the session started (ms) */
   sessionStart?: number;
 }
+
+const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+/** Glyph + space, reserved whether or not it animates so nothing shifts. */
+const SPINNER_SLOT = 2;
 
 /**
  * Format elapsed time as HH:MM:SS.
@@ -100,12 +110,27 @@ function gitStatusString(
 function StatusBar({
   segments,
   gitStatus,
+  runningJobs = 0,
+  working = false,
   showTimer = false,
   sessionStart,
 }: StatusBarProps) {
   const theme = useTheme();
   const term = useTerminalInfo();
   const [now, setNow] = useState(Date.now());
+  const [frame, setFrame] = useState(0);
+  // Advances on the shared refresh cadence so all repaint timers move together.
+  const TICK_MS = useRefresh().indicatorMs;
+
+  // The frame is LOCAL state: a tick re-renders only this row, never App's
+  // subtree (which would re-lay-out the whole transcript 12.5x/second — the
+  // original "Working…" freeze).
+  useEffect(() => {
+    if (!working) return;
+    setFrame(0);
+    const timer = setInterval(() => setFrame((f) => f + 1), TICK_MS);
+    return () => clearInterval(timer);
+  }, [working, TICK_MS]);
 
   // Update timer every second
   useEffect(() => {
@@ -115,7 +140,7 @@ function StatusBar({
   }, [showTimer, sessionStart]);
 
   // No segments + no git status + no timer + no tokens = nothing to show
-  if (segments.length === 0 && !gitStatus && !showTimer) return null;
+  if (segments.length === 0 && !gitStatus && !showTimer && !working) return null;
 
   const t = theme.theme.statusBar;
   const dim = (s: string) => theme.fg(theme.theme.textDim, s);
@@ -152,7 +177,9 @@ function StatusBar({
   });
 
   const sep = dim(" · ");
-  const statusLine = segmentTexts.join(sep);
+  const leftTexts = segmentTexts.filter((_, i) => segments[i].align !== "right");
+  const statusLine = leftTexts.join(sep);
+  const rightStr = segmentTexts.filter((_, i) => segments[i].align === "right").join(sep);
 
   // Git status (if available). Joined with the same "·" separator as everything
   // else — a bare space made it read as a continuation of the preceding segment
@@ -176,6 +203,10 @@ function StatusBar({
     }));
   }
 
+  // Last in the left group: it appears and disappears, so anywhere earlier it
+  // would shift the stable items sideways.
+  const jobsStr = runningJobs > 0 ? sep + dim(`${runningJobs} ${runningJobs === 1 ? "job" : "jobs"}`) : "";
+
   // Session timer — adaptive format based on duration
   let timerStr = "";
   if (showTimer && sessionStart) {
@@ -189,15 +220,16 @@ function StatusBar({
   }
 
   // A single status line (no extra horizontal rule \u2014 the input box above already
-  // provides the visual divider). Fixed trailing info (git/timer/tokens) is
-  // always kept; the model/mode/ctx/cost/effort segments fill the remaining
-  // width, and any that don't fit are dropped behind an ellipsis.
+  // provides the visual divider). Fixed trailing info (git/jobs/timer) is
+  // always kept; the mode/posture/ctx/cost segments fill the remaining width,
+  // and any that don't fit are dropped behind an ellipsis. The right group is
+  // only shown when the whole left group fits with a gap to spare.
   const cleanLen = (s: string) => s.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "").length;
   const sepLen = cleanLen(sep);
   const maxWidth = Math.max(term.columns - 1, 10);
-  const fixedLen = cleanLen(gitStr) + cleanLen(timerStr);
+  const fixedLen = cleanLen(gitStr) + cleanLen(jobsStr) + cleanLen(timerStr);
 
-  const segBudget = maxWidth - fixedLen;
+  const segBudget = maxWidth - SPINNER_SLOT - fixedLen;
   const fullSegLen = cleanLen(statusLine);
 
   let segmentBody: string;
@@ -207,7 +239,7 @@ function StatusBar({
     const kept: string[] = [];
     let used = 0;
     const ellipsisLen = 2; // "\u2026"
-    for (const segText of segmentTexts) {
+    for (const segText of leftTexts) {
       const len = cleanLen(segText);
       const addLen = (kept.length > 0 ? sepLen : 0) + len;
       if (used + addLen + sepLen + ellipsisLen <= segBudget) {
@@ -220,13 +252,18 @@ function StatusBar({
     segmentBody = kept.length > 0 ? `${kept.join(sep)}${dim(" \u2026")}` : dim("\u2026");
   }
 
+  // Full-intensity accent so the animation reads at a glance against the dim row.
+  const glyph = SPINNER_FRAMES[frame % SPINNER_FRAMES.length];
+  const spinner = working
+    ? (theme.colorEnabled ? `${ansiFg(theme.theme.accent)}${glyph}${ANSI_RESET}` : glyph) + " "
+    : " ".repeat(SPINNER_SLOT);
+  const left = `${spinner}${segmentBody}${gitStr}${jobsStr}${timerStr}`;
+  const gap = maxWidth - cleanLen(left) - cleanLen(rightStr);
+  const body = rightStr && gap >= 2 ? left + " ".repeat(gap) + rightStr : left;
+
   return (
     <Box>
-      <Text>
-        {segmentBody}
-        {gitStr}
-        {timerStr}
-      </Text>
+      <Text>{body}</Text>
     </Box>
   );
 }

@@ -58,6 +58,8 @@ export interface StatusSegment {
    * nest escapes and clobber the embedded background runs.
    */
   raw?: boolean;
+  /** Pin the segment to the right edge, after the left group. Dropped first when the row is narrow. */
+  align?: "right";
 }
 
 // ── Tab / Multiplex ──

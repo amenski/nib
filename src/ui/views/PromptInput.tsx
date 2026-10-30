@@ -41,7 +41,7 @@ interface Props {
   /**
    * Status line rendered inside the input box, under the typed text. Lives here
    * rather than as a separate row below so the box reads as one unit and the
-   * frame keeps its only animating line (the hint bar) at the very bottom.
+   * frame keeps its only animating line (the status line spinner) at the very bottom.
    */
   statusLine?: React.ReactNode;
   promptDraft?: { nonce: number; text: string } | null;

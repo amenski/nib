@@ -53,7 +53,7 @@ function formatCwd(path: string): string {
  *    its cause.
  *
  * The mark is reverse video (text on an accent slab) via the same `chip()`
- * helper used for chips in the status bar and key-caps in the hint bar, so it
+ * helper used for chips in the status bar and key-caps in pickers, so it
  * reads as one system.
  */
 export function buildWelcomeLines(theme: ThemeContextValue, opts: WelcomeOpts): string[] {

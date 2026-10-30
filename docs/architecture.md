@@ -199,8 +199,9 @@ architectural level. Details: mode-spec.md.
 
 Ink/React TUI (`src/ui/App.tsx`), rendered with `incrementalRendering`.
 Layout: transcript (`OutputArea`) → todo panel → modal overlays → queued
-follow-ups → `PromptInput` + status bar → `HintBar` (deliberately the last
-row — see the repaint note in `src/ui/HintBar.tsx`). Full command surface:
+follow-ups → working line → `PromptInput` + status bar (deliberately the
+last row, and the only animated one — see the repaint note in
+`src/ui/App.tsx`). Full command surface:
 cli-spec.md.
 
 ## 10. Where files live

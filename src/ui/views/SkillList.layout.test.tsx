@@ -85,7 +85,7 @@ describe("SkillList layout", () => {
   });
 
   it("uses key-caps in the footer", () => {
-    // Same vocabulary as the hint bar and model picker. Without colour a chip
+    // Same vocabulary as the model picker. Without colour a chip
     // degrades to bracketed text, which is what the test renderer shows.
     const frame = strip(setup().lastFrame() ?? "");
     expect(frame).toContain("[↑↓] move");

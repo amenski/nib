@@ -32,6 +32,11 @@ export function shellLabel(command: string): string {
 
 const isRunning = (item: BackgroundItem) => item.status === "running";
 
+/** Running background shell jobs; sub-agents are not "jobs" in the status bar. */
+export function runningShellCount(items: BackgroundItem[]): number {
+  return items.filter((i) => i.kind === "shell" && isRunning(i)).length;
+}
+
 /**
  * Running items first (shells before agents, newest first), then finished
  * shells, most recently ended first. Finished agents are dropped unless the

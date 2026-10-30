@@ -60,6 +60,15 @@ describe("detectSystemThemeFrom", () => {
   });
 });
 
+describe("key-cap legibility", () => {
+  // A chip paints textBright on border; a chord must never vanish into its own background.
+  it("never paints a key-cap in its own background colour", () => {
+    for (const [name, t] of Object.entries(BUILTIN_THEMES)) {
+      expect(t.textBright, `${name}: key-cap fg must differ from its border background`).not.toBe(t.border);
+    }
+  });
+});
+
 describe("single built-in theme", () => {
   it("registers only dark", () => {
     expect(Object.keys(BUILTIN_THEMES)).toEqual(["dark"]);

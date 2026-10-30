@@ -6,7 +6,7 @@ import { parseTerminalInput } from "./hooks/useTerminalInput.js";
 const src = (p: string) => readFileSync(join(process.cwd(), "src", p), "utf-8");
 
 /**
- * The hint bar advertises keyboard chords. A hint for a chord nothing handles
+ * The prompt placeholder and the posture segment advertise keyboard chords. A hint for a chord nothing handles
  * is worse than no hint — the user presses it, nothing happens, and they
  * distrust the rest of the bar.
  *
@@ -22,7 +22,7 @@ const src = (p: string) => readFileSync(join(process.cwd(), "src", p), "utf-8");
  *   prompt. The hint, the handler, and the default binding are all removed;
  *   the aliasing tests below keep the whole class out.
  */
-describe("hint bar chords are reachable", () => {
+describe("advertised chords are reachable", () => {
   it("cannot distinguish ctrl+p from ctrl+shift+p", () => {
     // The root cause, asserted directly: if this ever changes (e.g. the Kitty
     // keyboard protocol is adopted), a shift-qualified ctrl binding becomes
@@ -33,43 +33,26 @@ describe("hint bar chords are reachable", () => {
     expect(key.shift).toBe(false);
   });
 
-  it("advertises no chord that PromptInput swallows first", () => {
-    // PromptInput owns the stdin wire (it calls stdin.resume() while active),
-    // so any ctrl chord it handles never reaches App's useInput. A hint for
-    // such a chord is a lie unless PromptInput itself acts on it.
-    const app = src("ui/App.tsx");
-    const prompt = src("ui/views/PromptInput.tsx");
+  /** The empty-prompt placeholder, which is where the chords are advertised. */
+  const placeholder = () => /placeholder="([^"]+)"/.exec(src("ui/App.tsx"))?.[1] ?? "";
 
-    // Chords PromptInput consumes and returns from, by ctrl-letter.
-    const swallowed = new Set(
-      [...prompt.matchAll(/key\.ctrl && key\.value === "(\w)"/g)].map((m) => m[1]),
-    );
-    expect(swallowed.size).toBeGreaterThan(0);
-
-    // Chords the hint bar advertises, written as "^X".
-    const hintBlock = app.slice(app.indexOf("<HintBar"), app.indexOf("</Box>", app.indexOf("<HintBar")));
-    const advertised = [...hintBlock.matchAll(/key: "\^(?:⇧)?(\w)"/g)].map((m) => m[1].toLowerCase());
-
-    for (const letter of advertised) {
-      if (!swallowed.has(letter)) continue;
-      // If PromptInput swallows it, PromptInput must be the one acting on it.
-      const handler = new RegExp(
-        `key\\.ctrl && key\\.value === "${letter}"\\s*\\)\\s*\\{[^}]*on\\w+\\?\\.\\(`,
-      );
-      expect(
-        handler.test(prompt),
-        `hint bar advertises ^${letter.toUpperCase()} but PromptInput swallows it without invoking a handler`,
-      ).toBe(true);
-    }
+  it("advertises ctrl+o and the slash menu in the prompt placeholder", () => {
+    expect(placeholder()).toBe("Type your message… (/ commands · ⌃O mode)");
   });
 
   it("does not advertise the unreachable command palette chord", () => {
-    // Scope to the hint ARRAYS, not the surrounding block — the explanatory
-    // comment above them legitimately names the dead chord.
-    const app = src("ui/App.tsx");
-    const hints = [...app.matchAll(/\{ key: "([^"]+)", label: "[^"]+" \}/g)].map((m) => m[1]);
-    expect(hints.length).toBeGreaterThan(0);
-    expect(hints).not.toContain("^⇧P");
+    // ctrl+p and ctrl+shift+p are the same byte; PromptInput owns ctrl+p.
+    expect(placeholder()).not.toMatch(/(?:\^|⌃)⇧P/);
+  });
+
+  it("every posture segment in the status bar carries the (shift+tab) hint", () => {
+    // buildStatusBar is a closure in main(), so assert on the source: auto, plan
+    // and normal each append the shared postureHint.
+    const cli = src("cli.tsx");
+    expect(cli).toContain('" (shift+tab)"');
+    expect(cli).toMatch(/\(colorEnabled \? `\\x1b\[1m[^`]*autoText[^`]*` : autoText\) \+ postureHint/);
+    expect(cli).toContain("plan${postureHint}");
+    expect(cli).toContain("normal${postureHint}");
   });
 
   it("byte-aliased chords can never arrive as ctrl combinations", () => {
@@ -84,23 +67,15 @@ describe("hint bar chords are reachable", () => {
     expect(tab.ctrl).toBe(false);
   });
 
-  it("advertises no byte-aliased chord in the hint bar", () => {
-    const app = src("ui/App.tsx");
-    const hints = [...app.matchAll(/\{ key: "([^"]+)", label: "[^"]+" \}/g)].map((m) => m[1]);
-    expect(hints.length).toBeGreaterThan(0);
-    for (const h of hints) {
-      // Covers both glyph conventions ("^X" and "⌃X").
-      expect(h, `hint "${h}" uses a chord that is byte-identical to Enter/Tab`)
-        .not.toMatch(/(?:\^|⌃)(?:⇧)?[MI]$/);
-    }
+  it("advertises no byte-aliased chord in the placeholder", () => {
+    // Covers both glyph conventions ("^X" and "⌃X").
+    expect(placeholder()).not.toMatch(/(?:\^|⌃)(?:⇧)?[MI]\b/);
   });
 
   it("the mode-picker hint chord (ctrl+o) is encodable and routed to a handler", () => {
     // 0x0F is the classic terminal byte for ctrl+o — not aliased to Enter or
     // Tab. PromptInput owns the idle input wire, so it must be the one that
-    // handles it (like the ⇧Tab posture cycle) — and the generic
-    // "swallowed" contract above already verifies its handler invokes a
-    // callback.
+    // handles it (like the ⇧Tab posture cycle).
     const key = parseTerminalInput("\x0f").keys[0];
     expect(key.ctrl).toBe(true);
     expect(key.value).toBe("o");

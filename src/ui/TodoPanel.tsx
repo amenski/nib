@@ -23,8 +23,9 @@ interface Props {
  * Renders between the transcript and the input.
  *
  * Event-driven: re-renders only when the store pushes a new list (App.tsx
- * subscribes), never on a timer — the only timer-driven row is HintBar, the
- * LAST row, so a panel repaint cannot cascade below it (see HintBar.tsx).
+ * subscribes), never on a timer — the only timer-driven row is the status
+ * line's spinner, the LAST row, so a panel repaint cannot cascade below it
+ * (see StatusBar.tsx).
  * Glyphs: ◻ pending (dim) / ▸ in_progress (accent) / ☑ completed (dim).
  */
 export default function TodoPanel({ todos, active, gapAbove = false }: Props) {

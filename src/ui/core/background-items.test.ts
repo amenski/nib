@@ -4,6 +4,7 @@ import {
   collectBackgroundItems,
   completionLine,
   formatAge,
+  runningShellCount,
   type BackgroundItem,
 } from "./background-items.js";
 import type { TaskRecord } from "../../orchestrator/runner.js";
@@ -32,6 +33,17 @@ describe("formatAge", () => {
     expect(formatAge(12_000)).toBe("12s");
     expect(formatAge(180_000)).toBe("3m");
     expect(formatAge(2 * 3_600_000)).toBe("2h");
+  });
+});
+
+describe("runningShellCount", () => {
+  it("counts running shells only, not agents or finished jobs", () => {
+    const items = collectBackgroundItems(
+      [job({ id: "a" }), job({ id: "b", status: "done", exitCode: 0, endTime: NOW }), job({ id: "c" })],
+      [task()],
+    );
+    expect(runningShellCount(items)).toBe(2);
+    expect(runningShellCount([])).toBe(0);
   });
 });
 

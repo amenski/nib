@@ -912,9 +912,7 @@ describe("posture", () => {
     return { ctx, changes };
   }
 
-  const hint = (frame: string): string | undefined => /⇧ Tab\]\s+(\w+)/.exec(frame)?.[1];
-
-  it("Shift+Tab cycles normal → auto → plan → normal; the bar and hint follow", async () => {
+  it("Shift+Tab cycles normal → auto → plan → normal; the bar follows", async () => {
     const { ctx, changes } = makePostureCtx();
     const inst = render(<App ctx={ctx} />);
     mounted.push(inst);
@@ -922,20 +920,17 @@ describe("posture", () => {
 
     let frame = stripAnsi(inst.lastFrame() ?? "");
     expect(frame).toContain("bar:normal");
-    expect(hint(frame)).toBe("auto");
 
     inst.stdin.write(SHIFT_TAB);
     await flush();
     frame = stripAnsi(inst.lastFrame() ?? "");
     expect(frame).toContain("bar:auto");
     expect(ctx.mutable.posture).toBe("auto");
-    expect(hint(frame)).toBe("plan");
 
     inst.stdin.write(SHIFT_TAB);
     await flush();
     frame = stripAnsi(inst.lastFrame() ?? "");
     expect(frame).toContain("bar:plan");
-    expect(hint(frame)).toBe("normal");
 
     inst.stdin.write(SHIFT_TAB);
     await flush();
@@ -952,8 +947,7 @@ describe("posture", () => {
     mounted.push(inst);
     await flush();
 
-    const frame = stripAnsi(inst.lastFrame() ?? "");
-    expect(hint(frame)).toBe("plan");
+    expect(stripAnsi(inst.lastFrame() ?? "")).toContain("bar:auto");
     inst.stdin.write(SHIFT_TAB);
     await flush();
     expect(ctx.mutable.posture).toBe("plan");

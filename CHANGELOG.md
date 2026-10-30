@@ -24,6 +24,17 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   agent lifted from web pages or command output can no longer pass as prompt
   instructions, while your recorded decisions are still presented as context
   to apply.
+- **The status line is now two groups.** On the left: mode, posture, context
+  meter, git status, and a running-job count (`1 job` / `2 jobs`, shown only
+  while a background job runs). On the right edge: `thinking <level>` and the
+  model. On a narrow terminal the right group is dropped first.
+- **The bottom hint row is gone.** The status line is now the last row and
+  carries the spinner at its start. While a turn runs, a dim
+  `working… (esc to interrupt)` line (or `compacting…`) sits above the input.
+  The posture shows `(shift+tab)` inline, and the prompt placeholder lists
+  `/ commands` and `⌃O mode`.
+- **`auto` posture is louder.** It shows a `▸▸` glyph in bold warning colour,
+  since it is now the only reminder that approvals are skipped.
 - **The startup notice "No active OS containment" is gone.** It showed on
   every launch without a sandbox configured. The warning for a sandbox that is
   configured but cannot be enforced on this platform stays.

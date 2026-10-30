@@ -105,8 +105,9 @@ describe("containmentWarning", () => {
     expect(hasActiveSandboxContainment({ permissionProfile: { level: "workspace-write" }, sandbox: { enabled: false } }, "darwin")).toBe(false);
   });
 
-  it("warns when no OS containment is active", () => {
-    expect(containmentWarning({}, "darwin")).toContain("No active OS containment");
+  it("does not warn when no OS containment is configured", () => {
+    expect(containmentWarning({}, "darwin")).toBeUndefined();
+    expect(containmentWarning({ permissionProfile: { level: "unrestricted" }, sandbox: { enabled: true } }, "darwin")).toBeUndefined();
   });
 
   it("does not warn for a supported enabled sandbox with a restrictive profile", () => {

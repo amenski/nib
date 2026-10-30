@@ -377,16 +377,16 @@ export function hasActiveSandboxContainment(
 }
 
 /**
- * States the effective containment guarantee for the startup UI. Permission
- * prompts still work without it, but they are consent rather than a boundary
- * around the user's account and filesystem.
+ * Warns at startup when OS containment is configured but the platform cannot
+ * enforce it. Running without containment configured is the user's choice and
+ * gets no notice.
  */
 export function containmentWarning(
   config: Pick<DeepCodeSettings, "permissionProfile" | "sandbox">,
   platform: NodeJS.Platform = process.platform,
 ): string | undefined {
   if (!config.permissionProfile || config.permissionProfile.level === "unrestricted" || !config.sandbox?.enabled) {
-    return "⚠ No active OS containment — approvals run with your account's normal access.";
+    return undefined;
   }
   if (!hasActiveSandboxContainment(config, platform)) {
     return "⚠ OS containment is configured, but the platform cannot enforce it — approvals run policy-only.";

@@ -94,6 +94,16 @@ function testsPass(workdir: string, file: string): Assertion {
   return { pass: res.ok && res.out.includes("# pass") && res.out.includes("# fail 0"), message: res.ok ? summary : res.out };
 }
 
+/** Python's unittest reports to stderr and exits 0 only when everything passed. */
+function pythonTestsPass(workdir: string): Assertion {
+  const res = run("python3 -m unittest discover -s tests -t . 2>&1", workdir);
+  const lines = res.out.trim().split("\n").filter(Boolean);
+  const summary = (lines.slice(-2).join("; ") || "(no output)").slice(0, 200);
+  // Exit status alone is the verdict: discovery imports every test module, so a
+  // syntax error in the source also has to fail the case.
+  return { pass: res.ok, message: summary };
+}
+
 const EDIT_TOOLS = ["edit", "apply_diff", "apply_patch", "write_to_file"];
 
 export const EVAL_CASES: EvalCase[] = [
@@ -253,6 +263,65 @@ export const EVAL_CASES: EvalCase[] = [
           `risk rows ${rated.length}`,
           cleanup ? `cleanup tier ${cleanup.riskTier}` : "no rm -rf dist row",
           allowedBlock.length > 0 ? `ALLOWED A BLOCK: ${allowedBlock.map((r) => r.riskReasons?.join("/")).join(", ")}` : "no block allowed",
+        ].join("; "),
+      };
+    },
+  },
+  {
+    id: "G8",
+    name: "G8 — Add a cross-file feature (taskflow)",
+    fixtureDir: "taskflow",
+    // Deliberately under-specified in the way a real ticket is: the sort key
+    // (`due`) is named in the README and absent from the prompt, and one task
+    // has no `due` at all, so the agent has to discover both from the data
+    // rather than follow a checklist.
+    prompt:
+      "add a --sort flag to src/index.js that orders the listed tasks by their due date, soonest first. tasks without a due date go last.",
+    assert: (ctx) => {
+      const res = run("node src/index.js --sort", ctx.workdir);
+      const got = res.out.trim().split("\n").filter(Boolean);
+      // The default listing is `open` only, so the `done` task never appears.
+      // Soonest first, undated last — and the undated task sits second in the
+      // file, so "never sorted at all" produces a different, wrong order.
+      const expected = ["write the design note", "review the RFC", "ship the migration", "archive old builds"];
+      const ordered = got.length === expected.length && got.every((line, i) => line === expected[i]);
+      // Without --sort the listing must stay in file order, so a model that
+      // sorts unconditionally fails here even though --sort looks right.
+      const fileOrder = ["write the design note", "archive old builds", "ship the migration", "review the RFC"];
+      const plain = run("node src/index.js", ctx.workdir).out.trim().split("\n").filter(Boolean);
+      const defaultUnchanged = plain.length === fileOrder.length && plain.every((line, i) => line === fileOrder[i]);
+      return {
+        pass: res.ok && ordered && defaultUnchanged,
+        message: res.ok
+          ? [
+              ordered ? "sorted soonest-first, undated last" : `WRONG ORDER: ${got.join(" | ") || "(no output)"}`,
+              defaultUnchanged ? "default listing unchanged" : `DEFAULT LISTING CHANGED: ${plain.join(" | ")}`,
+            ].join("; ")
+          : `script FAILED (${res.out})`,
+      };
+    },
+  },
+  {
+    id: "G9",
+    name: "G9 — Fix a Python test (pytime)",
+    fixtureDir: "pytime",
+    // The first case in a second language: nothing about the task is
+    // Node-shaped, so it measures whether the agent explores an unfamiliar repo
+    // (tests/ layout, unittest discovery) instead of applying a memorised loop.
+    prompt: "one test in this project fails. fix the source code (not the test) so `python3 -m unittest discover -s tests -t .` passes.",
+    assert: (ctx) => {
+      const py = pythonTestsPass(ctx.workdir);
+      // The test file must be untouched: the case is "fix the source", and a
+      // deleted or weakened assertion would otherwise count as a pass.
+      const testFile = "tests/test_duration.py";
+      const original = ctx.baseline[testFile];
+      const current = existsSync(join(ctx.workdir, testFile)) ? readFileSync(join(ctx.workdir, testFile), "utf-8") : "";
+      const testUntouched = original !== undefined && createHash("sha256").update(current).digest("hex") === original;
+      return {
+        pass: py.pass && testUntouched,
+        message: [
+          py.pass ? `tests pass (${py.message})` : `tests FAIL (${py.message})`,
+          testUntouched ? "test file untouched" : "TEST FILE CHANGED",
         ].join("; "),
       };
     },

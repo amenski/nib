@@ -54,10 +54,15 @@ const EVAL_SETTINGS = {
       { tool: "apply_diff", pattern: "./**", action: "allow" },
       { tool: "apply_patch", pattern: "./**", action: "allow" },
       { tool: "write_to_file", pattern: "./**", action: "allow" },
-      // G2/G6: node --test [src/*.test.js]
+      // G2/G6/G8: node --test [src/*.test.js]
       { tool: "run_bash", pattern: "node --test:*", action: "allow" },
-      // G3/G4: node src/index.js [...]
+      // G3/G4/G8: node src/index.js [...]
       { tool: "run_bash", pattern: "node src/index.js:*", action: "allow" },
+      // G9: Python's unittest discovery, the language-parity of the node --test
+      // rule above. Like that rule it executes code the agent edited (discovery
+      // imports the source), so it is only as safe as the fixture copy and the
+      // sandbox; it is narrower than `python3:*`, which would also allow `-c`.
+      { tool: "run_bash", pattern: "python3 -m unittest:*", action: "allow" },
       // G7: the risky fixture's cleanup — exact matches, deliberately, not the
       // prefix form the node rules use. A prefix `rm -rf dist` would also match
       // `rm -rf dist/../../..`, because a prefix rule's final token extends at

@@ -25,3 +25,6 @@ dev-todo.md
 eval-report.json
 eval-report-d8.json
 eval-report-d12*.json
+
+# Python bytecode (fixtures/pytime; the eval runs unittest in copies)
+__pycache__/

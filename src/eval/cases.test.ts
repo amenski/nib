@@ -298,6 +298,127 @@ describe("eval case assertions", () => {
   });
 });
 
+describe("G8 — cross-file feature (taskflow)", () => {
+  /** src/index.js as the feature leaves it: a --sort flag over the due date. */
+  function sortedIndex(): string {
+    return [
+      'import { loadTasks } from "./store.js";',
+      'import { byStatus } from "./filter.js";',
+      "",
+      "const args = process.argv.slice(2);",
+      "",
+      "function flagValue(name) {",
+      "  const idx = args.indexOf(name);",
+      "  return idx === -1 ? undefined : args[idx + 1];",
+      "}",
+      "",
+      'const status = flagValue("--status") ?? "open";',
+      "const tasks = byStatus(loadTasks(), status);",
+      "",
+      'if (args.includes("--sort")) {',
+      "  tasks.sort((a, b) => {",
+      "    if (!a.due && !b.due) return 0;",
+      "    if (!a.due) return 1;",
+      "    if (!b.due) return -1;",
+      "    return a.due.localeCompare(b.due);",
+      "  });",
+      "}",
+      "",
+      "for (const task of tasks) {",
+      "  console.log(task.title);",
+      "}",
+      "",
+    ].join("\n");
+  }
+
+  it("fails on the pristine fixture (no --sort yet)", () => {
+    const result = caseById("G8").assert(ctx(copyFixture("G8")));
+    expect(result.pass).toBe(false);
+    expect(result.message).toContain("WRONG ORDER");
+  });
+
+  it("fails when the flag exists but the undated task is not last", () => {
+    const copy = copyFixture("G8");
+    // Sorted, but the undated task is treated as the earliest date.
+    write(
+      copy,
+      "src/index.js",
+      sortedIndex().replace(
+        "    if (!a.due) return 1;\n    if (!b.due) return -1;",
+        "    if (!a.due) return -1;\n    if (!b.due) return 1;",
+      ),
+    );
+    const result = caseById("G8").assert(ctx(copy));
+    expect(result.pass).toBe(false);
+    expect(result.message).toContain("WRONG ORDER");
+  });
+
+  it("fails when sorting breaks the default listing", () => {
+    const copy = copyFixture("G8");
+    // Sorts unconditionally, so plain `node src/index.js` changes too.
+    write(copy, "src/index.js", sortedIndex().replace('if (args.includes("--sort")) {', "if (true) {"));
+    const result = caseById("G8").assert(ctx(copy));
+    expect(result.pass).toBe(false);
+    expect(result.message).toContain("DEFAULT LISTING CHANGED");
+  });
+
+  it("passes when --sort orders by due date, undated last, default untouched", () => {
+    const copy = copyFixture("G8");
+    write(copy, "src/index.js", sortedIndex());
+    const result = caseById("G8").assert(ctx(copy));
+    expect(result.pass).toBe(true);
+  });
+});
+
+describe("G9 — Python test fix (pytime)", () => {
+  const REPAIR = [
+    '    total = 0',
+    '    number = ""',
+    "    for char in text:",
+    "        if char.isdigit():",
+    "            number += char",
+    "        elif char in _UNITS:",
+    '            if number == "":',
+    '                raise ValueError("missing number before unit: " + char)',
+    "            total += int(number) * _UNITS[char]",
+    '            number = ""',
+    "        else:",
+    '            raise ValueError("unexpected character: " + char)',
+    '    if number != "":',
+    '        raise ValueError("trailing number with no unit: " + number)',
+    "    return total",
+    "",
+  ].join("\n");
+
+  function repair(copy: Copy): void {
+    const source = readFileSync(join(copy.workdir, "src/duration.py"), "utf-8");
+    const head = source.slice(0, source.indexOf("    total = 0"));
+    write(copy, "src/duration.py", head + REPAIR);
+  }
+
+  it("fails on the pristine fixture (trailing number is silently dropped)", () => {
+    const result = caseById("G9").assert(ctx(copyFixture("G9")));
+    expect(result.pass).toBe(false);
+    expect(result.message).toContain("tests FAIL");
+  });
+
+  it("fails when the source is correct but the test was weakened", () => {
+    const copy = copyFixture("G9");
+    repair(copy);
+    write(copy, "tests/test_duration.py", "import unittest\n\nclass T(unittest.TestCase):\n    def test_nothing(self):\n        pass\n");
+    const result = caseById("G9").assert(ctx(copy));
+    expect(result.pass).toBe(false);
+    expect(result.message).toContain("TEST FILE CHANGED");
+  });
+
+  it("passes when the source is repaired and the test is untouched", () => {
+    const copy = copyFixture("G9");
+    repair(copy);
+    const result = caseById("G9").assert(ctx(copy));
+    expect(result.pass).toBe(true);
+  });
+});
+
 describe("INVALID trials", () => {
   it("a timed-out spawn is INVALID", () => {
     const err = Object.assign(new Error("spawnSync tsx ETIMEDOUT"), { code: "ETIMEDOUT" });

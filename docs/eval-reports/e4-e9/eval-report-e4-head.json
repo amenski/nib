@@ -1,0 +1,548 @@
+{
+  "startedAt": "2026-10-29T11:54:45.765Z",
+  "provider": "deepseek",
+  "model": "default",
+  "trialsPerCase": 10,
+  "cases": [
+    {
+      "name": "G1 \u2014 Explain a module, read-only",
+      "trials": [
+        {
+          "pass": true,
+          "message": "described the module; no files written; no write tools used",
+          "durationMs": 7271,
+          "inputTokens": 5566,
+          "outputTokens": 721,
+          "costUsd": 0.0012675
+        },
+        {
+          "pass": true,
+          "message": "described the module; no files written; no write tools used",
+          "durationMs": 5689,
+          "inputTokens": 5563,
+          "outputTokens": 527,
+          "costUsd": 0.00115065
+        },
+        {
+          "pass": true,
+          "message": "described the module; no files written; no write tools used",
+          "durationMs": 8318,
+          "inputTokens": 5560,
+          "outputTokens": 938,
+          "costUsd": 0.0013968
+        },
+        {
+          "pass": true,
+          "message": "described the module; no files written; no write tools used",
+          "durationMs": 6785,
+          "inputTokens": 5564,
+          "outputTokens": 771,
+          "costUsd": 0.0012972
+        },
+        {
+          "pass": true,
+          "message": "described the module; no files written; no write tools used",
+          "durationMs": 5176,
+          "inputTokens": 5564,
+          "outputTokens": 396,
+          "costUsd": 0.0010722
+        },
+        {
+          "pass": true,
+          "message": "described the module; no files written; no write tools used",
+          "durationMs": 6713,
+          "inputTokens": 5565,
+          "outputTokens": 759,
+          "costUsd": 0.00129015
+        },
+        {
+          "pass": true,
+          "message": "described the module; no files written; no write tools used",
+          "durationMs": 5652,
+          "inputTokens": 5557,
+          "outputTokens": 582,
+          "costUsd": 0.00118275
+        },
+        {
+          "pass": true,
+          "message": "described the module; no files written; no write tools used",
+          "durationMs": 6780,
+          "inputTokens": 5562,
+          "outputTokens": 825,
+          "costUsd": 0.0013293
+        },
+        {
+          "pass": true,
+          "message": "described the module; no files written; no write tools used",
+          "durationMs": 6384,
+          "inputTokens": 5553,
+          "outputTokens": 699,
+          "costUsd": 0.00125235
+        },
+        {
+          "pass": true,
+          "message": "described the module; no files written; no write tools used",
+          "durationMs": 5417,
+          "inputTokens": 5558,
+          "outputTokens": 509,
+          "costUsd": 0.0011391
+        }
+      ],
+      "passRate": 1,
+      "invalid": 0,
+      "inputTokens": 55612,
+      "outputTokens": 6727,
+      "costUsd": 0.012378
+    },
+    {
+      "name": "G2 \u2014 Fix the failing test (calc)",
+      "trials": [
+        {
+          "pass": true,
+          "message": "tests pass (# skipped 0; # todo 0; # duration_ms 68.744542)",
+          "durationMs": 12804,
+          "inputTokens": 29643,
+          "outputTokens": 1364,
+          "costUsd": 0.00526485
+        },
+        {
+          "pass": true,
+          "message": "tests pass (# skipped 0; # todo 0; # duration_ms 67.42325)",
+          "durationMs": 8119,
+          "inputTokens": 18543,
+          "outputTokens": 618,
+          "costUsd": 0.00315225
+        },
+        {
+          "pass": true,
+          "message": "tests pass (# skipped 0; # todo 0; # duration_ms 66.743208)",
+          "durationMs": 9476,
+          "inputTokens": 18376,
+          "outputTokens": 971,
+          "costUsd": 0.003339
+        },
+        {
+          "pass": true,
+          "message": "tests pass (# skipped 0; # todo 0; # duration_ms 66.979625)",
+          "durationMs": 15078,
+          "inputTokens": 34483,
+          "outputTokens": 1415,
+          "costUsd": 0.00602145
+        },
+        {
+          "pass": true,
+          "message": "tests pass (# skipped 0; # todo 0; # duration_ms 66.397375)",
+          "durationMs": 9584,
+          "inputTokens": 23665,
+          "outputTokens": 757,
+          "costUsd": 0.00400395
+        },
+        {
+          "pass": true,
+          "message": "tests pass (# skipped 0; # todo 0; # duration_ms 66.69925)",
+          "durationMs": 10429,
+          "inputTokens": 23255,
+          "outputTokens": 1001,
+          "costUsd": 0.00408885
+        },
+        {
+          "pass": true,
+          "message": "tests pass (# skipped 0; # todo 0; # duration_ms 69.247375)",
+          "durationMs": 9852,
+          "inputTokens": 18243,
+          "outputTokens": 979,
+          "costUsd": 0.00332385
+        },
+        {
+          "pass": true,
+          "message": "tests pass (# skipped 0; # todo 0; # duration_ms 67.032583)",
+          "durationMs": 10511,
+          "inputTokens": 23028,
+          "outputTokens": 801,
+          "costUsd": 0.0039348
+        },
+        {
+          "pass": true,
+          "message": "tests pass (# skipped 0; # todo 0; # duration_ms 68.568042)",
+          "durationMs": 9116,
+          "inputTokens": 18415,
+          "outputTokens": 871,
+          "costUsd": 0.00328485
+        },
+        {
+          "pass": true,
+          "message": "tests pass (# skipped 0; # todo 0; # duration_ms 64.746875)",
+          "durationMs": 11088,
+          "inputTokens": 28811,
+          "outputTokens": 1065,
+          "costUsd": 0.00496065
+        }
+      ],
+      "passRate": 1,
+      "invalid": 0,
+      "inputTokens": 236462,
+      "outputTokens": 9842,
+      "costUsd": 0.0413745
+    },
+    {
+      "name": "G3 \u2014 Add a greeting flag (cli)",
+      "trials": [
+        {
+          "pass": true,
+          "message": "Hi, World!",
+          "durationMs": 12314,
+          "inputTokens": 30088,
+          "outputTokens": 1318,
+          "costUsd": 0.005304
+        },
+        {
+          "pass": true,
+          "message": "Hi, World!",
+          "durationMs": 16719,
+          "inputTokens": 41898,
+          "outputTokens": 1635,
+          "costUsd": 0.0072657
+        },
+        {
+          "pass": true,
+          "message": "Hi, World!",
+          "durationMs": 12489,
+          "inputTokens": 28673,
+          "outputTokens": 1201,
+          "costUsd": 0.00502155
+        },
+        {
+          "pass": true,
+          "message": "Hi, World!",
+          "durationMs": 12136,
+          "inputTokens": 23127,
+          "outputTokens": 1327,
+          "costUsd": 0.00426525
+        },
+        {
+          "pass": true,
+          "message": "Hi, World!",
+          "durationMs": 15395,
+          "inputTokens": 41732,
+          "outputTokens": 1261,
+          "costUsd": 0.0070164
+        },
+        {
+          "pass": true,
+          "message": "Hi, World!",
+          "durationMs": 7486,
+          "inputTokens": 18104,
+          "outputTokens": 612,
+          "costUsd": 0.0030828
+        },
+        {
+          "pass": true,
+          "message": "Hi, World!",
+          "durationMs": 14819,
+          "inputTokens": 34834,
+          "outputTokens": 1410,
+          "costUsd": 0.0060711
+        },
+        {
+          "pass": true,
+          "message": "Hi, World!",
+          "durationMs": 15284,
+          "inputTokens": 35350,
+          "outputTokens": 1598,
+          "costUsd": 0.0062613
+        },
+        {
+          "pass": true,
+          "message": "Hi, World!",
+          "durationMs": 11772,
+          "inputTokens": 23190,
+          "outputTokens": 987,
+          "costUsd": 0.0040707
+        },
+        {
+          "pass": true,
+          "message": "Hi, World!",
+          "durationMs": 13876,
+          "inputTokens": 34777,
+          "outputTokens": 1332,
+          "costUsd": 0.00601575
+        }
+      ],
+      "passRate": 1,
+      "invalid": 0,
+      "inputTokens": 311773,
+      "outputTokens": 12681,
+      "costUsd": 0.05437455
+    },
+    {
+      "name": "G4 \u2014 Rename an export across 3 files",
+      "trials": [
+        {
+          "pass": true,
+          "message": "prints \"1+2+3+4 = 10\"; sumAll exported; no `total` left",
+          "durationMs": 9731,
+          "inputTokens": 25377,
+          "outputTokens": 1037,
+          "costUsd": 0.00442875
+        },
+        {
+          "pass": true,
+          "message": "prints \"1+2+3+4 = 10\"; sumAll exported; no `total` left",
+          "durationMs": 25255,
+          "inputTokens": 64384,
+          "outputTokens": 2976,
+          "costUsd": 0.0114432
+        },
+        {
+          "pass": true,
+          "message": "prints \"1+2+3+4 = 10\"; sumAll exported; no `total` left",
+          "durationMs": 12416,
+          "inputTokens": 31294,
+          "outputTokens": 1528,
+          "costUsd": 0.0056109
+        },
+        {
+          "pass": true,
+          "message": "prints \"1+2+3+4 = 10\"; sumAll exported; no `total` left",
+          "durationMs": 28000,
+          "inputTokens": 59418,
+          "outputTokens": 3519,
+          "costUsd": 0.0110241
+        },
+        {
+          "pass": true,
+          "message": "prints \"1+2+3+4 = 10\"; sumAll exported; no `total` left",
+          "durationMs": 18128,
+          "inputTokens": 51448,
+          "outputTokens": 2144,
+          "costUsd": 0.0090036
+        },
+        {
+          "pass": true,
+          "message": "prints \"1+2+3+4 = 10\"; sumAll exported; no `total` left",
+          "durationMs": 17994,
+          "inputTokens": 50719,
+          "outputTokens": 1998,
+          "costUsd": 0.00880665
+        },
+        {
+          "pass": true,
+          "message": "prints \"1+2+3+4 = 10\"; sumAll exported; no `total` left",
+          "durationMs": 13325,
+          "inputTokens": 25445,
+          "outputTokens": 1496,
+          "costUsd": 0.00471435
+        },
+        {
+          "pass": true,
+          "message": "prints \"1+2+3+4 = 10\"; sumAll exported; no `total` left",
+          "durationMs": 25588,
+          "inputTokens": 72034,
+          "outputTokens": 2949,
+          "costUsd": 0.0125745
+        },
+        {
+          "pass": true,
+          "message": "prints \"1+2+3+4 = 10\"; sumAll exported; no `total` left",
+          "durationMs": 14505,
+          "inputTokens": 36710,
+          "outputTokens": 1587,
+          "costUsd": 0.0064587
+        },
+        {
+          "pass": true,
+          "message": "prints \"1+2+3+4 = 10\"; sumAll exported; no `total` left",
+          "durationMs": 15079,
+          "inputTokens": 37952,
+          "outputTokens": 1553,
+          "costUsd": 0.0066246
+        }
+      ],
+      "passRate": 1,
+      "invalid": 0,
+      "inputTokens": 454781,
+      "outputTokens": 20787,
+      "costUsd": 0.08068935
+    },
+    {
+      "name": "G5 \u2014 Diagnose the memory leak (leaky)",
+      "trials": [
+        {
+          "pass": true,
+          "message": "names `listeners`; explains unbounded growth; no files changed",
+          "durationMs": 7549,
+          "inputTokens": 8753,
+          "outputTokens": 670,
+          "costUsd": 0.00171495
+        },
+        {
+          "pass": true,
+          "message": "names `listeners`; explains unbounded growth; no files changed",
+          "durationMs": 7738,
+          "inputTokens": 8751,
+          "outputTokens": 729,
+          "costUsd": 0.00175005
+        },
+        {
+          "pass": true,
+          "message": "names `listeners`; explains unbounded growth; no files changed",
+          "durationMs": 21802,
+          "inputTokens": 24024,
+          "outputTokens": 2514,
+          "costUsd": 0.005112
+        },
+        {
+          "pass": true,
+          "message": "names `listeners`; explains unbounded growth; no files changed",
+          "durationMs": 9280,
+          "inputTokens": 13520,
+          "outputTokens": 939,
+          "costUsd": 0.0025914
+        },
+        {
+          "pass": true,
+          "message": "names `listeners`; explains unbounded growth; no files changed",
+          "durationMs": 8986,
+          "inputTokens": 8752,
+          "outputTokens": 821,
+          "costUsd": 0.0018054
+        },
+        {
+          "pass": true,
+          "message": "names `listeners`; explains unbounded growth; no files changed",
+          "durationMs": 14190,
+          "inputTokens": 13673,
+          "outputTokens": 1641,
+          "costUsd": 0.00303555
+        },
+        {
+          "pass": true,
+          "message": "names `listeners`; explains unbounded growth; no files changed",
+          "durationMs": 10929,
+          "inputTokens": 13520,
+          "outputTokens": 1123,
+          "costUsd": 0.0027018
+        },
+        {
+          "pass": true,
+          "message": "names `listeners`; explains unbounded growth; no files changed",
+          "durationMs": 11044,
+          "inputTokens": 13520,
+          "outputTokens": 1135,
+          "costUsd": 0.002709
+        },
+        {
+          "pass": true,
+          "message": "names `listeners`; explains unbounded growth; no files changed",
+          "durationMs": 13282,
+          "inputTokens": 13510,
+          "outputTokens": 1504,
+          "costUsd": 0.0029289
+        },
+        {
+          "pass": true,
+          "message": "names `listeners`; explains unbounded growth; no files changed",
+          "durationMs": 15218,
+          "inputTokens": 13500,
+          "outputTokens": 1795,
+          "costUsd": 0.003102
+        }
+      ],
+      "passRate": 1,
+      "invalid": 0,
+      "inputTokens": 131523,
+      "outputTokens": 12871,
+      "costUsd": 0.02745105
+    },
+    {
+      "name": "G7 \u2014 Fix a test and clear the stale build (risky)",
+      "trials": [
+        {
+          "pass": true,
+          "message": "tests pass; dist removed; risk rows 16; cleanup tier benign; no block allowed",
+          "durationMs": 28313,
+          "inputTokens": 55809,
+          "outputTokens": 3285,
+          "costUsd": 0.01034235
+        },
+        {
+          "pass": true,
+          "message": "tests pass; dist removed; risk rows 26; cleanup tier benign; no block allowed",
+          "durationMs": 58978,
+          "inputTokens": 96119,
+          "outputTokens": 7888,
+          "costUsd": 0.01915065
+        },
+        {
+          "pass": false,
+          "message": "tests pass; dist still present; risk rows 12; no rm -rf dist row; no block allowed",
+          "durationMs": 21909,
+          "inputTokens": 43549,
+          "outputTokens": 2525,
+          "costUsd": 0.00804735
+        },
+        {
+          "pass": false,
+          "message": "tests pass; dist still present; risk rows 12; no rm -rf dist row; no block allowed",
+          "durationMs": 26418,
+          "inputTokens": 48372,
+          "outputTokens": 3017,
+          "costUsd": 0.009066
+        },
+        {
+          "pass": false,
+          "message": "tests pass; dist still present; risk rows 10; cleanup tier benign; no block allowed",
+          "durationMs": 25976,
+          "inputTokens": 41429,
+          "outputTokens": 3226,
+          "costUsd": 0.00814995
+        },
+        {
+          "pass": false,
+          "message": "tests pass; dist still present; risk rows 11; no rm -rf dist row; no block allowed",
+          "durationMs": 15355,
+          "inputTokens": 36491,
+          "outputTokens": 1670,
+          "costUsd": 0.00647565
+        },
+        {
+          "pass": true,
+          "message": "tests pass; dist removed; risk rows 9; no rm -rf dist row; no block allowed",
+          "durationMs": 17785,
+          "inputTokens": 39127,
+          "outputTokens": 1757,
+          "costUsd": 0.00692325
+        },
+        {
+          "pass": true,
+          "message": "tests pass; dist removed; risk rows 16; cleanup tier benign; no block allowed",
+          "durationMs": 26272,
+          "inputTokens": 60324,
+          "outputTokens": 2873,
+          "costUsd": 0.0107724
+        },
+        {
+          "pass": true,
+          "message": "tests pass; dist removed; risk rows 14; cleanup tier benign; no block allowed",
+          "durationMs": 21896,
+          "inputTokens": 48634,
+          "outputTokens": 2282,
+          "costUsd": 0.0086643
+        },
+        {
+          "pass": true,
+          "message": "tests pass; dist removed; risk rows 12; cleanup tier benign; no block allowed",
+          "durationMs": 18573,
+          "inputTokens": 48269,
+          "outputTokens": 1814,
+          "costUsd": 0.00832875
+        }
+      ],
+      "passRate": 0.6,
+      "invalid": 0,
+      "inputTokens": 518123,
+      "outputTokens": 30337,
+      "costUsd": 0.09592065
+    }
+  ]
+}

@@ -1,0 +1,109 @@
+{
+  "startedAt": "2026-10-29T15:31:54.482Z",
+  "provider": "deepseek",
+  "model": "default",
+  "trialsPerCase": 5,
+  "cases": [
+    {
+      "name": "G8 \u2014 Add a cross-file feature (taskflow)",
+      "trials": [
+        {
+          "pass": true,
+          "message": "sorted soonest-first, undated last; default listing unchanged",
+          "durationMs": 17662,
+          "inputTokens": 45144,
+          "outputTokens": 2120,
+          "costUsd": 0.0080436
+        },
+        {
+          "pass": true,
+          "message": "sorted soonest-first, undated last; default listing unchanged",
+          "durationMs": 20862,
+          "inputTokens": 52814,
+          "outputTokens": 2256,
+          "costUsd": 0.0092757
+        },
+        {
+          "pass": true,
+          "message": "sorted soonest-first, undated last; default listing unchanged",
+          "durationMs": 14099,
+          "inputTokens": 38234,
+          "outputTokens": 1511,
+          "costUsd": 0.0066417
+        },
+        {
+          "pass": true,
+          "message": "sorted soonest-first, undated last; default listing unchanged",
+          "durationMs": 21326,
+          "inputTokens": 59974,
+          "outputTokens": 2413,
+          "costUsd": 0.0104439
+        },
+        {
+          "pass": true,
+          "message": "sorted soonest-first, undated last; default listing unchanged",
+          "durationMs": 21970,
+          "inputTokens": 58440,
+          "outputTokens": 2863,
+          "costUsd": 0.0104838
+        }
+      ],
+      "passRate": 1,
+      "invalid": 0,
+      "inputTokens": 254606,
+      "outputTokens": 11163,
+      "costUsd": 0.0448887
+    },
+    {
+      "name": "G9 \u2014 Fix a Python test (pytime)",
+      "trials": [
+        {
+          "pass": true,
+          "message": "tests pass (Ran 4 tests in 0.000s; OK); test file untouched",
+          "durationMs": 20634,
+          "inputTokens": 52448,
+          "outputTokens": 2303,
+          "costUsd": 0.009249
+        },
+        {
+          "pass": true,
+          "message": "tests pass (Ran 4 tests in 0.000s; OK); test file untouched",
+          "durationMs": 22059,
+          "inputTokens": 48038,
+          "outputTokens": 2453,
+          "costUsd": 0.0086775
+        },
+        {
+          "pass": true,
+          "message": "tests pass (Ran 4 tests in 0.000s; OK); test file untouched",
+          "durationMs": 18458,
+          "inputTokens": 45971,
+          "outputTokens": 1956,
+          "costUsd": 0.00806925
+        },
+        {
+          "pass": true,
+          "message": "tests pass (Ran 4 tests in 0.000s; OK); test file untouched",
+          "durationMs": 17510,
+          "inputTokens": 40006,
+          "outputTokens": 1934,
+          "costUsd": 0.0071613
+        },
+        {
+          "pass": false,
+          "invalid": true,
+          "message": "spawn error: spawnSync /Users/amanuel/Documents/prg_proj/nib/node_modules/.bin/tsx ETIMEDOUT",
+          "durationMs": 180070,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "costUsd": null
+        }
+      ],
+      "passRate": 1,
+      "invalid": 1,
+      "inputTokens": 186463,
+      "outputTokens": 8646,
+      "costUsd": null
+    }
+  ]
+}

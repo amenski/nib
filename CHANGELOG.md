@@ -7,6 +7,45 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.0-rc.1] — 2026-10-30
+
+### Changed
+
+- **`edit_file` and `search_replace` are folded into `edit`.** `edit` gains
+  `replace_all: true` to replace every occurrence; a match that occurs more than
+  once without it still errors with the count. Models used `edit` 51× more than
+  `edit_file`, and the eval showed no pass-rate cost from the smaller tool set.
+  **Breaking:** permission rules, custom modes or skills that name `edit_file`
+  or `search_replace` no longer match anything — rename them to `edit`.
+- **The repository map describes interfaces, not just file names.** It now lists
+  exported signatures and import edges, with symbols taken from the language
+  server when one is running.
+- **Memory is fenced in its own `MEMORY` block** in the system prompt. Notes the
+  agent lifted from web pages or command output can no longer pass as prompt
+  instructions, while your recorded decisions are still presented as context
+  to apply.
+- **The startup notice "No active OS containment" is gone.** It showed on
+  every launch without a sandbox configured. The warning for a sandbox that is
+  configured but cannot be enforced on this platform stays.
+
+### Added
+
+- **Plans persist across compaction.** In plan posture a captured
+  `<proposed_plan>` must have three sections (files and interfaces,
+  verification, staged steps) and is saved to `.nib/plans/<slug>.md`. The
+  newest plan is re-read on every request, so it survives compaction and an
+  edit to the file is picked up on the next turn.
+
+### Fixed
+
+- **Long headless runs (`nib -p`) now compact.** The headless path never built
+  a compactor, so a long `-p` run grew until it hit the context limit.
+
+### Deprecated
+
+- **The Ask, Architect, Debug and Orchestrator alias modes** print a one-time
+  warning on load and are removed in 0.9.0. Use `general` or `code`.
+
 ## [0.7.0] — 2026-10-26
 
 First stable release of the 0.7.0 line. It includes everything in

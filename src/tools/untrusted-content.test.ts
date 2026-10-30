@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   wrapUntrusted,
+  wrapMemory,
   stripUntrustedMarkers,
   sanitizeControlChars,
   parseUntrustedMarker,
@@ -113,6 +114,27 @@ describe("untrusted-content: in-band marking (T12)", () => {
 
     expect(end.id).toBe(begin.id);
     expect(bodyOf(wrapped)).toBe("line one\nline two");
+  });
+
+  it("wrapMemory fences the payload with a matching id under the memory label", () => {
+    const wrapped = wrapMemory("memory block");
+    const { begin, end } = delimitersOf(wrapped);
+
+    expect(begin.role).toBe("begin");
+    expect(end.role).toBe("end");
+    expect(end.id).toBe(begin.id);
+    expect(bodyOf(wrapped)).toBe("memory block");
+    expect(wrapped.split("\n")[0]).toMatch(/^--- BEGIN MEMORY \[/);
+  });
+
+  it("wrapMemory derives the id from the payload, so rebuilding is byte-identical", () => {
+    // The stable preamble is cached and reused only while its inputs are
+    // unchanged (agent.ts getStablePreamble), so a fresh id per rebuild would
+    // churn the cached prefix on every turn.
+    expect(wrapMemory("same")).toBe(wrapMemory("same"));
+    expect(delimitersOf(wrapMemory("same")).begin.id).not.toBe(
+      delimitersOf(wrapMemory("different")).begin.id,
+    );
   });
 
   it("stripUntrustedMarkers removes the marker lines and keeps everything else (the UI preview path)", () => {

@@ -9,6 +9,7 @@ import { join, relative, sep } from "node:path";
 import { promisify } from "node:util";
 import { homedir, platform } from "node:os";
 import { projectDirPath } from "./config/paths.js";
+import { wrapMemory } from "./tools/untrusted-content.js";
 
 export interface PromptContext {
   mode?: ModeConfig;
@@ -145,7 +146,11 @@ export function buildStablePreamble(ctx: PromptContext): string {
     sections.push(getAgentsIndex(ctx.agents));
   }
 
-  if (ctx.memory) sections.push(ctx.memory);
+  // Memory is assembled from session notes — text the agent itself may have
+  // lifted from web pages, command output or file contents — so it is fenced
+  // rather than treated as prompt authoring. The id is content-derived so the
+  // cached preamble stays byte-stable.
+  if (ctx.memory) sections.push(wrapMemory(ctx.memory));
 
   // Repository map goes last in the cacheable block — after project
   // instructions and rules — so those higher-priority sections read first.

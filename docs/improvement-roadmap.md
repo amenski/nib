@@ -82,6 +82,7 @@ architectural swings on the roadmap; drop the rest.
 | **`/usage` balance command** (generalized adapter method) | #216 | M | Only worth it provider-agnostic (`getBalance()` on the adapter), else DeepSeek-only special-case. |
 | **React exit-summary view** | #132 | S–M | Robustness fix (survives scroll); orthogonal to everything else. |
 | **SQLite log backend** | #266 | L | Only if JSONL logs prove they need cross-session SQL. Off-ethos (opaque binary sessions). |
+| **Risk classifier: `shadow` → `enforce` default** | local (prompt-injection review, 2026-10-29) | S code, needs decision | `classifier.mode` defaults to `shadow` (`cli.tsx` turn wiring; [command-risk-classifier.md](./command-risk-classifier.md) §1), so outside auto posture a block-tier command an injected prompt asks for is labelled, not stopped — permission rules, Seatbelt and TOFU still apply. Shadow was the planned first stage (§2 step 1: collect data before enforcing). Decide from the shadow rows whether the false-positive rate allows flipping the default. |
 
 ### ❌ Reject — importing would be a downgrade or off-ethos
 

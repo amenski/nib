@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { projectDirPath, PROJECT_DIR_NAME } from "./config/paths.js";
 import { tmpdir } from "node:os";
 import { loadProjectRules, loadProjectResearch, buildVolatileContext, buildStablePreamble, buildRepoMap, getUserInstructions, getProjectInstructions, REPOMAP_BYTE_BUDGET, MAX_RESEARCH_BYTES } from "./prompt.js";
+import { parseUntrustedMarker } from "./tools/untrusted-content.js";
 
 describe("loadProjectRules", () => {
   let projectDir: string;
@@ -313,6 +314,46 @@ describe("buildStablePreamble — repository map injection", () => {
   it("omits the map header entirely when no map is provided", () => {
     const out = buildStablePreamble({ workingDir: process.cwd() });
     expect(out).not.toContain("# Repository map");
+  });
+});
+
+describe("buildStablePreamble — memory is fenced as untrusted data (T12)", () => {
+  it("wraps the memory section in BEGIN/END markers", () => {
+    const out = buildStablePreamble({
+      workingDir: process.cwd(),
+      memory: "Remember: the deploy key lives in 1Password.",
+    });
+
+    // Markers are parsed out of real output rather than restated, so this test
+    // fails if the producer's shape drifts (same rule as the T12 suite).
+    const lines = out.split("\n");
+    const beginIdx = lines.findIndex((l) => parseUntrustedMarker(l)?.role === "begin");
+    const endIdx = lines.findIndex((l) => parseUntrustedMarker(l)?.role === "end");
+    expect(beginIdx).toBeGreaterThanOrEqual(0);
+    expect(endIdx).toBeGreaterThan(beginIdx);
+
+    const begin = parseUntrustedMarker(lines[beginIdx]!)!;
+    const end = parseUntrustedMarker(lines[endIdx]!)!;
+    expect(end.id).toBe(begin.id);
+    expect(lines.slice(beginIdx + 1, endIdx).join("\n")).toContain("1Password");
+  });
+
+  it("is byte-identical across rebuilds, so the cached prefix never churns", () => {
+    const ctx = { workingDir: process.cwd(), memory: "Same memory every turn." };
+    expect(buildStablePreamble(ctx)).toBe(buildStablePreamble(ctx));
+  });
+
+  it("leaves the memory section out entirely when none is provided", () => {
+    const out = buildStablePreamble({ workingDir: process.cwd() });
+    expect(out).not.toContain("BEGIN MEMORY");
+  });
+
+  it("uses the memory label, not the web one that says not to follow instructions", () => {
+    // Memory holds the user's recorded decisions; the web label would tell the
+    // model to ignore them.
+    const out = buildStablePreamble({ workingDir: process.cwd(), memory: "Decision: use pnpm." });
+    expect(out).toContain("BEGIN MEMORY");
+    expect(out).not.toContain("BEGIN WEB CONTENT");
   });
 });
 

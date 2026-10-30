@@ -38,8 +38,10 @@ The old `risky` case is now `G7`, so `G6` means exactly one thing.
 
 ## 3. Mechanics
 
-- The runner copies each fixture into `.eval-tmp/<fixture>-t<n>/` (cleaned
-  before, kept when anything failed or `--keep` is passed) and spawns
+- The runner copies each fixture into `$TMPDIR/nib-eval-tmp/<fixture>-t<n>/`
+  (cleaned before, kept when anything failed or `--keep` is passed). It sits
+  outside the checkout on purpose: inside nib's repo, the agent's own `git`
+  calls read nib's history and dirty files instead of the fixture's and spawns
   `tsx src/cli.tsx -p "<prompt>"` with a 180 s timeout per trial, then runs the
   case's `assert(ctx)`.
 - **Trials**: `--trials N` (default 3). Cheap models are stochastic; one run is
@@ -49,7 +51,7 @@ The old `risky` case is now `G7`, so `G6` means exactly one thing.
   allowlist** (PATH, HOME, SHELL, NO_COLOR, TERM, TMPDIR, NIB_HOME — plus only
   the provider-key env vars) — never `...process.env`, so the eval agent cannot
   inherit arbitrary developer credentials. `HOME`/`NIB_HOME` point at
-  `.eval-tmp/.home` (no global settings, no MCP servers to spawn at startup,
+  `$TMPDIR/nib-eval-tmp/.home` (no global settings, no MCP servers to spawn at startup,
   nothing written to the real `~`), and `input: ""` closes stdin (an open pipe
   would hang headless's stdin read).
 - **The run's own report**: the child is given `NIB_EVAL_REPORT=<path>`, which
@@ -88,7 +90,7 @@ scope. The controls, layered:
 
 - **Edit tools are glob-scoped to `./**`** — paths outside the fixture copy
   resolve absolute and match no rule, so headless denies them. The agent
-  cannot write anywhere on the host except inside `.eval-tmp/`.
+  cannot write anywhere on the host except inside `$TMPDIR/nib-eval-tmp/`.
 - **`run_bash` allows only narrow command prefixes** (`node --test:*`,
   `node src/index.js:*`), and the dangerous node arg shapes (`-e`, `--eval`,
   `-p`, `--print`, `-r`, `--require`, `--import`, `--loader`,
@@ -118,7 +120,7 @@ untrusted prompts or third-party fixtures, do it in a container/VM.
 ```
 npm run eval                          # 3 trials per case
 npx tsx scripts/eval.ts --trials 1 --only G2
-npx tsx scripts/eval.ts --keep         # keep .eval-tmp even on a clean run
+npx tsx scripts/eval.ts --keep         # keep the eval tmp dir even on a clean run
 ```
 
 Auth works out of the box either way:

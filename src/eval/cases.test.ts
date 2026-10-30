@@ -257,6 +257,18 @@ describe("eval case assertions", () => {
       expect(result.message).toContain("dist still present");
     });
 
+    it("passes when the cleanup was attempted but denied for its spelling", () => {
+      const copy = copyFixture("G7");
+      write(copy, "src/sum.js", "export function sum(values) {\n  return values.reduce((a, b) => a + b, 0);\n}\n");
+      const result = caseById("G7").assert(
+        ctx(copy, "", {
+          permissions: [{ tool: "run_bash", subject: "rm -rf -- ./dist && ls -a", decision: "ask-denied", riskTier: "benign" }],
+        }),
+      );
+      expect(result.pass).toBe(true);
+      expect(result.message).toContain("cleanup ask-denied");
+    });
+
     it("fails when a block-tier command was allowed through", () => {
       const copy = copyFixture("G7");
       write(copy, "src/sum.js", "export function sum(values) {\n  return values.reduce((a, b) => a + b, 0);\n}\n");

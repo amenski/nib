@@ -1,6 +1,7 @@
 #!/usr/bin/env tsx
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, rmSync, cpSync, writeFileSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, cpSync, writeFileSync, readFileSync, realpathSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { projectDirPath } from "../src/config/paths.js";
 import { resolveHome } from "../src/config/loader.js";
@@ -16,7 +17,9 @@ import {
 } from "../src/eval/report.js";
 
 const FIXTURES_DIR = resolve(import.meta.dirname!, "..", "fixtures");
-const EVAL_TMP = resolve(import.meta.dirname!, "..", ".eval-tmp");
+// Outside the checkout: a workdir inside nib's repo lets the agent's own `git`
+// calls read nib's history and dirty files instead of the fixture's.
+const EVAL_TMP = join(realpathSync(tmpdir()), "nib-eval-tmp");
 /** Where the eval child's HOME/NIB_HOME point; sessions land under it. */
 const EVAL_HOME = join(EVAL_TMP, ".home");
 const NIB_SRC = resolve(import.meta.dirname!, "..", "src", "cli.tsx");

@@ -24,7 +24,7 @@ interface WakeHarness {
   ctx: AppContext;
   deliver: (taskId: string, message: string) => void;
   runAgentTurnCore: ReturnType<typeof vi.fn>;
-  appendMessage: ReturnType<typeof vi.fn>;
+  appendMessages: ReturnType<typeof vi.fn>;
   abortRunningTasks: ReturnType<typeof vi.fn>;
   /** Latest callbacks bundle handed to runAgentTurnCore (for mailbox polls). */
   lastCallbacks: () => any;
@@ -35,7 +35,7 @@ interface WakeHarness {
 function makeHarness(): WakeHarness {
   let deliver: (taskId: string, message: string) => void = () => {};
   let callbacks: any = null;
-  const appendMessage = vi.fn(() => Promise.resolve());
+  const appendMessages = vi.fn(() => Promise.resolve());
   const abortRunningTasks = vi.fn();
   // Per-test turn script: receives the input + callbacks bundle, returns the
   // bridge result (a test may gate it on a promise it resolves itself).
@@ -70,7 +70,7 @@ function makeHarness(): WakeHarness {
     skills: [],
     memoryInjection: undefined,
     memoryStore: null,
-    sessionStore: { appendMessage, appendPermission: () => Promise.resolve() },
+    sessionStore: { appendMessages, appendPermission: () => Promise.resolve() },
     checkpoints: { list: () => Promise.resolve([]) },
     modeLoader: null,
     skillLoader: null,
@@ -101,7 +101,7 @@ function makeHarness(): WakeHarness {
     ctx,
     deliver: (taskId, message) => deliver(taskId, message),
     runAgentTurnCore,
-    appendMessage,
+    appendMessages,
     abortRunningTasks,
     lastCallbacks: () => callbacks,
     set script(fn: (input: string, cb: any) => Promise<any>) { script = fn; },
@@ -140,8 +140,11 @@ describe("async sub-agent result wake (async-subagents.md §2)", () => {
     expect(h.runAgentTurnCore.mock.calls[0][0]).toBe(RESULT);
 
     // Persisted exactly once, like any user message (role user + the reply).
-    expect(h.appendMessage).toHaveBeenCalledWith("test-session", { role: "user", content: RESULT });
-    expect(h.appendMessage).toHaveBeenCalledWith("test-session", { role: "assistant", content: "synthesis" });
+    expect(h.appendMessages).toHaveBeenCalledTimes(1);
+    expect(h.appendMessages).toHaveBeenCalledWith("test-session", [
+      { role: "user", content: RESULT },
+      { role: "assistant", content: "synthesis" },
+    ]);
 
     // The result renders as a normal message in the transcript.
     const frame = stripAnsi(inst.lastFrame() ?? "");

@@ -276,7 +276,9 @@ export interface AgentBridgeCallbacks {
   onLoopDetected: (m: string) => void;
   onMaxTurns: (messages: Message[], requests: number) => void;
   onUsage: (input: number, output: number) => void;
-  onNewMessages: (userInput: string, newMessages: Message[]) => Promise<void>;
+  /** `flushed` is how many leading `newMessages` `onPersistMessages` already saved. */
+  onNewMessages: (userInput: string, newMessages: Message[], flushed?: number) => Promise<void>;
+  onPersistMessages?: (delta: Message[]) => Promise<void>;
   onHistoryUpdate: (messages: Message[]) => void;
   /**
    * Resolves "posture" when the UI allowed the call without showing a prompt

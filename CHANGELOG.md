@@ -51,6 +51,11 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - **Long headless runs (`nib -p`) now compact.** The headless path never built
   a compactor, so a long `-p` run grew until it hit the context limit.
+- **An interrupted or killed long turn can now be resumed.** The conversation
+  is saved as the turn runs (after each model reply and each batch of tool
+  results) instead of only when the turn ends, so `nib --resume` after a crash,
+  a `kill` or a lost terminal replays your prompt and the steps taken so far.
+  Such a session is listed as `interrupted`.
 
 ### Deprecated
 

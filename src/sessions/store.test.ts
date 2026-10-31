@@ -85,6 +85,35 @@ describe("SessionStore", () => {
       expect(loaded!.messages[0].content).toBe("hello");
       expect(loaded!.messages[1].content).toBe("hi there");
     });
+
+    it("appendMessages writes the batch in one append and one index refresh, redacting like appendMessage", async () => {
+      const id = await store.create({ cwd: TEST_CWD, provider: "openai", model: "gpt-4", mode: "ask" });
+      const refresh = vi.spyOn(store as any, "updateIndexEntry");
+
+      await store.appendMessages(id, [
+        { role: "user", content: "use token=abcdefghijklmnopqrstuvwx12345 please" },
+        { role: "assistant", content: "ok" },
+        { role: "assistant", content: null, toolCalls: [{ id: "c1", name: "read", arguments: {} }] },
+      ]);
+
+      expect(refresh).toHaveBeenCalledTimes(1);
+      const { readFile } = await import("node:fs/promises");
+      const lines = (await readFile(join(sessionDir(), `${id}.jsonl`), "utf-8")).trim().split("\n");
+      expect(lines).toHaveLength(4); // meta + 3 messages
+      expect(lines.join("\n")).not.toContain("abcdefghijklmnopqrstuvwx12345");
+
+      const loaded = await store.load(id);
+      expect(loaded!.messages).toHaveLength(3);
+      expect(loaded!.messages[0].content).toContain("[redacted-token]");
+      expect((loaded!.messages[2] as { toolCalls?: unknown }).toolCalls).toEqual([{ id: "c1", name: "read", arguments: {} }]);
+    });
+
+    it("appendMessages with an empty batch writes nothing", async () => {
+      const id = await store.create({ cwd: TEST_CWD, provider: "openai", model: "gpt-4", mode: "ask" });
+      const refresh = vi.spyOn(store as any, "updateIndexEntry");
+      await store.appendMessages(id, []);
+      expect(refresh).not.toHaveBeenCalled();
+    });
   });
 
   describe("state folding", () => {
@@ -571,6 +600,18 @@ describe("SessionStore", () => {
 
       const items = await store.list();
       expect(items.find((s) => s.id === id)!.status).toBe("interrupted");
+    });
+
+    it("derives status: interrupted when the last message is an assistant tool call with no result yet", async () => {
+      const id = await store.create({ cwd: TEST_CWD, provider: "openai", model: "gpt-4", mode: "ask" });
+      await store.appendMessages(id, [
+        { role: "user", content: "run the tests" },
+        { role: "assistant", content: null, toolCalls: [{ id: "c1", name: "run_bash", arguments: {} }] },
+      ]);
+      expect((await store.list()).find((s) => s.id === id)!.status).toBe("interrupted");
+
+      await store.appendMessage(id, { role: "tool", toolCallId: "c1", toolName: "run_bash", content: "ok" });
+      expect((await store.list()).find((s) => s.id === id)!.status).toBe("completed");
     });
 
     it("truncates the title to 100 chars and redacts secrets", async () => {

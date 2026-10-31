@@ -2186,6 +2186,7 @@ async function runAgentTurnBridge(input: string, cb: any, shared: any, permissio
     onText: cb.onText, onReasoning: cb.onReasoning, onToolStart: (name, args) => { shared.toolUsage[name] = (shared.toolUsage[name] || 0) + 1; cb.onToolStart(name, args); }, onToolResult: cb.onToolResult,
     onDiagnostic: cb.onDiagnostic, onRetry: cb.onRetry, onCompacted: cb.onCompacted,
     onLoopDetected: cb.onLoopDetected, onMaxTurns: cb.onMaxTurns,
+    onPersistMessages: cb.onPersistMessages,
     onUsage: (input: number, output: number, cached?: number) => {
       shared.sessionInput += input; shared.sessionOutput += output; shared.lastContextTokens = input + output;
       const modelKey = `${shared.providerName}/${shared.activeModel ?? getPreset(shared.providerName)?.defaultModel ?? "unknown"}`;

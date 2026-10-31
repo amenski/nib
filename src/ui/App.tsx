@@ -1047,6 +1047,16 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
         scheduleOutput(theme.dimItalic(theme.theme.textDim, `∴ ${summary}`));
       }
 
+      // The user's message rides in the first batch written, so a flush that
+      // fails leaves nothing behind to duplicate on the end-of-turn retry.
+      let userPersisted = false;
+      const persistTurnMessages = async (userInput: string, delta: any[]) => {
+        const records = delta.filter((m) => m.role !== "system");
+        const batch = userPersisted ? records : [{ role: "user", content: userInput }, ...records];
+        await ctx.sessionStore.appendMessages(ctx.sessionId, batch);
+        userPersisted = true;
+      };
+
       const callbacks = {
         onReasoning: (c: string) => {
           if (!firstTokenRef.current) {
@@ -1213,16 +1223,12 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           // meter reflects the new totals.
           setStatusLine(ctx.buildStatusBar());
         },
-        onNewMessages: async (userInput: string, newMessages: any[]) => {
-          await ctx.sessionStore.appendMessage(ctx.sessionId, {
-            role: "user",
-            content: userInput,
-          });
-          for (const msg of newMessages) {
-            if (msg.role !== "system") {
-              await ctx.sessionStore.appendMessage(ctx.sessionId, msg);
-            }
-          }
+        // The loop's user message is @file-expanded; the log keeps the raw input.
+        onPersistMessages: async (delta: any[]) => {
+          await persistTurnMessages(input, delta);
+        },
+        onNewMessages: async (userInput: string, newMessages: any[], flushed = 0) => {
+          await persistTurnMessages(userInput, newMessages.slice(flushed));
         },
         onHistoryUpdate: (messages: any[]) => {
           ctx.mutable.conversationHistory = messages;
@@ -1396,7 +1402,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
         // short, and the work it did before the cut is just as real.
         if (result.stopReason === "done" || result.stopReason === "aborted" || result.stopReason === "max_turns") {
           ctx.mutable.conversationHistory = result.messages;
-          await callbacks.onNewMessages(input, result.newMessages);
+          await callbacks.onNewMessages(input, result.newMessages, result.flushed);
         }
 
         if (planMode) {
@@ -1443,10 +1449,10 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
         // that turn like any other: without it the next message starts from a
         // history that never saw this turn's edits or results, so the model
         // redoes work it already did or assumes someone else's changes.
-        const failed = err as { newMessages?: any[]; messages?: any[] };
+        const failed = err as { newMessages?: any[]; messages?: any[]; flushed?: number };
         if (failed?.newMessages && failed.messages) {
           ctx.mutable.conversationHistory = failed.messages;
-          await callbacks.onNewMessages(input, failed.newMessages);
+          await callbacks.onNewMessages(input, failed.newMessages, failed.flushed);
         }
       } finally {
         setAskQuestion(undefined);

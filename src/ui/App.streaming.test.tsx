@@ -1215,8 +1215,8 @@ describe("a failed turn is still saved", () => {
       err.messages = fullHistory;
       throw err;
     });
-    (ctx.sessionStore as any).appendMessage = async (_id: string, msg: any) => {
-      appended.push(msg);
+    (ctx.sessionStore as any).appendMessages = async (_id: string, msgs: any[]) => {
+      appended.push(...msgs);
     };
 
     const inst = render(<App ctx={ctx} />);
@@ -1242,8 +1242,8 @@ describe("a failed turn is still saved", () => {
     const ctx = makeCtx(async () => {
       throw new Error("Connection error.");
     });
-    (ctx.sessionStore as any).appendMessage = async (_id: string, msg: any) => {
-      appended.push(msg);
+    (ctx.sessionStore as any).appendMessages = async (_id: string, msgs: any[]) => {
+      appended.push(...msgs);
     };
 
     const inst = render(<App ctx={ctx} />);
@@ -1261,6 +1261,107 @@ describe("a failed turn is still saved", () => {
   });
 });
 
+describe("incremental session persistence", () => {
+  const assistant1: any = { role: "assistant", content: null, toolCalls: [{ id: "c1", name: "run_bash", arguments: {} }] };
+  const tool1: any = { role: "tool", toolCallId: "c1", toolName: "run_bash", content: "hi" };
+  const assistant2: any = { role: "assistant", content: "all done" };
+  const note: any = { role: "system", content: "diagnostic note" };
+
+  async function submitGo(ctx: AppContext) {
+    const inst = render(<App ctx={ctx} />);
+    mounted.push(inst);
+    inst.stdin.write("go");
+    await flush();
+    inst.stdin.write("\r");
+    await flush();
+    await flush();
+    await flush();
+    return inst;
+  }
+
+  function recordBatches(ctx: AppContext) {
+    const batches: any[][] = [];
+    (ctx.sessionStore as any).appendMessages = async (_id: string, msgs: any[]) => {
+      batches.push(msgs);
+    };
+    return batches;
+  }
+
+  it("an aborted turn saves the prompt and the partial messages exactly once", async () => {
+    const ctx = makeCtx(async (_input: string, cb: any) => {
+      await cb.onPersistMessages([assistant1]);
+      return { stopReason: "aborted", messages: [], newMessages: [assistant1, tool1], flushed: 1 };
+    });
+    const batches = recordBatches(ctx);
+
+    await submitGo(ctx);
+
+    expect(batches).toEqual([
+      [{ role: "user", content: "go" }, assistant1],
+      [tool1],
+    ]);
+  });
+
+  it("a full turn saves each message exactly once, without system messages", async () => {
+    const ctx = makeCtx(async (_input: string, cb: any) => {
+      await cb.onPersistMessages([assistant1]);
+      await cb.onPersistMessages([tool1, note]);
+      await cb.onPersistMessages([assistant2]);
+      return { stopReason: "done", messages: [], newMessages: [assistant1, tool1, note, assistant2], flushed: 4 };
+    });
+    const batches = recordBatches(ctx);
+
+    await submitGo(ctx);
+
+    expect(batches.flat()).toEqual([{ role: "user", content: "go" }, assistant1, tool1, assistant2]);
+  });
+
+  it("a turn that never flushed still saves the prompt and everything at the end", async () => {
+    const ctx = makeCtx(async () => ({ stopReason: "done", messages: [], newMessages: [assistant2] }));
+    const batches = recordBatches(ctx);
+
+    await submitGo(ctx);
+
+    expect(batches).toEqual([[{ role: "user", content: "go" }, assistant2]]);
+  });
+
+  it("a provider error saves only what the loop had not flushed yet", async () => {
+    const ctx = makeCtx(async (_input: string, cb: any) => {
+      await cb.onPersistMessages([assistant1]);
+      const err = new Error("Connection error.") as Error & { newMessages?: any[]; messages?: any[]; flushed?: number };
+      err.newMessages = [assistant1, tool1];
+      err.messages = [];
+      err.flushed = 1;
+      throw err;
+    });
+    const batches = recordBatches(ctx);
+
+    await submitGo(ctx);
+
+    expect(batches.flat()).toEqual([{ role: "user", content: "go" }, assistant1, tool1]);
+  });
+
+  it("a flush that failed is retried at the end without duplicating the prompt", async () => {
+    const ctx = makeCtx(async (_input: string, cb: any) => {
+      await cb.onPersistMessages([assistant1]).catch(() => {});
+      return { stopReason: "done", messages: [], newMessages: [assistant1, tool1], flushed: 0 };
+    });
+    const batches: any[][] = [];
+    let first = true;
+    (ctx.sessionStore as any).appendMessages = async (_id: string, msgs: any[]) => {
+      if (first) {
+        first = false;
+        throw new Error("disk full");
+      }
+      batches.push(msgs);
+    };
+
+    await submitGo(ctx);
+
+    expect(batches).toEqual([[{ role: "user", content: "go" }, assistant1, tool1]]);
+  });
+});
+
 describe("a max_turns stop", () => {
   it("is saved like any other turn and reports the request count", async () => {
     // The old notice claimed "Session saved." while only done/aborted turns
@@ -1275,8 +1376,8 @@ describe("a max_turns stop", () => {
       cb.onMaxTurns(history, 3);
       return { stopReason: "max_turns", messages: history, newMessages: [history[1]] };
     });
-    (ctx.sessionStore as any).appendMessage = async (_id: string, msg: any) => {
-      appended.push(msg);
+    (ctx.sessionStore as any).appendMessages = async (_id: string, msgs: any[]) => {
+      appended.push(...msgs);
     };
 
     const inst = render(<App ctx={ctx} />);

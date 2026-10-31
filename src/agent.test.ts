@@ -2670,6 +2670,206 @@ describe("maxTurns (turn cap)", () => {
   });
 });
 
+describe("incremental persistence (onPersistMessages)", () => {
+  const callTurn = (...ids: string[]): TurnScript => [
+    ...ids.flatMap((id): StreamEvent[] => [
+      { type: "tool_call_start", id, name: "read" },
+      { type: "tool_call_delta", id, arguments: '{"path":"a.txt"}' },
+    ]),
+    { type: "done", finishReason: "tool_calls" },
+  ];
+
+  it("flushes after the assistant message and after each tool batch, in order", async () => {
+    const { provider } = makeProvider([callTurn("c1"), callTurn("c2", "c3"), textTurn("all done")]);
+    const deltas: Message[][] = [];
+    const seenByTool: number[] = [];
+
+    const result = await runAgent("go", {
+      provider,
+      tools: [],
+      executeTool: async () => {
+        seenByTool.push(deltas.length);
+        return { content: "file contents" };
+      },
+      onPersistMessages: async (delta) => {
+        deltas.push(delta);
+      },
+    });
+
+    expect(deltas.map((d) => d.map((m) => (m.role === "tool" ? `tool:${m.toolCallId}` : m.role)))).toEqual([
+      ["assistant"],
+      ["tool:c1"],
+      ["assistant"],
+      ["tool:c2", "tool:c3"],
+      ["assistant"],
+    ]);
+    // The assistant message is already saved when its tools start running.
+    expect(seenByTool).toEqual([1, 3, 3]);
+    expect(deltas.flat()).toEqual(result.newMessages);
+    expect(result.flushed).toBe(result.newMessages.length);
+  });
+
+  it("flushes the batch notes together with the batch's tool results", async () => {
+    const { provider } = makeProvider([callTurn("c1"), textTurn("ok")]);
+    const deltas: Message[][] = [];
+    const executeTool = async (call: ToolCall) =>
+      call.id === "c1" ? { content: "first", stop: true } : { content: "x" };
+
+    const result = await runAgent("go", {
+      provider,
+      tools: [],
+      executeTool,
+      onPersistMessages: async (delta) => {
+        deltas.push(delta);
+      },
+    });
+
+    expect(deltas.flat()).toEqual(result.newMessages);
+    expect(result.flushed).toBe(result.newMessages.length);
+  });
+
+  it("without a sink nothing is flushed and newMessages is unchanged", async () => {
+    const { provider } = makeProvider([callTurn("c1"), textTurn("done")]);
+
+    const result = await runAgent("go", {
+      provider,
+      tools: [],
+      executeTool: async () => ({ content: "file contents" }),
+    });
+
+    expect(result.flushed).toBe(0);
+    expect(result.newMessages.map((m) => m.role)).toEqual(["assistant", "tool", "assistant"]);
+  });
+
+  it("a failing sink does not end the turn and leaves the messages for the caller to persist", async () => {
+    const { provider } = makeProvider([callTurn("c1"), textTurn("done")]);
+    const onDiagnostic = vi.fn();
+
+    const result = await runAgent("go", {
+      provider,
+      tools: [],
+      executeTool: async () => ({ content: "file contents" }),
+      onDiagnostic,
+      onPersistMessages: async () => {
+        throw new Error("disk full");
+      },
+    });
+
+    expect(result.stopReason).toBe("done");
+    expect(result.flushed).toBe(0);
+    expect(result.newMessages).toHaveLength(3);
+    expect(onDiagnostic).toHaveBeenCalledWith(expect.stringContaining("disk full"));
+  });
+
+  it("a provider error carries how much was already flushed", async () => {
+    let calls = 0;
+    const provider: Provider = {
+      name: "boom",
+      async *streamChat() {
+        calls++;
+        if (calls === 1) {
+          yield* callTurn("c1");
+          return;
+        }
+        throw new Error("HTTP 500: provider died");
+      },
+    };
+    const deltas: Message[][] = [];
+
+    const err = (await runAgent("go", {
+      provider,
+      tools: [],
+      executeTool: async () => ({ content: "file contents" }),
+      onPersistMessages: async (delta) => {
+        deltas.push(delta);
+      },
+    }).catch((e) => e)) as Error & { newMessages?: Message[]; flushed?: number };
+
+    expect(err.message).toContain("HTTP 500");
+    expect(err.newMessages).toHaveLength(2);
+    expect(err.flushed).toBe(2);
+    expect(deltas.flat()).toEqual(err.newMessages);
+  });
+
+  it("mid-turn compaction records the turn-start count and flushed survives the array swap", async () => {
+    const { provider } = makeProvider([callTurn("c1"), textTurn("done")]);
+    const log: Message[] = [];
+    // The persisted count grows as the sink writes, like the real log does.
+    const sessionStore = {
+      appendToken: vi.fn(async () => {}),
+      getMessageCount: vi.fn(async () => 5 + log.length),
+      appendCompaction: vi.fn(async () => {}),
+    };
+    let compacted = false;
+    const fakeCompactor = {
+      needsCompaction: vi.fn((msgs: Message[]) => !compacted && msgs.some((m) => m.role === "tool")),
+      compact: vi.fn(async (msgs: Message[]) => {
+        compacted = true;
+        return [
+          { role: "system", content: "[Previous conversation summary]\ncompacted" },
+          msgs[msgs.length - 1],
+        ] as Message[];
+      }),
+      getLastCompaction: vi.fn(() => ({ summary: "compacted", files: [] })),
+    };
+
+    const result = await runAgent("go", {
+      provider,
+      tools: [],
+      executeTool: async () => ({ content: "file contents" }),
+      compactor: fakeCompactor as any,
+      sessionStore: sessionStore as any,
+      sessionId: "s1",
+      onPersistMessages: async (delta) => {
+        log.push(...delta);
+      },
+    });
+
+    expect(fakeCompactor.compact).toHaveBeenCalledTimes(1);
+    expect(log.length).toBeGreaterThan(0);
+    expect(sessionStore.getMessageCount).toHaveBeenCalledTimes(1);
+    expect(sessionStore.appendCompaction).toHaveBeenCalledWith("s1", 4, expect.anything());
+    expect(log).toEqual(result.newMessages);
+    expect(result.flushed).toBe(result.newMessages.length);
+    expect(result.newMessages.map((m) => m.role)).toEqual(["assistant", "tool", "assistant"]);
+  });
+
+  it("resuming a log that ended right after an assistant tool call backfills the missing result", async () => {
+    const home = join(process.cwd(), ".test-e13-resume");
+    try {
+      const store = new SessionStore(home);
+      const id = await store.create({ cwd: process.cwd(), provider: "fake", model: "fake", mode: "default" });
+      await store.appendMessages(id, [
+        { role: "user", content: "run the tests" },
+        {
+          role: "assistant",
+          content: null,
+          toolCalls: [
+            { id: "a", name: "read", arguments: {} },
+            { id: "b", name: "read", arguments: {} },
+          ],
+        },
+        { role: "tool", toolCallId: "a", toolName: "read", content: "A" },
+      ]);
+
+      const loaded = await store.loadEffective(id);
+      const { provider, receivedMessages } = makeProvider([textTurn("continuing")]);
+      await runAgent("continue", {
+        provider,
+        tools: [],
+        executeTool: async () => ({ content: "" }),
+        history: loaded.messages,
+      });
+
+      const results = receivedMessages[0].filter((m) => m.role === "tool");
+      expect(results.map((m) => (m as { toolCallId: string }).toolCallId)).toEqual(["a", "b"]);
+      expect(results[1].content).toContain("did not complete");
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("toolResultForHistory", () => {
   it("keeps a failing tool's own output under the error line", () => {
     expect(toolResultForHistory({ content: "[block]\nExit code: 1\nstderr", error: "Exit code: 1" })).toBe(

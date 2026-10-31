@@ -274,8 +274,9 @@ export interface LoadedSession {
  *   completed   — the last recorded message is an assistant reply (the last
  *                 turn resolved cleanly).
  *   interrupted — the transcript ends on a user message with no assistant
- *                 reply, i.e. a turn was started but never finished (crash,
- *                 quit mid-turn, or still in progress).
+ *                 reply, or on an assistant message whose tool calls have no
+ *                 results yet, i.e. a turn was started but never finished
+ *                 (crash, quit mid-turn, or still in progress).
  *   failed      — the JSONL has a torn/incomplete final line, i.e. a write was
  *                 cut off. The one signal of an unclean stop the store can see.
  * A session with no messages at all is reported as `interrupted`.
@@ -319,6 +320,12 @@ function generateId(): string {
   const ts = new Date().toISOString().replace(/[:.]/g, "").slice(0, 15);
   const hex = Math.random().toString(16).slice(2, 6);
   return `${ts}-${hex}`;
+}
+
+function redactMessage(message: Message): Message {
+  return typeof message.content === "string"
+    ? { ...message, content: redactSecrets(message.content) }
+    : message;
 }
 
 export function slugify(cwd: string): string {
@@ -439,12 +446,18 @@ export class SessionStore {
   }
 
   async appendMessage(sessionId: string, message: Message): Promise<void> {
-    const safeContent =
-      typeof message.content === "string"
-        ? redactSecrets(message.content)
-        : message.content;
-    const safeMessage = { ...message, content: safeContent };
-    await this.append(sessionId, { type: "message", message: safeMessage });
+    await this.append(sessionId, { type: "message", message: redactMessage(message) });
+  }
+
+  async appendMessages(sessionId: string, messages: Message[]): Promise<void> {
+    if (messages.length === 0) return;
+    await ensurePrivateStateDirectoryAsync(dirname(dirname(this.sessionDir)), "sessions", basename(this.sessionDir));
+    const at = new Date().toISOString();
+    const lines = messages.map((m) =>
+      JSON.stringify({ type: "message", message: redactMessage(m), at }) + "\n",
+    );
+    await appendPrivateFile(this.filePath(sessionId), lines.join(""));
+    await this.updateIndexEntry(sessionId);
   }
 
   async appendState(
@@ -827,6 +840,7 @@ export class SessionStore {
     let title = "";
     let messageCount = 0;
     let lastMessageRole: Message["role"] | null = null;
+    let lastHasToolCalls = false;
     let lastAt = "";
     let torn = false;
     let totalUsed: number | undefined;
@@ -851,6 +865,7 @@ export class SessionStore {
         messageCount++;
         const msg = rec.message as Message;
         lastMessageRole = msg.role;
+        lastHasToolCalls = msg.role === "assistant" && (msg.toolCalls?.length ?? 0) > 0;
         if (!title && msg.role === "user") {
           title = redactSecrets(String(msg.content ?? "")).slice(0, TITLE_MAX);
         }
@@ -864,7 +879,7 @@ export class SessionStore {
 
     const status: SessionStatus = torn
       ? "failed"
-      : lastMessageRole === "assistant" || lastMessageRole === "tool"
+      : (lastMessageRole === "assistant" && !lastHasToolCalls) || lastMessageRole === "tool"
         ? "completed"
         : "interrupted";
 

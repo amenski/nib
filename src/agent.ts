@@ -205,6 +205,8 @@ function getStablePreamble(ctx: PromptContext): string {
 export type AgentResult = {
   messages: Message[];
   newMessages: Message[];
+  /** How many leading `newMessages` the `onPersistMessages` sink already received. */
+  flushed: number;
   stopReason: "done" | "aborted" | "max_turns";
 };
 
@@ -298,6 +300,8 @@ export interface AgentOptions {
   onDiagnostic?: (msg: string) => void;
   onRetry?: (msg: string) => void;
   onCompacted?: (msg: string) => void;
+  /** Receives new messages as the turn runs, so a killed turn leaves its progress in the log. */
+  onPersistMessages?: (delta: Message[]) => Promise<void>;
   onLoopDetected?: (msg: string) => void;
   onMaxTurns?: (messages: Message[], requests: number) => void;
   onUsage?: (input: number, output: number, cached?: number) => void;
@@ -521,6 +525,26 @@ export async function runAgent(
     newCursor = messages.length;
   }
 
+  // Indexes `newMessages`, so it survives the array swap in compaction. A failed
+  // write leaves it behind and the end-of-turn persist covers the gap.
+  let flushed = 0;
+  async function flushNewMessages(): Promise<void> {
+    captureNewMessages();
+    if (!options.onPersistMessages || flushed >= newMessages.length) return;
+    try {
+      await options.onPersistMessages(newMessages.slice(flushed));
+      flushed = newMessages.length;
+    } catch (err) {
+      options.onDiagnostic?.(`could not save the session so far: ${(err as Error).message}`);
+    }
+  }
+
+  // Read before this turn writes anything: flushing grows the log mid-turn, and
+  // the compaction record must not cover messages already flushed.
+  const persistedAtTurnStart = compactor && options.sessionStore && options.sessionId
+    ? await options.sessionStore.getMessageCount(options.sessionId)
+    : 0;
+
   // Volatile context is injected only into the request sent to the provider,
   // never into the stored `messages` array — otherwise it would accumulate in
   // history and bake stale RepoMap/env snapshots into every past user turn.
@@ -553,9 +577,6 @@ export async function runAgent(
   // `needsCompaction` is false, so calling this when nothing changed is cheap.
   async function maybeCompact(overheadTokens: number): Promise<void> {
     if (!compactor || !compactor.needsCompaction(messages, overheadTokens)) return;
-    const persistedCount = options.sessionStore && options.sessionId
-      ? await options.sessionStore.getMessageCount(options.sessionId)
-      : 0;
     const before = messages.length;
     // PreCompact hooks run immediately before the compactor; their stdout is
     // appended to the compaction prompt (hooks-spec.md §2).
@@ -583,7 +604,7 @@ export async function runAgent(
       messages.unshift({ role: "system", content: rebuiltPrompt });
     }
     newCursor = messages.length;
-    if (options.sessionStore && options.sessionId && persistedCount > 0) {
+    if (options.sessionStore && options.sessionId && persistedAtTurnStart > 0) {
       const { summary, files } = compactor.getLastCompaction();
       const compactionSummary: CompactionSummary = {
         task: summary ?? "Conversation summarized.",
@@ -593,7 +614,7 @@ export async function runAgent(
       };
       await options.sessionStore.appendCompaction(
         options.sessionId,
-        persistedCount - 1,
+        persistedAtTurnStart - 1,
         compactionSummary,
       );
     }
@@ -838,6 +859,8 @@ export async function runAgent(
       toolCalls,
     });
 
+    // Before tools run, so a kill mid-call keeps this message; resume repair backfills the results.
+    await flushNewMessages();
     await recordTokens();
 
     await diagnostics?.snapshot();
@@ -1719,6 +1742,7 @@ export async function runAgent(
     }
 
     messages.push(...batchNotes);
+    await flushNewMessages();
 
     // Per-call hooks fired inside processCall; the batch-level event fires
     // once the batch is done (hooks-spec.md §2).
@@ -1753,6 +1777,7 @@ export async function runAgent(
         if (err !== null && typeof err === "object") {
           captureNewMessages();
           (err as { newMessages?: Message[] }).newMessages = newMessages;
+          (err as { flushed?: number }).flushed = flushed;
           (err as { messages?: Message[] }).messages = messages;
         }
         throw err;
@@ -1768,10 +1793,11 @@ export async function runAgent(
     options.onMaxTurns?.(messages, turn);
   }
 
-  captureNewMessages();
+  await flushNewMessages();
   return {
     messages,
     newMessages,
+    flushed,
     stopReason,
   };
 }

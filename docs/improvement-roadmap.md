@@ -110,7 +110,7 @@ captured so they aren't lost:
 | ~~**Doctor: `credentials.json` label**~~ ✅ **shipped 2026-08-02** | `doctor` diagnostics now print `credentials.yaml`, the real file. |
 | ~~**`ansi-light` / `ansi-dark` presets**~~ ✅ **shipped 2026-08-02** | Both ANSI presets (base-16 only, "dumb-terminal" variants of dark/light) added in `ThemeDefinition` shape; `/theme` picker auto-adopts them. |
 | ~~**Plan-mode research read**~~ ✅ **shipped 2026-08-02** | Plan mode now loads `.nib/research/**/*.md` (the `.deepcode/docs/research/` path from the original note is stale — the repo renamed its config namespace to `.nib`) and injects it into the volatile plan-mode context each turn. |
-| ~~**CodeArtifact-URL-in-git-history scrub — decision**~~ ✅ **closed 2026-11-02, nothing to scrub** | `git log --all -G'codeartifact\.[a-z0-9-]+\.amazonaws\.com'` finds no commit across all 664 (the only `-S"codeartifact"` hits, `6087d25` and `0a7ef2d`, are the registry-guard hook's own text). The repo is public, so this was worth confirming. |
+| ~~**CodeArtifact-URL-in-git-history scrub — decision**~~ ✅ **closed 2026-11-02, nothing to scrub** | A history-wide `git log --all -G` for the private registry host pattern (the one `.github/workflows/registry-guard.yml` blocks) finds no commit across all 664; the only commits that mention the registry at all, `6087d25` and `0a7ef2d`, are the guard hook's own text. The repo is public, so this was worth confirming. The pattern is not spelled out here because the guard fails any file that contains it. |
 
 ---
 

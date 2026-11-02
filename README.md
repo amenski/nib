@@ -92,7 +92,8 @@ nib doctor                       # shows config and credential sources
 ```
 
 You can use an environment variable instead, such as `DEEPSEEK_API_KEY` or
-`OPENAI_API_KEY`.
+`OPENAI_API_KEY`. If both are set, the environment variable wins over the
+stored key ([order](docs/config-spec.md#8-credentials)).
 
 Start a session:
 

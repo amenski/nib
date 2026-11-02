@@ -459,14 +459,20 @@ model `anthropic/claude-sonnet-4.6`).
 
 ## 8. Credentials
 
-API keys are resolved by `createProvider` (`src/providers/presets.ts`), in
-order:
+API keys are resolved by one function, `resolveProviderKey`
+(`src/config/credentials.ts`), which `createProvider`, the model picker, the
+live model-list check and `nib doctor` all call. **This is the canonical
+statement of the order**; the provider spec and README link here. In order:
 
-1. `options.apiKey` — sourced from `env.API_KEY` in `settings.json` when
-   set.
-2. The provider's env var (`DEEPSEEK_API_KEY`, `OPENAI_API_KEY`,
-   `OPENROUTER_API_KEY`, `GROQ_API_KEY`).
+1. An explicit key — `env.API_KEY` in `settings.json`, for the provider that
+   was active at startup only (it is never sent to another provider after a
+   `/model` switch).
+2. The provider's own env var, named by its preset's `keyEnv`
+   (`DEEPSEEK_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, …).
 3. `~/.nib/credentials.yaml` via `getCredential(name)`.
+
+`nib doctor` prints the sources it finds on the `API key` row (names only,
+never a key). nib does not read `~/.heirloom`; see `docs/troubleshooting.md`.
 
 The **canonical, recommended** store is `~/.nib/credentials.yaml` — a
 flat `provider: key` YAML map at mode `0600` (auto-chmoded if looser,

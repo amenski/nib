@@ -75,3 +75,26 @@ export function getCredential(
   const value = readCredentialsFile(path)[name];
   return value || undefined;
 }
+
+/** Where a provider's API key came from. */
+export type KeySource = "options" | "env" | "credentials" | "none";
+
+/**
+ * The one place a built-in provider's API key is resolved, so createProvider,
+ * the model picker, doctor and the live-model check cannot disagree: an
+ * explicit key (settings.json `env.API_KEY`, passed by the caller) wins, then
+ * the provider's own env var, then the key `nib auth` stored. `keyEnv` is the
+ * preset's env var name, or undefined for a provider that needs no key.
+ */
+export function resolveProviderKey(
+  name: string,
+  keyEnv: string | undefined,
+  explicitKey?: string,
+): { key: string; source: KeySource } {
+  if (explicitKey) return { key: explicitKey, source: "options" };
+  const fromEnv = keyEnv ? process.env[keyEnv] : undefined;
+  if (fromEnv) return { key: fromEnv, source: "env" };
+  const stored = getCredential(name);
+  if (stored) return { key: stored, source: "credentials" };
+  return { key: "", source: "none" };
+}

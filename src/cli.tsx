@@ -6,7 +6,7 @@ import { createElement } from "react";
 import { pkg } from "./version.js";
 import { parseArguments, resolveAdditionalDirs } from "./cli-args.js";
 import { runExecMode } from "./exec-runner.js";
-import { initPresets, createProvider, getPreset, getKnownProviderNames, getListedProviderNames, getProviderModels, getConfiguredProviders, type ProviderOptions } from "./providers/presets.js";
+import { initPresets, createProvider, getPreset, getKnownProviderNames, getListedProviderNames, getProviderModels, getConfiguredProviders, getKeySources, type ProviderOptions } from "./providers/presets.js";
 import { getProviderCapabilities, imageSupportWarning } from "./providers/registry.js";
 import { runAgent } from "./agent.js";
 import { buildRepoMap, captureGitStatus, loadProjectResearch } from "./prompt.js";
@@ -49,7 +49,7 @@ import { containmentWarning, hasActiveSandboxContainment, loadConfig, resolveHom
 import { projectSettingsPath } from "./config/paths.js";
 import { checkSettingsTrust, trustSettings, stripExecutionKeys } from "./config/settings-trust.js";
 import { checkFolderTrust, trustFolder, buildFolderContentSummary, hasGatedContent } from "./config/folder-trust.js";
-import { readCredentialsFile, getCredential } from "./config/credentials.js";
+import { readCredentialsFile, resolveProviderKey } from "./config/credentials.js";
 import { readActiveSnapshot } from "./providers/catalog-update.js";
 import { getLiveModels, checkModelListed } from "./providers/live-models.js";
 import { enableDebug } from "./debug/logger.js";
@@ -1342,7 +1342,7 @@ async function main() {
         const liveModels = async (): Promise<string | undefined> => {
           const preset = getPreset(shared.providerName);
           if (!preset || preset.api !== "openai-compatible") return undefined;
-          const apiKey = resolveLiveModelsKey(shared.providerName);
+          const apiKey = resolveLiveModelsKey(shared.providerName, shared.providerName === startupProviderName ? resolvedApiKey : undefined);
           if (!apiKey) return undefined;
           const model = shared.activeModel ?? preset.defaultModel;
           const models = await getLiveModels({ provider: shared.providerName, baseUrl: preset.baseUrl, apiKey });
@@ -1459,14 +1459,16 @@ function detectProvider(configEnv: Record<string, string | undefined> | undefine
 }
 
 /**
- * The key `createProvider` would use for a built-in preset: the preset's
- * keyEnv env var, else the credential stored by `nib auth`. "" when neither
- * exists — the caller treats that as "cannot ask the provider".
+ * The key `createProvider` would use for a built-in preset (same resolver, so
+ * the order cannot drift): an explicit key when the caller has one for this
+ * provider, then the preset's keyEnv env var, then the credential stored by
+ * `nib auth`. "" when none exists — the caller treats that as "cannot ask the
+ * provider".
  */
-function resolveLiveModelsKey(providerName: string): string {
+function resolveLiveModelsKey(providerName: string, explicitKey?: string): string {
   const preset = getPreset(providerName);
   if (!preset) return "";
-  return (preset.keyEnv ? process.env[preset.keyEnv] : undefined) || getCredential(providerName) || "";
+  return resolveProviderKey(providerName, preset.keyEnv, explicitKey).key;
 }
 
 /** The 2-space-indent, 18-column-label prefix shared by the `nib doctor` rows. */
@@ -1755,9 +1757,19 @@ export async function runDoctor(): Promise<void> {
   catch { console.log(`  git               NOT FOUND`); }
   try { const configResult = loadConfig(); console.log(`  settings.json     model: ${configResult.config.model || configResult.config.env?.MODEL || "(not set)"}`); }
   catch (e) { console.log(`  settings.json     ERROR: ${(e as Error).message}`); }
-  const keySource = process.env.DEEPSEEK_API_KEY ? "DEEPSEEK_API_KEY env var" : process.env.OPENAI_API_KEY ? "OPENAI_API_KEY env var" : (() => { const names = Object.entries(readCredentialsFile()).filter(([, v]) => v).map(([k]) => k); return names.length ? `credentials.yaml (${names.join(", ")})` : "none"; })();
-  console.log(`  API key           ${keySource}`);
   const configResult = loadConfig();
+  {
+    // Same resolver createProvider uses, so this line names what a session
+    // would actually pick up: settings env.API_KEY, then each set provider env
+    // var, then the keys `nib auth` stored.
+    const sources = getKeySources();
+    const parts = [
+      ...(configResult.config.env?.API_KEY ? ["settings.json env.API_KEY"] : []),
+      ...sources.env.map((v) => `${v} env var`),
+      ...(sources.credentials.length > 0 ? [`credentials.yaml (${sources.credentials.join(", ")})`] : []),
+    ];
+    console.log(`  API key           ${parts.length > 0 ? parts.join(", ") : "none"}`);
+  }
   const issues = [...configResult.errors, ...configResult.warnings];
   console.log(`  config            ${issues.length === 0 ? "valid" : `${issues.length} issue(s):\n${issues.map(i => `                    - ${i}`).join("\n")}`}`);
   // Catalog + live model list. Both are best-effort: neither can throw (the
@@ -1773,7 +1785,7 @@ export async function runDoctor(): Promise<void> {
     const doctorProvider = parsedDoctor?.provider ?? "deepseek";
     const doctorPreset = getPreset(doctorProvider);
     const doctorModel = parsedDoctor?.model ?? doctorPreset?.defaultModel ?? "unknown";
-    const doctorKey = resolveLiveModelsKey(doctorProvider);
+    const doctorKey = resolveLiveModelsKey(doctorProvider, configResult.config.env?.API_KEY || undefined);
     const doctorModels = doctorPreset?.api === "openai-compatible" && doctorKey
       ? await getLiveModels({ provider: doctorProvider, baseUrl: doctorPreset.baseUrl, apiKey: doctorKey })
       : null;

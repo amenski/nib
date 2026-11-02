@@ -1,6 +1,6 @@
 import { createAISDKProvider } from "./aisdk.js";
 import type { Provider, ModelCapabilities } from "./types.js";
-import { getCredential } from "../config/credentials.js";
+import { resolveProviderKey } from "../config/credentials.js";
 import { loadModelCatalog, type CatalogModel } from "./catalog.js";
 
 export interface ProviderPreset {
@@ -67,9 +67,28 @@ export function getConfiguredProviders(): Record<string, boolean> {
       out[name] = true;
       continue;
     }
-    out[name] = !!(process.env[preset.keyEnv] || getCredential(name));
+    out[name] = resolveProviderKey(name, preset.keyEnv).key !== "";
   }
   return out;
+}
+
+/**
+ * Which built-in providers have a key, and from where, for `nib doctor`: the
+ * env var names that are set, and the providers whose key `nib auth` stored.
+ * Names only, never a secret. An env var wins over the stored key, so a
+ * provider with both is listed under env.
+ */
+export function getKeySources(): { env: string[]; credentials: string[] } {
+  const env: string[] = [];
+  const credentials: string[] = [];
+  for (const name of getKnownProviderNames()) {
+    const preset = BUILTIN_PRESETS[name];
+    if (!preset?.keyEnv) continue;
+    const { source } = resolveProviderKey(name, preset.keyEnv);
+    if (source === "env" && !env.includes(preset.keyEnv)) env.push(preset.keyEnv);
+    else if (source === "credentials") credentials.push(name);
+  }
+  return { env, credentials };
 }
 
 /**
@@ -82,7 +101,7 @@ export function getListedProviderNames(active?: string): string[] {
   return getKnownProviderNames().filter((name) => {
     const preset = BUILTIN_PRESETS[name];
     if (name === active || preset?.featured) return true;
-    return !!((preset?.keyEnv && process.env[preset.keyEnv]) || getCredential(name));
+    return resolveProviderKey(name, preset?.keyEnv).key !== "";
   });
 }
 
@@ -143,10 +162,7 @@ export function createProvider(name: string, options?: ProviderOptions): Provide
     );
   }
 
-  const apiKey = options?.apiKey
-    || (preset.keyEnv ? process.env[preset.keyEnv] : undefined)
-    || getCredential(name)
-    || "";
+  const { key: apiKey } = resolveProviderKey(name, preset.keyEnv, options?.apiKey);
   if (!apiKey && preset.keyEnv) {
     throw new Error(
       `Provider "${name}" requires ${preset.keyEnv} to be set, or run \`nib auth\` to store a key in credentials.yaml`,

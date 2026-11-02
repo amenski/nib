@@ -189,3 +189,49 @@ describe("runDoctor lsp row", () => {
     expect(logs.some((l) => /^ {2}lsp {15}\S/.test(l))).toBe(true);
   });
 });
+
+describe("runDoctor API key row", () => {
+  let logs: string[];
+  let logSpy: ReturnType<typeof vi.spyOn>;
+  const saved: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    logs = [];
+    logSpy = vi.spyOn(console, "log").mockImplementation((...args) => logs.push(args.map(String).join(" ")));
+    for (const k of Object.keys(process.env)) {
+      if (k.endsWith("_API_KEY")) {
+        saved[k] = process.env[k];
+        delete process.env[k];
+      }
+    }
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true })));
+  });
+  afterEach(() => {
+    logSpy.mockRestore();
+    vi.unstubAllGlobals();
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  });
+
+  const keyRow = () => logs.find((l) => l.startsWith("  API key"));
+
+  it("names the env var that is set, for any provider, not just DeepSeek and OpenAI", async () => {
+    mockConfig();
+    process.env.OPENROUTER_API_KEY = "sk-secret-value";
+    await runDoctor();
+    expect(keyRow()).toMatch(/OPENROUTER_API_KEY env var/);
+    expect(keyRow()).not.toContain("sk-secret-value");
+  });
+
+  it("lists providers whose key `nib auth` stored, and says none when there is nothing", async () => {
+    mockConfig();
+    await runDoctor();
+    expect(keyRow()).toMatch(/none$/);
+    logs.length = 0;
+    writeFileSync(join(homeDir, "credentials.yaml"), "zai: stored\n", { mode: 0o600 });
+    await runDoctor();
+    expect(keyRow()).toMatch(/credentials\.yaml \(zai\)/);
+  });
+});

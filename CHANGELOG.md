@@ -21,6 +21,12 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **`nib doctor` names every key source.** The `API key` row only knew
+  `DEEPSEEK_API_KEY` and `OPENAI_API_KEY`; it now lists `settings.json
+  env.API_KEY`, every provider env var that is set, and the providers whose key
+  `nib auth` stored (names only). One function now resolves a key for sessions,
+  the model picker, doctor and the live model-list check, so they cannot
+  disagree; the live check also honours `env.API_KEY` for the startup provider.
 - **Wrapped lines stay under their own text.** A long tool-output line, a long
   prompt echo and a wrapped tool header were laid out wider than the terminal,
   so their last word fell onto its own row at column 0. Tabs (`od -c`, tab-

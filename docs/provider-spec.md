@@ -117,13 +117,10 @@ the same adapter.
 
 ## 3. Key resolution
 
-`createProvider(name, options)` (`src/providers/presets.ts:103`) resolves in
-order:
-
-1. `options.apiKey` (from settings.json `env.API_KEY`, provider-scoped)
-2. `process.env[preset.keyEnv]` (e.g. `DEEPSEEK_API_KEY`)
-3. `~/.nib/credentials.yaml` (`nib auth` writes it; file enforced
-   `0600`, `src/config/credentials.ts`)
+`createProvider(name, options)` (`src/providers/presets.ts`) calls
+`resolveProviderKey` (`src/config/credentials.ts`): explicit key, then the
+preset's env var, then `~/.nib/credentials.yaml` (file enforced `0600`). The
+order is stated once, in [config-spec.md §8](./config-spec.md#8-credentials).
 
 No key resolvable for a provider that requires one → thrown error naming the
 env var and suggesting `nib auth`. Providers without `keyEnv` (ollama —

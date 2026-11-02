@@ -50,6 +50,8 @@ export interface ExecRunnerOptions {
   allowedTools?: string[];
   /** Remove these tool names from the offered set (--disallowed-tools). */
   disallowedTools?: string[];
+  /** Plan posture, as Shift+Tab in the TUI: read-only tools and the `<proposed_plan>` instruction. */
+  plan?: boolean;
   input?: ExecInputStream;
 }
 
@@ -484,7 +486,11 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
       // CLI --allowed-tools / --disallowed-tools (flag parity): narrow the
       // offered tool set before passing it to runAgent; empty lists pass
       // everything through. maxTurns from CLI caps agentic turns.
-      const modeTools = activeMode.groups ? registry.getByMode(activeMode.groups) : registry.getAllDefs();
+      // Plan posture enforces read-only the way the TUI does (cli.tsx), so the
+      // posture is a fact about the tool set, not just a request in the prompt.
+      const modeTools = options.plan
+        ? registry.getByMode(["read"])
+        : activeMode.groups ? registry.getByMode(activeMode.groups) : registry.getAllDefs();
       const filteredTools = filterToolDefs(modeTools, options.allowedTools, options.disallowedTools);
       // The classifier's optional model stage (docs/command-risk-classifier.md
     // §6). Headless is where a flaky judge costs the most — there is no human
@@ -522,6 +528,7 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
     const agentOptions = {
         provider,
         tools: filteredTools,
+        ...(options.plan ? { planMode: true } : {}),
         effort: activeEffort,
         compactor,
         contextWindow,

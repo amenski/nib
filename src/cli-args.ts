@@ -33,6 +33,8 @@ export interface ParsedCliArgs {
   disallowedTools: string[];
   /** Custom display name for a freshly-created session. */
   name: string | undefined;
+  /** Print mode only: run in plan posture (read-only tools, `<proposed_plan>` required). */
+  plan: boolean;
 }
 
 /** Resolve explicit additional trusted directories relative to the startup cwd. */
@@ -72,6 +74,7 @@ async function configureYargs(argv?: string[]) {
         .option("max-turns", { type: "number", describe: "Cap the number of agentic turns (print mode exits non-zero at the limit)" })
         .option("allowed-tools", { alias: "allowedTools", type: "string", array: true, default: [], describe: "Restrict tools to this comma-separated allowlist (repeatable)" })
         .option("disallowed-tools", { alias: "disallowedTools", type: "string", array: true, default: [], describe: "Remove tools from the offered set (comma-separated, repeatable)" })
+        .option("plan", { type: "boolean", default: false, describe: "Print mode: plan only — read-only tools, ends with a <proposed_plan>" })
         .option("name", { alias: "n", type: "string", describe: "Display name for a new session" })
         .check((argv: Record<string, unknown>) => {
           const positionalPrompt = argv["prompt"] as string | undefined;
@@ -86,6 +89,8 @@ async function configureYargs(argv?: string[]) {
             return `Invalid session ID: "${resume}". Expected the form <timestamp>-<hex>, e.g. 2026-07-30T2358-15a3.`;
           if (print && !positionalPrompt)
             return "--print / -p requires a non-empty prompt.";
+          if (argv["plan"] === true && !print)
+            return "--plan requires -p/--print (in the TUI, press Shift+Tab).";
           if (maxTurns !== undefined && (!Number.isInteger(maxTurns) || maxTurns < 1))
             return "--max-turns must be a positive integer.";
           return true;
@@ -159,6 +164,7 @@ export async function parseArguments(argv?: string[]): Promise<ParsedCliArgs> {
     maxTurns: typeof parsed["max-turns"] === "number" ? parsed["max-turns"] : undefined,
     allowedTools: splitList(parsed["allowed-tools"]),
     disallowedTools: splitList(parsed["disallowed-tools"]),
+    plan: parsed.plan === true,
     name: typeof parsed.name === "string" && parsed.name.trim() ? parsed.name.trim() : undefined,
   };
 }

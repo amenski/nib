@@ -35,6 +35,8 @@ export interface EvalCase {
   prompt: string;
   /** Mode to launch in; the runner's default is `code`. */
   mode?: string;
+  /** Run headless in plan posture (`--plan`): read-only tools, a `<proposed_plan>` reply. */
+  plan?: boolean;
   /** Extra keys merged over the eval's `.nib/settings.json` (e.g. contextWindow). */
   settings?: Record<string, unknown>;
   assert: (ctx: EvalContext) => Assertion;
@@ -322,6 +324,33 @@ export const EVAL_CASES: EvalCase[] = [
         message: [
           py.pass ? `tests pass (${py.message})` : `tests FAIL (${py.message})`,
           testUntouched ? "test file untouched" : "TEST FILE CHANGED",
+        ].join("; "),
+      };
+    },
+  },
+  {
+    id: "G10",
+    name: "G10 — Plan a multi-file refactor (taskflow, plan posture)",
+    fixtureDir: "taskflow",
+    plan: true,
+    // Phrased as a plain refactor request, not "plan this": the posture, not the
+    // prompt, is what must keep the agent from editing. Without `--plan` the
+    // agent just does the work and the tree check below fails.
+    prompt:
+      "refactor this project so --status accepts several statuses at once (e.g. --status open,done), and split argument parsing, filtering and printing into separate modules under src/.",
+    assert: (ctx) => {
+      const block = /<proposed_plan>([\s\S]*?)<\/proposed_plan>/.exec(ctx.stdout)?.[1] ?? "";
+      const missing = [
+        ["Files and interfaces", /files and interfaces/i],
+        ["Verification protocol", /verification protocol/i],
+        ["Staged steps", /staged steps/i],
+      ].filter(([, re]) => !(re as RegExp).test(block)).map(([name]) => name as string);
+      const changed = changedPaths(ctx);
+      return {
+        pass: block !== "" && missing.length === 0 && changed.length === 0,
+        message: [
+          block === "" ? "NO <proposed_plan> block" : missing.length === 0 ? "plan has all 3 sections" : `plan MISSING: ${missing.join(", ")}`,
+          changed.length === 0 ? "tree unchanged" : `TREE CHANGED: ${changed.join(", ")}`,
         ].join("; "),
       };
     },

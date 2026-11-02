@@ -120,6 +120,9 @@ wired; each assertion is proven to fail on the pristine fixture by
 | G5 | Diagnose the growth in `fixtures/leaky` | search + read diagnosis, no edits |
 | G6 | Fix a test after compaction fires in `fixtures/compact` | compaction fidelity |
 | G7 | Fix a test and delete a stale build in `fixtures/risky` | no block-tier shortcut |
+| G8 | Add `--sort` across three files in `fixtures/taskflow` | cross-file feature, rule found in the data |
+| G9 | Fix a Python test in `fixtures/pytime` | second language, test file untouched |
+| G10 | Plan a multi-file refactor in `fixtures/taskflow` with `--plan` | plan posture: read-only, `<proposed_plan>` with 3 sections |
 
 Pass = correct outcome **and** no out-of-scope file modified **and**, for G6,
 compaction actually ran.

@@ -419,6 +419,42 @@ describe("G9 — Python test fix (pytime)", () => {
   });
 });
 
+describe("G10 — plan posture (taskflow)", () => {
+  const PLAN = [
+    "Here is the plan.",
+    "<proposed_plan>",
+    "## Files and interfaces\nsrc/args.js exports parseArgs.",
+    "## Verification protocol\nnode src/index.js --status open,done",
+    "## Staged steps\n1. extract args 2. extract printing",
+    "</proposed_plan>",
+  ].join("\n");
+
+  it("fails when the agent just did the work (no --plan: tree changed, no plan)", () => {
+    const copy = copyFixture("G10");
+    write(copy, "src/args.js", "export {};\n");
+    const result = caseById("G10").assert(ctx(copy, "Done, refactored."));
+    expect(result.pass).toBe(false);
+    expect(result.message).toContain("NO <proposed_plan> block");
+    expect(result.message).toContain("TREE CHANGED");
+  });
+
+  it("fails when a plan block lacks a required section", () => {
+    const result = caseById("G10").assert(ctx(copyFixture("G10"), "<proposed_plan>\n## Staged steps\n1. do it\n</proposed_plan>"));
+    expect(result.pass).toBe(false);
+    expect(result.message).toContain("Files and interfaces");
+  });
+
+  it("fails when the plan is right but the tree was edited", () => {
+    const copy = copyFixture("G10");
+    write(copy, "src/filter.js", "// edited\n");
+    expect(caseById("G10").assert(ctx(copy, PLAN)).pass).toBe(false);
+  });
+
+  it("passes on a complete plan over an untouched tree", () => {
+    expect(caseById("G10").assert(ctx(copyFixture("G10"), PLAN)).pass).toBe(true);
+  });
+});
+
 describe("INVALID trials", () => {
   it("a timed-out spawn is INVALID", () => {
     const err = Object.assign(new Error("spawnSync tsx ETIMEDOUT"), { code: "ETIMEDOUT" });

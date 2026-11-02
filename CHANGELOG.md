@@ -7,6 +7,12 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **`nib -p --plan`** runs a headless prompt in plan posture: only read tools are
+  offered and the reply ends with a `<proposed_plan>`, as `Shift+Tab` does in the
+  TUI. It also lets the eval measure plan quality (new case G10).
+
 ### Fixed
 
 - **The risk classifier no longer asks about routine setup.** A prologue like

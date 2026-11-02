@@ -228,7 +228,7 @@ function runTrial(testCase: EvalCase, trial: number, evalHome: string): TrialRes
   const reportPath = join(EVAL_TMP, `report-${testCase.fixtureDir}-t${trial}.json`);
 
   const start = Date.now();
-  const result = spawnSync(TSX_BIN, [NIB_SRC, "-p", testCase.prompt, ...(testCase.mode ? ["--mode", testCase.mode] : [])], {
+  const result = spawnSync(TSX_BIN, [NIB_SRC, "-p", testCase.prompt, ...(testCase.mode ? ["--mode", testCase.mode] : []), ...(testCase.plan ? ["--plan"] : [])], {
     cwd: workdir,
     encoding: "utf-8",
     timeout: 180_000,

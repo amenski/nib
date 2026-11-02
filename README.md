@@ -171,6 +171,7 @@ current built-ins. See the [mode specification](./docs/mode-spec.md).
 | `--mode <name>` | start in a given mode |
 | `--add-dir <path>` | add a trusted writable directory (repeatable) |
 | `--max-turns <n>` | cap agentic turns in print mode |
+| `--plan` | print mode only: plan posture — read-only tools, reply ends with a `<proposed_plan>` |
 | `-d, --debug` | opt in to diagnostic request/response JSONL (includes conversation and tool payloads, with secret redaction) |
 
 ```bash

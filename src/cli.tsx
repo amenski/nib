@@ -299,6 +299,7 @@ async function main() {
       maxTurns: parsed.maxTurns,
       allowedTools: parsed.allowedTools,
       disallowedTools: parsed.disallowedTools,
+      plan: parsed.plan,
     });
     return;
   }

@@ -133,7 +133,7 @@ function writeSettings(settings: Record<string, unknown>): void {
   writeFileSync(projectSettingsPath(PROJECT_DIR), JSON.stringify(settings), "utf-8");
 }
 
-async function run(opts?: { mode?: string; model?: string; debug?: boolean; prompt?: string }): Promise<{ code: number; stderr: string }> {
+async function run(opts?: { mode?: string; model?: string; debug?: boolean; prompt?: string; plan?: boolean }): Promise<{ code: number; stderr: string }> {
   // Every run must read the fixture home, never the developer's ~/.nib: a
   // stale variable name once let a real settings file decide these results.
   if (process.env.NIB_HOME !== HOME_DIR) throw new Error("exec-runner test ran without NIB_HOME set to the fixture home");
@@ -154,6 +154,7 @@ async function run(opts?: { mode?: string; model?: string; debug?: boolean; prom
       mode: opts?.mode,
       model: opts?.model,
       debug: opts?.debug,
+      plan: opts?.plan,
     });
     return { code, stderr: chunks.join("") };
   } finally {
@@ -400,6 +401,22 @@ describe("runExecMode first-run failures are clean (B1)", () => {
 
     expect(code).toBe(0);
     expect(createProviderSpy).toHaveBeenCalledWith("openai", expect.objectContaining({ modelOverride: "gpt-5.6-luna" }));
+  });
+
+  it("--plan offers only read tools and puts the plan instruction in the request", async () => {
+    getByModeSpy.mockClear();
+
+    const { code } = await run({ plan: true });
+
+    expect(code).toBe(0);
+    expect(getByModeSpy).toHaveBeenCalledWith(["read"]);
+    expect(getByModeSpy).not.toHaveBeenCalledWith(["read", "edit", "command", "mcp", "workflow"]);
+    expect(JSON.stringify(lastMessages)).toContain("<proposed_plan>");
+  });
+
+  it("without --plan the request carries no plan instruction", async () => {
+    await run();
+    expect(JSON.stringify(lastMessages)).not.toContain("planning mode");
   });
 
   it("gates tools to the explicit --mode's groups instead of Code's default", async () => {

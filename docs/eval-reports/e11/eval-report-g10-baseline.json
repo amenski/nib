@@ -1,0 +1,58 @@
+{
+  "startedAt": "2026-11-02T06:23:00.402Z",
+  "provider": "deepseek",
+  "model": "default",
+  "trialsPerCase": 5,
+  "cases": [
+    {
+      "name": "G10 — Plan a multi-file refactor (taskflow, plan posture)",
+      "trials": [
+        {
+          "pass": true,
+          "message": "plan has all 3 sections; tree unchanged",
+          "durationMs": 25146,
+          "inputTokens": 15206,
+          "outputTokens": 4222,
+          "costUsd": 0.0048141
+        },
+        {
+          "pass": true,
+          "message": "plan has all 3 sections; tree unchanged",
+          "durationMs": 23018,
+          "inputTokens": 14993,
+          "outputTokens": 3873,
+          "costUsd": 0.00457275
+        },
+        {
+          "pass": true,
+          "message": "plan has all 3 sections; tree unchanged",
+          "durationMs": 26951,
+          "inputTokens": 15151,
+          "outputTokens": 4430,
+          "costUsd": 0.00493065
+        },
+        {
+          "pass": true,
+          "message": "plan has all 3 sections; tree unchanged",
+          "durationMs": 22110,
+          "inputTokens": 14605,
+          "outputTokens": 3640,
+          "costUsd": 0.00437475
+        },
+        {
+          "pass": true,
+          "message": "plan has all 3 sections; tree unchanged",
+          "durationMs": 18015,
+          "inputTokens": 10702,
+          "outputTokens": 2967,
+          "costUsd": 0.0033855
+        }
+      ],
+      "passRate": 1,
+      "invalid": 0,
+      "inputTokens": 70657,
+      "outputTokens": 19132,
+      "costUsd": 0.02207775
+    }
+  ]
+}

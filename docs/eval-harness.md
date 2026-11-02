@@ -23,7 +23,9 @@ Two things make a green run mean something:
 Case definitions (prompt, mode, assertion) live in `src/eval/cases.ts`; the
 task-table rationale is in conventions.md §Golden tasks. `G2`, `G3`, `G4` and
 `G7` assert an end state; `G1`, `G5` assert behaviour under a read-only prompt;
-`G6` asserts compaction fidelity.
+`G6` asserts compaction fidelity. `G10` runs with `--plan` (plan posture) and
+asserts a `<proposed_plan>` with the three required sections over an untouched
+tree; the same prompt without the flag edits files, so the assertion fails.
 
 `G6` is the compaction case conventions.md calls for: the fixture's settings
 pin `contextWindow: 14000` and `compaction.threshold: 0.5` (a 7K cutoff). A

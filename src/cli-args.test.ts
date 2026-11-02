@@ -106,6 +106,20 @@ describe("parseArguments validation", () => {
     expect(written).toContain("--print / -p requires a non-empty prompt.");
   });
 
+  it("--plan is accepted with --print and off by default", async () => {
+    expect((await parseArguments(["-p", "x", "--plan"])).plan).toBe(true);
+    expect((await parseArguments(["-p", "x"])).plan).toBe(false);
+  });
+
+  it("--plan without --print is rejected", async () => {
+    const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+    vi.spyOn(process, "exit").mockImplementation(((): never => {
+      throw new Error("exit");
+    }) as never);
+    await parseArguments(["x", "--plan"]).catch(() => {});
+    expect(stderr.mock.calls.map((c) => String(c[0])).join("")).toContain("--plan requires -p/--print");
+  });
+
   it("--print with a prompt sets print=true and captures prompt", async () => {
     const parsed = await parseArguments(["--print", "explain this"]);
     expect(parsed.print).toBe(true);

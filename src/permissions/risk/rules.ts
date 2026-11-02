@@ -360,6 +360,7 @@ export function evaluateRiskRules(f: RiskFeatures, input: RiskInput): RuleEvalua
 export function isSafe(f: RiskFeatures): boolean {
   if (f.kind === "shell") {
     if (f.parse !== "parsed") return false;
+    if (f.pathPrepend) return false;
     if (f.segments.length === 0) return false;
     if (f.redirects.some((r) => r.heredoc || (r.target !== "" && !isDiscardRedirect(r)))) return false;
     if (f.segments.some((s) => !s.readOnly && !s.neutral)) return false;

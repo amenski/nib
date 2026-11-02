@@ -571,6 +571,11 @@ describe("E14: PATH prefix and meta tools", () => {
     expect(classify(input('export PATH="$PATH:$HOME/.pub-cache/bin"; dart test')).tier).toBe("benign");
   });
 
+  it("never calls a command safe after a PATH edit, because a local directory may shadow `ls`", () => {
+    expect(classify(input('export PATH="$HOME/.local/bin:$PATH"; ls')).tier).toBe("benign");
+    expect(classify(input("ls")).tier).toBe("safe");
+  });
+
   it("still confirms a PATH, IFS or eval line that is not provably local", () => {
     for (const [command, tag] of [
       ["export PATH=/tmp/x:$PATH", "shell.special-var"],

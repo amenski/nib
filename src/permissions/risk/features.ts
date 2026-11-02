@@ -153,6 +153,8 @@ export interface RiskFeatures {
   preSessionTarget: boolean;
   /** Variables a `rm -rf "$VAR"`-shaped target depends on but the command never sets. */
   unassignedVars: string[];
+  /** A trusted `export PATH=…` was dropped before parsing (see stripTrustedPathExports). */
+  pathPrepend?: boolean;
 
   // ── §4.3 non-shell ──
   path?: PathFeatures;
@@ -1261,7 +1263,8 @@ function shellFeatures(command: string, input: RiskInput): Partial<RiskFeatures>
   const evalLead = /^eval\s/.test(commandText) ? ["eval"] : [];
   const unwrapped = failedUnwrap ? extractQuotedArgLoose(commandText) : text;
   if (unwrapped === null) return { parse: "failed", wrappers: evalLead, longCommand, interpreterInline: false };
-  const body = stripTrustedPathExports(unwrapped, input.workingDir);
+  const pathStrip = stripTrustedPathExports(unwrapped, input.workingDir);
+  const body = pathStrip.body;
 
   const rawSegments = splitCompound(maskShellNoise(body));
   const stripped = rawSegments.map(stripRedirects);
@@ -1308,6 +1311,7 @@ function shellFeatures(command: string, input: RiskInput): Partial<RiskFeatures>
     absBinary: absBinaryOf(segments),
     envAssign: toEnvAssign(leading.envAssigns[0]) ?? leadingEnvAssign(cleanedSegments),
     specialVars,
+    ...(pathStrip.removed ? { pathPrepend: true } : {}),
     longCommand,
     pipeToShell: hasPipeToShell(segments),
     secretEgress: hasSecretEgress(segments),
@@ -1327,10 +1331,14 @@ function shellFeatures(command: string, input: RiskInput): Partial<RiskFeatures>
  *
  * Anything else — `/tmp/x`, a `..` entry, a `$(…)`, a PATH with no `$PATH` in
  * it — is left in place and keeps its confirm.
+ *
+ * The drop is recorded as `pathPrepend`: a directory the agent can write to may
+ * hold a program named `ls`, so a command that ran after one can never be
+ * called `safe` (read-only), only `benign`.
  */
-function stripTrustedPathExports(body: string, workingDir: string): string {
+function stripTrustedPathExports(original: string, workingDir: string): { body: string; removed: boolean } {
   const statement = /(^|[;\n]|&&|\|\|)(\s*)(?:export\s+)?PATH=(?:"([^"\n]*)"|([^\s;&|"'`]*))[ \t]*(?:;|&&|\n|$)\s*/g;
-  let current = body;
+  let current = original;
   // One pass per export: each match consumes the separator the next one anchors on.
   for (let pass = 0; pass < 5; pass++) {
     const next = current.replace(statement, (match, lead: string, ws: string, quoted?: string, bare?: string) =>
@@ -1339,7 +1347,7 @@ function stripTrustedPathExports(body: string, workingDir: string): string {
     if (next === current) break;
     current = next;
   }
-  return current;
+  return { body: current, removed: current !== original };
 }
 
 function isTrustedPathValue(value: string, workingDir: string): boolean {

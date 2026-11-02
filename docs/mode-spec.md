@@ -64,7 +64,7 @@ arrays, quoted scalars.
 | Group | Tools | Purpose |
 |-------|-------|---------|
 | `read` | read_file, list_files, glob, search, web_fetch, web_search | Information gathering |
-| `edit` | edit, edit_file, search_replace, apply_diff, apply_patch, write_to_file | Code modification |
+| `edit` | edit, apply_diff, apply_patch, write_to_file | Code modification |
 | `command` | run_bash, run_bash_background, check_job, kill_job | Shell execution |
 | `mcp` | `mcp__<server>__<tool>` (dynamic, per connected server) | External tool servers |
 | `workflow` | new_task | Sub-agent delegation |
@@ -144,6 +144,10 @@ implementation work rather than a separate picker mode. Debugging behavior is
 also handled within Code's normal implementation persona.
 
 ### Legacy compatibility aliases
+
+**Deprecated in 0.8.0, removed in 0.9.0.** Loading `ask`, `architect`, `debug`
+or `orchestrator` prints a one-time `[warn] mode "<slug>" is deprecated` line
+(`DEPRECATED_ALIAS_MODES`, `src/modes/loader.ts`). Use `general` or `code`.
 
 #### ask (hidden from the picker/listAll — reachable via `/mode ask`)
 ```yaml

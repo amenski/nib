@@ -21,7 +21,7 @@ const en = {
   nav: { cost: 'Cost', features: 'Features', install: 'Install', blog: 'Blog', privacy: 'Privacy', github: 'GitHub', docs: 'Docs', discussions: 'Discussions', changelog: 'Changelog' },
   footerTagline: 'Nib, Apache 2.0 license.',
 
-  banner: 'nib 0.7.0: auto mode, where a model judge answers permission prompts.',
+  banner: 'nib 0.8.0: a turn that is interrupted or killed now resumes where it stopped.',
   hero: {
     h1: 'A coding agent you can afford to leave running.',
     lead: 'Open-source, bring-your-own-key, built for cheap models. Explicit permissions, no telemetry.',
@@ -216,7 +216,7 @@ const de: typeof en = {
   nav: { cost: 'Kosten', features: 'Funktionen', install: 'Installieren', blog: 'Blog', privacy: 'Datenschutz', github: 'GitHub', docs: 'Doku', discussions: 'Diskussionen', changelog: 'Changelog' },
   footerTagline: 'Nib, Apache-2.0-Lizenz.',
 
-  banner: 'nib 0.7.0: Auto-Modus, in dem ein Modell als Richter Berechtigungsfragen beantwortet.',
+  banner: 'nib 0.8.0: Ein unterbrochener oder abgebrochener Durchlauf wird jetzt dort fortgesetzt, wo er stehen blieb.',
   hero: {
     h1: 'Ein Coding-Agent, den du dir leisten kannst, laufen zu lassen.',
     lead: 'Open Source, eigener API-Schlüssel, für günstige Modelle gebaut. Explizite Berechtigungen, keine Telemetrie.',
@@ -401,7 +401,7 @@ const es: typeof en = {
   nav: { cost: 'Coste', features: 'Funciones', install: 'Instalar', blog: 'Blog', privacy: 'Privacidad', github: 'GitHub', docs: 'Documentación', discussions: 'Debates', changelog: 'Changelog' },
   footerTagline: 'Nib, licencia Apache 2.0.',
 
-  banner: 'nib 0.7.0: modo auto, en el que un modelo juez responde a las solicitudes de permiso.',
+  banner: 'nib 0.8.0: un turno interrumpido o terminado a la fuerza ahora se reanuda donde se quedó.',
   hero: {
     h1: 'Un agente de programación que puedes permitirte dejar en marcha.',
     lead: 'Código abierto, con tu propia clave, pensado para modelos baratos. Permisos explícitos, sin telemetría.',

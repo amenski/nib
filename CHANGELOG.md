@@ -7,6 +7,14 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-11-02
+
+First stable release of the 0.8.0 line. It includes everything in 0.8.0-rc.1
+below, plus the changes in this section. **Breaking (vs 0.7.0):** `edit_file`
+and `search_replace` are folded into `edit`; permission rules, custom modes or
+skills that name them must be renamed to `edit`. The Ask, Architect, Debug and
+Orchestrator alias modes are deprecated and are removed in 0.9.0.
+
 ### Changed
 
 - **A tool call's dot shows how it ended:** green on success, red on failure,
@@ -991,7 +999,8 @@ further injection sinks.
 Earlier releases predate this changelog. See the git history for
 `v0.1.0..v0.2.1`.
 
-[Unreleased]: https://github.com/amenski/nib/compare/v0.8.0-rc.1...HEAD
+[Unreleased]: https://github.com/amenski/nib/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/amenski/nib/compare/v0.7.0...v0.8.0
 [0.8.0-rc.1]: https://github.com/amenski/nib/compare/v0.7.0...v0.8.0-rc.1
 [0.7.0]: https://github.com/amenski/nib/compare/v0.7.0-rc.2...v0.7.0
 [0.7.0-rc.2]: https://github.com/amenski/nib/compare/v0.7.0-rc.1...v0.7.0-rc.2

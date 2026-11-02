@@ -37,7 +37,7 @@ problem:
 │  ReAct: Thought → Action → Observation, plus self-reflection │
 │  and layered error recovery.                                 │
 ├─────────────────────────────────────────────────────────────┤
-│  Layer 2: Tools (registry + 6 edit strategies + bash + fs)   │
+│  Layer 2: Tools (registry + 4 edit strategies + bash + fs)   │
 │  Tools are designed for LLM consumption, not human use.      │
 ├─────────────────────────────────────────────────────────────┤
 │  Layer 1: Providers (AI SDK v7 behind one contract)          │

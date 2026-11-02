@@ -17,6 +17,7 @@ import { useTheme, useTerminalInfo } from "./contexts.js";
 import { ansi256 } from "./theme.js";
 import { USER_ECHO_TAG, COMMAND_ECHO_TAG, BULLET_TAG, ANSWER_CONT_TAG, VERBATIM_TAG, TOOL_HEADER_TAG, TOOL_RESULT_TAG, TOOL_RESULT_GUTTER, ANSWER_BULLET, PROMPT_CHEVRON } from "./constants.js";
 import { formatEcho } from "./core/echo-format.js";
+import { expandTabs } from "./core/expand-tabs.js";
 import type { TabDefinition } from "./types.js";
 
 interface OutputAreaProps {
@@ -24,6 +25,8 @@ interface OutputAreaProps {
   lines: string[];
   /** Currently streaming active line */
   activeLine: string;
+  /** Tool headers (and their gap rows) still waiting for a result, drawn live. */
+  pendingLines?: string[];
   /** Whether the agent is busy generating */
   busy: boolean;
   /**
@@ -100,7 +103,7 @@ const OutputLine = memo(function OutputLine({
   // replayed USER_ECHO_TAG or BULLET_TAG line is still detected and gets its
   // normal gutter/bullet — it just skips summarization underneath.
   const verbatim = line.startsWith(VERBATIM_TAG);
-  const untagged = verbatim ? line.slice(VERBATIM_TAG.length) : line;
+  const untagged = expandTabs(verbatim ? line.slice(VERBATIM_TAG.length) : line);
 
   // A bullet-tagged line (tagged with BULLET_TAG) marks the first line of a
   // fresh assistant answer block. The dim "●" renders as its own element
@@ -125,24 +128,43 @@ const OutputLine = memo(function OutputLine({
   // bold name, plain arguments. It must NOT pass through MarkdownText — its
   // arguments are shell/path text where an inline marker is literal, so a glob
   // pattern was being italicised away as an emphasis span.
+  // A wrapped header hangs under the text after its glyph ("⏺ ", "└ ").
   if (untagged.startsWith(TOOL_HEADER_TAG)) {
-    return <Text>{untagged.slice(TOOL_HEADER_TAG.length)}</Text>;
+    const text = untagged.slice(TOOL_HEADER_TAG.length);
+    const m = text.match(/^((?:\x1b\[[0-9;]*m)*)( *\S(?:\x1b\[[0-9;]*m)* +)([\s\S]*)$/);
+    if (!m) return <Text>{text}</Text>;
+    const [, open, gutter, rest] = m;
+    const gutterWidth = gutter.replace(/\x1b\[[0-9;]*m/g, "").length;
+    return (
+      <Box width={columns}>
+        <Box width={gutterWidth} flexShrink={0}>
+          <Text>{`${open}${gutter}\x1b[0m`}</Text>
+        </Box>
+        <Box width={Math.max(1, columns - gutterWidth)}>
+          <Text>{rest}</Text>
+        </Box>
+      </Box>
+    );
   }
 
   // A tool-result preview: the fixed gutter sits in its own box so a line wider
   // than the terminal wraps inside the text box and hangs under the text. The
-  // colour escape that wraps the whole line is re-opened on the body.
+  // colour escape that wraps the whole line is re-opened on the body. Both
+  // widths are explicit: without them Ink laid a long row out wider than the
+  // terminal, and the overflow wrapped to column 0.
   if (untagged.startsWith(TOOL_RESULT_TAG)) {
     const text = untagged.slice(TOOL_RESULT_TAG.length);
     const m = text.match(new RegExp(`^((?:\\x1b\\[[0-9;]*m)*)([\\s\\S]{${TOOL_RESULT_GUTTER}})([\\s\\S]*)$`));
     if (!m) return <Text>{text}</Text>;
     const [, open, gutter, rest] = m;
     return (
-      <Box>
+      <Box width={columns}>
         <Box width={TOOL_RESULT_GUTTER} flexShrink={0}>
           <Text>{`${open}${gutter}\x1b[0m`}</Text>
         </Box>
-        <Text>{`${open}${rest}`}</Text>
+        <Box width={Math.max(1, columns - TOOL_RESULT_GUTTER)}>
+          <Text>{`${open}${rest}`}</Text>
+        </Box>
       </Box>
     );
   }
@@ -187,11 +209,13 @@ const OutputLine = memo(function OutputLine({
     return (
       <Box flexDirection="column">
         {msgLines.map((msg, i) => (
-          <Box key={i}>
+          <Box key={i} width={columns}>
             <Box width={2} flexShrink={0}>
               <Text color={dimFg}>{i === 0 ? `${PROMPT_CHEVRON} ` : "  "}</Text>
             </Box>
-            <Text>{msg}</Text>
+            <Box width={Math.max(1, columns - 2)}>
+              <Text>{msg}</Text>
+            </Box>
           </Box>
         ))}
         {truncated !== null && (
@@ -241,6 +265,7 @@ const OutputLine = memo(function OutputLine({
 function OutputArea({
   lines,
   activeLine,
+  pendingLines = [],
   busy,
   staticEpoch,
 }: OutputAreaProps) {
@@ -257,6 +282,8 @@ function OutputArea({
       <Static key={staticEpoch} items={lines}>
         {(line, i) => <OutputLine key={i} line={line} />}
       </Static>
+
+      {pendingLines.map((line, i) => <OutputLine key={`pending-${i}`} line={line} />)}
 
       {/* Active streaming line (carries the same gutter tag as committed output) */}
       {activeLine !== "" && !busy && <OutputLine line={activeLine} />}

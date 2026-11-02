@@ -67,7 +67,7 @@ import ModeList from "./views/ModeList.js";
 import UndoSelector from "./views/UndoSelector.js";
 import McpStatusList from "./views/McpStatusList.js";
 import BackgroundList from "./views/BackgroundList.js";
-import { backgroundRowText, collectBackgroundItems, completionLine, runningShellCount, shellLabel, type BackgroundItem } from "./core/background-items.js";
+import { backgroundRowSegments, backgroundRowText, collectBackgroundItems, completionLine, runningShellCount, shellLabel, type BackgroundItem } from "./core/background-items.js";
 import PermissionHistoryList from "./views/PermissionHistoryList.js";
 import UsageView from "./views/UsageView.js";
 import ResumeChooser from "./views/ResumeChooser.js";
@@ -100,7 +100,9 @@ import { needsComposerGap } from "./core/composer-gap.js";
 import {
   formatStyledToolHeader,
   formatToolResultPreview,
+  type ToolOutcome,
 } from "./ToolCallFormatter.js";
+import { NO_OUTPUT } from "../tools/bash.js";
 import {
   lookupAction,
 } from "./keybindings.js";
@@ -167,6 +169,8 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
   // this bump (see /new, /resume, /undo below).
   const [staticEpoch, setStaticEpoch] = useState(0);
   const [activeLine, setActiveLine] = useState("");
+  // Tool headers still waiting for their result (see pendingTools in the turn).
+  const [pendingToolLines, setPendingToolLines] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   // Set while exiting: the whole frame collapses to this one line (the resume
   // hint) before ink unmounts, so no input/menu/footer junk lingers on screen.
@@ -889,13 +893,39 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
       // Whether the last committed row is blank, so a block gap is never
       // doubled (see blockGap).
       let lastBlank = false;
-      const scheduleOutput = (line: string) => {
+      const writeLine = (line: string) => {
         lastBlank = line === "";
         if (rawMode.mode === "raw") {
           process.stdout.write(line + "\n");
         } else {
           outputQueueRef.current.push(line);
         }
+      };
+      // A tool's header waits in the live area until its result arrives, so its
+      // dot can show the outcome (scrollback lines are never repainted). Any
+      // other output commits the waiting headers first, dim, so the transcript
+      // order never changes; so does the end of the turn.
+      const pendingTools: { name: string; args: Record<string, unknown> }[] = [];
+      const writeToolHeader = (name: string, args: Record<string, unknown>, outcome?: ToolOutcome) => {
+        if (!lastBlank) writeLine("");
+        writeLine(TOOL_HEADER_TAG + formatStyledToolHeader(theme, name, args, outcome));
+      };
+      const syncPendingTools = () => {
+        const live: string[] = [];
+        pendingTools.forEach((p, i) => {
+          if (i > 0 || !lastBlank) live.push("");
+          live.push(TOOL_HEADER_TAG + formatStyledToolHeader(theme, p.name, p.args));
+        });
+        setPendingToolLines(live);
+      };
+      const commitPendingTools = () => {
+        if (pendingTools.length === 0) return;
+        for (const p of pendingTools.splice(0)) writeToolHeader(p.name, p.args);
+        syncPendingTools();
+      };
+      const scheduleOutput = (line: string) => {
+        commitPendingTools();
+        writeLine(line);
       };
 
       setActiveLineBoth("");
@@ -1095,9 +1125,8 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           setActiveLineBoth("");
           textBuffer = "";
           atBlockStart = true; // next answer block re-bullets after this tool call
-          blockGap();
-          const header = TOOL_HEADER_TAG + formatStyledToolHeader(theme, name, args);
-          scheduleOutput(header);
+          pendingTools.push({ name, args });
+          syncPendingTools();
         },
         onToolResult: (
           _name: string,
@@ -1107,10 +1136,20 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           // failing tool's preview shows its stderr under the error line, not
           // a bare `Error: Exit code: 1`.
           const content = toolResultForHistory(result);
+          const isError = !!result.error || content.startsWith("PERMISSION_DENIED") || content.startsWith("COMMAND_FAILED");
+          // Results arrive in start order; a call before this one that never
+          // reported (denied before it ran) keeps its dim dot.
+          const own = pendingTools.findIndex((p) => p.name === _name);
+          if (own >= 0) {
+            for (const p of pendingTools.splice(0, own)) writeToolHeader(p.name, p.args);
+            const [call] = pendingTools.splice(0, 1);
+            writeToolHeader(call!.name, call!.args, isError ? "error" : "ok");
+            syncPendingTools();
+          }
           // The TodoPanel renders todo state live; echoing the whole list as a
           // dim preview is noise (the list can be 12 lines). Keep the ⏺ header.
+          // writeLine, not scheduleOutput: the batch's later headers keep waiting.
           if (content.trim() !== "" && _name !== "update_todo_list") {
-            const isError = !!result.error || content.startsWith("PERMISSION_DENIED") || content.startsWith("COMMAND_FAILED");
             for (const line of formatToolResultPreview(content)) {
               // TOOL_RESULT_TAG: render the preview as pre-styled text rather
               // than markdown. Without it the line went through Inline →
@@ -1119,7 +1158,12 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
               // source's own indentation, were both stripped (the first line's
               // "  ⎿  " survived only because it does not begin with spaces). The tag
               // also lets OutputArea hang a wrapped line's overflow under the text.
-              scheduleOutput(TOOL_RESULT_TAG + theme.fg(isError ? theme.theme.error : theme.theme.toolOutput, line));
+              const styled = isError
+                ? theme.fg(theme.theme.error, line)
+                : line.endsWith(NO_OUTPUT)
+                  ? theme.dimItalic(theme.theme.toolOutput, line)
+                  : theme.fg(theme.theme.toolOutput, line);
+              writeLine(TOOL_RESULT_TAG + styled);
             }
           }
           needTextSeparator = true;
@@ -1375,6 +1419,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
         // turn doesn't end with just the footer.
         flushReasoning();
         flushStream();
+        commitPendingTools();
         flushOutputQueue(true);
 
         if (activeLineRef.current) pushOutput(activeLineRef.current);
@@ -1438,6 +1483,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
         announceToScreenReader("Nib has finished processing", "polite");
       } catch (err) {
         flushStream();
+        commitPendingTools();
         flushOutputQueue(true);
         pushOutput(theme.fg(theme.theme.error, `Error: ${(err as Error).message}`));
         announceToScreenReader(
@@ -1457,6 +1503,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
       } finally {
         setAskQuestion(undefined);
         setAskQuestionPrompt(null);
+        setPendingToolLines([]);
         stopFlushTimer();
         setBusy(false);
         setTurnActive(false);
@@ -2272,7 +2319,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
   // flush against a tool's "… +102 lines" row.
   const transcriptGap = needsComposerGap({
     panelAbove: false,
-    liveTail: activeLine !== "" && !busy,
+    liveTail: (activeLine !== "" && !busy) || pendingToolLines.length > 0,
     lastOutputLine: outputLines[outputLines.length - 1],
   });
   // Static text, not animated: the spinner lives on the status line (last row).
@@ -2284,6 +2331,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
     <Box flexDirection="column" width={term.columns}>
       <OutputArea
         lines={outputLines}
+        pendingLines={pendingToolLines}
         activeLine={activeLine}
         busy={busy}
         staticEpoch={staticEpoch}
@@ -2617,14 +2665,23 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           second, only while something runs. */}
       {showBackgroundRow && (
         <Box marginTop={todos.length === 0 && queuedItems.length === 0 && transcriptGap ? 1 : 0}>
-          <Text wrap="truncate" color={ansi256(theme.theme.textDim)}>{backgroundRow}</Text>
+          <Text wrap="truncate">
+            {backgroundRowSegments(backgroundRow!).map((seg, i) => (
+              <Text
+                key={i}
+                color={ansi256(seg.tone === "ok" ? theme.theme.success : seg.tone === "error" ? theme.theme.error : theme.theme.textDim)}
+              >
+                {seg.text}
+              </Text>
+            ))}
+          </Text>
         </Box>
       )}
 
       {/* The blank line below stands in for the composer's own gap above. */}
       {workingText !== null && (
         <Box marginTop={!panelAbove && transcriptGap ? 1 : 0} marginBottom={1}>
-          <Text color={ansi256(theme.theme.textDim)}>{workingText}</Text>
+          <Text italic color={ansi256(theme.theme.textDim)}>{workingText}</Text>
         </Box>
       )}
 
@@ -2651,7 +2708,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           // row all render between the transcript and the composer, flush
           // against the prompt.
           panelAbove,
-          liveTail: activeLine !== "" && !busy,
+          liveTail: (activeLine !== "" && !busy) || pendingToolLines.length > 0,
           lastOutputLine: outputLines[outputLines.length - 1],
         })}
         statusLine={

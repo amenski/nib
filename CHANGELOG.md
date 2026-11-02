@@ -7,6 +7,26 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **A tool call's dot shows how it ended:** green on success, red on failure,
+  dim while it runs. The header stays in the live area until its result
+  arrives, then lands in the scrollback with the outcome colour. Arguments are
+  dimmed so the tool name stands out, and a `cd` into the workspace is dropped
+  from a Bash header (a subfolder shows as `cd frontend && …`).
+- **The background row shows failures:** `● 4 shells finished (3 failed)` has a
+  red dot and a red failed count; when every shell succeeded the dot is green.
+- `working… (esc to interrupt)` and a command's `(no output)` are dim italic, so
+  neither reads as transcript text.
+
+### Fixed
+
+- **Wrapped lines stay under their own text.** A long tool-output line, a long
+  prompt echo and a wrapped tool header were laid out wider than the terminal,
+  so their last word fell onto its own row at column 0. Tabs (`od -c`, tab-
+  separated output, code) are expanded to spaces, since the terminal widened
+  them past the edge nib had measured.
+
 ## [0.8.0-rc.1] — 2026-11-02
 
 ### Changed

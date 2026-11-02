@@ -1,10 +1,5 @@
 import { stripUntrustedMarkers } from "../tools/untrusted-content.js";
 
-/** Escape regex special characters. */
-export function escapeRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 // Read-only tools that just gather context — hide these from the output to
 // keep the chat focused on what the agent actually *changes*.
 export const SILENT_TOOLS = new Set(["list_files", "read_file", "glob", "search", "load_skill"]);
@@ -83,35 +78,40 @@ export function formatToolCallHeader(name: string, args: Record<string, unknown>
  */
 export interface HeaderTheme {
   colorEnabled: boolean;
-  theme: { textDim: number };
+  theme: { textDim: number; success?: number; error?: number };
   fg: (color: number, text: string) => string;
   bold: (color: number | undefined, text: string) => string;
 }
 
+/** A finished call's result: drives the header glyph's colour. */
+export type ToolOutcome = "ok" | "error";
+
 /**
- * A tool-call header as one styled string: a dim glyph, the bold display name,
- * then the arguments plainly. Built from text + escapes rather than JSX so it
- * can ride the transcript's line protocol — the caller prefixes
- * TOOL_HEADER_TAG, which tells OutputArea to render the line as-is instead of
- * through the markdown renderer. An argument such as a glob pattern is shell
- * text, not an emphasis span, and markdown used to eat it.
+ * A tool-call header as one styled string: the glyph, the bold display name,
+ * then the arguments dimmed so the name is what the eye lands on. Built from
+ * text + escapes rather than JSX so it can ride the transcript's line protocol
+ * — the caller prefixes TOOL_HEADER_TAG, which tells OutputArea to render the
+ * line as-is instead of through the markdown renderer. An argument such as a
+ * glob pattern is shell text, not an emphasis span, and markdown used to eat it.
  *
- * The glyph is dim because the header is emitted when the call STARTS: its
- * outcome is not known yet (agent.ts fires every onToolStart in a batch before
- * any result), so an outcome-coloured dot is not available here. The result
- * preview below the header carries the outcome colour instead.
+ * The glyph is green or red once the outcome is known, and dim while the call
+ * runs or when it never reported a result.
  */
 export function formatStyledToolHeader(
   theme: HeaderTheme,
   name: string,
   args: Record<string, unknown>,
+  outcome?: ToolOutcome,
 ): string {
   const { dot, name: display, args: arg } = toolHeaderParts(name, args);
-  const glyph = theme.colorEnabled ? theme.fg(theme.theme.textDim, dot) : dot;
+  if (!theme.colorEnabled) return arg ? `${dot} ${display}(${arg})` : `${dot} ${display}`;
+  const dotColor =
+    (outcome === "ok" ? theme.theme.success : outcome === "error" ? theme.theme.error : undefined) ?? theme.theme.textDim;
+  const glyph = theme.fg(dotColor, dot);
   // No foreground: the terminal's own text colour, so the name reads on a
   // light background as well as a dark one (the theme's `text` is white).
-  const label = theme.colorEnabled ? theme.bold(undefined, display) : display;
-  return arg ? `${glyph} ${label}(${arg})` : `${glyph} ${label}`;
+  const label = theme.bold(undefined, display);
+  return arg ? `${glyph} ${label}${theme.fg(theme.theme.textDim, `(${arg})`)}` : `${glyph} ${label}`;
 }
 
 /** Per-line cap for a result preview (see formatToolResultPreview). */
@@ -201,9 +201,18 @@ export function describeToolCall(name: string, args: Record<string, unknown>): s
     case "run_bash": {
       const c = firstStr("command");
       if (!c) return "run_bash";
-      // Strip `cd <cwd> && ` prefix — it's implicit context, not the real command
-      let t = c.replace(/\n/g, " ").trim();
-      t = t.replace(new RegExp(`^cd ${escapeRegex(cwd)}(?:/)?\\s*&&\\s*`), "");
+      // Lines join with "; " so two commands never read as one ("cd /x grep").
+      let t = c.trim().replace(/\s*\n\s*/g, "; ");
+      // A leading `cd` into the workspace is implicit context, not the real
+      // command: drop it for the workspace itself and shorten a subfolder to its
+      // relative path, so the truncation budget goes to the command that runs.
+      const cdMatch = t.match(/^cd\s+(["']?)([^"'\s;&]+)\1\s*(&&|;)\s*/);
+      if (cdMatch) {
+        const dir = cdMatch[2].replace(/\/$/, "");
+        const rest = t.slice(cdMatch[0].length);
+        if (dir === cwd) t = rest;
+        else if (dir.startsWith(cwd + "/")) t = `cd ${dir.slice(cwd.length + 1)}${cdMatch[3] === ";" ? ";" : " &&"} ${rest}`;
+      }
       return `run_bash ${trunc(t, 60)}`;
     }
     case "glob": {

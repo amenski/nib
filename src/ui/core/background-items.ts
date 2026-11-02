@@ -85,6 +85,30 @@ const ROW_SUFFIX = " · ↓ to view";
  * show. Names the newest running item and cuts that name — never the counts
  * or the hint — to fit `width`.
  */
+/** A piece of the background row and how loud it is. */
+export interface RowSegment {
+  text: string;
+  tone: "dim" | "ok" | "error";
+}
+
+/**
+ * Splits a finished-shells row so the dot shows the outcome (green when every
+ * shell succeeded, red otherwise) and "(N failed)" stands out in red; a running
+ * row stays dim throughout.
+ */
+export function backgroundRowSegments(row: string): RowSegment[] {
+  if (!row.startsWith("● ")) return [{ text: row, tone: "dim" }];
+  const failed = /\(\d+ failed\)/.exec(row);
+  const segments: RowSegment[] = [{ text: "●", tone: failed ? "error" : "ok" }];
+  if (!failed) return [...segments, { text: row.slice(1), tone: "dim" }];
+  return [
+    ...segments,
+    { text: row.slice(1, failed.index), tone: "dim" },
+    { text: failed[0], tone: "error" },
+    { text: row.slice(failed.index + failed[0].length), tone: "dim" },
+  ];
+}
+
 export function backgroundRowText(items: BackgroundItem[], now: number, width: number): string | null {
   if (items.length === 0) return null;
   const running = items.filter(isRunning);

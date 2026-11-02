@@ -3,7 +3,7 @@
  * scrollback lines a live turn would have produced.
  *
  * The model already sees the resumed messages via conversationHistory; this is
- * purely visual. It reuses the live formatters (formatToolCallHeader,
+ * purely visual. It reuses the live formatters (formatStyledToolHeader,
  * formatToolResultPreview) and the USER_ECHO_TAG gutter so a resumed transcript
  * is indistinguishable from one that just streamed. Read-only tools that are
  * hidden live (SILENT_TOOLS) stay hidden here too, so replay never shows *more*
@@ -12,10 +12,12 @@
 
 import type { Message } from "../../types.js";
 import {
-  formatToolCallHeader,
+  formatStyledToolHeader,
   formatToolResultPreview,
   SILENT_TOOLS,
+  type ToolOutcome,
 } from "../ToolCallFormatter.js";
+import { NO_OUTPUT } from "../../tools/bash.js";
 import { USER_ECHO_TAG, VERBATIM_TAG, BULLET_TAG, ANSWER_CONT_TAG, TOOL_HEADER_TAG, TOOL_RESULT_TAG } from "../constants.js";
 import type { ThemeContextValue } from "../theme.js";
 
@@ -57,6 +59,9 @@ const isCompactionSummary = (content: string): boolean =>
   content.startsWith("[Previous conversation summary]") ||
   content.startsWith("[Earlier in this conversation]");
 
+const isErrorResult = (content: string): boolean =>
+  content.startsWith("PERMISSION_DENIED") || content.startsWith("COMMAND_FAILED");
+
 export function buildReplayLines(messages: Message[], theme: ThemeContextValue): string[] {
   const out: string[] = [];
   const dim = (s: string): string => theme.fg(theme.theme.textDim, s);
@@ -67,6 +72,12 @@ export function buildReplayLines(messages: Message[], theme: ThemeContextValue):
   const gap = (): void => {
     if (out.length > 0 && out[out.length - 1] !== "") out.push("");
   };
+  // Each call's outcome, so a replayed header's dot matches the live one. A
+  // call with no result message (killed mid-turn) keeps the dim dot.
+  const outcomes = new Map<string, ToolOutcome>();
+  for (const msg of messages) {
+    if (msg.role === "tool") outcomes.set(msg.toolCallId, isErrorResult(msg.content ?? "") ? "error" : "ok");
+  }
 
   for (const msg of messages) {
     if (msg.role === "system") {
@@ -109,7 +120,7 @@ export function buildReplayLines(messages: Message[], theme: ThemeContextValue):
         // TOOL_HEADER_TAG, exactly as the live path tags it (App.tsx's
         // onToolStart), so a replayed header is not run through the markdown
         // renderer: arguments are shell/path text where a marker is literal.
-        out.push(tag(TOOL_HEADER_TAG + formatToolCallHeader(call.name, call.arguments)));
+        out.push(tag(TOOL_HEADER_TAG + formatStyledToolHeader(theme, call.name, call.arguments, outcomes.get(call.id))));
       }
       continue;
     }
@@ -118,8 +129,7 @@ export function buildReplayLines(messages: Message[], theme: ThemeContextValue):
       if (silentCallIds.has(msg.toolCallId)) continue;
       const content = msg.content ?? "";
       if (content.trim() === "") continue;
-      const isError =
-        content.startsWith("PERMISSION_DENIED") || content.startsWith("COMMAND_FAILED");
+      const isError = isErrorResult(content);
       for (const line of formatToolResultPreview(content)) {
         // TOOL_RESULT_TAG, as the live path tags its preview lines (App.tsx's
         // onToolResult). Without it a replayed preview was markdown-parsed, and
@@ -129,7 +139,11 @@ export function buildReplayLines(messages: Message[], theme: ThemeContextValue):
         out.push(
           tag(
             TOOL_RESULT_TAG +
-              (isError ? theme.fg(theme.theme.error, line) : theme.fg(theme.theme.toolOutput, line)),
+              (isError
+                ? theme.fg(theme.theme.error, line)
+                : line.endsWith(NO_OUTPUT)
+                  ? theme.dimItalic(theme.theme.toolOutput, line)
+                  : theme.fg(theme.theme.toolOutput, line)),
           ),
         );
       }

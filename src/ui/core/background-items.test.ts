@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  backgroundRowSegments,
   backgroundRowText,
   collectBackgroundItems,
   completionLine,
@@ -115,5 +116,27 @@ describe("completionLine", () => {
     expect(completionLine({ command: "cd x\nnpm test", status: "done", exitCode: 0, runningMs: 1_000 }).text).toBe(
       "● cd x … · exited 0 · 1s",
     );
+  });
+});
+
+describe("backgroundRowSegments", () => {
+  it("reds the dot and the failed count when a shell failed", () => {
+    expect(backgroundRowSegments("● 4 shells finished (3 failed) · ↓ to view")).toEqual([
+      { text: "●", tone: "error" },
+      { text: " 4 shells finished ", tone: "dim" },
+      { text: "(3 failed)", tone: "error" },
+      { text: " · ↓ to view", tone: "dim" },
+    ]);
+  });
+  it("greens the dot when every shell succeeded", () => {
+    expect(backgroundRowSegments("● 2 shells finished · ↓ to view")).toEqual([
+      { text: "●", tone: "ok" },
+      { text: " 2 shells finished · ↓ to view", tone: "dim" },
+    ]);
+  });
+  it("keeps a running row dim", () => {
+    expect(backgroundRowSegments("⏵ 1 shell · npm test 3s · ↓ to view")).toEqual([
+      { text: "⏵ 1 shell · npm test 3s · ↓ to view", tone: "dim" },
+    ]);
   });
 });

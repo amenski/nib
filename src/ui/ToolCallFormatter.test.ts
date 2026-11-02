@@ -58,6 +58,27 @@ describe("formatToolResultPreview", () => {
   });
 });
 
+describe("run_bash header drops the cd into the workspace (2026-11-02)", () => {
+  const cwd = process.cwd();
+  it("drops a cd into the workspace itself", () => {
+    expect(describeToolCall("run_bash", { command: `cd ${cwd} && npm test` })).toBe("run_bash npm test");
+    expect(describeToolCall("run_bash", { command: `cd ${cwd}/; npm test` })).toBe("run_bash npm test");
+  });
+  it("shortens a cd into a subfolder to its relative path", () => {
+    expect(describeToolCall("run_bash", { command: `cd ${cwd}/frontend && grep -rn x src` })).toBe(
+      "run_bash cd frontend && grep -rn x src",
+    );
+  });
+  it("joins lines with '; ' so two commands never run together", () => {
+    expect(describeToolCall("run_bash", { command: `cd ${cwd}/frontend\ngrep -rn x src` })).toBe(
+      "run_bash cd frontend; grep -rn x src",
+    );
+  });
+  it("keeps a cd outside the workspace", () => {
+    expect(describeToolCall("run_bash", { command: "cd /tmp && ls" })).toBe("run_bash cd /tmp && ls");
+  });
+});
+
 describe("read_file range in the call description (2026-10-10)", () => {
   it("shows the last line actually read, not one past it", () => {
     expect(describeToolCall("read_file", { path: "/a/b.ts", offset: 4, limit: 3 })).toContain(":4-6");
@@ -84,13 +105,23 @@ describe("styled tool header (2026-10-11)", () => {
     expect(colours).toEqual([undefined]);
   });
 
-  it("dims the glyph, bolds the display name, and leaves the args plain", () => {
+  it("bolds the display name and dims the arguments", () => {
     const line = formatStyledToolHeader(theme, "run_bash", { command: "ls -la" });
     expect(line).toContain("[fg:⏺]");
     expect(line).toContain("[bold:Bash]");
-    expect(line).toContain("(ls -la)");
-    // The arguments are NOT styled: they are shell text, shown as typed.
+    expect(line).toContain("[fg:(ls -la)]");
     expect(line).not.toContain("[bold:ls -la]");
+  });
+
+  it("colours the glyph by outcome: success, error, dim while unknown", () => {
+    const colours: number[] = [];
+    const spy = { ...theme, theme: { textDim: 246, success: 71, error: 204 }, fg: (c: number, s: string) => (colours.push(c), s) };
+    formatStyledToolHeader(spy, "run_bash", { command: "ls" }, "ok");
+    formatStyledToolHeader(spy, "run_bash", { command: "ls" }, "error");
+    formatStyledToolHeader(spy, "run_bash", { command: "ls" });
+    // First fg call per header is the glyph; the second dims the arguments.
+    expect([colours[0], colours[2], colours[4]]).toEqual([71, 204, 246]);
+    expect([colours[1], colours[3], colours[5]]).toEqual([246, 246, 246]);
   });
 
   it("shows the display name, not the raw tool id", () => {

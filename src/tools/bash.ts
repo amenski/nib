@@ -16,6 +16,9 @@ import { envelopeChangedError } from "../permissions/session-grant.js";
 import { wrapUntrusted, sanitizeControlChars } from "./untrusted-content.js";
 import { SANDBOX_TOOL_NOTE, UNSANDBOXED_PARAM, sandboxBlockedHint } from "./sandbox-hint.js";
 
+/** What a successful command with empty stdout returns; the TUI dims it. */
+export const NO_OUTPUT = "(no output)";
+
 const RUN_BASH_TIMEOUT_MS = 120_000;
 // run_bash keeps the most recent 512KB of output (the old exec maxBuffer
 // contract); on overflow the tail is kept and a note is added instead of
@@ -194,7 +197,7 @@ export function runBashTimed(
         clearTimeout(timer);
         let out: ToolOutput;
         if (closeCode === 0) {
-          out = { content: wrapUntrusted(`${stdout || "(no output)"}${truncationNote()}`) };
+          out = { content: wrapUntrusted(`${stdout || NO_OUTPUT}${truncationNote()}`) };
         } else if (stderr.trim() !== "") {
           // F5 delta: real failure (non-zero + stderr) — set `error` so the
           // bounded auto-fix loop engages, and prepend the grepped

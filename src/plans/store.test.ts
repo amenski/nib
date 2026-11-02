@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync, existsSync, utimesSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { savePlan, loadPlan, formatPlanBlock, plansDir } from "./store.js";
@@ -29,8 +29,9 @@ describe("savePlan / loadPlan", () => {
   });
 
   it("amending overwrites the same file", () => {
-    savePlan(ROOT, "v1 plan");
-    const path = savePlan(ROOT, "v2 amended plan");
+    const first = savePlan(ROOT, "v1 plan", "auth");
+    const path = savePlan(ROOT, "v2 amended plan", "auth");
+    expect(path).toBe(first);
     expect(readFileSync(path, "utf-8")).toContain("v2 amended plan");
     expect(loadPlan(ROOT)).toBe("v2 amended plan");
   });
@@ -40,6 +41,7 @@ describe("savePlan / loadPlan", () => {
     // Distinct mtimes: same-second writes would tie and sort arbitrarily.
     const past = new Date(Date.now() - 60_000);
     writeFileSync(first, "older plan\n");
+    utimesSync(first, past, past);
     const second = savePlan(ROOT, "newer plan");
     expect(existsSync(second)).toBe(true);
     expect(loadPlan(ROOT)).toBe("newer plan");

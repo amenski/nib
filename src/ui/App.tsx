@@ -1125,6 +1125,12 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           setActiveLineBoth("");
           textBuffer = "";
           atBlockStart = true; // next answer block re-bullets after this tool call
+          // Raw mode streams straight to stdout and has no live area to hold a
+          // header in, so it prints the header at once (dim, as before).
+          if (rawMode.mode === "raw") {
+            writeToolHeader(name, args);
+            return;
+          }
           pendingTools.push({ name, args });
           syncPendingTools();
         },

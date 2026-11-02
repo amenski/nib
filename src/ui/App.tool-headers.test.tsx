@@ -4,6 +4,7 @@ import { render } from "ink-testing-library";
 import App from "./App.js";
 import type { AppContext } from "./types.js";
 import { __resetInputWireForTests } from "./hooks/useTerminalInput.js";
+import { RawModeProvider } from "./contexts.js";
 import { stripAnsi } from "./test-helpers.js";
 
 vi.mock("./core/history-store.js", () => ({
@@ -72,7 +73,7 @@ const count = (frame: string, needle: string) => frame.split(needle).length - 1;
  * Starts a turn whose agent is driven step by step: `step(fn)` runs fn with the
  * turn's callbacks, `finish()` ends the turn.
  */
-async function startTurn() {
+async function startTurn(opts: { raw?: boolean } = {}) {
   let cb: any;
   let finish!: () => void;
   const done = new Promise<void>((r) => (finish = r));
@@ -84,11 +85,21 @@ async function startTurn() {
       await done;
       return { stopReason: "done", messages: [], newMessages: [] };
     });
-    const inst = render(<App ctx={ctx} />);
+    const inst = render(opts.raw ? <RawModeProvider><App ctx={ctx} /></RawModeProvider> : <App ctx={ctx} />);
     mounted.push(inst);
     frameRef.inst = inst;
-    inst.stdin.write("go");
-    setTimeout(() => inst.stdin.write("\r"), 60);
+    const submit = () => {
+      inst.stdin.write("go");
+      setTimeout(() => inst.stdin.write("\r"), 60);
+    };
+    if (opts.raw) {
+      // Switch to raw mode through the real slash command, then start the turn.
+      inst.stdin.write("/raw raw");
+      setTimeout(() => inst.stdin.write("\r"), 60);
+      setTimeout(submit, 200);
+    } else {
+      submit();
+    }
   });
   await ready;
   const frame = () => stripAnsi(frameRef.inst!.lastFrame() ?? "");
@@ -153,5 +164,27 @@ describe("tool headers wait for their result", () => {
     expect(count(f, "Edit(a.ts)")).toBe(1);
     expect(f.indexOf("Edit(a.ts)")).toBeLessThan(f.indexOf("lsp: 1 error(s)"));
     await t.finish();
+  });
+
+  it("raw mode prints the header at once, since it has no live area to hold it in", async () => {
+    const written: string[] = [];
+    const spy = vi.spyOn(process.stdout, "write").mockImplementation(((chunk: unknown) => {
+      written.push(String(chunk));
+      return true;
+    }) as typeof process.stdout.write);
+    try {
+      const t = await startTurn({ raw: true });
+      await t.step((cb) => cb.onToolStart("run_bash", { command: "sleep 1" }));
+      // Written to stdout while the call is still running, not after its result.
+      expect(written.some((w) => stripAnsi(w).includes("Bash(sleep 1)"))).toBe(true);
+      // And not drawn a second time in the live area.
+      expect(count(t.frame(), "Bash(sleep 1)")).toBe(0);
+
+      await t.step((cb) => cb.onToolResult("run_bash", { content: "slept" }));
+      expect(written.filter((w) => stripAnsi(w).includes("Bash(sleep 1)"))).toHaveLength(1);
+      await t.finish();
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

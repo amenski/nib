@@ -155,6 +155,67 @@ describe("buildReplayLines", () => {
     expect(lines.some((l) => l.includes(ansiFg(DARK_THEME.error)) && l.includes("nope"))).toBe(true);
   });
 
+  describe("header dot colour follows the call's outcome", () => {
+    const call = (id: string, command: string): Message => ({
+      role: "assistant",
+      content: null,
+      toolCalls: [{ id, name: "run_bash", arguments: { command } }],
+    });
+    const dotOf = (lines: string[], command: string): string => {
+      const header = lines.find((l) => stripAnsi(l).includes(`Bash(${command})`));
+      expect(header).toBeDefined();
+      // The escape in front of the first glyph is the dot's colour.
+      return header!.match(/(\x1b\[[0-9;]*m)⏺/)![1]!;
+    };
+
+    it("is success-coloured when the result succeeded, error-coloured when it failed", () => {
+      const lines = buildReplayLines(
+        [
+          call("a", "good"),
+          { role: "tool", toolCallId: "a", content: "fine" },
+          call("b", "bad"),
+          { role: "tool", toolCallId: "b", content: "COMMAND_FAILED: no" },
+          call("c", "denied"),
+          { role: "tool", toolCallId: "c", content: "PERMISSION_DENIED: no" },
+        ],
+        withColor,
+      );
+      expect(dotOf(lines, "good")).toBe(ansiFg(DARK_THEME.success));
+      expect(dotOf(lines, "bad")).toBe(ansiFg(DARK_THEME.error));
+      expect(dotOf(lines, "denied")).toBe(ansiFg(DARK_THEME.error));
+    });
+
+    it("stays dim for a call that never got a result (killed mid-turn)", () => {
+      const lines = buildReplayLines([call("a", "orphan")], withColor);
+      expect(dotOf(lines, "orphan")).toBe(ansiFg(DARK_THEME.textDim));
+    });
+
+    it("pairs each header with its own result when several calls share one reply", () => {
+      const lines = buildReplayLines(
+        [
+          {
+            role: "assistant",
+            content: null,
+            toolCalls: [
+              { id: "x", name: "run_bash", arguments: { command: "first" } },
+              { id: "y", name: "run_bash", arguments: { command: "second" } },
+            ],
+          },
+          { role: "tool", toolCallId: "x", content: "COMMAND_FAILED: no" },
+          { role: "tool", toolCallId: "y", content: "fine" },
+        ],
+        withColor,
+      );
+      expect(dotOf(lines, "first")).toBe(ansiFg(DARK_THEME.error));
+      expect(dotOf(lines, "second")).toBe(ansiFg(DARK_THEME.success));
+    });
+
+    it("keeps the dot plain when colour is off", () => {
+      const lines = buildReplayLines([call("a", "ls"), { role: "tool", toolCallId: "a", content: "fine" }], noColor);
+      expect(lines).toContain(VERBATIM_TAG + TOOL_HEADER_TAG + "⏺ Bash(ls)");
+    });
+  });
+
   it("puts exactly one blank row between blocks, as the live view does", () => {
     // Live (App.tsx blockGap/commitText): one blank between an answer and the
     // next tool call, and between a tool's output and the answer after it.

@@ -19,7 +19,7 @@ import { buildSandboxProfile, configureSandbox, isSandboxedLevel, profileWriteSe
 import { configureUnsandboxed } from "./sandbox/unsandboxed.js";
 import type { BashEnvelope } from "./permissions/session-grant.js";
 import { AutoModeState, type AutoModeOptions, type RiskMode, type Stage2Options } from "./permissions/risk/index.js";
-import { createAutoJudge, createRiskJudge } from "./providers/risk-judge.js";
+import { createAutoJudge, createRiskJudge, resolveAutoJudge } from "./providers/risk-judge.js";
 import { filterToolDefs } from "./tools/filter.js";
 import { jobManager } from "./tools/jobs.js";
 import { todoStore } from "./tools/todo.js";
@@ -514,15 +514,17 @@ async function main() {
   const autoMode: AutoModeOptions = {
     isActive: () => shared.posture === "auto",
     judge: createAutoJudge(() => {
-      if (judgeModelId === undefined) return { provider: getProvider(), caps: getActiveModelCaps() };
-      const slash = judgeModelId.indexOf("/");
+      const target = resolveAutoJudge(judgeModelId, shared.providerName)?.id;
+      if (target === undefined) return { provider: getProvider(), caps: getActiveModelCaps() };
+      const slash = target.indexOf("/");
       return {
-        provider: getProvider(judgeModelId),
-        caps: getPreset(judgeModelId.slice(0, slash))?.models[judgeModelId.slice(slash + 1)],
+        provider: getProvider(target),
+        caps: getPreset(target.slice(0, slash))?.models[target.slice(slash + 1)],
       };
     }),
     judgeLabel: () =>
-      judgeModelId ?? `${shared.providerName}/${shared.activeModel ?? getPreset(shared.providerName)?.defaultModel ?? "unknown"}`,
+      resolveAutoJudge(judgeModelId, shared.providerName)?.id ??
+      `${shared.providerName}/${shared.activeModel ?? getPreset(shared.providerName)?.defaultModel ?? "unknown"}`,
     state: autoState,
     humanTurns: () => humanTurns,
     recordHumanTurn: (text: string) => {
@@ -1779,6 +1781,14 @@ export async function runDoctor(): Promise<void> {
   const doctorFolderTrusted =
     checkFolderTrust(process.cwd(), buildFolderContentSummary(process.cwd(), configResult)).status === "trusted";
   for (const line of formatLspLines(configResult.config, process.cwd(), undefined, doctorFolderTrusted)) console.log(line);
+  {
+    const judgeProvider = parseModelId(
+      configResult.config.model || configResult.config.env?.MODEL,
+      configResult.config.provider || detectProvider(configResult.config.env) || "deepseek",
+    )?.provider ?? "deepseek";
+    const judge = resolveAutoJudge(configResult.config.classifier?.model?.id, judgeProvider);
+    console.log(`  auto judge        ${judge ? `${judge.id} (${judge.source})` : "the active model (its provider lists no small model)"}`);
+  }
   const searxngUrl = configResult.config.webSearch?.searxngUrl;
   if (searxngUrl) {
     const health = await probeSearXngHealth(searxngUrl);
@@ -1908,6 +1918,8 @@ export async function handleSlashCore(
       const source = describeRefreshSource(refresh);
       console.log(`provider   ${shared.providerName}`);
       console.log(`model      ${shared.activeModel ?? getPreset(shared.providerName)?.defaultModel ?? "unknown"}`);
+      const autoJudge = resolveAutoJudge(configResult.config.classifier?.model?.id, shared.providerName);
+      console.log(`auto judge ${autoJudge ? `${autoJudge.id} (${autoJudge.source})` : "the active model (its provider lists no small model)"}`);
       // Catalog + live model list, in the same order and column style as
       // `nib doctor`. Best-effort: a failed check prints the "unavailable"
       // line rather than an error.

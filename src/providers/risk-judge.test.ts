@@ -24,7 +24,7 @@ vi.mock("./presets.js", () => ({
 }));
 
 import type { Provider } from "./types.js";
-import { createAutoJudge, createRiskJudge, findJudgeModel } from "./risk-judge.js";
+import { createAutoJudge, createRiskJudge, findJudgeModel, resolveAutoJudge } from "./risk-judge.js";
 
 beforeEach(() => {
   for (const key of Object.keys(configured)) delete configured[key];
@@ -197,5 +197,31 @@ describe("createAutoJudge", () => {
       yield { type: "text_delta", content: "never read" };
     };
     expect(await createAutoJudge(() => ({ provider: providerOf() }))({ system: "S", user: "U" })).toBe("BLOCK");
+  });
+});
+
+describe("resolveAutoJudge", () => {
+  it("an explicit classifier.model.id wins over everything", () => {
+    configured.anthropic = true;
+    models.anthropic = { "claude-haiku-5-5": { contextWindow: 1 } };
+    expect(resolveAutoJudge("openai/gpt-5-mini", "anthropic")).toEqual({
+      id: "openai/gpt-5-mini",
+      source: "classifier.model.id",
+    });
+  });
+
+  it("falls back to the small model of the session's own provider", () => {
+    models.anthropic = { "claude-fable-5-1": { contextWindow: 1 }, "claude-haiku-5-5": { contextWindow: 1 } };
+    expect(resolveAutoJudge(undefined, "anthropic")?.id).toBe("anthropic/claude-haiku-5-5");
+  });
+
+  it("never reaches for another provider's small model", () => {
+    // Unlike findJudgeModel, the auto judge sees the user's messages, so a
+    // provider the user did not pick is off limits even when it has a haiku.
+    configured.anthropic = true;
+    configured.openai = true;
+    models.anthropic = { "claude-haiku-5-5": { contextWindow: 1 } };
+    models.openai = { "gpt-5": { contextWindow: 1 } };
+    expect(resolveAutoJudge(undefined, "openai")).toBeUndefined();
   });
 });

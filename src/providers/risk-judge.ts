@@ -35,22 +35,41 @@ export function findJudgeModel(preferProvider?: string): string | undefined {
   const candidates = Object.keys(configured).filter((name) => configured[name]);
   if (candidates.length === 0) return undefined;
 
-  const modelsFor = (name: string): string[] => {
-    const fromConfig = getProviderModels(name);
-    if (fromConfig) return Object.keys(fromConfig);
-    const preset = getPreset(name);
-    return preset ? Object.keys(preset.models) : [];
-  };
-
   const ordered = preferProvider !== undefined && candidates.includes(preferProvider)
     ? [preferProvider, ...candidates.filter((n) => n !== preferProvider)]
     : candidates;
 
   for (const provider of ordered) {
-    const match = modelsFor(provider).find((id) => CHEAP_MODEL_PATTERN.test(id));
-    if (match) return `${provider}/${match}`;
+    const match = cheapModelOf(provider);
+    if (match) return match;
   }
   return undefined;
+}
+
+/** "provider/model" for the first cheap-class model `provider` itself offers, or undefined. */
+export function cheapModelOf(provider: string): string | undefined {
+  const fromConfig = getProviderModels(provider);
+  const preset = getPreset(provider);
+  const ids = fromConfig ? Object.keys(fromConfig) : preset ? Object.keys(preset.models) : [];
+  const match = ids.find((id) => CHEAP_MODEL_PATTERN.test(id));
+  return match ? `${provider}/${match}` : undefined;
+}
+
+/**
+ * The model auto posture's judge runs on, or undefined for "the session's
+ * active model". An explicit `classifier.model.id` wins; otherwise the small
+ * model of the session's own provider. Never another provider: the auto judge
+ * reads the user's recent messages and the pending action, so it must not send
+ * them anywhere the user did not choose (unlike {@link findJudgeModel}, whose
+ * second stage sees only the command).
+ */
+export function resolveAutoJudge(
+  explicitId: string | undefined,
+  sessionProvider: string,
+): { id: string; source: "classifier.model.id" | "small model of the session's provider" } | undefined {
+  if (explicitId !== undefined) return { id: explicitId, source: "classifier.model.id" };
+  const id = cheapModelOf(sessionProvider);
+  return id === undefined ? undefined : { id, source: "small model of the session's provider" };
 }
 
 /**

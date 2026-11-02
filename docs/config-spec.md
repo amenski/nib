@@ -343,8 +343,12 @@ change the outcome only for an MCP call allowed by `defaultMode`.
 
 `id` is usable **without `enabled`**, because in the auto posture it names the
 auto judge (`classifier.defaultPosture`, above): with `id` set the auto judge is
-that model, and without it the auto judge is the session's currently active
-model at its lowest reasoning effort. The second stage is skipped while auto is
+that model; without it the auto judge is the small model
+(`haiku`/`flash`/`mini`/`nano`/`small`/`lite`/`tiny`) of the **session's own provider**,
+and only when that provider lists none, the session's currently active model — at
+its lowest reasoning effort either way. It never falls back to a different
+provider, because the auto judge reads your recent messages and the pending
+action. `nib doctor` prints the resolved model on the `auto judge` line. The second stage is skipped while auto is
 active (auto's judge already decides those calls), and auto does not require
 `enabled`.
 

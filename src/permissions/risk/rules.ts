@@ -172,6 +172,12 @@ export const CONFIRM_RULES: RiskRule[] = [
     test: (f) => f.runner !== undefined && f.runner !== "make",
   },
   {
+    // `eval "$X"` runs text the classifier never sees. Before this rule only
+    // the parse failure caught it, and that is the weakest reason there is.
+    tag: "shell.eval",
+    test: (f) => f.wrappers.includes("eval") || f.segments.some((s) => s.program === "eval"),
+  },
+  {
     tag: "shell.special-var",
     test: (f) => f.specialVars.length > 0,
   },
@@ -360,6 +366,7 @@ export function isSafe(f: RiskFeatures): boolean {
     if (f.segments.some((s) => s.readsOutside)) return false;
     return f.segments.every((s) => s.targets.every((t) => INSIDE_CLASSES.has(t.class)));
   }
+  if (f.kind === "other") return f.parse === "parsed";
   if (f.kind === "path-read") {
     // Inside the working directory (a build dir is, by construction, under it;
     // `write-root` may not be), and never a credential or protected path.

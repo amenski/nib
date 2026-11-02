@@ -246,6 +246,13 @@ const RUNNER_PROGRAMS = new Set(["npx", "bunx", "devbox", "direnv", "make"]);
 /** §4.1 `envAssign` safe list: assignments that cannot redirect execution. */
 const SAFE_ENV_VARS = new Set(["NODE_ENV", "CI", "DEBUG", "FORCE_COLOR"]);
 
+/**
+ * The agent's own bookkeeping tools: they touch no file, shell or network, so
+ * the classifier has nothing to say about them. `kill_job` is left out on
+ * purpose — it ends a process — and unknown tools stay fail-closed.
+ */
+const META_TOOLS = new Set(["update_todo_list", "attempt_completion", "switch_mode", "ask_user_question", "check_job"]);
+
 /** §4.1 `specialVar`. CDPATH redirects a bare `cd name`, which the safe tier steps over. */
 const SPECIAL_VARS = new Set(["PATH", "IFS", "LD_PRELOAD", "HOME", "CDPATH"]);
 
@@ -1196,6 +1203,7 @@ export function extractRiskFeatures(input: RiskInput): RiskFeatures {
   };
 
   if (kind === "shell") return { ...base, ...shellFeatures(command, input) };
+  if (META_TOOLS.has(input.tool)) return { ...base, parse: "parsed" };
   if (kind === "path-write" || kind === "path-read") {
     const ctx = targetContext(input);
     const path = pathFeaturesOf(input.tool, input.args, ctx);
@@ -1248,8 +1256,12 @@ function shellFeatures(command: string, input: RiskInput): Partial<RiskFeatures>
   // So the features are extracted from it and the parse is reported as failed:
   // `bash -c 'D=$(pwd); rm -rf "$D"'` blocks, and `bash -c "$(cat x)"` stays the
   // fail-closed confirm it already was.
-  const body = failedUnwrap ? extractQuotedArgLoose(commandText) : text;
-  if (body === null) return { parse: "failed", longCommand, interpreterInline: false };
+  // `eval` is unwrapped like `bash -c` above, so it never reaches the segments;
+  // it is recorded as a wrapper for the `shell.eval` rule to read.
+  const evalLead = /^eval\s/.test(commandText) ? ["eval"] : [];
+  const unwrapped = failedUnwrap ? extractQuotedArgLoose(commandText) : text;
+  if (unwrapped === null) return { parse: "failed", wrappers: evalLead, longCommand, interpreterInline: false };
+  const body = stripTrustedPathExports(unwrapped, input.workingDir);
 
   const rawSegments = splitCompound(maskShellNoise(body));
   const stripped = rawSegments.map(stripRedirects);
@@ -1286,7 +1298,7 @@ function shellFeatures(command: string, input: RiskInput): Partial<RiskFeatures>
     parse: failedUnwrap ? "failed" : parseStatus(cleanedSegments, command.length, dangling),
     segments,
     redirects,
-    wrappers: unique([...leading.wrappers, ...cleanedSegments.flatMap((s) => stripWrappersFor(s).wrappers)]),
+    wrappers: unique([...leading.wrappers, ...evalLead, ...cleanedSegments.flatMap((s) => stripWrappersFor(s).wrappers)]),
     ...(interpreter !== undefined ? { interpreter } : {}),
     interpreterInline: inline,
     runner: runnerOf(segments),
@@ -1303,6 +1315,45 @@ function shellFeatures(command: string, input: RiskInput): Partial<RiskFeatures>
     preSessionTarget: hasPreSessionTarget(segments, input.session.createdThisSession),
     unassignedVars: unassignedDeleteVars(segments, ctx.vars),
   };
+}
+
+/**
+ * Drops `export PATH="$HOME/.local/bin:$PATH";` statements whose every entry is
+ * provably under `$HOME` or the project root. Such a line is the commonest
+ * shell prologue there is, and reading `$PATH` inside quotes made it a parse
+ * failure plus a `shell.special-var` hit on 39 of ~100 commands in one
+ * session. Removed rather than masked: a blanket `$HOME` mask would also hide
+ * the `$HOME` in `rm -rf "$HOME"`, which the block rules read as text.
+ *
+ * Anything else — `/tmp/x`, a `..` entry, a `$(…)`, a PATH with no `$PATH` in
+ * it — is left in place and keeps its confirm.
+ */
+function stripTrustedPathExports(body: string, workingDir: string): string {
+  const statement = /(^|[;\n]|&&|\|\|)(\s*)(?:export\s+)?PATH=(?:"([^"\n]*)"|([^\s;&|"'`]*))[ \t]*(?:;|&&|\n|$)\s*/g;
+  let current = body;
+  // One pass per export: each match consumes the separator the next one anchors on.
+  for (let pass = 0; pass < 5; pass++) {
+    const next = current.replace(statement, (match, lead: string, ws: string, quoted?: string, bare?: string) =>
+      isTrustedPathValue(quoted ?? bare ?? "", workingDir) ? `${lead}${ws}` : match,
+    );
+    if (next === current) break;
+    current = next;
+  }
+  return current;
+}
+
+function isTrustedPathValue(value: string, workingDir: string): boolean {
+  const entries = value.split(":");
+  const isPathVar = (e: string) => e === "$PATH" || e === "${PATH}";
+  return entries.filter(isPathVar).length === 1 && entries.every((e) => isPathVar(e) || isLocalPathEntry(e, workingDir));
+}
+
+function isLocalPathEntry(entry: string, workingDir: string): boolean {
+  const prefixes = ["$HOME/", "${HOME}/", "$PWD/", "${PWD}/", `${workingDir.replace(/\/+$/, "")}/`];
+  const prefix = prefixes.find((p) => entry.startsWith(p));
+  if (prefix === undefined) return false;
+  const rest = entry.slice(prefix.length);
+  return /^[\w.@+~-]+(\/[\w.@+~-]+)*$/.test(rest) && !rest.split("/").includes("..");
 }
 
 function stripWrappersFor(segment: string): StrippedSegment {

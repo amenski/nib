@@ -7,6 +7,15 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The risk classifier no longer asks about routine setup.** A prologue like
+  `export PATH="$HOME/.local/bin:$PATH"` (entries under `$HOME` or the project
+  only) no longer turns every command after it into a confirm, and the agent's
+  own `update_todo_list`, `attempt_completion`, `switch_mode`,
+  `ask_user_question` and `check_job` calls no longer prompt in `enforce` mode.
+  `eval` now confirms with its own reason instead of a parse failure.
+
 ## [0.8.0-rc.1] — 2026-10-30
 
 ### Changed

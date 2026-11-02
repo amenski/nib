@@ -562,3 +562,49 @@ describe("§5.4 safe tier: obviously read-only shell", () => {
     expect(tierOf("ls 2>/dev/null && rm -rf build")).toBe("benign");
   });
 });
+
+describe("E14: PATH prefix and meta tools", () => {
+  it("lets a trusted PATH export ride in front of a build command", () => {
+    const command = 'export PATH="$HOME/.local/bin:$PATH"; cd /work/project && pnpm test';
+    expect(classify(input(command)).tier).toBe("benign");
+    expect(classify(input('export PATH="/work/project/node_modules/.bin:$PATH" && pnpm test')).tier).toBe("benign");
+    expect(classify(input('export PATH="$PATH:$HOME/.pub-cache/bin"; dart test')).tier).toBe("benign");
+  });
+
+  it("still confirms a PATH, IFS or eval line that is not provably local", () => {
+    for (const [command, tag] of [
+      ["export PATH=/tmp/x:$PATH", "shell.special-var"],
+      ['export PATH="$HOME/../tmp/x:$PATH"; pnpm test', "shell.special-var"],
+      ['export PATH="$(pwd)/x:$PATH"; pnpm test', "shell.special-var"],
+      ['export PATH="$HOME/bin"; pnpm test', "shell.special-var"],
+      ["export IFS=x", "shell.special-var"],
+      ['eval "$HOME/x"', "shell.eval"],
+      ["eval $CMD", "shell.eval"],
+    ] as const) {
+      const result = classify(input(command));
+      expect(result.tier, command).toBe("confirm");
+      expect(result.reason, command).toBe(tag);
+    }
+  });
+
+  it("leaves the block-tier $HOME and $@ deletions alone", () => {
+    expect(classify(input("rm -rf $HOME/*")).tier).toBe("block");
+    expect(classify(input('export PATH="$HOME/bin:$PATH"; rm -rf "$HOME"')).tier).toBe("block");
+    expect(classify(input("rm -rf $@")).tier).toBe("confirm");
+  });
+
+  it("does not ask about the agent's own bookkeeping tools", () => {
+    for (const tool of ["update_todo_list", "attempt_completion", "switch_mode", "ask_user_question", "check_job"]) {
+      const result = classify({ ...input(""), tool, args: {} });
+      expect(result.tier, tool).toBe("safe");
+    }
+  });
+
+  it("stays fail-closed for kill_job and unknown tools", () => {
+    for (const tool of ["kill_job", "frobnicate"]) {
+      const result = classify({ ...input(""), tool, args: {} });
+      expect(result.tier, tool).toBe("confirm");
+      expect(result.reason, tool).toBe("parse.failed");
+    }
+  });
+});

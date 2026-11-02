@@ -53,6 +53,8 @@ const RISK_REASONS: Record<string, string> = {
     "this runs code passed inline to an interpreter, so only the interpreter can see what executes. Write the code to a file in the workspace first, so the change is reviewable.",
   "shell.runner-opaque":
     "this launches a command through a runner whose own arguments decide what runs, so the visible command is not the whole call. Invoke the underlying tool directly.",
+  "shell.eval":
+    "this runs `eval`, which executes text built at run time, so the command being approved is not the one that runs. Write the command out directly.",
   "shell.special-var":
     "this assigns PATH, IFS, LD_PRELOAD, DYLD_* or HOME, which changes what every later command in the shell resolves to. Set it on the single command that needs it.",
   "shell.expansion":

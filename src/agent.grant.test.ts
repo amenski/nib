@@ -949,6 +949,24 @@ describe("command risk classifier: shadow logging (docs/command-risk-classifier.
       expect(String(toolMessage?.content)).toBe("Permission denied for run_bash");
     });
 
+    it("does not turn a todo update into a prompt", async () => {
+      // Before E14 every non-shell tool the classifier did not model reached
+      // `parse.failed`, so an allowed todo update asked in enforce mode.
+      const permissions = new PermissionEngine(
+        { rules: [{ tool: "update_todo_list", kind: "any" as const, pattern: "", action: "allow" as const, origin: "config" as const }], defaultMode: "askAll" },
+        ROOT,
+      );
+      const driven = await drive(["ignored"], {
+        permissions,
+        classifierMode: "enforce",
+        tool: "update_todo_list",
+        extraArgs: { todos: "- [ ] one" },
+      });
+
+      expect(driven.askUser).not.toHaveBeenCalled();
+      expect(driven.rows[0].risk).toMatchObject({ tier: "safe" });
+    });
+
     it("turns an allow into a prompt for a confirm, and shows the reason on it", async () => {
       // `cat .env` reaches the classifier's fs.secret-ref without the engine
       // asking, because the allow rule covers every run_bash call.

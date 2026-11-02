@@ -410,3 +410,18 @@ describe("§5.4 safe tier evidence: cd scoping and discarded output", () => {
     expect(redirects("ls 2>&1")).toEqual([]);
   });
 });
+
+describe("E14: a local PATH export is not shell noise the classifier must flag", () => {
+  it("drops the trusted export from the vector and keeps the real command", () => {
+    const f = bash('export PATH="$HOME/.local/bin:$PATH"; cd /work/project && pnpm test');
+    expect(f.parse).toBe("parsed");
+    expect(f.specialVars).toEqual([]);
+    expect(f.segments.map((s) => s.program)).toEqual(["cd", "pnpm"]);
+  });
+
+  it("keeps every other special variable and an untrusted PATH entry", () => {
+    expect(bash("export IFS=x; ls").specialVars).toEqual(["IFS"]);
+    expect(bash("export PATH=/tmp/x:$PATH; ls").specialVars).toEqual(["PATH"]);
+    expect(bash('export PATH="$HOME/bin:$HOME/../x:$PATH"; ls').specialVars).toEqual(["PATH"]);
+  });
+});

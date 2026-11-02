@@ -7,25 +7,16 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Added
-
-- **`nib -p --plan`** runs a headless prompt in plan posture: only read tools are
-  offered and the reply ends with a `<proposed_plan>`, as `Shift+Tab` does in the
-  TUI. It also lets the eval measure plan quality (new case G10).
-
-### Fixed
-
-- **The risk classifier no longer asks about routine setup.** A prologue like
-  `export PATH="$HOME/.local/bin:$PATH"` (entries under `$HOME` or the project
-  only) no longer turns every command after it into a confirm, and the agent's
-  own `update_todo_list`, `attempt_completion`, `switch_mode`,
-  `ask_user_question` and `check_job` calls no longer prompt in `enforce` mode.
-  `eval` now confirms with its own reason instead of a parse failure.
-
-## [0.8.0-rc.1] — 2026-10-30
+## [0.8.0-rc.1] — 2026-11-02
 
 ### Changed
 
+- **Auto mode's judge defaults to a small model of your provider.** Without
+  `classifier.model.id`, the judge is the provider's `flash`/`haiku`/`mini`-class
+  model instead of the model you chat with, so an expensive session no longer
+  pays its own price for every judgement. It never switches to another provider;
+  with no small model listed it uses the active model as before. `nib doctor` and
+  `/models` show which model judges.
 - **`edit_file` and `search_replace` are folded into `edit`.** `edit` gains
   `replace_all: true` to replace every occurrence; a match that occurs more than
   once without it still errors with the count. Models used `edit` 51× more than
@@ -56,6 +47,9 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`nib -p --plan`** runs a headless prompt in plan posture: only read tools are
+  offered and the reply ends with a `<proposed_plan>`, as `Shift+Tab` does in the
+  TUI. It also lets the eval measure plan quality (new case G10).
 - **Plans persist across compaction.** In plan posture a captured
   `<proposed_plan>` must have three sections (files and interfaces,
   verification, staged steps) and is saved to `.nib/plans/<slug>.md`. The
@@ -64,6 +58,12 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The risk classifier no longer asks about routine setup.** A prologue like
+  `export PATH="$HOME/.local/bin:$PATH"` (entries under `$HOME` or the project
+  only) no longer turns every command after it into a confirm, and the agent's
+  own `update_todo_list`, `attempt_completion`, `switch_mode`,
+  `ask_user_question` and `check_job` calls no longer prompt in `enforce` mode.
+  `eval` now confirms with its own reason instead of a parse failure.
 - **Long headless runs (`nib -p`) now compact.** The headless path never built
   a compactor, so a long `-p` run grew until it hit the context limit.
 - **An interrupted or killed long turn can now be resumed.** The conversation
@@ -965,7 +965,8 @@ further injection sinks.
 Earlier releases predate this changelog. See the git history for
 `v0.1.0..v0.2.1`.
 
-[Unreleased]: https://github.com/amenski/nib/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/amenski/nib/compare/v0.8.0-rc.1...HEAD
+[0.8.0-rc.1]: https://github.com/amenski/nib/compare/v0.7.0...v0.8.0-rc.1
 [0.7.0]: https://github.com/amenski/nib/compare/v0.7.0-rc.2...v0.7.0
 [0.7.0-rc.2]: https://github.com/amenski/nib/compare/v0.7.0-rc.1...v0.7.0-rc.2
 [0.7.0-rc.1]: https://github.com/amenski/nib/compare/v0.6.1...v0.7.0-rc.1

@@ -31,9 +31,14 @@ interface StatusBarProps {
   sessionStart?: number;
 }
 
-const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-/** Glyph + space, reserved whether or not it animates so nothing shifts. */
-const SPINNER_SLOT = 2;
+/** A short track with a lit segment bouncing across it. */
+const BAR_CELLS = 5;
+const BAR_LIT = 2;
+const BAR_STARTS = [0, 1, 2, 3, 2, 1];
+/** Ticks per bar step: one step per 80ms tick bounced too fast to read. */
+const BAR_TICKS_PER_STEP = 2;
+/** Bar + space, drawn whether or not it animates so nothing shifts. */
+const SPINNER_SLOT = BAR_CELLS + 1;
 
 /**
  * Format elapsed time as HH:MM:SS.
@@ -252,11 +257,19 @@ function StatusBar({
     segmentBody = kept.length > 0 ? `${kept.join(sep)}${dim(" \u2026")}` : dim("\u2026");
   }
 
-  // Full-intensity accent so the animation reads at a glance against the dim row.
-  const glyph = SPINNER_FRAMES[frame % SPINNER_FRAMES.length];
-  const spinner = working
-    ? (theme.colorEnabled ? `${ansiFg(theme.theme.accent)}${glyph}${ANSI_RESET}` : glyph) + " "
-    : " ".repeat(SPINNER_SLOT);
+  // Full-intensity accent on the lit cells so the animation reads at a glance
+  // against the dim row; the glyphs alone still carry it without colour.
+  // Idle shows the bare track, dim, so the slot reads as a bar at rest.
+  let spinner = dim("▱".repeat(BAR_CELLS)) + " ";
+  if (working) {
+    const start = BAR_STARTS[Math.floor(frame / BAR_TICKS_PER_STEP) % BAR_STARTS.length];
+    const lit = "▰".repeat(BAR_LIT);
+    const before = "▱".repeat(start);
+    const after = "▱".repeat(BAR_CELLS - BAR_LIT - start);
+    spinner = (theme.colorEnabled
+      ? `${dim(before)}${ansiFg(theme.theme.accent)}${lit}${ANSI_RESET}${dim(after)}`
+      : before + lit + after) + " ";
+  }
   const left = `${spinner}${segmentBody}${gitStr}${jobsStr}${timerStr}`;
   const gap = maxWidth - cleanLen(left) - cleanLen(rightStr);
   const body = rightStr && gap >= 2 ? left + " ".repeat(gap) + rightStr : left;

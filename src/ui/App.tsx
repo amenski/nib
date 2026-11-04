@@ -2330,7 +2330,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
   });
   // Static text, not animated: the spinner lives on the status line (last row).
   const showBackgroundRow = backgroundRow !== null && !modalOpen;
-  const workingText = modalOpen ? null : compacting ? "compacting…" : turnActive ? "working… (esc to interrupt)" : null;
+  const workingText = modalOpen ? null : compacting ? "compacting…" : null;
   const panelAbove = todos.length > 0 || queuedItems.length > 0 || showBackgroundRow;
 
   return (
@@ -2735,7 +2735,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           Ink repaints a changed line by walking the cursor UP from the bottom,
           so anything rendered BELOW an 80ms animation gets rewritten 12.5x/second
           — which is what made the prompt box tear while streaming. Everything
-          above the input (the working line, the background row) is static text,
+          above the input (the compacting line, the background row) is static text,
           so a tick rewrites just the status row. */}
     </Box>
   );

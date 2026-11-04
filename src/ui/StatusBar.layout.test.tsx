@@ -48,7 +48,7 @@ describe("StatusBar two-group layout", () => {
   });
 
   it("keeps the left group in order: mode, posture, ctx, git, jobs", () => {
-    const row = frameOf(renderBar(100, <StatusBar segments={SEGMENTS} gitStatus={GIT} runningJobs={2} />));
+    const row = frameOf(renderBar(104, <StatusBar segments={SEGMENTS} gitStatus={GIT} runningJobs={2} />));
     const order = ["Code", "auto", "ctx", "main", "2 jobs", "thinking high"].map((s) => row.indexOf(s));
     expect(order.every((i) => i >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
@@ -64,7 +64,7 @@ describe("StatusBar two-group layout", () => {
   });
 
   it("falls back to single-line truncation once the left group does not fit", () => {
-    const row = frameOf(renderBar(22, <StatusBar segments={SEGMENTS} gitStatus={GIT} />));
+    const row = frameOf(renderBar(26, <StatusBar segments={SEGMENTS} gitStatus={GIT} />));
     expect(row).not.toContain("thinking");
     expect(row).toContain("…");
     expect(row).toContain("Code");
@@ -79,7 +79,7 @@ describe("StatusBar two-group layout", () => {
     const one = frameOf(renderBar(100, <StatusBar segments={SEGMENTS} gitStatus={GIT} runningJobs={1} />));
     expect(one).toContain("1 job");
     expect(one).not.toContain("1 jobs");
-    const two = frameOf(renderBar(100, <StatusBar segments={SEGMENTS} gitStatus={GIT} runningJobs={2} />));
+    const two = frameOf(renderBar(104, <StatusBar segments={SEGMENTS} gitStatus={GIT} runningJobs={2} />));
     expect(two).toContain("2 jobs");
   });
 
@@ -108,31 +108,31 @@ describe("StatusBar two-group layout", () => {
 });
 
 describe("StatusBar spinner slot", () => {
-  const SPINNER_START = /^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] /;
+  const SPINNER_START = /^▱*▰▰▱* /;
 
-  it("is a blank two-column slot at the start when idle", () => {
+  it("is a dim empty track at the start when idle", () => {
     const row = frameOf(renderBar(100, <StatusBar segments={SEGMENTS} gitStatus={GIT} />)).split("\n")[0];
-    expect(row.startsWith("  ● Code")).toBe(true);
+    expect(row.startsWith("▱▱▱▱▱ ● Code")).toBe(true);
   });
 
-  it("shows a spinner glyph at the very start while working", () => {
+  it("shows the progress bar at the very start while working", () => {
     const row = frameOf(renderBar(100, <StatusBar segments={SEGMENTS} gitStatus={GIT} working />)).split("\n")[0];
     expect(row).toMatch(SPINNER_START);
-    expect(row.slice(2).startsWith("● Code")).toBe(true);
+    expect(row.slice(6).startsWith("● Code")).toBe(true);
   });
 
   it("leaves every other column where it was, idle or working", () => {
     const idle = frameOf(renderBar(100, <StatusBar segments={SEGMENTS} gitStatus={GIT} />)).split("\n")[0];
     const busy = frameOf(renderBar(100, <StatusBar segments={SEGMENTS} gitStatus={GIT} working />)).split("\n")[0];
     expect(busy.length).toBe(idle.length);
-    expect(busy.slice(2)).toBe(idle.slice(2));
+    expect(busy.slice(6)).toBe(idle.slice(6));
   });
 
   it("counts the slot toward the width budget", () => {
     // "● Code" plus its separator and ellipsis needs 11 columns after the slot
-    // and " · main"; 21 columns leaves exactly 11, 20 leaves 10.
-    expect(frameOf(renderBar(21, <StatusBar segments={SEGMENTS} gitStatus={GIT} />))).toContain("Code");
-    expect(frameOf(renderBar(20, <StatusBar segments={SEGMENTS} gitStatus={GIT} />))).not.toContain("Code");
+    // and " · main"; 25 columns leaves exactly 11, 24 leaves 10.
+    expect(frameOf(renderBar(25, <StatusBar segments={SEGMENTS} gitStatus={GIT} />))).toContain("Code");
+    expect(frameOf(renderBar(24, <StatusBar segments={SEGMENTS} gitStatus={GIT} />))).not.toContain("Code");
   });
 
   it("animates only while working", () => {
@@ -146,7 +146,7 @@ describe("StatusBar spinner slot", () => {
 
   it("still renders the spinner when there is nothing else to show", () => {
     const row = frameOf(renderBar(100, <StatusBar segments={[]} working />)).split("\n")[0];
-    expect(row).toMatch(/^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/);
+    expect(row).toMatch(/^▱*▰▰▱*/);
   });
 });
 

@@ -77,7 +77,7 @@ async function until(check: () => boolean, ms = 3000): Promise<void> {
   while (!check() && Date.now() < deadline) await new Promise((r) => setTimeout(r, 20));
 }
 
-const SPINNER_START = /^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] /;
+const SPINNER_START = /^▱*▰▰▱* /;
 const DONE: TurnResult = { stopReason: "done", messages: [], newMessages: [] };
 
 const mounted: Array<{ unmount: () => void }> = [];
@@ -100,7 +100,7 @@ async function startHeldTurn() {
   inst.stdin.write("hello");
   await flush();
   inst.stdin.write("\r");
-  await until(() => frameOf(inst).includes("working…"));
+  await until(() => /▰/.test(rowsOf(frameOf(inst)).at(-1) ?? ""));
   return { inst, release: () => release() };
 }
 
@@ -121,17 +121,13 @@ describe("bottom of the frame", () => {
     expect(frame).not.toContain("compacting…");
     expect(frame).not.toContain("interrupt");
     const rows = rowsOf(frame);
-    // Status line is last and its spinner slot is blank when idle.
-    expect(rows[rows.length - 1]).toMatch(/^ {2}STATUS-BAR/);
+    // Status line is last and its bar is an empty track when idle.
+    expect(rows[rows.length - 1]).toMatch(/^▱{5} STATUS-BAR/);
   });
 
-  it("shows the working line, one blank row, then the input box while a turn runs", async () => {
+  it("shows no working line above the input box while a turn runs", async () => {
     const { inst, release } = await startHeldTurn();
-    const rows = rowsOf(frameOf(inst));
-    const at = rows.findIndex((r) => r === "working… (esc to interrupt)");
-    expect(at).toBeGreaterThanOrEqual(0);
-    expect(rows[at + 1]).toBe("");
-    expect(rows[at + 2]).toMatch(/^[─╭╮]/);
+    expect(frameOf(inst)).not.toContain("working…");
     release();
   });
 
@@ -143,13 +139,12 @@ describe("bottom of the frame", () => {
     release();
   });
 
-  it("drops the working line and the spinner when the turn ends", async () => {
+  it("drops the spinner when the turn ends", async () => {
     const { inst, release } = await startHeldTurn();
     release();
-    await until(() => !frameOf(inst).includes("working…"));
+    await until(() => !/▰/.test(rowsOf(frameOf(inst)).at(-1) ?? ""));
     const rows = rowsOf(frameOf(inst));
-    expect(frameOf(inst)).not.toContain("working…");
-    expect(rows[rows.length - 1]).toMatch(/^ {2}STATUS-BAR/);
+    expect(rows[rows.length - 1]).toMatch(/^▱{5} STATUS-BAR/);
   });
 
   it("says compacting… instead of working… during /compact", async () => {

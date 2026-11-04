@@ -632,6 +632,23 @@ it — see react-loop.md, "What a tool result carries on failure".)*
 Delete the merged `feature/searxng-web-search` branch; SecondBrain
 session log for 2026-08-13 → 15 at wrap-up.
 
+### F7. Cross-session inbox — L (planned 2026-11-04)
+
+**SOTA:** Claude Code peer sessions (socket + registry), Claude Code agent
+teams (inbox files), OpenCode (durable HTTP inbox, steer/queue), Codex
+(app-server socket, `turn/steer`), Cline (hub + discovery file), OpenClaw
+(in-process gateway, steer/queue/notify, `isUser=false`). **State:** the
+steering mailbox and sub-agent wake are in-process only; no other session
+or external agent can message a running session.
+
+**Design:** full plan in `cross-session-inbox.md` — Maildir-style file
+inbox under `$NIB_HOME/peers/`, heartbeat registry, no socket (§2 there),
+`list_sessions` / `send_message` tools, `nib peers` / `nib send`, peer
+messages labelled untrusted and unable to approve anything.
+
+**Decisions:** D1–D5 open (receive default, auto-mode posture, headless
+receive, external CLI, send tier) — see that doc's §11.
+
 ---
 
 ## Sources

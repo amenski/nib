@@ -8,13 +8,48 @@ import type { DocumentSymbolSource, RepoMapOptions } from "../repomap/index.js";
 import { LSP_EXTENSIONS } from "../repomap/index.js";
 
 /**
+ * Total time the startup repo map may spend on language servers. The map is
+ * built before the prompt appears, files are queried one by one, and a cold
+ * server (jdtls importing Gradle, the Dart analyzer after `pub get`) can take
+ * minutes — so past this budget the map goes partial rather than block boot.
+ */
+export const REPOMAP_LSP_BUDGET_MS = 3_000;
+
+/**
+ * Bounds every call through `source` by ONE deadline shared across all calls.
+ * A call still running at the deadline resolves to `[]`; calls after it return
+ * `[]` without touching the server.
+ */
+export function withSharedDeadline(source: DocumentSymbolSource, budgetMs: number): DocumentSymbolSource {
+  const deadline = Date.now() + budgetMs;
+  return async (path) => {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) return [];
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const expired = new Promise<WireSymbol[]>((resolve) => {
+      timer = setTimeout(() => resolve([]), remaining);
+    });
+    // The abandoned call rejects later when the servers are shut down.
+    const work = source(path).catch(() => [] as WireSymbol[]);
+    try {
+      return await Promise.race([work, expired]);
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+}
+
+/**
  * Bridges the LSP manager into the repo map (docs/todo.md D8): a workspace
  * with a configured language server for a non-TS/JS language gets its symbols
  * through `textDocument/documentSymbol`, so Python/Go/Rust/… repos get a map
  * too. Never throws — the caller treats any failure as "no LSP options" and
- * falls back to the plain TS/JS map.
+ * falls back to the plain TS/JS map. The caller must call `shutdown` once the
+ * map is built: the servers started here serve the map only.
  */
-export async function repoMapOptionsFromLsp(workingDir: string): Promise<RepoMapOptions | undefined> {
+export async function repoMapOptionsFromLsp(
+  workingDir: string,
+): Promise<{ options: RepoMapOptions; shutdown: () => Promise<void> } | undefined> {
   const { config } = loadConfig(workingDir);
   const folderTrusted =
     checkFolderTrust(workingDir, buildFolderContentSummary(workingDir, { config } as never)).status === "trusted";
@@ -45,5 +80,11 @@ export async function repoMapOptionsFromLsp(workingDir: string): Promise<RepoMap
     return symbolsFromWire(raw, path);
   };
 
-  return { extraExtensions: LSP_EXTENSIONS, documentSymbols };
+  return {
+    options: {
+      extraExtensions: LSP_EXTENSIONS,
+      documentSymbols: withSharedDeadline(documentSymbols, REPOMAP_LSP_BUDGET_MS),
+    },
+    shutdown: () => manager.shutdownAll(),
+  };
 }

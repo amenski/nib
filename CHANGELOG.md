@@ -7,6 +7,15 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Startup no longer hangs on a cold language server:** the repository map
+  asks language servers for symbols before the prompt appears, one file at a
+  time. A cold server (jdtls importing Gradle, the Dart analyzer after
+  `pub get`) could hold the boot for minutes. The map now gets 3 seconds in
+  total and goes partial after that, and the servers it starts are shut down
+  once it is built instead of running for the whole session.
+
 ## [0.8.0] — 2026-11-02
 
 First stable release of the 0.8.0 line. It includes everything in 0.8.0-rc.1

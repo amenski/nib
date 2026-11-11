@@ -69,13 +69,16 @@ export const REPOMAP_BYTE_BUDGET = 4 * 1024;
  * exclude-dir + dotfile filter); see src/repomap/index.ts.
  */
 export async function buildRepoMap(workingDir: string): Promise<string | null> {
+  let shutdownLsp: (() => Promise<void>) | undefined;
   try {
     // Options wiring is lazy-imported so a failure in the LSP seam degrades
     // to the plain TS/JS map instead of no map at all.
     let options: RepoMapOptions | undefined;
     try {
       const { repoMapOptionsFromLsp } = await import("./lsp/lsp-symbols.js");
-      options = await repoMapOptionsFromLsp(workingDir);
+      const lsp = await repoMapOptionsFromLsp(workingDir);
+      options = lsp?.options;
+      shutdownLsp = lsp?.shutdown;
     } catch {
       options = undefined;
     }
@@ -96,6 +99,10 @@ export async function buildRepoMap(workingDir: string): Promise<string | null> {
     return capped + note;
   } catch {
     return null;
+  } finally {
+    // Not awaited: a server that ignores `shutdown` costs its 2 s timeout
+    // before the kill, and boot must not wait for that.
+    void shutdownLsp?.().catch(() => {});
   }
 }
 

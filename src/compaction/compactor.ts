@@ -44,6 +44,17 @@ export function keepBoundary(messages: Message[]): number {
   return keepCount;
 }
 
+/**
+ * `replacesThrough` for a compaction overlay: the log index just before the
+ * messages kept live. `totalPersisted` is the log's message count, which
+ * includes everything in `kept` except system-role messages (never persisted).
+ * Overshooting would drop kept messages on resume; undershooting only repeats
+ * one, so a summary-role message among `kept` is harmless.
+ */
+export function replacesThroughKept(totalPersisted: number, kept: Message[]): number {
+  return totalPersisted - 1 - kept.filter((m) => m.role !== "system").length;
+}
+
 export class Compactor {
   private lastChangedFiles: Set<string> = new Set();
   private fidelityRegenerationCount = 0;

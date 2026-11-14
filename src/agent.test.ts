@@ -2872,6 +2872,37 @@ describe("incremental persistence (onPersistMessages)", () => {
     expect(through).toEqual([6, 8]);
   });
 
+  it("records a mid-turn compaction on the first turn of a fresh session", async () => {
+    const { provider } = makeProvider([callTurn("c1"), textTurn("done")]);
+    const sessionStore = {
+      appendToken: vi.fn(async () => {}),
+      getMessageCount: vi.fn(async () => 0),
+      appendCompaction: vi.fn(async () => {}),
+    };
+    let compacted = false;
+    const fakeCompactor = {
+      needsCompaction: vi.fn((msgs: Message[]) => !compacted && msgs.some((m) => m.role === "tool")),
+      compact: vi.fn(async (msgs: Message[]) => {
+        compacted = true;
+        return [{ role: "system", content: "[Previous conversation summary]\ncompacted" }, msgs[msgs.length - 1]] as Message[];
+      }),
+      getLastCompaction: vi.fn(() => ({ summary: "compacted", files: [] })),
+    };
+
+    await runAgent("go", {
+      provider,
+      tools: [],
+      executeTool: async () => ({ content: "file contents" }),
+      compactor: fakeCompactor as any,
+      sessionStore: sessionStore as any,
+      sessionId: "s1",
+      onPersistMessages: async () => {},
+    });
+
+    // Log: 0 user, 1 assistant, 2 tool (kept live).
+    expect(sessionStore.appendCompaction).toHaveBeenCalledWith("s1", 1, expect.anything());
+  });
+
   it("resuming a log that ended right after an assistant tool call backfills the missing result", async () => {
     const home = join(process.cwd(), ".test-e13-resume");
     try {

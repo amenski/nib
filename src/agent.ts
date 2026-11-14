@@ -3,7 +3,7 @@ import type { Message, ToolCall, ToolDef, ToolOutput } from "./types.js";
 import type { PermissionEngine, ResolveResult } from "./permissions/index.js";
 import { authorize, type ProfileEvaluator } from "./permissions/index.js";
 import type { ModeConfig } from "./modes/loader.js";
-import type { Compactor } from "./compaction/compactor.js";
+import { replacesThroughKept, type Compactor } from "./compaction/compactor.js";
 import type { DiagnosticRunner } from "./diagnostics/index.js";
 import type { LspManager } from "./lsp/index.js";
 import { formatDiagnostics, diagnosticsBlock, relPath } from "./lsp/index.js";
@@ -605,16 +605,12 @@ export async function runAgent(
     }
     newCursor = messages.length;
     // The log holds this turn's user message, then its non-system messages
-    // (App's persistTurnMessages), so its last index is turn-start + the count
-    // of those. The overlay replaces everything before the messages the
-    // compactor kept live; counting from turn start instead made every
-    // mid-turn compaction replace the same prefix, so resume reloaded the
-    // whole turn on top of the summary. A summary-role kept message (resume
-    // overlay) only lowers the index, which duplicates a message, never drops one.
-    const keptPersisted = messages.filter((m) => m.role !== "system").length;
+    // (App's persistTurnMessages), after the persistedAtTurnStart prior ones.
+    // Counting from turn start instead made every mid-turn compaction replace
+    // the same prefix, so resume reloaded the whole turn on top of the summary.
     const newPersisted = newMessages.filter((m) => m.role !== "system").length;
-    const replacesThrough = persistedAtTurnStart + newPersisted - keptPersisted;
-    if (options.sessionStore && options.sessionId && persistedAtTurnStart > 0 && replacesThrough >= 0) {
+    const replacesThrough = replacesThroughKept(persistedAtTurnStart + 1 + newPersisted, messages);
+    if (options.sessionStore && options.sessionId && replacesThrough >= 0) {
       const { summary, files } = compactor.getLastCompaction();
       const compactionSummary: CompactionSummary = {
         task: summary ?? "Conversation summarized.",

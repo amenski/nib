@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { Compactor } from "./compactor.js";
+import { Compactor, replacesThroughKept } from "./compactor.js";
 import type { Message } from "../types.js";
 import type { Provider, StreamEvent } from "../providers/types.js";
 
@@ -110,5 +110,17 @@ describe("Compactor calibration (observeUsage)", () => {
     c.observeUsage(1_000, 100);
     expect(c.tokenCalibration).toBe(1);
     expect(c.needsCompaction(bigMessages())).toBe(true);
+  });
+});
+
+describe("replacesThroughKept", () => {
+  const m = (role: Message["role"]) => ({ role, content: "x" }) as Message;
+
+  it("stops just before the kept messages", () => {
+    expect(replacesThroughKept(10, [m("user"), m("assistant"), m("user"), m("assistant")])).toBe(5);
+  });
+
+  it("does not count system messages, which are never persisted", () => {
+    expect(replacesThroughKept(10, [m("system"), m("assistant"), m("tool")])).toBe(7);
   });
 });

@@ -27,7 +27,7 @@ import { loadPlan } from "./plans/store.js";
 import { PermissionEngine, ProfileEvaluator, authorize } from "./permissions/index.js";
 import { previewEdit } from "./permissions/diffpreview.js";
 import { ModeLoader, type ModeConfig } from "./modes/loader.js";
-import { Compactor, keepBoundary } from "./compaction/compactor.js";
+import { Compactor, keepBoundary, replacesThroughKept } from "./compaction/compactor.js";
 import { CheckpointManager } from "./checkpoints/index.js";
 import { DiagnosticRunner } from "./diagnostics/index.js";
 import { startStallWatchdog } from "./diagnostics/stall-watchdog.js";
@@ -1389,7 +1389,7 @@ async function main() {
             files: [],
             errors_resolved: [],
           };
-          await sessionStore.appendCompaction(sessionId, persistedCount - 1, summary);
+          await sessionStore.appendCompaction(sessionId, replacesThroughKept(persistedCount, recent), summary);
         }
         return compacted;
       },
@@ -2012,7 +2012,7 @@ export async function handleSlashCore(
         const persistedCount = await sessionStore.getMessageCount(sessionId);
         if (persistedCount > 0) {
           const summary: import("./sessions/store.js").CompactionSummary = { task: summaryText, decisions: [], files: [], errors_resolved: [] };
-          await sessionStore.appendCompaction(sessionId, persistedCount - 1, summary);
+          await sessionStore.appendCompaction(sessionId, replacesThroughKept(persistedCount, recent), summary);
         }
         console.log(`[compacted ${old.length} turns · kept ${recent.length} recent]`);
       } catch (err) {

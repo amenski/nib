@@ -1131,15 +1131,20 @@ async function main() {
     const preset = getPreset(shared.providerName);
     const caps = preset?.models[shared.activeModel ?? preset.defaultModel];
     if (!caps?.contextWindow) return null;
-    // Use estimateTokens on the live conversation history, not the API's
-    // per-call usage report. lastContextTokens tracked the last single-call
-    // input+output, which fluctuates across turns and never reflects the
-    // total context fill level. The /context command uses the same estimator.
-    // Overhead is added so the meter reflects the whole request, matching what
-    // the compaction check measures. It is also why the meter is visible from
-    // startup instead of appearing only after the first turn: the tools and repo
-    // map are already on the wire before any message exists.
-    const total = estimateTokens(shared.conversationHistory) + getOverheadTokens();
+    // Between turns, estimateTokens on the live conversation history; the
+    // /context command uses the same estimator. Overhead is added so the meter
+    // reflects the whole request, matching what the compaction check measures.
+    // It is also why the meter is visible from startup instead of appearing
+    // only after the first turn: the tools and repo map are already on the wire
+    // before any message exists.
+    // Mid-turn, conversationHistory is frozen at its pre-turn value (App only
+    // assigns it when the turn ends), so a long autonomous turn would pin the
+    // meter near 0%. The last request's input+output (set per call in onUsage,
+    // zeroed when the turn ends) is the context the next request starts from,
+    // and it already reflects any compaction that happened mid-turn.
+    const total = shared.lastContextTokens > 0
+      ? shared.lastContextTokens
+      : (estimateTokens(shared.conversationHistory) + getOverheadTokens()) * getCompactor().tokenCalibration;
     if (total === 0) return null;
     return (total / caps.contextWindow) * 100;
   }
@@ -2256,9 +2261,12 @@ async function runAgentTurnBridge(input: string, cb: any, shared: any, permissio
     // Notification hooks fire alongside the notify script (hooks-spec.md §7).
     fireNotificationHooks(hooks, failNotifyInput);
     throw err;
+  } finally {
+    // Back to the history estimate once App has the finished turn's messages.
+    shared.lastContextTokens = 0;
   }
 
-  const lastReply = result.messages[result.messages.length - 1]?.content ?? "";
+  const lastReply =result.messages[result.messages.length - 1]?.content ?? "";
   const completedNotifyInput = {
     status: "completed" as const,
     durationMs: Date.now() - notifyStart,

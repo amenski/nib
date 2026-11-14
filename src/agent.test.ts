@@ -2791,7 +2791,7 @@ describe("incremental persistence (onPersistMessages)", () => {
     expect(deltas.flat()).toEqual(err.newMessages);
   });
 
-  it("mid-turn compaction records the turn-start count and flushed survives the array swap", async () => {
+  it("mid-turn compaction replaces through the message before the kept tail and flushed survives the array swap", async () => {
     const { provider } = makeProvider([callTurn("c1"), textTurn("done")]);
     const log: Message[] = [];
     // The persisted count grows as the sink writes, like the real log does.
@@ -2828,10 +2828,48 @@ describe("incremental persistence (onPersistMessages)", () => {
     expect(fakeCompactor.compact).toHaveBeenCalledTimes(1);
     expect(log.length).toBeGreaterThan(0);
     expect(sessionStore.getMessageCount).toHaveBeenCalledTimes(1);
-    expect(sessionStore.appendCompaction).toHaveBeenCalledWith("s1", 4, expect.anything());
+    // Log: 0-4 prior, 5 user, 6 assistant, 7 tool. The tool message is kept live.
+    expect(sessionStore.appendCompaction).toHaveBeenCalledWith("s1", 6, expect.anything());
     expect(log).toEqual(result.newMessages);
     expect(result.flushed).toBe(result.newMessages.length);
     expect(result.newMessages.map((m) => m.role)).toEqual(["assistant", "tool", "assistant"]);
+  });
+
+  it("each mid-turn compaction advances replacesThrough past the previous one", async () => {
+    const { provider } = makeProvider([callTurn("c1"), callTurn("c2"), textTurn("done")]);
+    const sessionStore = {
+      appendToken: vi.fn(async () => {}),
+      getMessageCount: vi.fn(async () => 5),
+      appendCompaction: vi.fn(async () => {}),
+    };
+    const compactedTools = new Set<Message>();
+    const fakeCompactor = {
+      needsCompaction: vi.fn((msgs: Message[]) => {
+        const last = msgs[msgs.length - 1];
+        return last.role === "tool" && !compactedTools.has(last);
+      }),
+      compact: vi.fn(async (msgs: Message[]) => {
+        const last = msgs[msgs.length - 1];
+        compactedTools.add(last);
+        return [{ role: "system", content: "[Previous conversation summary]\ncompacted" }, last] as Message[];
+      }),
+      getLastCompaction: vi.fn(() => ({ summary: "compacted", files: [] })),
+    };
+
+    await runAgent("go", {
+      provider,
+      tools: [],
+      executeTool: async () => ({ content: "file contents" }),
+      compactor: fakeCompactor as any,
+      sessionStore: sessionStore as any,
+      sessionId: "s1",
+      onPersistMessages: async () => {},
+    });
+
+    // Log: 0-4 prior, 5 user, 6 a1, 7 t1, 8 a2, 9 t2. Each compaction keeps
+    // the newest tool message live, so the overlay stops just before it.
+    const through = sessionStore.appendCompaction.mock.calls.map((c) => (c as unknown[])[1]);
+    expect(through).toEqual([6, 8]);
   });
 
   it("resuming a log that ended right after an assistant tool call backfills the missing result", async () => {

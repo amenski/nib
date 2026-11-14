@@ -604,7 +604,17 @@ export async function runAgent(
       messages.unshift({ role: "system", content: rebuiltPrompt });
     }
     newCursor = messages.length;
-    if (options.sessionStore && options.sessionId && persistedAtTurnStart > 0) {
+    // The log holds this turn's user message, then its non-system messages
+    // (App's persistTurnMessages), so its last index is turn-start + the count
+    // of those. The overlay replaces everything before the messages the
+    // compactor kept live; counting from turn start instead made every
+    // mid-turn compaction replace the same prefix, so resume reloaded the
+    // whole turn on top of the summary. A summary-role kept message (resume
+    // overlay) only lowers the index, which duplicates a message, never drops one.
+    const keptPersisted = messages.filter((m) => m.role !== "system").length;
+    const newPersisted = newMessages.filter((m) => m.role !== "system").length;
+    const replacesThrough = persistedAtTurnStart + newPersisted - keptPersisted;
+    if (options.sessionStore && options.sessionId && persistedAtTurnStart > 0 && replacesThrough >= 0) {
       const { summary, files } = compactor.getLastCompaction();
       const compactionSummary: CompactionSummary = {
         task: summary ?? "Conversation summarized.",
@@ -614,7 +624,7 @@ export async function runAgent(
       };
       await options.sessionStore.appendCompaction(
         options.sessionId,
-        persistedAtTurnStart - 1,
+        replacesThrough,
         compactionSummary,
       );
     }

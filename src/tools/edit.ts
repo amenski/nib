@@ -1,15 +1,16 @@
 import { readFile, writeFile, mkdir, stat } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { ToolOutput, ToolDef } from "../types.js";
-import type { ToolHandler, ToolContext } from "./types.js";
+import type { ToolHandler, ToolContext, ToolExecOptions } from "./types.js";
 import { ToolRegistry } from "./registry.js";
 import { extractApplyPatchPlan, resolveWorkspaceWriteTarget } from "../permissions/capabilities.js";
 
-function resolveWriteTarget(rawPath: string, ctx: ToolContext) {
+function resolveWriteTarget(rawPath: string, ctx: ToolContext, exec?: ToolExecOptions) {
   return resolveWorkspaceWriteTarget(rawPath, ctx.workingDir, {
     level: ctx.writePolicyLevel,
     writeRoots: ctx.writeRoots,
     sessionTempDir: ctx.sessionTempDir,
+    approved: exec?.approvedWrite,
   });
 }
 
@@ -64,8 +65,8 @@ async function checkStaleFile(path: string, ctx: ToolContext): Promise<ToolOutpu
   return null;
 }
 
-const editHandler: ToolHandler = async (args, ctx) => {
-  const target = resolveWriteTarget(args.path as string, ctx);
+const editHandler: ToolHandler = async (args, ctx, exec) => {
+  const target = resolveWriteTarget(args.path as string, ctx, exec);
   if ("error" in target) return { content: target.error, error: target.error };
   const path = target.path;
   const oldString = args.oldString as string;
@@ -129,8 +130,8 @@ const editDef: ToolDef = {
   },
 };
 
-const applyDiffHandler: ToolHandler = async (args, ctx) => {
-  const target = resolveWriteTarget(args.path as string, ctx);
+const applyDiffHandler: ToolHandler = async (args, ctx, exec) => {
+  const target = resolveWriteTarget(args.path as string, ctx, exec);
   if ("error" in target) return { content: target.error, error: target.error };
   const path = target.path;
   const diff = (args.diff as string).trim();
@@ -245,7 +246,7 @@ const applyDiffDef: ToolDef = {
   },
 };
 
-const applyPatchHandler: ToolHandler = async (args, ctx) => {
+const applyPatchHandler: ToolHandler = async (args, ctx, exec) => {
   const patch = args.patch as string;
 
   if (!patch.trim()) {
@@ -256,6 +257,7 @@ const applyPatchHandler: ToolHandler = async (args, ctx) => {
     level: ctx.writePolicyLevel,
     writeRoots: ctx.writeRoots,
     sessionTempDir: ctx.sessionTempDir,
+    approved: exec?.approvedWrite,
   });
   if (plan.status !== "known" || plan.tool !== "apply_patch" || !("targets" in plan)) {
     const message = plan.reason ?? "Patch targets could not be parsed";
@@ -340,8 +342,8 @@ const applyPatchDef: ToolDef = {
 };
 
 
-const writeToFileHandler: ToolHandler = async (args, ctx) => {
-  const target = resolveWriteTarget(args.path as string, ctx);
+const writeToFileHandler: ToolHandler = async (args, ctx, exec) => {
+  const target = resolveWriteTarget(args.path as string, ctx, exec);
   if ("error" in target) return { content: target.error, error: target.error };
   const path = target.path;
   const content = args.content as string;

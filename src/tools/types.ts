@@ -40,6 +40,14 @@ export interface ToolExecOptions {
    */
   approvedGitConfigWrite?: boolean;
   /**
+   * The permission flow let this file-write call through (a user answer, a
+   * saved path rule, or the auto judge). Set only by agent.ts's gate, and
+   * only when a permission engine is present. The edit handlers then accept a
+   * target outside the workspace write-set; strict-sandbox still refuses.
+   * Absent, the handlers keep the write-set containment check.
+   */
+  approvedWrite?: boolean;
+  /**
    * Called when a sandboxed child's containment promise did not hold, so the
    * command did not run (docs/permission-ux-redesign.md). Set by agent.ts on
    * every sandboxed `run_bash` call — a containment failure is a property of

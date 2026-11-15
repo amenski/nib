@@ -449,4 +449,46 @@ describe("write containment", () => {
       rmSync(outside, { force: true });
     }
   });
+
+  it("writes outside-workspace targets the permission flow approved", async () => {
+    const outside = join(process.cwd(), ".edit-approved-outside-test.txt");
+    const approved = { approvedWrite: true };
+    const handlers = [
+      () => editHandler({ path: outside, oldString: "original", newString: "changed", replace_all: true }, mockCtx, approved),
+      () => applyDiffHandler({ path: outside, diff: "@@ -1 +1 @@\n-original\n+changed" }, mockCtx, approved),
+      () => writeToFileHandler({ path: outside, content: "changed" }, mockCtx, approved),
+      () => applyPatchHandler({ patch: `--- a/../.edit-approved-outside-test.txt
++++ b/../.edit-approved-outside-test.txt
+@@ -1 +1 @@
+-original
++changed` }, mockCtx, approved),
+    ];
+
+    try {
+      for (const handler of handlers) {
+        writeFileSync(outside, "original\n", "utf-8");
+        const result = await handler();
+        expect(result.error).toBeUndefined();
+        expect(readFileSync(outside, "utf-8")).toContain("changed");
+      }
+    } finally {
+      rmSync(outside, { force: true });
+    }
+  });
+
+  it("still refuses an approved write under strict-sandbox", async () => {
+    const outside = join(process.cwd(), ".edit-strict-outside-test.txt");
+    writeFileSync(outside, "original", "utf-8");
+    try {
+      const result = await writeToFileHandler(
+        { path: outside, content: "changed" },
+        { ...mockCtx, writePolicyLevel: "strict-sandbox" },
+        { approvedWrite: true },
+      );
+      expect(result.error).toContain("strict sandbox");
+      expect(readFileSync(outside, "utf-8")).toBe("original");
+    } finally {
+      rmSync(outside, { force: true });
+    }
+  });
 });

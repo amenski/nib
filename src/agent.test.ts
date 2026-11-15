@@ -779,6 +779,29 @@ describe("runAgent", () => {
       );
     });
 
+    it("an approved write outside the workspace carries the write grant to the tool executor", async () => {
+      const writeTurn: TurnScript = [
+        { type: "tool_call_start", id: "call_1", name: "write_to_file" },
+        { type: "tool_call_delta", id: "call_1", arguments: '{"path":"/elsewhere/notes.md","content":"x"}' },
+        { type: "done", finishReason: "tool_calls" },
+      ];
+      const { provider } = makeProvider([writeTurn, textTurn("ok")]);
+      const executeTool = vi.fn(async () => ({ content: "wrote" }));
+      const askUser = vi.fn(async () => true as const);
+
+      await runAgent("run", {
+        provider, tools: [], executeTool,
+        permissions: new PermissionEngine(undefined, "/workspace"),
+        askUser,
+      });
+
+      expect(askUser).toHaveBeenCalled();
+      expect(executeTool).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "write_to_file" }),
+        { approvedWrite: true },
+      );
+    });
+
     it("a plain `true` on an ordinary command carries no grant", async () => {
       const { provider } = makeProvider([npmTurn(), textTurn("ok")]);
       const executeTool = vi.fn(async () => ({ content: "ran" }));

@@ -59,7 +59,7 @@ export type ProfileDecision = "allow" | "deny";
  * limitation).
  */
 const READ_TOOLS = new Set(["read_file", "list_files", "glob", "search", "lsp"]);
-const WRITE_TOOLS = new Set([
+export const WRITE_TOOLS = new Set([
   "edit", "edit_file", "write_to_file", "search_replace", "apply_diff", "apply_patch",
 ]);
 

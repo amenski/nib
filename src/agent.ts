@@ -24,6 +24,7 @@ import { formatPlanBlock } from "./plans/store.js";
 import { logTiming } from "./debug/logger.js";
 import { extractCapabilityPlan } from "./permissions/capabilities.js";
 import { isGitConfigOperation } from "./permissions/git-config-operations.js";
+import { WRITE_TOOLS } from "./permissions/profile.js";
 import {
   bashEnvelopeGrants,
   isEligibleForGrant,
@@ -1472,6 +1473,7 @@ export async function runAgent(
                 hookDenied(tc, "PreToolUse");
                 return { denied: true };
               }
+              if (WRITE_TOOLS.has(tc.name)) exec = { ...exec, approvedWrite: true };
               return { denied: false, exec };
             }
             // No prompter: an ask is a denial, as it always was. An ask the
@@ -1506,6 +1508,9 @@ export async function runAgent(
         // Set after every approval path above, so the launch drops its profile
         // only for a call the permission flow let through.
         if (unsandboxedKind !== undefined) exec = { ...exec, unsandboxed: true };
+        // Any allow here (user, saved rule, auto judge) authorizes the edit
+        // handler to write outside the write-set: the engine asked about it.
+        if (WRITE_TOOLS.has(tc.name)) exec = { ...exec, approvedWrite: true };
       } else if (await hookBlocks(tc, "PreToolUse")) {
         // No permission engine — the hook is the only gate.
         hookDenied(tc, "PreToolUse");

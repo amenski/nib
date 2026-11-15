@@ -48,6 +48,8 @@ export interface WriteTargetOptions {
   writeRoots?: string[];
   roots?: string[];
   sessionTempDir?: string;
+  /** The permission flow approved this write, so the write-set check is skipped. */
+  approved?: boolean;
 }
 
 export function resolveWorkspaceWriteTarget(
@@ -59,7 +61,7 @@ export function resolveWorkspaceWriteTarget(
 
   const path = resolve(workingDir, rawPath);
   if (options.level === "strict-sandbox") return { error: `write target is denied by the strict sandbox: ${rawPath}` };
-  if (options.level === "unrestricted") return { path };
+  if (options.level === "unrestricted" || options.approved) return { path };
 
   const roots = options.roots ?? resolveWriteRoots("workspace-write", workingDir, options.writeRoots, options.sessionTempDir);
   if (!isPathWithinWriteRoots(path, roots)) {

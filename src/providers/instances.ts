@@ -2,6 +2,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { randomUUID } from "node:crypto";
 import { pkg } from "../version.js";
+import { patchingFetch, thinkingOffPatch } from "./thinking-off.js";
 
 // A stable id for processes without a conversation session (a headless -p run,
 // the risk judge): one process is one conversation, so one id per process.
@@ -40,13 +41,20 @@ export function hostHeaders(baseUrl: string, sessionId?: string): Record<string,
 /**
  * The provider instance behind an `api` setting. Anthropic requests go through
  * its own SDK; everything else is an OpenAI-compatible chat endpoint, whose
- * only per-host variation is the headers hostHeaders supplies.
+ * only per-host variation is the headers hostHeaders supplies and, when
+ * `thinkingOff`, the host's own request for turning thinking off.
  */
 export function createAIInstance(apiType: string, baseUrl: string, apiKey: string, model: string,
-                                 sessionId?: string) {
+                                 sessionId?: string, thinkingOff = false) {
   if (apiType === "anthropic") {
     return createAnthropic({ apiKey })(model);
   }
   const headers = hostHeaders(baseUrl, sessionId);
-  return createOpenAI({ baseURL: baseUrl, apiKey, ...(headers ? { headers } : {}) }).chat(model);
+  const patch = thinkingOff ? thinkingOffPatch(baseUrl) : undefined;
+  return createOpenAI({
+    baseURL: baseUrl,
+    apiKey,
+    ...(headers ? { headers } : {}),
+    ...(patch ? { fetch: patchingFetch(patch) } : {}),
+  }).chat(model);
 }

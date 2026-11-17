@@ -48,12 +48,12 @@ export type KeybindingAction =
   // Mode & App
   | "openModelPicker"
   | "openCommandPalette"
+  | "cycleEffort"
   | "toggleTheme"
   // Multiplex
   | "tabNext"
   | "tabPrev"
   | "tabClose"
-  | "tabNew"
   | "splitHorizontal"
   | "splitVertical"
   | "splitClose"
@@ -131,13 +131,13 @@ const DEFAULT_BINDINGS: KeybindingMap = {
   // prompt with fuzzy filtering. Kept so a user-supplied keybindings.json can
   // still bind the action to a chord that does encode (e.g. a function key).
   openCommandPalette: [{ key: "p", ctrl: true, shift: true }],
+  cycleEffort: [{ key: "t", ctrl: true }],
   toggleTheme: [{ key: "t", ctrl: true, shift: true }],
 
   // Multiplex
   tabNext: [{ key: "tab", ctrl: true }],
   tabPrev: [{ key: "tab", ctrl: true, shift: true }],
   tabClose: [{ key: "w", ctrl: true }],
-  tabNew: [{ key: "t", ctrl: true }],
   splitHorizontal: [{ key: '"', ctrl: true, shift: true }],
   splitVertical: [{ key: "%", ctrl: true, shift: true }],
   splitClose: [{ key: "w", ctrl: true }],
@@ -355,11 +355,11 @@ export function generateHelpText(bindings: KeybindingMap): string {
     },
     {
       title: "App",
-      actions: ["openModelPicker", "openCommandPalette"],
+      actions: ["openModelPicker", "openCommandPalette", "cycleEffort"],
     },
     {
       title: "Tabs & Panes",
-      actions: ["tabNext", "tabPrev", "tabClose", "tabNew", "splitHorizontal", "splitVertical"],
+      actions: ["tabNext", "tabPrev", "tabClose", "splitHorizontal", "splitVertical"],
     },
   ];
 

@@ -340,3 +340,77 @@ describe("image attachments", () => {
     expect(body.messages.at(-1).content.some((p: any) => p.type === "image_url")).toBe(true);
   });
 });
+
+describe("thinking off request bodies", () => {
+  function stubStreamingFetch(): ReturnType<typeof vi.fn> {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response("data: [DONE]\n\n", { status: 200, headers: { "Content-Type": "text/event-stream" } }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  async function requestBody(baseUrl: string, effort: string): Promise<any> {
+    const fetchMock = stubStreamingFetch();
+    const provider = createAISDKProvider(preset(baseUrl), "m", "sk-test");
+    for await (const _ of provider.streamChat([{ role: "user", content: "hi" }], [], { effort, temperature: 0.3 })) {
+      // consume the stream so the SDK performs the request
+    }
+    return JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("DeepSeek: disables thinking, drops reasoning_effort, keeps temperature", async () => {
+    const body = await requestBody("https://api.deepseek.com", "none");
+    expect(body.thinking).toEqual({ type: "disabled" });
+    expect(body).not.toHaveProperty("reasoning_effort");
+    expect(body.temperature).toBe(0.3);
+  });
+
+  it("OpenRouter: reasoning.enabled false", async () => {
+    const body = await requestBody("https://openrouter.ai/api/v1", "none");
+    expect(body.reasoning).toEqual({ enabled: false });
+    expect(body).not.toHaveProperty("reasoning_effort");
+  });
+
+  it("DashScope: enable_thinking false", async () => {
+    const body = await requestBody("https://dashscope-intl.aliyuncs.com/compatible-mode/v1", "none");
+    expect(body.enable_thinking).toBe(false);
+    expect(body).not.toHaveProperty("reasoning_effort");
+  });
+
+  it.each([
+    "https://api.z.ai/api/paas/v4",
+    "https://open.bigmodel.cn/api/paas/v4",
+    "https://api.moonshot.ai/v1",
+    "https://api.moonshot.cn/v1",
+  ])("%s: thinking disabled", async (url) => {
+    const body = await requestBody(url, "none");
+    expect(body.thinking).toEqual({ type: "disabled" });
+    expect(body).not.toHaveProperty("reasoning_effort");
+  });
+
+  it("localhost: chat_template_kwargs, reasoning_effort kept", async () => {
+    const body = await requestBody("http://localhost:11434/v1", "none");
+    expect(body.chat_template_kwargs).toEqual({ enable_thinking: false });
+    expect(body.reasoning_effort).toBe("none");
+  });
+
+  it("OpenAI: the SDK's reasoning_effort none, nothing patched", async () => {
+    const body = await requestBody("https://api.openai.com/v1", "none");
+    expect(body.reasoning_effort).toBe("none");
+    expect(body).not.toHaveProperty("thinking");
+    expect(body).not.toHaveProperty("reasoning");
+    expect(body).not.toHaveProperty("enable_thinking");
+  });
+
+  it("any other effort leaves the body unpatched and drops temperature", async () => {
+    const body = await requestBody("https://api.deepseek.com", "high");
+    expect(body.reasoning_effort).toBe("high");
+    expect(body).not.toHaveProperty("thinking");
+    expect(body).not.toHaveProperty("temperature");
+  });
+});

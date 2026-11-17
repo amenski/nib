@@ -12,7 +12,6 @@ export interface SessionInfo {
   activeTokens: number;
   maxContextTokens: number;
   model: string;
-  thinkingEnabled: boolean;
   reasoningEffort: string | undefined;
   toolUsage: Record<string, number>;
 }

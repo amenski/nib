@@ -59,7 +59,7 @@ export interface Provider {
   streamChat(
     messages: Message[],
     tools: ToolDef[],
-    options?: { temperature?: number; maxTokens?: number; signal?: AbortSignal; effort?: string; thinkingEnabled?: boolean },
+    options?: { temperature?: number; maxTokens?: number; signal?: AbortSignal; effort?: string },
   ): AsyncGenerator<StreamEvent>;
   /**
    * Live prepaid balance for providers that expose one, keyed off the base URL

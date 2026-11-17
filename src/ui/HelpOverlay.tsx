@@ -75,11 +75,11 @@ const KEY_ACTION_LABELS: Record<KeybindingAction, string> = {
   cancel: "Cancel / clear input",
   openModelPicker: "Open model picker",
   openCommandPalette: "Open command palette",
+  cycleEffort: "Cycle thinking effort",
   toggleTheme: "Toggle dark/light theme",
   tabNext: "Next tab",
   tabPrev: "Previous tab",
   tabClose: "Close tab",
-  tabNew: "New tab",
   splitHorizontal: "Split horizontal",
   splitVertical: "Split vertical",
   splitClose: "Close split",
@@ -143,7 +143,7 @@ export default function HelpOverlay({ onClose }: HelpOverlayProps) {
       {
         title: "App Controls",
         actions: [
-          "openModelPicker", "openCommandPalette",
+          "openModelPicker", "openCommandPalette", "cycleEffort",
           "toggleTheme", "clearScreen",
         ],
       },

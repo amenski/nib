@@ -290,7 +290,6 @@ export interface AgentOptions {
   sessionId?: string;
   signal?: AbortSignal;
   effort?: string;
-  thinkingEnabled?: boolean;
   history?: Message[];
   imageUrls?: string[];
   planMode?: boolean;
@@ -439,7 +438,7 @@ export async function runAgent(
   userMessage: string,
   options: AgentOptions,
 ): Promise<AgentResult> {
-  const { provider, tools, executeTool, permissions, permissionProfile, compactor, diagnostics, errorReflector, errorRecovery, maxTurns = Infinity, effort, thinkingEnabled } = options;
+  const { provider, tools, executeTool, permissions, permissionProfile, compactor, diagnostics, errorReflector, errorRecovery, maxTurns = Infinity, effort } = options;
 
   /**
    * Paths this session's own write tools produced, for the risk classifier's
@@ -726,7 +725,7 @@ export async function runAgent(
     // calibrates the compaction trigger. requestMessages already carries the
     // volatile tail, so only the tool schemas are added on top.
     const requestEstimate = estimateTokens(requestMessages) + estimateOverheadTokens(tools);
-    for await (const event of provider.streamChat(requestMessages, tools, { signal: options.signal, effort, thinkingEnabled })) {
+    for await (const event of provider.streamChat(requestMessages, tools, { signal: options.signal, effort })) {
       switch (event.type) {
         case "text_delta":
           content += event.content;

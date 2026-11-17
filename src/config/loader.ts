@@ -128,7 +128,7 @@ export interface DeepCodeSettings {
    */
   refresh?: "fast" | "balanced" | "slow";
   /** Reasoning effort: "high" or "max" (default "max") */
-  reasoningEffort?: "low" | "high" | "max";
+  reasoningEffort?: "none" | "low" | "high" | "max";
 
   // ── Permissions ──
   permissions?: PermissionConfig;
@@ -1432,10 +1432,10 @@ export function loadConfig(projectDir?: string): LoadResult {
 
   // ── reasoningEffort ──
   if ("reasoningEffort" in merged) {
-    if (merged.reasoningEffort === "low" || merged.reasoningEffort === "high" || merged.reasoningEffort === "max") {
+    if (merged.reasoningEffort === "none" || merged.reasoningEffort === "low" || merged.reasoningEffort === "high" || merged.reasoningEffort === "max") {
       config.reasoningEffort = merged.reasoningEffort;
     } else {
-      errors.push('config.reasoningEffort: must be "low", "high", or "max"');
+      errors.push('config.reasoningEffort: must be "none", "low", "high", or "max"');
     }
   }
 

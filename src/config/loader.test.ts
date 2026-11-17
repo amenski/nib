@@ -329,6 +329,13 @@ describe("loadConfig strictMcpConfig", () => {
     expect(loadConfig(projectDir).errors).toContain("config.updateCheck: must be a boolean");
   });
 
+  it("accepts reasoningEffort: none and rejects an unknown level", () => {
+    writeProjectSettings({ reasoningEffort: "none" });
+    expect(loadConfig(projectDir).config.reasoningEffort).toBe("none");
+    writeProjectSettings({ reasoningEffort: "off" });
+    expect(loadConfig(projectDir).errors).toContain('config.reasoningEffort: must be "none", "low", "high", or "max"');
+  });
+
   it("accepts showCost: true", () => {
     writeProjectSettings({ showCost: true });
     const { config, errors } = loadConfig(projectDir);

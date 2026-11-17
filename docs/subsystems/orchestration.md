@@ -30,7 +30,7 @@ A sub-agent inherits from its parent — deliberately, by construction:
   `reasoningEffort`, a resumed session) applies to sub-agents too; otherwise the
   sub-mode's `reasoningEffort` is used. A value the model does not list, or no
   declared effort, falls back to the model's default; a model with no effort
-  capability gets none. `thinkingEnabled` is forwarded as the parent has it.
+  capability gets none.
 - **Permissions.** The parent's `PermissionEngine` is passed straight
   through at every depth: the same allow/deny rules govern sub-agent calls.
   Enforcement exists — a sub-agent is not a sandbox escape hatch.

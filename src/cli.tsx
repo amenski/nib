@@ -398,8 +398,9 @@ async function main() {
   }
 
   const initialModel: string | undefined = parsedInitialModel?.model;
-  const thinkingEnabled = configResult.config.thinkingEnabled ?? true;
-  const reasoningEffort = configResult.config.reasoningEffort;
+  // `thinkingEnabled: false` is the older spelling of `reasoningEffort: "none"`.
+  const reasoningEffort = configResult.config.reasoningEffort
+    ?? (configResult.config.thinkingEnabled === false ? "none" : undefined);
 
   function getActiveModelCaps(): ModelCapabilities | undefined {
     const preset = getPreset(shared.providerName);
@@ -557,7 +558,6 @@ async function main() {
         mode,
       });
     },
-    thinkingEnabled,
     registry,
     modeLoader,
     agents: agentLoader,
@@ -1087,12 +1087,12 @@ async function main() {
 
     // Right group, flush to the right edge and dropped first on a narrow row.
     // Thinking mode, labelled the same way the welcome screen labels it
-    // ("thinking high" / "thinking on" / "thinking off") so the two agree — a
+    // ("thinking high" / "thinking off") so the two agree — a
     // bare "high" next to the model name reads as part of it. Plain dim text
     // rather than a filled chip: this is a preference you set and forget.
     // Shown only when the model declares effort levels.
-    if (thinkingEnabled && getActiveModelCaps()?.effort) {
-      segments.push(T(nextId(), `thinking ${shared.activeEffort ?? "on"}`, { dimColor: true, align: "right" }));
+    if (getActiveModelCaps()?.effort) {
+      segments.push(T(nextId(), shared.activeEffort === "none" ? "thinking off" : `thinking ${shared.activeEffort ?? "on"}`, { dimColor: true, align: "right" }));
     }
 
     // Provider-prefixed: the same model (e.g. DeepSeek Flash) is served by
@@ -1290,7 +1290,7 @@ async function main() {
           if (event.kind !== "text") cb.onSubagentProgress?.(event);
           appSubagentSink?.(event);
         });
-        return runAgentTurnBridge(input, cb, shared, permissions, permissionProfile, getProvider, getCompactor(), diagnostics, skills, agents, memoryInjection, memoryStore, sessionStore, sessionId, modeLoader, skillLoader, imageUrls, planMode, checkpoints, configResult.config.notify, configResult.config.env, notifySpawnOptions, errorReflector, errorRecovery, repomapInjection, dirtyBaseline, thinkingEnabled, getActiveModelCaps()?.contextWindow, hooks, currentBashEnvelope, { mode: configResult.config.classifier?.mode ?? "shadow", ...(classifierModel !== undefined ? { model: classifierModel } : {}), autoMode }, lsp);
+        return runAgentTurnBridge(input, cb, shared, permissions, permissionProfile, getProvider, getCompactor(), diagnostics, skills, agents, memoryInjection, memoryStore, sessionStore, sessionId, modeLoader, skillLoader, imageUrls, planMode, checkpoints, configResult.config.notify, configResult.config.env, notifySpawnOptions, errorReflector, errorRecovery, repomapInjection, dirtyBaseline, getActiveModelCaps()?.contextWindow, hooks, currentBashEnvelope, { mode: configResult.config.classifier?.mode ?? "shadow", ...(classifierModel !== undefined ? { model: classifierModel } : {}), autoMode }, lsp);
       },
       // Async sub-agent delivery (async-subagents.md §2): the App registers its
       // session-scoped wake handler here; the orchestrator calls it once per
@@ -2134,7 +2134,7 @@ interface ClassifierWiring {
   autoMode?: AutoModeOptions;
 }
 
-async function runAgentTurnBridge(input: string, cb: any, shared: any, permissions: PermissionEngine, permissionProfile: ProfileEvaluator | undefined, getProvider: any, compactor: Compactor, diagnostics: DiagnosticRunner, skills: SkillDef[], agents: AgentDef[], memoryInjection: string | null | undefined, memoryStore: MemoryStore, sessionStore: SessionStore, sessionId: string, modeLoader: ModeLoader, skillLoader: SkillLoader, imageUrls?: string[], planMode?: boolean, checkpoints?: CheckpointManager, notifyScript?: string, notifyEnv?: Record<string, string | undefined>, notifySpawnOptions?: NotifySpawnOptions, errorReflector?: ErrorReflector, errorRecovery?: ErrorRecovery, repomapInjection?: string, dirtyBaseline?: string, thinkingEnabled?: boolean, contextWindow?: number, hooks?: HookRunner, bashEnvelope?: () => BashEnvelope | undefined, classifier?: ClassifierWiring, lsp?: LspManager): Promise<any> {
+async function runAgentTurnBridge(input: string, cb: any, shared: any, permissions: PermissionEngine, permissionProfile: ProfileEvaluator | undefined, getProvider: any, compactor: Compactor, diagnostics: DiagnosticRunner, skills: SkillDef[], agents: AgentDef[], memoryInjection: string | null | undefined, memoryStore: MemoryStore, sessionStore: SessionStore, sessionId: string, modeLoader: ModeLoader, skillLoader: SkillLoader, imageUrls?: string[], planMode?: boolean, checkpoints?: CheckpointManager, notifyScript?: string, notifyEnv?: Record<string, string | undefined>, notifySpawnOptions?: NotifySpawnOptions, errorReflector?: ErrorReflector, errorRecovery?: ErrorRecovery, repomapInjection?: string, dirtyBaseline?: string, contextWindow?: number, hooks?: HookRunner, bashEnvelope?: () => BashEnvelope | undefined, classifier?: ClassifierWiring, lsp?: LspManager): Promise<any> {
   if (checkpoints) {
     const convLen = shared.conversationHistory.length;
     await checkpoints.save(`[convLen:${convLen}] ${input.slice(0, 80)}`);
@@ -2205,7 +2205,7 @@ async function runAgentTurnBridge(input: string, cb: any, shared: any, permissio
     dirtyBaseline,
     research: researchInjection,
     memory: memoryInjection ?? undefined, memoryStore, sessionStore, sessionId,
-    signal: shared.abort.signal, effort: shared.activeEffort, thinkingEnabled,
+    signal: shared.abort.signal, effort: shared.activeEffort,
     history: shared.conversationHistory.length > 0 ? shared.conversationHistory : undefined,
     imageUrls: attachedImages.length > 0 ? attachedImages : undefined,
     planMode,

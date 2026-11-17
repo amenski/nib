@@ -59,7 +59,7 @@ describe("generateCatalog", () => {
     expect(Object.keys((result.providers as any).openrouter.models)).toEqual(["a-model", "b-model"]);
     expect((result.providers as any).openrouter.models["b-model"]).toMatchObject({
       displayName: "B", supportsTools: true, contextWindow: 128000,
-      effort: { values: ["high", "low"], default: "high" },
+      effort: { values: ["low", "high"], default: "high" },
     });
   });
 
@@ -94,6 +94,34 @@ describe("generateCatalog", () => {
     }), { sourceRevision: "abc", generatedAt: "today", overlay });
     expect((generated.providers as any).deepseek.models.deep.effort.default).toBe("high");
     expect((generated.providers as any).groq.models.groq.effort.default).toBe("medium");
+  });
+
+  it("turns a models.dev toggle into the none effort level", () => {
+    const generated = generateCatalog(input({
+      deepseek: { models: {
+        toggleOnly: model({ reasoning_options: [{ type: "toggle" }] }),
+        toggleBudget: model({ reasoning_options: [{ type: "toggle" }, { type: "budget_tokens" }] }),
+        toggleEffort: model({ reasoning_options: [{ type: "toggle" }, { type: "effort", values: ["high", "low"] }] }),
+        budgetOnly: model({ reasoning_options: [{ type: "budget_tokens", min: 1, max: 2 }] }),
+      } },
+    }), { sourceRevision: "abc", generatedAt: "today", overlay });
+    const models = (generated.providers as any).deepseek.models;
+    expect(models.toggleOnly.effort).toEqual({ values: ["none", "default"], default: "default" });
+    expect(models.toggleBudget.effort).toEqual({ values: ["none", "default"], default: "default" });
+    expect(models.toggleEffort.effort).toEqual({ values: ["none", "low", "high"], default: "high" });
+    expect(models.budgetOnly.effort).toBeUndefined();
+  });
+
+  it("orders effort values low to high and never defaults to none", () => {
+    const generated = generateCatalog(input({
+      deepseek: { models: {
+        all: model({ reasoning_options: [{ type: "effort", values: ["max", "xhigh", "high", "medium", "low", "minimal", "none", "zzz"] }] }),
+        noneAndLow: model({ reasoning_options: [{ type: "effort", values: ["low", "none"] }] }),
+      } },
+    }), { sourceRevision: "abc", generatedAt: "today", overlay });
+    const models = (generated.providers as any).deepseek.models;
+    expect(models.all.effort.values).toEqual(["none", "minimal", "low", "medium", "high", "xhigh", "max", "zzz"]);
+    expect(models.noneAndLow.effort).toEqual({ values: ["none", "low"], default: "low" });
   });
 
   it("rejects missing providers, invalid limits, and negative costs", () => {

@@ -4,13 +4,12 @@ import { ThemeContextValue, DARK_THEME } from "../theme.js";
 import { stripAnsi as strip } from "../test-helpers.js";
 
 function setup(
-  overrides: Partial<{ model: string; thinkingEnabled: boolean; reasoningEffort?: string; cwd: string }> = {},
+  overrides: Partial<{ model: string; reasoningEffort?: string; cwd: string }> = {},
   colorEnabled = true,
 ) {
   const theme = new ThemeContextValue(DARK_THEME, colorEnabled);
   return buildWelcomeLines(theme, {
     model: "DeepSeek V4 Pro",
-    thinkingEnabled: true,
     reasoningEffort: "high",
     cwd: "/Users/someone/projects/nib",
     ...overrides,
@@ -66,8 +65,8 @@ describe("buildWelcomeLines", () => {
     expect(strip(contextLine!)).toContain("nib");
   });
 
-  it("reports thinking as off when disabled", () => {
-    const lines = setup({ thinkingEnabled: false });
+  it("reports thinking as off when effort is none", () => {
+    const lines = setup({ reasoningEffort: "none" });
     expect(lines.join("\n")).toContain("thinking off");
   });
 

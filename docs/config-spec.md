@@ -42,8 +42,8 @@ are fatal — `main()` exits 1 (`src/cli.tsx`).
   },
 
   // Thinking / reasoning (top-level; higher priority than env.* strings)
-  "thinkingEnabled": true,
-  "reasoningEffort": "high",              // "low" | "high" | "max"
+  "thinkingEnabled": true,                // alias: false means reasoningEffort "none"
+  "reasoningEffort": "high",              // "none" | "low" | "high" | "max"; "none" turns thinking off
   "temperature": 0.2,                     // number, 0..2
 
   // Repaint cadence (nib extension): "fast" | "balanced" | "slow"

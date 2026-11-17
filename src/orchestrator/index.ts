@@ -44,8 +44,6 @@ export interface OrchestratorOptions {
    * sub-runs resolve through the same callback.
    */
   resolveEffort?: (sub: { modelId?: string; mode: ModeConfig }) => string | undefined;
-  /** Forwarded to every sub-run's provider stream, as the parent passes it. */
-  thinkingEnabled?: boolean;
   registry: ToolRegistry;
   modeLoader: ModeLoader;
   /**
@@ -135,7 +133,6 @@ export class Orchestrator {
   private options: Required<Pick<OrchestratorOptions, "maxDepth" | "maxSubTurns">> & {
     provider: (modelId?: string) => Provider;
     resolveEffort?: OrchestratorOptions["resolveEffort"];
-    thinkingEnabled?: boolean;
     registry: ToolRegistry;
     modeLoader: ModeLoader;
     agents?: AgentLoader;
@@ -475,7 +472,6 @@ export class Orchestrator {
               bashEnvelope: this.options.getBashEnvelope?.(),
               maxTurns: this.options.maxSubTurns,
               effort: subEffort,
-              thinkingEnabled: this.options.thinkingEnabled,
               mode: subMode,
               // The defined agent's instructions prepend the sub-agent's system
               // prompt (prompt.ts prepends agentInstructions to the preamble).

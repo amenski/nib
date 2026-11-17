@@ -156,8 +156,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
   const [outputLines, setOutputLines] = useState<string[]>(() =>
     buildWelcomeLines(theme, {
       model: ctx.modelDisplayName?.() ?? ctx.activeModel ?? ctx.providerName,
-      thinkingEnabled: true,
-      reasoningEffort: undefined,
+      reasoningEffort: ctx.activeEffort,
       cwd: process.cwd(),
     }),
   );
@@ -1686,8 +1685,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
       wipeScrollback(
         buildWelcomeLines(theme, {
           model: ctx.modelDisplayName?.() ?? ctx.activeModel ?? ctx.providerName,
-          thinkingEnabled: true,
-          reasoningEffort: undefined,
+          reasoningEffort: ctx.activeEffort,
           cwd: process.cwd(),
         }),
       );
@@ -2246,6 +2244,15 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
     if (actions.includes("openCommandPalette")) {
       setShowCommandPalette(true);
       accessibility.announce("Command palette opened", "polite");
+      return;
+    }
+
+    if (actions.includes("cycleEffort")) {
+      // Through /effort so validation and session persistence stay in one place.
+      const values = ctx.effortValues();
+      if (values.length === 0) return;
+      const at = ctx.activeEffort === undefined ? -1 : values.indexOf(ctx.activeEffort);
+      handleSlashCommand(`/effort ${values[(at + 1) % values.length]}`);
       return;
     }
   });

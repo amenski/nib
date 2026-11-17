@@ -75,20 +75,37 @@ function visionFromModalities(raw: unknown): boolean | undefined {
   return input.includes("image");
 }
 
+// Low to high, so the picker and the ctrl+t cycle read in order; unknown values trail alphabetically.
+const EFFORT_ORDER = ["none", "minimal", "default", "low", "medium", "high", "xhigh", "max"];
+
+function effortRank(value: string): number {
+  const rank = EFFORT_ORDER.indexOf(value);
+  return rank === -1 ? EFFORT_ORDER.length : rank;
+}
+
+/**
+ * Effort levels from Models.dev's `reasoning_options`. A `toggle` entry means
+ * thinking can be switched off, which nib exposes as the `none` level; a model
+ * with only a toggle has no graded levels, so `default` (send nothing) stands in
+ * for "on".
+ */
 function effortValues(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];
   const values: string[] = [];
+  let toggle = false;
   for (const option of raw) {
     if (typeof option === "string") {
       values.push(option);
       continue;
     }
     const entry = object(option);
+    if (entry?.type === "toggle") toggle = true;
     if (entry?.type === "effort" && Array.isArray(entry.values)) {
       values.push(...entry.values.filter((value): value is string => typeof value === "string"));
     }
   }
-  return [...new Set(values)].sort();
+  if (toggle) values.push("none", ...(values.length ? [] : ["default"]));
+  return [...new Set(values)].sort((a, b) => effortRank(a) - effortRank(b) || a.localeCompare(b));
 }
 
 /** https anywhere; plain http only to this machine (e.g. LM Studio). */
@@ -145,7 +162,8 @@ function normalizeModel(provider: string, id: string, raw: unknown): Record<stri
   }
   const efforts = effortValues(model.reasoning_options);
   if (efforts.length) {
-    result.effort = { values: efforts, default: efforts.includes("medium") ? "medium" : efforts.includes("high") ? "high" : efforts[0] };
+    const on = efforts.filter((value) => value !== "none"); // the default must never switch thinking off
+    result.effort = { values: efforts, default: efforts.includes("medium") ? "medium" : efforts.includes("high") ? "high" : (on[0] ?? efforts[0]) };
   }
   return result;
 }

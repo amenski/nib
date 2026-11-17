@@ -16,7 +16,6 @@ const SHORTCUT_TIPS = [
 
 interface WelcomeOpts {
   model: string;
-  thinkingEnabled: boolean;
   reasoningEffort?: string;
   cwd: string;
 }
@@ -70,7 +69,7 @@ export function buildWelcomeLines(theme: ThemeContextValue, opts: WelcomeOpts): 
   // One line of context, in the same "·"-separated vocabulary as the status
   // bar. The model/thinking/cwd used to be a bordered three-row panel that
   // restated what the status bar already shows a few rows below.
-  const thinking = opts.thinkingEnabled ? (opts.reasoningEffort ?? "on") : "off";
+  const thinking = opts.reasoningEffort === "none" ? "off" : (opts.reasoningEffort ?? "on");
   const context = `${opts.model} · thinking ${thinking} · ${formatCwd(opts.cwd)}`;
 
   // chip() adds its own one-space padding on each side, so passing "NIB"

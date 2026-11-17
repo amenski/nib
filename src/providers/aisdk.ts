@@ -252,16 +252,17 @@ export function createAISDKProvider(
     async *streamChat(
       messages: Message[],
       tools: ToolDef[],
-      options?: { temperature?: number; maxTokens?: number; signal?: AbortSignal; effort?: string; thinkingEnabled?: boolean },
+      options?: { temperature?: number; maxTokens?: number; signal?: AbortSignal; effort?: string },
     ): AsyncGenerator<StreamEvent> {
       const baseUrl = preset.baseUrl;
-      const modelInstance = createAIInstance(preset.api, baseUrl, apiKey, model, sessionId);
-
       const reasoning = toReasoningLevel(options?.effort);
+      const modelInstance = createAIInstance(preset.api, baseUrl, apiKey, model, sessionId, reasoning === "none");
+
       // Reasoning/thinking mode rejects sampling parameters (DeepSeek documents
       // temperature, top_p, presence_penalty and frequency_penalty as
-      // unsupported), so drop temperature whenever a level is in play.
-      const temperature = reasoning ? undefined : options?.temperature;
+      // unsupported), so drop temperature whenever a level is in play. "none"
+      // is thinking off, so sampling applies again.
+      const temperature = reasoning && reasoning !== "none" ? undefined : options?.temperature;
 
       logRequest({
         model,

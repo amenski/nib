@@ -36,7 +36,7 @@ interface Provider {
     messages: Message[],
     tools: ToolDef[],
     options?: { temperature?: number; maxTokens?: number;
-                signal?: AbortSignal; effort?: string; thinkingEnabled?: boolean },
+                signal?: AbortSignal; effort?: string },
   ): AsyncGenerator<StreamEvent>;
   /** Optional — see §2.1. Absent on providers without an implementation. */
   getBalance?(): Promise<ProviderBalance | null>;

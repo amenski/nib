@@ -431,9 +431,11 @@ returning garbled text.
 
 ### Does it support Thinking mode?
 
-Yes. Thinking is enabled by default; set `thinkingEnabled: false` in
-settings.json to disable it. Models with effort metadata support reasoning
-effort control through `/effort`.
+Yes. Thinking is enabled by default. Models with effort metadata support
+reasoning effort control through `/effort`, and `ctrl+t` cycles the levels.
+Models that can turn thinking off list `none`: `/effort none` (or
+`reasoningEffort: "none"` in settings.json; `thinkingEnabled: false` is an
+alias).
 
 ---
 

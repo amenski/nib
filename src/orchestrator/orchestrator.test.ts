@@ -21,7 +21,7 @@ import type { ToolContext } from "../tools/types.js";
 type TurnScript = StreamEvent[];
 
 function makeProvider(turns: TurnScript[]) {
-  const received: { messages: Message[]; tools: ToolDef[]; options?: { effort?: string; thinkingEnabled?: boolean } }[] = [];
+  const received: { messages: Message[]; tools: ToolDef[]; options?: { effort?: string } }[] = [];
   let call = 0;
   const provider: Provider = {
     name: "fake",
@@ -157,7 +157,7 @@ describe("Orchestrator", () => {
 
   describe("sub-run reasoning effort", () => {
     async function spawnAndStream(
-      opts: { resolveEffort?: (sub: { modelId?: string; mode: { slug: string; reasoningEffort?: string } }) => string | undefined; thinkingEnabled?: boolean },
+      opts: { resolveEffort?: (sub: { modelId?: string; mode: { slug: string; reasoningEffort?: string } }) => string | undefined },
       mode = "code",
     ) {
       const { registry } = makeRegistry();
@@ -192,9 +192,8 @@ describe("Orchestrator", () => {
       expect(options?.effort).toBe("high");
     });
 
-    it("leaves effort unset without resolveEffort and forwards thinkingEnabled", async () => {
+    it("leaves effort unset without resolveEffort", async () => {
       expect((await spawnAndStream({}))?.effort).toBeUndefined();
-      expect((await spawnAndStream({ thinkingEnabled: false }))?.thinkingEnabled).toBe(false);
     });
   });
 

@@ -112,6 +112,14 @@ export interface RetentionConfig {
   maxCheckpointBytes?: number;
 }
 
+/** Cross-session messaging (docs/cross-session-inbox.md §7.3). */
+export interface MessagingConfig {
+  /** false = no registry, no tools, no watch. */
+  enabled: boolean;
+  /** What happens when a peer message arrives. */
+  receive: "never" | "ask" | "always";
+}
+
 export interface DeepCodeSettings {
   // ── Env (model/api config) ──
   env?: DeepCodeEnv;
@@ -135,6 +143,11 @@ export interface DeepCodeSettings {
 
   /** Optional persistence cleanup controls; absent means keep session history. */
   retention?: RetentionConfig;
+
+  /** Cross-session messaging. Always set on a loaded config. User settings
+   *  decide; a project `.nib/settings.json` may only lower it (loadConfig's
+   *  messaging block). */
+  messaging?: MessagingConfig;
 
   // ── Capability profile (permission-profile.md §3) ──
   /** Coarse reachability boundary gated before the rule engine (layer 1). */
@@ -461,6 +474,7 @@ const KNOWN_KEYS = new Set([
   "refresh",
   "permissions",
   "retention",
+  "messaging",
   "permissionProfile",
   "sandbox",
   "classifier",
@@ -1489,6 +1503,52 @@ export function loadConfig(projectDir?: string): LoadResult {
       config.retention = retention;
     }
   }
+
+  // ── messaging (docs/cross-session-inbox.md §7.3) ──
+  // A cloned repo must not be able to open the session to peer-message
+  // injection, so the global value decides and a project may only lower it:
+  // the stricter `receive` wins, and `enabled: false` disables.
+  const RECEIVE_RANK = { never: 0, ask: 1, always: 2 } as const;
+  const parseMessaging = (raw: unknown, label: string): Partial<MessagingConfig> => {
+    if (raw === undefined) return {};
+    if (!isObject(raw)) {
+      warnings.push(`${label}.messaging: must be an object — using defaults`);
+      return {};
+    }
+    const out: Partial<MessagingConfig> = {};
+    if ("enabled" in raw) {
+      if (typeof raw.enabled === "boolean") out.enabled = raw.enabled;
+      else warnings.push(`${label}.messaging.enabled: must be a boolean — using default`);
+    }
+    if ("receive" in raw) {
+      if (typeof raw.receive === "string" && Object.hasOwn(RECEIVE_RANK, raw.receive)) {
+        out.receive = raw.receive as MessagingConfig["receive"];
+      } else {
+        warnings.push(`${label}.messaging.receive: must be "never" | "ask" | "always" — using default`);
+      }
+    }
+    return out;
+  };
+  const globalMessaging = parseMessaging(globalRaw?.messaging, "global config");
+  const projectMessaging = parseMessaging(projectRaw?.messaging, "project config");
+  const messaging: MessagingConfig = { enabled: true, receive: "always", ...globalMessaging };
+  if (projectMessaging.enabled === false) {
+    messaging.enabled = false;
+  } else if (projectMessaging.enabled === true && !messaging.enabled) {
+    warnings.push(
+      "messaging.enabled: true is user-level only and was ignored in project .nib/settings.json — set it in ~/.nib/settings.json instead",
+    );
+  }
+  if (projectMessaging.receive !== undefined) {
+    if (RECEIVE_RANK[projectMessaging.receive] < RECEIVE_RANK[messaging.receive]) {
+      messaging.receive = projectMessaging.receive;
+    } else if (RECEIVE_RANK[projectMessaging.receive] > RECEIVE_RANK[messaging.receive]) {
+      warnings.push(
+        `messaging.receive: "${projectMessaging.receive}" can only be raised from ~/.nib/settings.json; project .nib/settings.json value ignored`,
+      );
+    }
+  }
+  config.messaging = messaging;
 
   // ── permissionProfile ──
   // Parsed from the per-source raws (not the merged object) so the fs/network

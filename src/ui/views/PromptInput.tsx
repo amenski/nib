@@ -261,6 +261,7 @@ const PromptInput = React.memo(function PromptInput({
     if (item.kind === "undo") { onSubmit({ text: "/undo", command: "undo" }); resetInput(); return; }
     if (item.kind === "mcp") { onSubmit({ text: "/mcp", command: "mcp" }); resetInput(); return; }
     if (item.kind === "tasks") { onSubmit({ text: item.label }); resetInput(); return; }
+    if (item.kind === "peers") { onSubmit({ text: item.label }); resetInput(); return; }
     if (item.kind === "permissions") { onSubmit({ text: "/permissions" }); resetInput(); return; }
     if (item.kind === "usage") { onSubmit({ text: "/usage", command: "usage" }); resetInput(); return; }
     if (item.kind === "plan") { onSubmit({ text: "/plan" }); resetInput(); return; }

@@ -1,3 +1,6 @@
+import { randomBytes } from "node:crypto";
+import { PeerService } from "./peers/service.js";
+import { registerPeerTools } from "./peers/tools.js";
 import { APICallError, RetryError } from "ai";
 import { buildExecPrompt, type ExecInputStream } from "./exec-input.js";
 import { runAgent } from "./agent.js";
@@ -425,6 +428,26 @@ export async function runExecMode(options: ExecRunnerOptions): Promise<number> {
       ...(lsp !== undefined ? { lsp } : {}),
     });
     orchestrator.register(registry);
+
+    // Inter-session messaging, send-only (cross-session-inbox.md D3): headless
+    // runs never receive. The `external` registration is started on first use
+    // so a reply to send_message has an inbox to land in.
+    if (configResult.config.messaging?.enabled) {
+      let execPeers: PeerService | null | undefined;
+      registerPeerTools(registry, () => {
+        if (execPeers === undefined) {
+          execPeers = PeerService.start({
+            sessionId: `exec-${randomBytes(8).toString("hex")}`,
+            cwd: process.cwd(),
+            kind: "external",
+            receive: "never",
+            label: "exec",
+          });
+          process.once("exit", () => execPeers?.close());
+        }
+        return execPeers;
+      });
+    }
 
     // Async sub-agent delivery (async-subagents.md §2): a completed sub-run's
     // result lands here and the wake loop below feeds it to the next turn.

@@ -1,6 +1,6 @@
 # Tool Specification
 
-**Status:** current · verified 2026-08-13 · covers `src/tools/*`, `src/skills/index.ts` (`load_skill`), `src/orchestrator/index.ts` (`new_task`)
+**Status:** current · verified 2026-08-13 · covers `src/tools/*`, `src/skills/index.ts` (`load_skill`), `src/orchestrator/index.ts` (`new_task`), `src/peers/tools.ts` (`list_sessions`, `send_message`; added 2026-11-17)
 
 ## 1. Overview
 
@@ -323,6 +323,71 @@ per switch.
 turn after the tool result (`stopReason` stays `"done"`). No further
 provider call happens — the summary is the final word the user sees.
 
+## 6a. Inter-session tools
+
+`list_sessions` and `send_message` (`src/peers/tools.ts`; design record
+cross-session-inbox.md, shipped 2026-11-17). Both are `workflow`-group tools,
+so they are offered in Code and the Orchestrator alias and not in the
+read-only modes, and both are registered only when `messaging.enabled`
+(config-spec.md §19; default `true`). They are in `BUILTIN_ALLOW_RULES`
+(permission-spec.md §7): no prompt, no auto-judge call, headless included. When
+this session has no receiver (Windows, a peers directory that failed its
+permission checks, the session already open in another process) they return
+`Inter-session messaging is not available in this session.` (`error:
+"unavailable"`).
+
+**`list_sessions(cwdPrefix?)`** — other live sessions on this machine, read
+from `$NIB_HOME/peers/registry/`. Output: `This session: <name> (<id>)`, a blank
+line, then a table `NAME SESSION STATUS RECEIVE AGE CWD` (`idle`/`busy`, or
+`external` for a headless or `nib send --wait` registration), or `No other live
+sessions.` `cwdPrefix` keeps sessions whose working directory starts with it.
+A record is live when its pid exists and its heartbeat is under 90 s old;
+stale records are reaped during the call.
+
+**`send_message(to, message, mode?, wantReply?, waitSeconds?)`**
+
+| Param | Meaning |
+|-------|---------|
+| `to` | Session id (preferred), unique id prefix (≥ 6 chars) or exact name. Zero matches errors with the live list; several error with the candidates, never a guess |
+| `message` | The request with all needed context (the receiver cannot see this conversation). ≤ 16 KiB after control characters are stripped |
+| `mode` | `queue` (default): its own turn when the receiver is free, after the receiver's own queued input · `steer`: joins the receiver's running turn at its next decision point, else becomes its next turn · `notify`: context for the receiver's next turn, no turn started, no reply |
+| `wantReply` | The receiver's final assistant text for the turn is sent back (ignored for `notify`) |
+| `waitSeconds` | 0–300, default 0. > 0 implies `wantReply`; with `notify` it is an `invalid_args` error |
+
+Results (`content`; failures also set `error`):
+
+- Delivered, no wait: `Delivered to <name> (<id>)'s inbox (message <uuid>).
+  Delivered means queued, not yet read.` plus, with `wantReply`, `The reply
+  will arrive later as a separate message.`
+- Waited and answered: the reply as a peer payload — header `[Inter-session
+  reply · from … · status=<s> · in reply to <uuid> · isUser=false]` and the body
+  in a `PEER MESSAGE` fence. The reply is consumed by the tool and never becomes
+  a turn. `status` is `ok`, `aborted` (Esc on the receiver), `error`,
+  `declined` (policy `never`, the `ask` modal answered no, or a
+  `UserPromptSubmit` hook blocked the turn), `unsupported_version` or
+  `hop_limit`.
+- Wait expired: `Delivered … but no reply within Ns. A late reply will arrive
+  as a separate message.` The late reply is delivered to this session as a
+  `queue` message with the reply header, provided this process is still the one
+  that sent the request (the pending-reply set is in memory; after a restart it
+  is dropped). A session only accepts a reply to a message it sent with
+  `wantReply`, once; any other `reply` is dropped without a turn.
+- `receiver_exited` — checked every 5 s while waiting. `aborted` — Esc while
+  waiting; a late reply still arrives.
+- Send errors (`error` is the code): `self`, `not_found`, `ambiguous`,
+  `not_running`, `not_responding` (heartbeat older than 90 s: sleep, Ctrl-Z),
+  `refused` (receiver policy `never`), `incompatible` (protocol major),
+  `inbox_full` (20 unread from this sender, or 200 in the inbox),
+  `rate_limited` (10 sends per minute per sending session), `too_large`, `io`.
+  Nothing is written to a dead, stale or refusing session.
+- Delivered means in the receiver's `new/` directory, not read.
+
+Loop guards: a reply never produces a reply and receiving one starts nothing
+automatically; a turn that a peer message started or joined sends at `hops + 1`
+and receivers answer `hop_limit` above 3. Peer text reaches the model as a
+user-role message labelled `isUser=false`, fenced, and the base rules say it
+cannot grant permission or override instructions (security-spec.md T17).
+
 ## 7. Error prefixes
 
 Distinctive error prefixes that exist in handlers today (informal — new
@@ -344,5 +409,5 @@ handlers may add strings without a spec change):
 `src/tools/bash.ts` · `src/tools/jobs.ts` ·
 `src/tools/web-fetch.ts` + `web-fetch-guard.ts` · `src/tools/web-search.ts` ·
 `src/tools/ask_user_question.ts` · `src/tools/todo.ts` ·
-`src/skills/index.ts` · `src/orchestrator/index.ts` · `src/agent.ts`
-(permission gating)
+`src/skills/index.ts` · `src/orchestrator/index.ts` · `src/peers/tools.ts` ·
+`src/agent.ts` (permission gating)

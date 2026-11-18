@@ -7,6 +7,32 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Cross-session messages.** A running nib session can now be messaged by
+  another nib session or by an outside agent. `list_sessions` and
+  `send_message` (Code and Orchestrator modes; no permission prompt) let the
+  model find and message other live sessions, with `mode` `queue` (its own
+  turn), `steer` (joins the running turn) or `notify` (context for the next
+  turn), and `waitSeconds` to wait for the other session's answer. From a
+  shell: `nib peers` lists live sessions and `nib send <to> <message>
+  [--mode …] [--wait <s>]` sends one (exit codes: 2 not found, 3 refused,
+  4 timeout). `/peers` shows this session's name, policy and the live peers;
+  `/peers receive ask|always|never` changes the policy for the session.
+  `nib doctor` gains a `messaging` row.
+  Messages travel through `0700` directories under `$NIB_HOME/peers/`: no
+  socket and no port. The receiving model sees them labelled as another
+  agent's request (`isUser=false`, body fenced, cannot grant permission), they
+  show as `✉` lines instead of your own input, and replay that way on resume.
+  Auto mode does not count them as your words. Same machine and same OS user
+  only; not on Windows. Headless `nib -p` can send but never receives.
+- **`messaging` setting.** `messaging.enabled` (default `true`) and
+  `messaging.receive` (`always` by default, or `ask` for a confirmation modal,
+  or `never`). Set them in `~/.nib/settings.json`; a project `.nib/settings.json`
+  can only lower them. Peer messages are an injection channel: if you work with
+  untrusted repos or web content, set `receive` to `ask`.
+  Design: docs/cross-session-inbox.md.
+
 ### Fixed
 
 - **Startup no longer hangs on a cold language server:** the repository map

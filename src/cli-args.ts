@@ -101,6 +101,8 @@ async function configureYargs(argv?: string[]) {
         .positional("action", { type: "string", describe: "list | logout <provider> | <provider> [--api-key <key>]" })
     )
     .command("doctor", "Check the health of your Nib setup", () => {})
+    .command("peers", "List live nib sessions that can receive messages", () => {})
+    .command("send <to> <message>", "Send a message to another running nib session: [--mode queue|steer|notify] [--wait <seconds>]; message `-` reads stdin", () => {})
     .command("mcp <action>", "Manage MCP servers: add <name> [--no-sandbox] -- <command> [args] | list | remove <name>", () => {})
     .example("nib", "Launch the interactive TUI")
     .example("nib 'explain src/foo.ts'", "Launch with an initial prompt")
@@ -108,6 +110,7 @@ async function configureYargs(argv?: string[]) {
     .example("nib -r", "Open session picker")
     .example("nib -r <sessionId>", "Resume a specific session")
     .example("nib -c", "Continue the most recent session")
+    .example("nib send <session-id> 'run the tests' --wait 120", "Ask another running nib session to do something and print its reply")
     .example('cat error.log | nib -p "Explain this error"', "Use piped stdin as context")
     .epilog(
       [

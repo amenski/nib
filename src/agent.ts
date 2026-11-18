@@ -20,6 +20,7 @@ import { estimateTokens, estimateOverheadTokens } from "./compaction/budget.js";
 import { editToolResultsForRequest } from "./compaction/context-editing.js";
 import { formatTodoBlock } from "./tools/todo.js";
 import type { TodoItem } from "./tools/todo.js";
+import { isPeerMessage } from "./peers/format.js";
 import { formatPlanBlock } from "./plans/store.js";
 import { logTiming } from "./debug/logger.js";
 import { extractCapabilityPlan } from "./permissions/capabilities.js";
@@ -359,6 +360,9 @@ export interface AgentOptions {
   /** Live reader for the update_todo_list store; injected into the volatile
    *  prefix each sub-turn so the model always sees current plan state. */
   getTodos?: () => TodoItem[];
+  /** Notify-mode inter-session messages for this turn (cross-session-inbox.md
+   *  §5.4): context only, appended to the volatile prefix, never a turn. */
+  getPeerNotices?: () => string;
   /**
    * Mid-turn steering mailbox: polled once before each provider call (a
    * decision point — never mid-stream). A non-null result is injected as a
@@ -426,6 +430,8 @@ function isTransientNetworkError(err: Error): boolean {
  */
 const STEERING_NOTE =
   "The user's latest message was typed while you were working. Answer it once, then continue the task.";
+const PEER_STEERING_NOTE =
+  "The latest message is an inter-session message from another agent that arrived while you were working. Handle it once, then continue the task.";
 
 export function toolResultForHistory(result: Pick<ToolOutput, "content" | "error">): string {
   if (!result.error) return result.content;
@@ -702,7 +708,9 @@ export async function runAgent(
     // that carried the question the question appeared twice, and the model
     // answered it twice: once to the note, once to the message, both before a
     // tool call (2026-10-10, onramp 1117-ecdc).
-    const prefix = [volatileContext, todoBlock, planBlock, steering ? STEERING_NOTE : ""].filter(Boolean).join("\n\n");
+    const peerNotices = options.getPeerNotices?.() ?? "";
+    const steeringNote = steering ? (isPeerMessage(steering) ? PEER_STEERING_NOTE : STEERING_NOTE) : "";
+    const prefix = [volatileContext, todoBlock, planBlock, peerNotices, steeringNote].filter(Boolean).join("\n\n");
     const orphaned = repairOrphanedToolCalls(messages);
     if (orphaned > 0) {
       options.onDiagnostic?.(`backfilled ${orphaned} unanswered tool result${orphaned === 1 ? "" : "s"}`);

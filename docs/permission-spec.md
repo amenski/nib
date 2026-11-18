@@ -384,6 +384,18 @@ specifies the guard.
 `run_bash` command that reads a secret file as an argument (`cat .env`) is
 not covered — see security-spec.md.
 
+### Builtin allow fallback (`src/permissions/builtin-allow.ts`)
+
+`BUILTIN_ALLOW_RULES` (`origin: "config"`) apply only when no other rule
+matched, so a guarded or user rule always pre-empts them (§6). They cover
+`read_file` / `list_files` under `./**`, and `kind: "any"` for `glob`,
+`search`, `update_todo_list`, `attempt_completion`, `switch_mode`, `lsp`, and,
+since 2026-11-17, `list_sessions` and `send_message` (cross-session-inbox.md
+D5). Both inter-session tools therefore never prompt, never reach the auto
+judge, and work headless (§Headless Interaction's fail-closed ask is not
+involved). The receiving session's own permissions gate whatever a message
+leads to; security-spec.md T17 records the accepted residual.
+
 ## 8. Persistence tiers
 
 Chosen per-approval from the 4-option prompt:

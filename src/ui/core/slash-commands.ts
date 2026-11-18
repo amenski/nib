@@ -1,5 +1,5 @@
 export type SlashCommandKind =
-  | "model" | "mode" | "effort" | "new" | "resume" | "continue" | "undo" | "mcp" | "tasks" | "permissions" | "usage" | "exit" | "help" | "clear" | "skills" | "plan" | "raw" | "doctor" | "context" | "compact";
+  | "model" | "mode" | "effort" | "new" | "resume" | "continue" | "undo" | "mcp" | "tasks" | "permissions" | "usage" | "exit" | "help" | "clear" | "skills" | "plan" | "raw" | "doctor" | "context" | "compact" | "peers";
 
 export interface SlashCommandItem {
   kind: SlashCommandKind;
@@ -19,6 +19,7 @@ export const BUILTIN_SLASH_COMMANDS: SlashCommandItem[] = [
   { kind: "undo", name: "undo", label: "/undo", description: "Restore to a previous point" },
   { kind: "mcp", name: "mcp", label: "/mcp", description: "Show MCP server status" },
   { kind: "tasks", name: "jobs", label: "/jobs", description: "Show background shells and sub-agents (also /tasks)" },
+  { kind: "peers", name: "peers", label: "/peers", description: "Show other live sessions and this session's inbox" },
   { kind: "permissions", name: "permissions", label: "/permissions", description: "Show this session's permission decision history" },
   { kind: "usage", name: "usage", label: "/usage", description: "Show account balance and token usage" },
   { kind: "plan", name: "plan", label: "/plan", description: "Toggle plan mode (propose before implementing)" },

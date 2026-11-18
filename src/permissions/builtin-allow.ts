@@ -49,4 +49,10 @@ export const BUILTIN_ALLOW_RULES: PermissionRule[] = [
   // --add-dir roots) with PERMISSION_DENIED. Same trust class as `glob`, and a
   // prompt on every hover would make the tool useless.
   { tool: "lsp", kind: "any", pattern: "", action: "allow", origin: "config" },
+  // Inter-session messaging (cross-session-inbox.md, owner decision D5):
+  // listing peers is read-only, and sending is allowed so orchestrated
+  // multi-session work isn't a prompt per message. The receiver's own
+  // permissions still gate whatever the message leads to.
+  { tool: "list_sessions", kind: "any", pattern: "", action: "allow", origin: "config" },
+  { tool: "send_message", kind: "any", pattern: "", action: "allow", origin: "config" },
 ];

@@ -440,6 +440,19 @@ describe("SessionStore", () => {
     });
   });
 
+  describe("peer-received ledger", () => {
+    it("round-trips message ids without adding transcript messages", async () => {
+      const id = await store.create({ cwd: TEST_CWD, provider: "openai", model: "gpt-4", mode: "code" });
+      await store.appendPeerReceived(id, "3c1d6f0e-0000-4000-8000-00000000000a");
+      await store.appendPeerReceived(id, "3c1d6f0e-0000-4000-8000-00000000000b");
+      expect(await store.queryPeerReceived(id)).toEqual([
+        "3c1d6f0e-0000-4000-8000-00000000000a",
+        "3c1d6f0e-0000-4000-8000-00000000000b",
+      ]);
+      expect((await store.load(id))!.messages).toEqual([]);
+    });
+  });
+
   describe("todo snapshots", () => {
     it("round-trips appended todo lists in chronological order", async () => {
       const id = await store.create({ cwd: TEST_CWD, provider: "openai", model: "gpt-4", mode: "code" });

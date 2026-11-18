@@ -67,7 +67,7 @@ arrays, quoted scalars.
 | `edit` | edit, apply_diff, apply_patch, write_to_file | Code modification |
 | `command` | run_bash, run_bash_background, check_job, kill_job | Shell execution |
 | `mcp` | `mcp__<server>__<tool>` (dynamic, per connected server) | External tool servers |
-| `workflow` | new_task | Sub-agent delegation |
+| `workflow` | new_task, list_sessions, send_message | Sub-agent delegation; inter-session messaging (tool-spec.md §6a) |
 
 ## 4. Always-available tools
 
@@ -83,7 +83,9 @@ These bypass mode gates regardless of group:
 
 `new_task` is **not** always-available: it is `workflow`-group only. Code can
 delegate directly; the retired orchestrator alias remains available for
-compatibility.
+compatibility. `list_sessions` and `send_message` are `workflow`-group too, so
+Ask, Architect, Debug and General do not offer them (and only when
+`messaging.enabled`).
 
 ## 5. Current personas and legacy aliases
 

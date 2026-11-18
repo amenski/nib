@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { buildReplayLines } from "./replay.js";
 import { USER_ECHO_TAG, VERBATIM_TAG, BULLET_TAG, ANSWER_CONT_TAG, TOOL_HEADER_TAG, TOOL_RESULT_TAG } from "../constants.js";
 import type { Message } from "../../types.js";
+import { formatPeerPayload } from "../../peers/format.js";
 import { stripAnsi } from "../test-helpers.js";
 import { ThemeContextValue, DARK_THEME, ansiFg } from "../theme.js";
 
@@ -13,6 +14,17 @@ describe("buildReplayLines", () => {
     const msgs: Message[] = [{ role: "user", content: "fix the bug" }];
     const lines = buildReplayLines(msgs, noColor);
     expect(lines).toContain(VERBATIM_TAG + USER_ECHO_TAG + "fix the bug");
+  });
+
+  it("replays an inter-session message as its peer line, not as user input", () => {
+    const payload = formatPeerPayload({
+      v: 1, messageId: "3c1d6f0e-0000-4000-8000-00000000000a", kind: "message", mode: "steer",
+      from: { type: "session", sessionId: "20261117T180000-beef", name: "web-beef", pid: 1 },
+      to: "x", body: "run the tests\nplease", wantReply: true, inReplyTo: null, hops: 0, createdAt: 0, expiresAt: 1,
+    });
+    const lines = buildReplayLines([{ role: "user", content: payload }], noColor);
+    expect(lines).toContain(VERBATIM_TAG + "✉ web-beef (steer): run the tests");
+    expect(lines.some((l) => l.includes(USER_ECHO_TAG))).toBe(false);
   });
 
   it("tags assistant text as an answer block instead of a literal bullet glyph", () => {

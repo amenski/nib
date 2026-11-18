@@ -98,6 +98,7 @@ then follow the reading paths below.
 | [claude-code-parity.md](./claude-code-parity.md) | Gap analysis vs Claude Code (forward-looking) |
 | [permission-profile.md](./permission-profile.md) | PermissionProfile ACL design (draft): schema, evaluation order, Seatbelt phase |
 | [async-subagents.md](./async-subagents.md) | Async sub-agent execution design: spawn-return-immediately, auto-wake, cap 3, /tasks |
+| [cross-session-inbox.md](./cross-session-inbox.md) | Cross-session inbox design record (shipped 2026-11-17): file inbox + registry under `$NIB_HOME/peers/`, `send_message`, `nib send`, trust model, "As built" |
 | [unified-write-boundary.md](./unified-write-boundary.md) | Unified write boundary design: one shared write-set across Seatbelt + file tools; global-only `sandbox.writeRoots` (approved 2026-08-17, not yet built) |
 | [feature-plans.md](./feature-plans.md) | Per-feature plans for the remaining roadmap: SOTA research, current state, design, decisions |
 | [model-catalog-plan.md](./model-catalog-plan.md) | Models.dev-backed catalog: snapshot, overrides, update contract, and delivery slices |

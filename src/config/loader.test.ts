@@ -272,6 +272,81 @@ describe("loadConfig: retention", () => {
   });
 });
 
+describe("loadConfig: messaging", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "nib-loader-messaging-"));
+    mkdirSync(projectDirPath(dir), { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  const global = (messaging: unknown) =>
+    writeFileSync(join(homeDir, "settings.json"), JSON.stringify({ messaging }), "utf-8");
+  const project = (messaging: unknown) =>
+    writeFileSync(projectSettingsPath(dir), JSON.stringify({ messaging }), "utf-8");
+
+  it("defaults to enabled and receive always", () => {
+    const { config, errors, warnings } = loadConfig(dir);
+    expect(errors).toEqual([]);
+    expectNoConfigWarnings(warnings);
+    expect(config.messaging).toEqual({ enabled: true, receive: "always" });
+  });
+
+  it("honours global receive ask", () => {
+    global({ receive: "ask" });
+    const { config, warnings } = loadConfig(dir);
+    expectNoConfigWarnings(warnings);
+    expect(config.messaging).toEqual({ enabled: true, receive: "ask" });
+  });
+
+  it("lets a project lower receive always -> never", () => {
+    global({ receive: "always" });
+    project({ receive: "never" });
+    const { config, warnings } = loadConfig(dir);
+    expectNoConfigWarnings(warnings);
+    expect(config.messaging?.receive).toBe("never");
+  });
+
+  it("ignores a project raising receive ask -> always, with a warning", () => {
+    global({ receive: "ask" });
+    project({ receive: "always" });
+    const { config, warnings } = loadConfig(dir);
+    expect(config.messaging?.receive).toBe("ask");
+    expect(warnings.some((w) => w.includes("messaging.receive") && w.includes("ignored"))).toBe(true);
+  });
+
+  it("lets a project disable messaging", () => {
+    project({ enabled: false });
+    const { config, warnings } = loadConfig(dir);
+    expectNoConfigWarnings(warnings);
+    expect(config.messaging).toEqual({ enabled: false, receive: "always" });
+  });
+
+  it("ignores project enabled:true when global is false, with a warning", () => {
+    global({ enabled: false });
+    project({ enabled: true });
+    const { config, warnings } = loadConfig(dir);
+    expect(config.messaging?.enabled).toBe(false);
+    expect(warnings.some((w) => w.includes("messaging.enabled") && w.includes("ignored"))).toBe(true);
+  });
+
+  it("falls back to defaults with warnings on invalid values", () => {
+    global({ enabled: "yes", receive: "sometimes" });
+    const { config, warnings } = loadConfig(dir);
+    expect(config.messaging).toEqual({ enabled: true, receive: "always" });
+    expect(warnings.filter((w) => w.includes("messaging"))).toHaveLength(2);
+  });
+
+  it("rejects prototype keys as receive values", () => {
+    global({ receive: "toString" });
+    expect(loadConfig(dir).config.messaging).toEqual({ enabled: true, receive: "always" });
+  });
+});
+
 // Write a project-level .nib/settings.json into a fresh temp dir and load it.
 // NIB_HOME is pointed at an empty dir so no global settings interfere.
 let projectDir: string;

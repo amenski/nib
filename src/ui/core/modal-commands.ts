@@ -26,6 +26,8 @@ const MODAL_COMMANDS = new Set([
   // active turn.
   "doctor",
   "context",
+  // Prints the peers table, or flips this session's receive policy.
+  "peers",
 ]);
 
 /**

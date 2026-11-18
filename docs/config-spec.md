@@ -1,6 +1,6 @@
 # Config Specification
 
-**Status:** current · verified 2026-10-17 · covers `src/config/loader.ts`, `src/config/credentials.ts`, `src/ui/core/refresh-rates.ts`
+**Status:** current · verified 2026-10-17 (`messaging` §19 added 2026-11-17) · covers `src/config/loader.ts`, `src/config/credentials.ts`, `src/ui/core/refresh-rates.ts`
 
 ## 1. Overview
 
@@ -169,7 +169,8 @@ are fatal — `main()` exits 1 (`src/cli.tsx`).
     ],
     "UserPromptSubmit": [ { "command": "hook-scripts/log-prompt.sh" } ]
   },
-  "disableAllHooks": false                 // master switch — nothing runs when true
+  "disableAllHooks": false,                // master switch — nothing runs when true
+  "messaging": { "enabled": true, "receive": "always" }  // cross-session messages — see §19
 }
 ```
 
@@ -741,3 +742,29 @@ the result of any edit, and the read-only `lsp` tool (tool-spec.md §3).
   independent of the project-wide `DiagnosticRunner` (todo.md 6.1).
 - `nib doctor` prints one `lsp` row per server: `dart: dart (ready) [.dart]`,
   `(not on PATH)`, `(blocked by strictMcpConfig)`, or `none configured`.
+
+## 19. `messaging`
+
+Cross-session messaging (`docs/cross-session-inbox.md` §7.3).
+`messaging.enabled` (boolean, default `true`; `false` = no registry, no
+tools, no watch) and `messaging.receive` (`"never"` | `"ask"` | `"always"`,
+default `"always"`) set what happens when another session sends this one a
+message. The `~/.nib/settings.json` value decides; a project
+`.nib/settings.json` may only lower it — `receive` takes the stricter of the
+two (`always` → `ask` → `never`) and `enabled: false` disables — while a
+project value that would raise it (`receive` looser than the user's, or
+`enabled: true` when the user's is `false`) is ignored with a warning, so a
+cloned repo cannot open a session to injected messages. Invalid values fall
+back to the default with a warning.
+
+`receive` values: `always` (default) hands every incoming message to the model
+as soon as the session can take it; `ask` opens a confirmation modal on
+arrival (y once · a this sender for the session · n decline); `never` refuses —
+the sender gets `refused` before anything is written, and a message that was
+already in the inbox is answered `declined`. A running session can change its
+own policy with `/peers receive ask|always|never` (this session only, not
+written to settings). The loaded config always carries a `messaging` object, so
+`messaging.enabled`/`receive` are never absent. `nib doctor` prints the
+effective policy on its `messaging` row; `nib -p` ignores `receive` (headless
+runs never receive, only send). Behavior: cross-session-inbox.md "As built",
+cli-spec.md §10, security-spec.md T17.

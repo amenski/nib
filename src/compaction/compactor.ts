@@ -8,6 +8,7 @@ Structure the summary under these headings, omitting any heading with nothing to
 
 ## Task
 The user's original request and goals. Quote the most recent user instruction verbatim — the resumed agent acts on it next.
+Requests that arrived as inter-session messages stay attributed to the sending session.
 
 ## Decisions
 Key decisions made and why.

@@ -31,6 +31,7 @@ const ROUTED_KINDS: ReadonlySet<SlashCommandKind> = new Set<SlashCommandKind>([
   "doctor",
   "context",
   "compact",
+  "peers",
 ]);
 
 describe("/theme is hidden while there is a single theme", () => {

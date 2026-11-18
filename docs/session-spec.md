@@ -1,6 +1,6 @@
 # Session Storage Specification
 
-**Status:** current · verified 2026-09-15 · covers `src/sessions/store.ts`, `src/sessions/redact.ts`, `src/checkpoints/index.ts`
+**Status:** current · verified 2026-09-15 (inter-session messages added 2026-11-17) · covers `src/sessions/store.ts`, `src/sessions/redact.ts`, `src/checkpoints/index.ts`, `src/peers/format.ts`
 
 ## 1. Overview
 
@@ -37,8 +37,9 @@ reference session state.
 
 ## 4. Record types
 
-Each line is one JSON object with a `type` field. Seven types: `meta`,
-`message`, `state`, `compaction`, `permission`, `token`, `todo`.
+Each line is one JSON object with a `type` field. Documented here: `meta`,
+`message`, `state`, `compaction`, `permission`, `token`, `todo`,
+`peer-received`.
 
 ### `meta` — always the first line
 
@@ -62,6 +63,19 @@ The `message` field is exactly the canonical `Message` type from
 `src/types.ts` — no session-specific message format. Messages are implicitly
 indexed by order of appearance (0-based); `compaction` records reference
 these indices. Message content is secret-redacted on write.
+
+An inter-session message is an ordinary user-role `message` whose text starts
+with the header `[Inter-session message · from <name> (session <id>, claimed)
+· mode=<m> · isUser=false]` (a reply: `[Inter-session reply · … status=<s> · in
+reply to <id> …]`), then the body fenced by `--- BEGIN PEER MESSAGE [<id>] …
+---` / `--- END PEER MESSAGE [<id>] ---` (`src/peers/format.ts`,
+`wrapPeerMessage`). There is no separate provenance field: the header is the
+attribution. `isPeerMessage` keys off it so a peer message is never counted as
+the user's words (auto mode's session-level human turns, `humanTurnsFromHistory`)
+and replays as a `✉ <sender> (<mode>): <first line>` line instead of a `❯` echo
+(`src/ui/core/replay.ts`). `notify`-mode messages are context for one turn and
+are never written as `message` rows. Compaction's summary prompt keeps such
+requests attributed to the sending session. Design: cross-session-inbox.md.
 
 ### `state` — mid-session changes
 
@@ -208,6 +222,24 @@ message is assembled (`SessionStore.appendToken`).
 `SessionStore.queryTokenUsage(sessionId)`. Like `permission` rows, `token`
 rows are ignored by `load()`/`loadEffective()`.
 
+### `peer-received` — inter-session dedupe ledger
+
+```json
+{"type":"peer-received","at":"...","messageId":"3c1d6f0e-0000-4000-8000-00000000000a"}
+```
+
+One row per inter-session message this session has finished with, written by
+`SessionStore.appendPeerReceived` **before** the message's file is deleted from
+the session's inbox (`$NIB_HOME/peers/inbox/<id>/cur/`). It is written when the
+message is completed, not when it is claimed: at the end of the turn it started
+or joined (or that carried it, for `notify`), when it is declined or dropped,
+and when a waiting `send_message` consumes a reply. On start (and on in-TUI
+`/resume`) `queryPeerReceived` loads the ids into the receiver, which drops any
+inbox file whose `messageId` is already in the ledger. A crash mid-turn leaves
+the file in `cur/` without a row, so that message is redelivered on resume:
+at-least-once, a duplicate turn is possible. Ignored by `load()`/
+`loadEffective()`.
+
 ## 5. Sessions index (`sessions-index.json`)
 
 A per-project cache that makes `/sessions` and `--continue` list richly
@@ -282,6 +314,8 @@ scan (a tested equivalence).
 | Tool definitions | No | Derived from active mode |
 | Active mode / model | Yes (`meta` + `state`) | Sticky across resume |
 | Compaction summaries | Yes | Resume must not re-summarize |
+| Inter-session messages | Yes, as user-role `message` rows (not `notify`) + a `peer-received` ledger row | Attribution rides in the text header; the ledger is the dedupe source |
+| Peer registry record, inbox files | **No** — `$NIB_HOME/peers/`, not under the session dir | Live-process state; the session's receiver re-registers on start and on `/resume` |
 
 Writes happen **after each message is complete** (user input accepted,
 assistant turn done, tool result returned) — never mid-stream. A crash

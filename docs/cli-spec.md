@@ -1,6 +1,6 @@
 # CLI Specification
 
-**Status:** current · verified 2026-08-13 · covers `src/cli-args.ts`, `src/cli.tsx`, `src/exec-runner.ts`, `src/ui/core/slash-commands.ts`, `src/ui/App.tsx`, `src/ui/keybindings.ts`, `src/ui/HelpOverlay.tsx`
+**Status:** current · verified 2026-08-13 · covers `src/cli-args.ts`, `src/cli.tsx`, `src/exec-runner.ts`, `src/ui/core/slash-commands.ts`, `src/ui/App.tsx`, `src/ui/keybindings.ts`, `src/ui/HelpOverlay.tsx`, `src/peers/cli.ts` (`nib peers`, `nib send`, `/peers`; added 2026-11-17)
 
 ## 1. Invocation
 
@@ -17,6 +17,8 @@ nib doctor                         # print environment / config diagnostics
 nib mcp add <name> [--env K=V]... [--no-sandbox] -- <command> [args...]
 nib mcp list                       # MCP servers in ~/.nib/settings.json
 nib mcp remove <name>
+nib peers                          # live nib sessions that can receive messages (§10)
+nib send <to> <message...|-> [--mode queue|steer|notify] [--wait <seconds>]
 ```
 
 `nib mcp` (`src/mcp/mcp-command.ts`, 2026-10-12) edits `mcpServers` in the
@@ -25,11 +27,13 @@ theme and model pickers. `add` refuses an existing name and names outside
 `[A-Za-z0-9_-]`; `--no-sandbox` writes `"sandbox": false` (config-spec.md)
 and prints a one-line warning. Changes take effect on the next start.
 
-`doctor`, `auth`, `models` and `mcp` are the only real subcommands — special-cased in
-`src/cli.tsx` `main()` before argument parsing. Everything else is parsed by
-yargs (`src/cli-args.ts`) as flags plus an optional positional `prompt`; a
-non-flag word that is not `auth`/`doctor` is treated as a positional prompt,
-not rejected as an unknown command.
+`doctor`, `auth`, `models`, `mcp`, `peers` and `send` are the only real
+subcommands — special-cased in `src/cli.tsx` `main()` before argument parsing
+(`peers` and `send` are also declared in yargs so `--help` lists them).
+Everything else is parsed by yargs (`src/cli-args.ts`) as flags plus an
+optional positional `prompt`; a non-flag word that is not one of those
+subcommands is treated as a positional prompt, not rejected as an unknown
+command.
 
 `doctor` runtime health (F2, 2026-08-15): when `webSearch.searxngUrl` is
 configured, `doctor` also GETs `{url}/healthz` with a 3 s timeout and no
@@ -138,8 +142,8 @@ Typed at the prompt inside the TUI. Three surfaces:
 1. **Autocomplete menu** — `BUILTIN_SLASH_COMMANDS`
    (`src/ui/core/slash-commands.ts`): `/skills`, `/model`, `/mode`,
    `/effort`, `/new`, `/resume`, `/continue`, `/undo`, `/mcp`,
-   `/jobs`, `/permissions`, `/usage`, `/plan`, `/raw`, `/clear`, `/compact`,
-   `/context`, `/doctor`, `/help`, `/exit`.
+   `/jobs`, `/peers`, `/permissions`, `/usage`, `/plan`, `/raw`, `/clear`,
+   `/compact`, `/context`, `/doctor`, `/help`, `/exit`.
 2. **Text dispatcher** — `handleSlashCore` (`src/cli.tsx:987`): `/help`,
    `/cost`, `/context`, `/usage`, `/doctor`, `/skills`, `/skill <name> [text]`
    (only the first token is the skill name — the rest is the instruction the
@@ -147,8 +151,8 @@ Typed at the prompt inside the TUI. Three surfaces:
    `/mode [slug]`, `/model [provider/model]`, `/effort [value]`, `/sessions`.
 3. **TUI handlers** (`src/ui/App.tsx` `handleSlashCommand`):
    `/new`, `/resume`, `/continue`, `/sessions` (alias for the session
-   list), `/undo`, `/mcp`, `/jobs`, `/permissions`, `/usage`, `/plan`,
-   `/raw`, `/exit`.
+   list), `/undo`, `/mcp`, `/jobs`, `/peers`, `/permissions`, `/usage`,
+   `/plan`, `/raw`, `/exit`.
 
 **Routed but not in the autocomplete menu:** `/cost`, `/modes`,
 `/skill <name> [text]`, `/sessions`.
@@ -313,3 +317,66 @@ model). Defined agents' `name` + `description` lines are indexed into the
 system prompt ("Available agents") so the model knows the names it may pass;
 the `/skills` slash command prints a one-line agent list. `new_task` is
 available both interactively and headless (`-p`).
+
+## 10. Inter-session messaging — `nib peers`, `nib send`, `/peers`
+
+Design record: cross-session-inbox.md (shipped 2026-11-17). A running TUI
+session registers under `$NIB_HOME/peers/` and receives messages from other
+nib sessions (the `send_message` tool, tool-spec.md §6a) and from outside
+processes (`nib send`). Config: `messaging.enabled` / `messaging.receive`
+(config-spec.md §19, default `always`). Not available on Windows. Threat model:
+security-spec.md T17.
+
+**`nib peers`** prints the live sessions as a table (`NAME SESSION STATUS
+RECEIVE AGE CWD`) or `No other live sessions.` and exits 0. It takes no
+arguments.
+
+**`nib send <to> <message...|-> [--mode queue|steer|notify] [--wait <seconds>]`**
+— the message words are joined with spaces; a lone `-` reads the message from
+stdin (one trailing newline dropped); `--` ends option parsing. `<to>` is a
+session id, a unique id prefix (≥ 6 chars) or a name, as for `send_message`.
+
+- Without `--wait`: delivers to the receiver's inbox, prints `delivered <uuid>
+  to <name> (<id>)`, exits 0. The sender is `external` (`label: cli`, pid,
+  ppid) with no inbox of its own, so no reply can come back.
+- With `--wait <s>` (1–300, whole seconds; not with `--mode notify`): registers
+  a short-lived send-only `cli-<hex>` session, sends with `wantReply`, and waits.
+  A reply's body goes to stdout; the reply file is deleted before the command
+  exits, so no inbox is left behind.
+- Messaging disabled in settings, unsupported platform, bad flags or an empty
+  message exit 1 with a stderr line.
+
+| `nib send` exit | Meaning |
+|---|---|
+| 0 | Delivered (no `--wait`), or a reply with status `ok` |
+| 1 | Other error (bad usage, `self`, `ambiguous`, `too_large`, `rate_limited`, `incompatible`, `io`), or a reply with status `aborted` / `error` |
+| 2 | Receiver not found, not running or not responding; or it exited before replying |
+| 3 | Refused: receiver policy `never`, inbox full, or a reply with status `declined` / `hop_limit` / `unsupported_version` |
+| 4 | `--wait` timed out |
+
+**`/peers`** (TUI; a modal command, so it runs at once even mid-turn) prints
+`This session: <name> (<id>) · receive <policy> · N pending` and the live
+peers table. `/peers receive ask|always|never` changes the policy for this
+session only (not persisted; the registry record is updated so senders see it).
+With messaging off or unavailable it prints `[messaging is off for this
+session]`.
+
+**What the receiving user sees.** A peer message never echoes as `❯`: the
+scrollback shows `✉ <sender> (<mode>): <first line>` in the accent colour. Under
+`ask`, a modal opens when the message arrives (waiting while another modal is
+open): sender name and id, mode, the first 5 body lines, `y` once · `a` accept
+this sender for the rest of the session · `n` / Esc decline; the permission
+prompt's typing guard applies, so keys meant for a half-typed draft do not
+answer it. Delivery order: the human's own queued input always runs first; a
+`queue` message waits for the turn to end and for an empty draft, then runs as
+its own turn; `steer` rides the steering mailbox (§7) into the running turn and
+becomes the next turn if that ends first; `notify` is context for the next turn
+only. Scans run on an `fs.watch` hint and every 2 s, idle or busy.
+
+**Headless (`-p`).** Runs register `list_sessions` / `send_message` but never
+receive: a send-only `external` registration (`exec-<hex>`) starts on the first
+tool use so a waited-for reply has an inbox, and is closed on exit.
+
+**`nib doctor`** prints a `messaging` row: `ok (receive: <policy>)`, `ok (not initialised yet)`, `disabled
+in settings`, `unsupported on this platform`, or `PROBLEM: <reason>` when a
+peers directory fails its check (real directory, owned by you, mode 0700).

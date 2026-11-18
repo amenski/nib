@@ -1,5 +1,5 @@
 import { render } from "ink";
-import { readdirSync, realpathSync } from "node:fs";
+import { existsSync, readdirSync, realpathSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createElement } from "react";
@@ -35,9 +35,15 @@ import { ErrorReflector } from "./selfreflection/index.js";
 import { ErrorRecovery } from "./errorrecovery/index.js";
 import { Orchestrator, type SubagentProgress } from "./orchestrator/index.js";
 import { isSubagentResultMessage } from "./orchestrator/runner.js";
+import { isPeerMessage } from "./peers/format.js";
+import { PeerService } from "./peers/service.js";
+import { registerPeerTools } from "./peers/tools.js";
+import type { PeerHandlers } from "./ui/types.js";
 import { authWizard, authList, authLogout, authSaveKey } from "./auth/wizard.js";
 import { runModels } from "./providers/models-command.js";
 import { runMcp } from "./mcp/mcp-command.js";
+import { runPeersCommand, runSendCommand } from "./peers/cli.js";
+import { checkPrivateDir, peersRoot, peersSupported, registryDir, PeerDirError } from "./peers/paths.js";
 import { readHiddenLine } from "./auth/hidden-input.js";
 import { SessionStore, type CompactionSummary } from "./sessions/store.js";
 import { MemoryStore } from "./memory/store.js";
@@ -127,7 +133,7 @@ export function humanTurnsFromHistory(messages: readonly Message[], max = 10): s
       if (end === -1) continue;
       text = text.slice(end + FILE_BLOCK_END.length);
     }
-    if (text.trim() === "" || isSubagentResultMessage(text)) continue;
+    if (text.trim() === "" || isSubagentResultMessage(text) || isPeerMessage(text)) continue;
     if (NOT_USER_WORDS.some((pattern) => pattern.test(text.trimStart()))) continue;
     turns.push(text);
   }
@@ -265,6 +271,14 @@ async function main() {
 
   if (process.argv[2] === "mcp") {
     process.exit(await runMcp(process.argv.slice(3)));
+  }
+
+  if (process.argv[2] === "peers") {
+    process.exit(await runPeersCommand(process.argv.slice(3)));
+  }
+
+  if (process.argv[2] === "send") {
+    process.exit(await runSendCommand(process.argv.slice(3)));
   }
 
   const parsed = await parseArguments();
@@ -533,7 +547,8 @@ async function main() {
       // A finished sub-agent's result is delivered as a user-role message but is
       // agent-written; counting it would hand the judge's only authority source
       // to the agent.
-      if (isSubagentResultMessage(text)) return;
+      // Same for an inter-session message: another agent wrote it.
+      if (isSubagentResultMessage(text) || isPeerMessage(text)) return;
       humanTurns.push(text);
       if (humanTurns.length > MAX_HUMAN_TURNS) humanTurns.splice(0, humanTurns.length - MAX_HUMAN_TURNS);
     },
@@ -578,6 +593,7 @@ async function main() {
     autoMode,
   });
   orchestrator.register(registry);
+  if (configResult.config.messaging?.enabled) registerPeerTools(registry, () => peers);
 
   // Async sub-run live text (async-subagents.md §4): the App registers its
   // mount-time streaming sink here; runAgentTurnCore routes every progress
@@ -851,6 +867,31 @@ async function main() {
   // cover every other way out — process.exit elsewhere, and the terminal
   // closing (SIGHUP), which the detached group never receives itself.
   process.on("exit", () => jobManager.killAll());
+
+  // Cross-session inbox (cross-session-inbox.md): the receiver starts when the
+  // App registers its handlers and follows the session id across /resume.
+  let peers: PeerService | null = null;
+  let peerHandlers: PeerHandlers | undefined;
+  const restartPeers = async (): Promise<void> => {
+    peers?.close();
+    peers = null;
+    const messaging = configResult.config.messaging;
+    if (!peerHandlers || !messaging?.enabled) return;
+    const id = sessionId;
+    const alreadyReceived = await sessionStore.queryPeerReceived(id);
+    if (id !== sessionId || peers) return; // switched again while reading
+    peers = PeerService.start({
+      sessionId: id,
+      cwd: process.cwd(),
+      kind: "interactive",
+      receive: messaging.receive,
+      alreadyReceived,
+      persistReceived: (messageId) => sessionStore.appendPeerReceived(id, messageId),
+      onMessage: peerHandlers.onMessage,
+      onNotice: peerHandlers.onNotice,
+    });
+  };
+  process.on("exit", () => peers?.close());
   process.once("SIGHUP", () => {
     jobManager.killAll();
     process.exit(129);
@@ -1296,6 +1337,11 @@ async function main() {
       // session-scoped wake handler here; the orchestrator calls it once per
       // completed sub-run with the formatted result message.
       setSubagentResultHandler: (handler: (taskId: string, message: string) => void) => orchestrator.setOnTaskResult(handler),
+      setPeerHandlers: (handlers: PeerHandlers) => {
+        peerHandlers = handlers;
+        void restartPeers();
+      },
+      getPeers: () => peers,
       // Die on exit (async-subagents.md §3, Q3): the App calls this on /exit so
       // pending sub-runs are marked aborted and never wake a dying app.
       abortRunningTasks: () => orchestrator.tasks.abortAll(),
@@ -1312,6 +1358,7 @@ async function main() {
           resetAutoSession(loaded.messages);
           sessionId = id;
           setSessionId(id);
+          void restartPeers();
           return loaded.messages;
         } catch {
           return null;
@@ -1756,6 +1803,23 @@ export async function probeSearXngHealth(
   }
 }
 
+/** `  messaging         ok (receive: ask)` — peers dir permissions (§3) and the effective receive policy. */
+export function formatMessagingLine(config: DeepCodeSettings): string {
+  const prefix = doctorLabel("messaging");
+  if (config.messaging?.enabled === false) return `${prefix}disabled in settings`;
+  if (!peersSupported()) return `${prefix}unsupported on this platform`;
+  const root = peersRoot();
+  if (!existsSync(root)) return `${prefix}ok (not initialised yet)`;
+  const policy = config.messaging?.receive ?? "ask";
+  try {
+    checkPrivateDir(root);
+    for (const dir of [registryDir(), join(root, "inbox")]) if (existsSync(dir)) checkPrivateDir(dir);
+  } catch (err) {
+    return `${prefix}PROBLEM: ${err instanceof PeerDirError ? err.message : (err as Error).message}`;
+  }
+  return `${prefix}ok (receive: ${policy})`;
+}
+
 export async function runDoctor(): Promise<void> {
   console.log("nib doctor\n");
   try { const { execSync } = await import("node:child_process"); console.log(`  git               ${execSync("git --version", { encoding: "utf-8" }).trim()}`); }
@@ -1807,6 +1871,7 @@ export async function runDoctor(): Promise<void> {
     const judge = resolveAutoJudge(configResult.config.classifier?.model?.id, judgeProvider);
     console.log(`  auto judge        ${judge ? `${judge.id} (${judge.source})` : "the active model (its provider lists no small model)"}`);
   }
+  console.log(formatMessagingLine(configResult.config));
   const searxngUrl = configResult.config.webSearch?.searxngUrl;
   if (searxngUrl) {
     const health = await probeSearXngHealth(searxngUrl);
@@ -2212,6 +2277,7 @@ async function runAgentTurnBridge(input: string, cb: any, shared: any, permissio
     contextWindow,
     maxTurns: shared.maxTurns,
     getTodos: () => todoStore.getTodos(),
+    getPeerNotices: cb.getPeerNotices,
     getPlan: () => loadPlan(process.cwd()),
     onText: cb.onText, onReasoning: cb.onReasoning, onToolStart: (name, args) => { shared.toolUsage[name] = (shared.toolUsage[name] || 0) + 1; cb.onToolStart(name, args); }, onToolResult: cb.onToolResult,
     onDiagnostic: cb.onDiagnostic, onRetry: cb.onRetry, onCompacted: cb.onCompacted,

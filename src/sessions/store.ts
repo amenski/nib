@@ -253,7 +253,7 @@ export interface TokenUsageRecord {
 }
 
 export interface SessionRecord {
-  type: "meta" | "message" | "state" | "compaction" | "permission" | "classifier-evidence" | "token" | "todo";
+  type: "meta" | "message" | "state" | "compaction" | "permission" | "classifier-evidence" | "token" | "todo" | "peer-received";
   at: string;
   [key: string]: unknown;
 }
@@ -558,6 +558,17 @@ export class SessionStore {
     return records
       .filter((r) => r.type === "todo")
       .map((r) => r as unknown as TodoSnapshotRecord & { at: string });
+  }
+
+  /** Dedupe ledger for inter-session messages (cross-session-inbox.md §5.3 step 5). */
+  async appendPeerReceived(sessionId: string, messageId: string): Promise<void> {
+    await this.append(sessionId, { type: "peer-received", messageId });
+  }
+
+  async queryPeerReceived(sessionId: string): Promise<string[]> {
+    const records = await this.readRecords(sessionId);
+    if (!records) return [];
+    return records.filter((r) => r.type === "peer-received").map((r) => String(r.messageId));
   }
 
   /**

@@ -10,6 +10,7 @@ import type { ProfileEvaluator } from "../permissions/index.js";
 import type { BashEnvelope } from "../permissions/session-grant.js";
 import type { TaskRecord } from "../orchestrator/runner.js";
 import type { SubagentProgress } from "../orchestrator/index.js";
+import type { IncomingPeerMessage, PeerService } from "../peers/service.js";
 
 export interface ModelEntry {
   provider: string;
@@ -203,6 +204,14 @@ export interface AppContext {
    * queued behind the submission).
    */
   setSubagentResultHandler?: (handler: (taskId: string, message: string) => void) => void;
+  /**
+   * Cross-session inbox (cross-session-inbox.md §5.4). The App registers its
+   * handlers on mount, which starts this session's receiver; an in-TUI
+   * /resume moves it to the new session id. No-op when messaging is off.
+   */
+  setPeerHandlers?: (handlers: PeerHandlers) => void;
+  /** This session's receiver, or null when messaging is off or unavailable. */
+  getPeers?: () => PeerService | null;
   /** Kill pending sub-runs on exit (async-subagents.md §3, Q3 — in-memory,
    *  die on exit, where background jobs get killed). */
   abortRunningTasks?: () => void;
@@ -293,4 +302,11 @@ export interface AgentBridgeCallbacks {
   /** Mid-turn steering mailbox: polled once per decision point by the agent
    *  loop; returns the next queued message or null (the queue head is consumed). */
   pollSteeringMessage?: () => string | null;
+  /** Notify-mode peer messages for this turn's volatile prefix. */
+  getPeerNotices?: () => string;
+}
+
+export interface PeerHandlers {
+  onMessage: (incoming: IncomingPeerMessage) => void;
+  onNotice: (text: string) => void;
 }

@@ -20,6 +20,7 @@ import {
 import { NO_OUTPUT } from "../../tools/bash.js";
 import { USER_ECHO_TAG, VERBATIM_TAG, BULLET_TAG, ANSWER_CONT_TAG, TOOL_HEADER_TAG, TOOL_RESULT_TAG } from "../constants.js";
 import type { ThemeContextValue } from "../theme.js";
+import { isPeerMessage, peerEchoFromPayload } from "../../peers/format.js";
 
 /**
  * Tag an assistant message as one answer block: the opening line carries
@@ -100,8 +101,11 @@ export function buildReplayLines(messages: Message[], theme: ThemeContextValue):
         out.push("");
         continue;
       }
+      // An inter-session message replays as the peer line it showed live, not
+      // as something the user typed.
+      const peerEcho = isPeerMessage(msg.content) ? peerEchoFromPayload(msg.content) : null;
       out.push("");
-      out.push(tag(USER_ECHO_TAG + msg.content));
+      out.push(tag(peerEcho !== null ? theme.fg(theme.theme.accent, peerEcho) : USER_ECHO_TAG + msg.content));
       out.push("");
       continue;
     }

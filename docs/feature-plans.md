@@ -632,7 +632,14 @@ it — see react-loop.md, "What a tool result carries on failure".)*
 Delete the merged `feature/searxng-web-search` branch; SecondBrain
 session log for 2026-08-13 → 15 at wrap-up.
 
-### F7. Cross-session inbox — L (planned 2026-11-04)
+### ~~F7. Cross-session inbox — L (planned 2026-11-04)~~
+
+**✅ shipped 2026-11-17** — `src/peers/`, `list_sessions` / `send_message`,
+`nib peers` / `nib send`, `/peers`; behavior now lives in session-spec.md §4,
+tool-spec.md §6a, cli-spec.md §10, config-spec.md §19 and security-spec.md T17.
+D1–D5 decided (default `always`, auto inherits, headless send-only, CLI ships,
+send builtin-allowed); differences from the design are listed in
+cross-session-inbox.md "As built". The plan below is kept as the record.
 
 **SOTA:** Claude Code peer sessions (socket + registry), Claude Code agent
 teams (inbox files), OpenCode (durable HTTP inbox, steer/queue), Codex
@@ -646,8 +653,7 @@ inbox under `$NIB_HOME/peers/`, heartbeat registry, no socket (§2 there),
 `list_sessions` / `send_message` tools, `nib peers` / `nib send`, peer
 messages labelled untrusted and unable to approve anything.
 
-**Decisions:** D1–D5 open (receive default, auto-mode posture, headless
-receive, external CLI, send tier) — see that doc's §11.
+**Decisions:** D1–D5 decided 2026-11-17 — see that doc's §11.
 
 ---
 

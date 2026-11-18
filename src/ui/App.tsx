@@ -58,6 +58,11 @@ import { buildWelcomeLines } from "./views/WelcomeScreen.js";
 import PromptInput from "./views/PromptInput.js";
 import AskUserQuestionPrompt from "./views/AskUserQuestionPrompt.js";
 import HookTrustPrompt from "./views/HookTrustPrompt.js";
+import PeerApprovalPrompt from "./views/PeerApprovalPrompt.js";
+import type { IncomingPeerMessage } from "../peers/service.js";
+import { senderKey, type ReplyStatus } from "../peers/inbox.js";
+import { formatPeersTable } from "../peers/format.js";
+import type { ReceivePolicy } from "../peers/registry.js";
 import SkillTrustPrompt from "./views/SkillTrustPrompt.js";
 import type { SkillDef } from "../skills/index.js";
 import PlanImplementationPrompt from "./views/PlanImplementationPrompt.js";
@@ -274,6 +279,8 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
     entry: HookEntry;
     resolve: (trusted: boolean) => void;
   } | null>(null);
+  // `messaging.receive: ask` confirmation for one inter-session message.
+  const [peerApproval, setPeerApproval] = useState<{ incoming: IncomingPeerMessage; guardUntil: number } | null>(null);
   // TOFU trust confirmation for an unseen or changed project skill
   // (skill-spec.md §6, security-spec T4). Same ask-tier pattern; the mount
   // effect below drives one modal per pending skill and applies the decision
@@ -348,9 +355,20 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
   // shows the command the user typed in the queue stack and the echo, while the
   // agent gets the skill body plus the instruction.
   type QueuedItem =
-    | { kind: "message"; text: string; at: number; imageUrls?: string[]; payload?: string }
+    | { kind: "message"; text: string; at: number; imageUrls?: string[]; payload?: string; peer?: IncomingPeerMessage }
     | { kind: "slash"; text: string; at: number };
   const messageQueueRef = useRef<QueuedItem[]>([]);
+  // Cross-session inbox (cross-session-inbox.md §5.4). `queue`-mode peer
+  // messages wait here and drain only once messageQueueRef is empty, so the
+  // human's own input always goes first; `steer` ones ride messageQueueRef
+  // (tagged `peer`) into the steering mailbox; `notify` ones become context
+  // for the next turn. The turn refs track what the running turn owes a reply
+  // or an ack to.
+  const peerQueueRef = useRef<IncomingPeerMessage[]>([]);
+  const peerNoticesRef = useRef<IncomingPeerMessage[]>([]);
+  const turnNoticesRef = useRef<IncomingPeerMessage[]>([]);
+  const turnPeerOriginsRef = useRef<IncomingPeerMessage[]>([]);
+  const pendingPeerApprovalsRef = useRef<IncomingPeerMessage[]>([]);
   // Text + queue time of each item in arrival order, shown stacked above the input.
   const [queuedItems, setQueuedItems] = useState<Array<{ text: string; at: number }>>([]);
   // Mirror the queue's current contents into render state; called from every
@@ -431,6 +449,20 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
       ) {
         drainQueueRef.current();
       }
+    });
+  }, [ctx]);
+
+  useEffect(() => {
+    ctx.setPeerHandlers?.({
+      onMessage: (incoming) => {
+        if (incoming.needsApproval) {
+          pendingPeerApprovalsRef.current.push(incoming);
+          showNextPeerApprovalRef.current();
+        } else {
+          routePeerRef.current(incoming);
+        }
+      },
+      onNotice: (text) => peerNoticeRef.current(text),
     });
   }, [ctx]);
 
@@ -852,7 +884,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
   }, [ctx.compactResumed, resumeSource, replayResumed]);
 
   const runAgentTurn = useCallback(
-    async (input: string, imageUrls?: string[], options?: { echo?: boolean }) => {
+    async (input: string, imageUrls?: string[], options?: { echo?: boolean; peer?: IncomingPeerMessage }) => {
       if (!input.trim()) return;
 
       // The turn gate closes before the (potentially slow) hook dispatch so a
@@ -870,11 +902,26 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
         if (ups.blocked) {
           turnActiveRef.current = false;
           pushOutput("[UserPromptSubmit hook blocked the message]");
+          if (options?.peer) {
+            const peers = ctx.getPeers?.();
+            peers?.reply(options.peer, "declined", "blocked by a UserPromptSubmit hook");
+            void peers?.complete(options.peer.claimed);
+          }
           return;
         }
         if (ups.stdout.trim() !== "") {
           input = `${input}\n\n${ups.stdout.trimEnd()}`;
         }
+      }
+
+      // What this turn owes the inbox: a reply + ack for the peer message that
+      // started it (more join via steering), an ack for the notices it carries.
+      turnPeerOriginsRef.current = options?.peer ? [options.peer] : [];
+      turnNoticesRef.current = peerNoticesRef.current.splice(0);
+      const turnPeers = ctx.getPeers?.() ?? null;
+      if (turnPeers) {
+        turnPeers.turnHops = options?.peer?.msg.hops ?? 0;
+        turnPeers.setStatus("busy");
       }
 
       // Fresh checklist per turn: clear the previous turn's (dimmed) list. The
@@ -970,6 +1017,12 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
       if (options?.echo !== false) {
         scheduleOutput("");
         scheduleOutput(USER_ECHO_TAG + input);
+        scheduleOutput("");
+      }
+      // A peer-started turn shows the ✉ line instead: the user never typed it.
+      if (options?.peer) {
+        scheduleOutput("");
+        scheduleOutput(theme.fg(theme.theme.accent, options.peer.echo));
         scheduleOutput("");
       }
 
@@ -1404,10 +1457,18 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           // Echo the injected message like a normal submission, so the
           // transcript shows what the user typed mid-turn.
           scheduleOutput("");
-          scheduleOutput(USER_ECHO_TAG + head.text);
+          if (head.peer) {
+            scheduleOutput(theme.fg(theme.theme.accent, head.peer.echo));
+            turnPeerOriginsRef.current.push(head.peer);
+            const peers = ctx.getPeers?.();
+            if (peers) peers.turnHops = Math.max(peers.turnHops, head.peer.msg.hops);
+          } else {
+            scheduleOutput(USER_ECHO_TAG + head.text);
+          }
           scheduleOutput("");
           return head.payload ?? head.text;
         },
+        getPeerNotices: () => turnNoticesRef.current.map((n) => n.payload).join("\n\n"),
       };
 
       setAskQuestion(async (questions) => {
@@ -1416,8 +1477,13 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
         });
       });
 
+      let peerStatus: ReplyStatus = "error";
+      let peerReplyText = "";
       try {
         const result = await ctx.runAgentTurnCore(input, callbacks, imageUrls, planMode);
+        peerStatus = result.stopReason === "aborted" ? "aborted" : "ok";
+        peerReplyText =
+          [...(result.newMessages ?? [])].reverse().find((m: any) => m.role === "assistant" && m.content)?.content ?? "";
 
         // A reasoning-only turn (no text, no tool calls) never hits the
         // onText/onToolStart flush sites — surface its ✱ summary here so the
@@ -1518,6 +1584,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
         ctx.renewAbortController();
         setStatusLine(ctx.buildStatusBar());
         turnActiveRef.current = false;
+        settlePeerTurn(peerStatus, peerReplyText);
         drainQueueRef.current();
       }
     },
@@ -1528,6 +1595,55 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
   // ends. Held in a ref so `runAgentTurn`'s `finally` can call the latest
   // version without listing it as a useCallback dependency.
   const drainQueueRef = useRef<() => void>(() => {});
+
+  /** Turn end: one reply per peer message that started or steered it, then ack (§5.7). */
+  function settlePeerTurn(status: ReplyStatus, text: string) {
+    const origins = turnPeerOriginsRef.current.splice(0);
+    const notices = turnNoticesRef.current.splice(0);
+    const peers = ctx.getPeers?.();
+    if (!peers) return;
+    for (const o of origins) {
+      peers.reply(o, status, text);
+      void peers.complete(o.claimed);
+    }
+    for (const n of notices) void peers.complete(n.claimed);
+    peers.turnHops = 0;
+    peers.setStatus("idle");
+  }
+
+  // Held in refs so the mount-time peer handler always reaches this render's state.
+  const routePeerRef = useRef<(m: IncomingPeerMessage) => void>(() => {});
+  routePeerRef.current = (m) => {
+    if (m.msg.mode === "notify") {
+      peerNoticesRef.current.push(m);
+      pushOutput(theme.fg(theme.theme.accent, m.echo));
+      return;
+    }
+    if (m.msg.mode === "steer") {
+      messageQueueRef.current.push({ kind: "message", text: m.echo, at: Date.now(), payload: m.payload, peer: m });
+      syncQueueState();
+    } else {
+      peerQueueRef.current.push(m);
+    }
+    if (!turnActiveRef.current && !modalOpenRef.current && draftTextRef.current.trim() === "") {
+      drainQueueRef.current();
+    }
+  };
+  const peerNoticeRef = useRef<(text: string) => void>(() => {});
+  peerNoticeRef.current = (text) => pushOutput(theme.fg(theme.theme.textDim, `[${text}]`));
+  /** Opens the next pending approval unless a modal owns the screen (E18). True when one opened. */
+  const showNextPeerApprovalRef = useRef<() => boolean>(() => false);
+  showNextPeerApprovalRef.current = () => {
+    if (modalOpenRef.current) return false;
+    const next = pendingPeerApprovalsRef.current.shift();
+    if (!next) return false;
+    modalOpenRef.current = true;
+    setPeerApproval({
+      incoming: next,
+      guardUntil: draftTextRef.current.trim() !== "" ? Date.now() + PERMISSION_TYPING_GUARD_MS : 0,
+    });
+    return true;
+  };
   drainQueueRef.current = () => {
     if (turnActiveRef.current) return;
     // Run queued slash commands synchronously in order; stop at the first
@@ -1538,10 +1654,17 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
     while (!turnActiveRef.current) {
       const next = messageQueueRef.current.shift();
       syncQueueState();
-      if (!next) return;
+      if (!next) {
+        const peer = peerQueueRef.current.shift();
+        if (peer) runAgentTurn(peer.payload, undefined, { echo: false, peer });
+        return;
+      }
       if (next.kind === "slash") {
         handleSlashCommand(next.text);
         if (modalOpenRef.current) return;
+      } else if (next.peer) {
+        runAgentTurn(next.peer.payload, undefined, { echo: false, peer: next.peer });
+        return;
       } else {
         runAgentTurn(next.text, next.imageUrls);
         return;
@@ -1731,6 +1854,30 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
     }
     if (trimmed === "/mcp") {
       setShowMcpStatus(true);
+      return;
+    }
+    if (trimmed === "/peers" || trimmed.startsWith("/peers ")) {
+      const peers = ctx.getPeers?.();
+      if (!peers) {
+        pushOutput("[messaging is off for this session]");
+        return;
+      }
+      const arg = trimmed.slice("/peers".length).trim();
+      const policy = /^receive\s+(never|ask|always)$/.exec(arg);
+      if (policy) {
+        peers.setReceive(policy[1] as ReceivePolicy);
+        pushOutput(`[receive policy for this session: ${policy[1]}]`);
+        return;
+      }
+      if (arg) {
+        pushOutput("Usage: /peers [receive ask|always|never]");
+        return;
+      }
+      pushOutputLines([
+        `This session: ${peers.name} (${peers.sessionId}) · receive ${peers.receive} · ${peers.pendingCount()} pending`,
+        "",
+        ...formatPeersTable(peers.peers()),
+      ]);
       return;
     }
     if (trimmed === "/tasks" || trimmed === "/jobs") {
@@ -2304,7 +2451,7 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
 
   const backgroundRow = backgroundRowText(backgroundItems, backgroundNow, term.columns);
   const modalOpen =
-    !!askPrompt || !!askQuestionPrompt || !!hookTrustPrompt || !!skillTrustPrompt || !!planPrompt || showSessionList || showSkillList || showModeList ||
+    !!askPrompt || !!askQuestionPrompt || !!hookTrustPrompt || !!peerApproval || !!skillTrustPrompt || !!planPrompt || showSessionList || showSkillList || showModeList ||
     showUndoSelector || showMcpStatus || showTasks || showPermissionHistory || showUsage || showModelDropdown || showThemeDropdown || showEffortSelector || showHelp || showCommandPalette ||
     !!resumeChoice || compactingResume;
   const prevModalOpenRef = useRef(modalOpen);
@@ -2315,8 +2462,8 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
   // (see drainQueueRef), so without this re-trigger the tail of the queue would
   // be stranded until the next turn.
   useEffect(() => {
-    if (prevModalOpenRef.current && !modalOpen && !turnActiveRef.current) {
-      drainQueueRef.current();
+    if (prevModalOpenRef.current && !modalOpen) {
+      if (!showNextPeerApprovalRef.current() && !turnActiveRef.current) drainQueueRef.current();
     }
     prevModalOpenRef.current = modalOpen;
   }, [modalOpen]);
@@ -2379,6 +2526,31 @@ function InnerApp({ ctx }: { ctx: AppContext }) {
           resolve={(trusted) => {
             setHookTrustPrompt(null);
             hookTrustPrompt.resolve(trusted);
+          }}
+        />
+      )}
+
+      {peerApproval && (
+        <PeerApprovalPrompt
+          incoming={peerApproval.incoming}
+          guardUntil={peerApproval.guardUntil}
+          resolve={(choice) => {
+            setPeerApproval(null);
+            const peers = ctx.getPeers?.();
+            const { incoming } = peerApproval;
+            if (choice === "decline") {
+              void peers?.decline(incoming);
+              return;
+            }
+            const accepted = [incoming];
+            if (choice === "sender") {
+              peers?.allowSender(incoming.msg.from);
+              const key = senderKey(incoming.msg.from);
+              const same = pendingPeerApprovalsRef.current.filter((m) => senderKey(m.msg.from) === key);
+              pendingPeerApprovalsRef.current = pendingPeerApprovalsRef.current.filter((m) => senderKey(m.msg.from) !== key);
+              accepted.push(...same);
+            }
+            for (const m of accepted) routePeerRef.current(m);
           }}
         />
       )}
